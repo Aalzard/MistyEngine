@@ -275,7 +275,7 @@ fn preview_card_shows_modes_and_live_toggle() {
         h.state().world_builder.preview.mode,
         world_gen::preview::PreviewMode::Biomes
     );
-    h.get_by_label("Live in Scene view").click();
+    h.get_by_label("Live in Editor Scene").click();
     h.run_steps(3);
     let st = h.state();
     assert!(st.scene.world.get::<&WorldBuilder>(b).unwrap().live_preview);
@@ -400,7 +400,7 @@ fn world_menu_creates_terrain_and_builder_from_a_template() {
         state("misty_wb_world_menu_test"),
     );
     h.run_steps(3);
-    h.get_by_label("GameObject").click();
+    h.get_by_label("Object").click();
     h.run_steps(3);
     h.get_by_label("3D Object ⏵").hover();
     h.run_steps(3);

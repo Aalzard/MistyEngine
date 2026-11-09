@@ -454,7 +454,7 @@ fn sidebar(
         None,
     );
     if mixer.exposed.is_empty() {
-        ui.weak("Right-click a value in the Inspector to expose it to scripts.");
+        ui.weak("Right-click a value in the Properties panel to expose it to scripts.");
     }
     for p in &mixer.exposed {
         ui.horizontal(|ui| {

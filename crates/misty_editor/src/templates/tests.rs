@@ -1028,7 +1028,7 @@ fn meadow_demo_template_copies_the_scene_and_its_dependencies() {
     // The editor starts on MeadowDemo, the Scene view looking towards the sun, a little down.
     let editor = crate::scene_files::EditorSettings::load(&root);
     assert_eq!(editor.recent_scenes, [meadow::SCENE]);
-    let view = editor.scene_view.expect("a starting Scene view");
+    let view = editor.scene_view.expect("a starting Editor Scene");
     let look = glam::Quat::from_array(view.rotation) * glam::Vec3::Z;
     assert!(yaw_between(look, facing) < 0.5, "same way as the player");
     assert!(look.y < -0.02 && look.y > -0.25, "slightly down: {look}");

@@ -442,7 +442,7 @@ fn settings(
         ch
     });
     let Some(d) = data else {
-        ui.weak("Pick a .terrain asset (GameObject ▸ 3D Object ▸ Terrain makes one).");
+        ui.weak("Pick a .terrain asset (Object ▸ 3D Object ▸ Terrain makes one).");
         return ch;
     };
     let path = t.terrain_data.clone();

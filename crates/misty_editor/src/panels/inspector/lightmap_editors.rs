@@ -67,12 +67,12 @@ pub(super) fn virtual_geometry_summary(
 ) -> String {
     if s.built < s.meshes {
         return format!(
-            "Virtual Geometry: building clusters ({} of {} meshes done)…",
+            "Misty Mesh: building clusters ({} of {} meshes done)…",
             s.built, s.meshes
         );
     }
     format!(
-        "Virtual Geometry: {} clusters, {} level{}, {} source triangles; built in {:.1} s{}",
+        "Misty Mesh: {} clusters, {} level{}, {} source triangles; built in {:.1} s{}",
         s.clusters,
         s.levels,
         if s.levels == 1 { "" } else { "s" },

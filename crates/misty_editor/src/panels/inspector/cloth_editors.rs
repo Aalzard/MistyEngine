@@ -185,7 +185,7 @@ pub(super) fn cloth(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         };
         if ui
             .selectable_label(editing, label)
-            .on_hover_text("Paint max distances in the Scene view")
+            .on_hover_text("Paint max distances in the Editor Scene")
             .clicked()
         {
             crate::cloth_tools::set_editing((!editing).then_some(e));

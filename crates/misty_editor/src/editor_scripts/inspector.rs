@@ -173,7 +173,7 @@ pub(crate) fn instance(lua: &Lua, e: Entity, slot: usize, name: &str, path: &str
                 .find(|i| i.script == name)
                 .and_then(|i| fetch(lua, &i.class))
         })
-        .ok_or_else(|| mlua::Error::runtime(format!("no custom Inspector for {name}")))?;
+        .ok_or_else(|| mlua::Error::runtime(format!("no custom Properties view for {name}")))?;
     let t = lua.create_table()?;
     t.set(
         "target",
@@ -215,7 +215,7 @@ pub fn draw(
         ui.horizontal(|ui| {
             ui.colored_label(
                 crate::console::LogLevel::Error.color(),
-                "Custom Inspector failed",
+                "Custom Properties view failed",
             );
             if ui.small_button("Try again").clicked() {
                 state.editor_scripts.retry(&site);

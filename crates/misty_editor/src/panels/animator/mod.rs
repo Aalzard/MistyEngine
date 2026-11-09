@@ -132,7 +132,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         centered(
             ui,
             full,
-            "Select a GameObject with an Animator, or an Animator Controller asset.",
+            "Select an object with an Animator, or an Animator Controller asset.",
         );
         return;
     };

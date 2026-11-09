@@ -247,7 +247,7 @@ pub fn menu(ui: &mut Ui, s: &mut EditorState, e: Entity) {
             let keys = vec![item.key];
             ui.separator();
             let label = format!(
-                "Apply Added GameObject to Prefab '{}'",
+                "Apply Added Object to Prefab '{}'",
                 crate::prefabs::display_name(&outer_path)
             );
             if ui
@@ -263,7 +263,7 @@ pub fn menu(ui: &mut Ui, s: &mut EditorState, e: Entity) {
                 });
                 ui.close();
             }
-            if ui.button("Revert Added GameObject").clicked() {
+            if ui.button("Revert Added Object").clicked() {
                 s.push(Action::RevertPrefabOverrides { root: outer, keys });
                 ui.close();
             }

@@ -61,7 +61,7 @@ impl Category {
             Category::Input => "Named axes and buttons scripts read with Input.GetAxis.",
             Category::Localization => "Languages the game is translated into.",
             Category::Physics => "Gravity and which layers collide, for 3D and 2D.",
-            Category::PresetManager => "Presets new components and materials start from.",
+            Category::PresetManager => "Presets new archetypes and materials start from.",
             Category::TagsAndLayers => "Names for tags, layers and 2D drawing order.",
             Category::Time => "Physics step length and the speed of time.",
             Category::PackageManager => "The package registry the Package Manager lists.",

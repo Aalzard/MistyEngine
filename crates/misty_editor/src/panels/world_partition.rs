@@ -107,7 +107,7 @@ fn mb(bytes: u64) -> String {
 /// Lines of the stats box.
 pub fn stats_lines(s: &StreamingStats) -> Vec<String> {
     vec![
-        format!("World Partition   {} / {} cells loaded", s.loaded, s.cells),
+        format!("World Streaming   {} / {} cells loaded", s.loaded, s.cells),
         format!(
             "Pending: {} (reading {}, waiting {}, adding {})   Unloading: {}",
             s.pending(),
@@ -185,7 +185,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 "Stream Around Scene Camera",
             )
             .on_hover_text(
-                "Edit mode: cells within the load radius of the Scene view camera load.",
+                "Edit mode: cells within the load radius of the Editor Scene camera load.",
             );
         }
     });
@@ -212,7 +212,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 }
 
 fn no_partition(ui: &mut Ui, state: &mut EditorState) {
-    ui.weak("This scene has no World Partition.");
+    ui.weak("This scene has no World Streaming.");
     ui.label(
         "Add one to split a large world into grid cells that stream in and out around the \
          camera (or Streaming Source objects).",
@@ -220,12 +220,12 @@ fn no_partition(ui: &mut Ui, state: &mut EditorState) {
     if ui
         .add_enabled(
             !state.play.in_play_mode(),
-            egui::Button::new("Add World Partition"),
+            egui::Button::new("Add World Streaming"),
         )
         .clicked()
     {
-        state.record("Add World Partition");
-        let e = state.scene.spawn("World Partition", None);
+        state.record("Add World Streaming");
+        let e = state.scene.spawn("World Streaming", None);
         let folder = state
             .scene
             .active_path()
@@ -243,7 +243,7 @@ fn no_partition(ui: &mut Ui, state: &mut EditorState) {
 }
 
 fn convert(state: &mut EditorState, owner: misty_engine::hecs::Entity) {
-    state.record("Convert to World Partition");
+    state.record("Convert to World Streaming");
     state.world_partition.streamer.reset();
     let root = state.project.root.clone();
     match world_partition::convert::convert(&mut state.scene, owner, &root) {
@@ -642,7 +642,7 @@ mod tests {
             ..Default::default()
         };
         let lines = stats_lines(&s);
-        assert_eq!(lines[0], "World Partition   12 / 64 cells loaded");
+        assert_eq!(lines[0], "World Streaming   12 / 64 cells loaded");
         assert!(lines[1].starts_with("Pending: 4 (reading 2, waiting 1, adding 1)"));
         assert!(lines[2].starts_with("Memory: 3.0 MB"));
         assert!(lines[3].contains("max 1.90"));

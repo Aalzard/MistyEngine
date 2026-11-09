@@ -316,7 +316,7 @@ fn enable_and_disable_on_the_selection() {
     assert!(!p.virtual_on("Small.obj") && !p.virtual_on("Lod1.obj"));
     assert!(p.s.project_settings.quality.levels[2].virtual_geometry);
     let step = p.s.undo.undo_label().unwrap().to_owned();
-    assert!(step.starts_with("Enable Virtual Geometry on"), "{step}");
+    assert!(step.starts_with("Enable Misty Mesh on"), "{step}");
     assert_eq!(
         selection_state(&p.s),
         (true, true),
@@ -376,11 +376,10 @@ fn tools_menu_opens_the_dialog_which_converts() {
     h.get_by_label("Rendering ⏵").hover();
     h.run();
     assert!(
-        h.query_by_label("Convert Project to Virtual Geometry...")
+        h.query_by_label("Convert Project to Misty Mesh...")
             .is_some()
     );
-    h.get_by_label("Convert Scene to Virtual Geometry...")
-        .click();
+    h.get_by_label("Convert Scene to Misty Mesh...").click();
     h.run();
     let actions = std::mem::take(&mut h.state_mut().actions);
     assert!(
@@ -406,7 +405,7 @@ fn tools_menu_opens_the_dialog_which_converts() {
         h.query_by_label_contains("2 models, 2 objects, est.")
             .is_some()
     );
-    h.get_by_label_contains("Turn on Quality ▸ Virtual Geometry for High and Ultra");
+    h.get_by_label_contains("Turn on Quality ▸ Misty Mesh for High and Ultra");
     h.get_by_label("Skipped (3)").click();
     h.run();
     assert!(h.query_by_label("Foliage.obj (1 object)").is_some());
@@ -425,10 +424,10 @@ fn search_lists_the_commands() {
     let p = Project::new("search");
     let cmds = crate::search::menu_items::all(&p.s);
     for title in [
-        "Convert Scene to Virtual Geometry",
-        "Convert Project to Virtual Geometry",
-        "Enable Virtual Geometry",
-        "Disable Virtual Geometry",
+        "Convert Scene to Misty Mesh",
+        "Convert Project to Misty Mesh",
+        "Enable Misty Mesh",
+        "Disable Misty Mesh",
     ] {
         assert!(cmds.iter().any(|c| c.title == title), "{title}");
     }

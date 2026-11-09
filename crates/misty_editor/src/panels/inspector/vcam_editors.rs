@@ -671,7 +671,7 @@ fn composer(ui: &mut Ui, c: &mut Composer) -> bool {
     });
     c.soft_zone_width = c.soft_zone_width.max(c.dead_zone_width);
     c.soft_zone_height = c.soft_zone_height.max(c.dead_zone_height);
-    ui.weak("Select this camera and look at the Game view to see the zones.");
+    ui.weak("Select this camera and look at the Scene Viewer to see the zones.");
     ch
 }
 

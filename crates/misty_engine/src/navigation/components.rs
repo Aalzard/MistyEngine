@@ -159,9 +159,9 @@ impl CollectObjects {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::All => "All Game Objects",
+            Self::All => "All Objects",
             Self::Volume => "Volume",
-            Self::Children => "Current Object Hierarchy",
+            Self::Children => "Current Object and Children",
         }
     }
 }

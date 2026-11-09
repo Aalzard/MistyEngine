@@ -482,12 +482,12 @@ impl crate::render::Renderer {
 /// Virtual geometry's culling of one view (compute: instances, group decisions, clusters).
 pub(in crate::render) fn vgeo_cull_event(view: usize) -> FrameEvent {
     let name = match view {
-        0 => "Dispatch Virtual Geometry Culling (camera, first phase)".to_owned(),
-        1 => "Dispatch Virtual Geometry Culling (camera, second phase, Hi-Z)".to_owned(),
-        v => format!("Dispatch Virtual Geometry Culling (shadow map {})", v - 2),
+        0 => "Dispatch Misty Mesh Culling (camera, first phase)".to_owned(),
+        1 => "Dispatch Misty Mesh Culling (camera, second phase, Hi-Z)".to_owned(),
+        v => format!("Dispatch Misty Mesh Culling (shadow map {})", v - 2),
     };
     FrameEvent {
-        pass: vec!["Virtual Geometry".to_owned(), "Culling".to_owned()],
+        pass: vec!["Misty Mesh".to_owned(), "Culling".to_owned()],
         shader: "vgeo_cull.wgsl cs_instances, cs_prepare, cs_groups, cs_clusters, cs_finish"
             .to_owned(),
         ..FrameEvent::new(EventKind::Compute, name)
@@ -509,12 +509,12 @@ pub(in crate::render) fn vgeo_event(
         .clone()
         .unwrap_or_else(|| format!("batch {}", d.batch));
     let cutout = if d.cutout { ", Cutout" } else { "" };
-    let main = |leaf: &str| vec!["Virtual Geometry".to_owned(), leaf.to_owned()];
+    let main = |leaf: &str| vec!["Misty Mesh".to_owned(), leaf.to_owned()];
     let (pass, kind, name, shader, depth) = match d.pass {
         VgeoPass::Lit => (
             main("Clusters"),
             EventKind::DrawIndirect,
-            format!("Draw Virtual Geometry Clusters ({what}{cutout})"),
+            format!("Draw Misty Mesh Clusters ({what}{cutout})"),
             format!(
                 "vgeo_mesh.wgsl vs_cluster + mesh.wgsl {}",
                 if d.cutout { "fs_cutout" } else { "fs_main" }
@@ -524,7 +524,7 @@ pub(in crate::render) fn vgeo_event(
         VgeoPass::Raster => (
             main("Visibility Raster"),
             EventKind::DrawIndirect,
-            format!("Draw Virtual Geometry Ids ({what}{cutout})"),
+            format!("Draw Misty Mesh Ids ({what}{cutout})"),
             format!(
                 "vgeo_vis.wgsl {}",
                 if d.cutout {
@@ -538,14 +538,14 @@ pub(in crate::render) fn vgeo_event(
         VgeoPass::Resolve => (
             main("Resolve"),
             EventKind::Fullscreen,
-            format!("Resolve Virtual Geometry ({what})"),
+            format!("Resolve Misty Mesh ({what})"),
             "vgeo_resolve.wgsl fs_cluster_resolve + mesh.wgsl shade".to_owned(),
             "Off (samples from the visibility ids)",
         ),
         VgeoPass::Shadow => (
             Vec::new(),
             EventKind::DrawIndirect,
-            format!("Draw Virtual Geometry Casters ({what}{cutout})"),
+            format!("Draw Misty Mesh Casters ({what}{cutout})"),
             format!(
                 "vgeo_depth.wgsl {}",
                 if d.cutout {
@@ -559,7 +559,7 @@ pub(in crate::render) fn vgeo_event(
         VgeoPass::Prepass => (
             Vec::new(),
             EventKind::DrawIndirect,
-            format!("Draw Virtual Geometry Normals ({what}{cutout})"),
+            format!("Draw Misty Mesh Normals ({what}{cutout})"),
             format!(
                 "vgeo_prepass.wgsl + ao_prepass.wgsl {}",
                 if d.cutout {

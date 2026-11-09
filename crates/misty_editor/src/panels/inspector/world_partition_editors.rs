@@ -186,7 +186,7 @@ fn partition(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             }
         });
     }
-    if ui.button("Open World Partition Window").clicked() {
+    if ui.button("Open World Streaming Window").clicked() {
         state.push(crate::actions::Action::FocusTab(
             crate::layout::Tab::WorldPartition,
         ));
@@ -211,14 +211,14 @@ fn source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ch |= metres(
             ui,
             "Load Radius",
-            "Cells within this distance load (0 = the World Partition's).",
+            "Cells within this distance load (0 = the World Streaming setting).",
             &mut s.load_radius,
             0.0,
         );
         ch |= metres(
             ui,
             "Unload Radius",
-            "Cells beyond this distance unload (0 = the World Partition's).",
+            "Cells beyond this distance unload (0 = the World Streaming setting).",
             &mut s.unload_radius,
             0.0,
         );

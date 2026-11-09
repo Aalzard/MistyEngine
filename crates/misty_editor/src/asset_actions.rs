@@ -236,7 +236,7 @@ fn material_from_shader(s: &mut EditorState, dir: &Path) -> Result<PathBuf, Stri
         .as_ref()
         .map(|p| s.assets.relative(p))
         .filter(|rel| shader_asset::is_shader_path(rel))
-        .ok_or("select a .shader asset in the Project window first")?;
+        .ok_or("select a .shader asset in Asset Files first")?;
     let stem = Path::new(&shader)
         .file_stem()
         .map(|n| n.to_string_lossy().into_owned())

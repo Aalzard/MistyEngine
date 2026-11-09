@@ -403,11 +403,7 @@ fn clamp_scroll_y(s: &mut EditorState, rows: &[Row], visible: f32) {
 /// No timeline to show: say how to get one (and offer to create it for the selection).
 fn empty_state(ui: &mut Ui, s: &mut EditorState, full: Rect) {
     let Some(sel) = s.selection.active().filter(|e| s.scene.contains(*e)) else {
-        centered(
-            ui,
-            full,
-            "To start creating a timeline, select a GameObject.",
-        );
+        centered(ui, full, "To start creating a timeline, select an object.");
         return;
     };
     let name = s.scene.name(sel);
@@ -415,7 +411,7 @@ fn empty_state(ui: &mut Ui, s: &mut EditorState, full: Rect) {
     ui.vertical_centered(|ui| {
         ui.add_space(full.height() * 0.3);
         ui.label(format!(
-            "To begin a new timeline with {name}, create a Director component and a Timeline asset."
+            "To begin a new timeline with {name}, create a Director archetype and a Timeline asset."
         ));
         ui.add_space(6.0);
         if ui.button("Create").clicked() {
@@ -475,7 +471,7 @@ fn toolbar_row(ui: &mut Ui, s: &mut EditorState, asset: &TimelineAsset, path: &s
         let play = if w.playing { "⏸" } else { "▶" };
         if ui
             .add(egui::Button::new(play).selected(w.playing))
-            .on_hover_text("Play the timeline in the Scene view")
+            .on_hover_text("Play the timeline in the Editor Scene")
             .clicked()
         {
             w.playing = !w.playing;

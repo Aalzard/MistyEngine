@@ -20,7 +20,7 @@ pub fn page(ui: &mut Ui, p: &mut ProjectSettings, presets: &BTreeMap<String, Pre
         .collect();
     kinds.extend(p.default_presets.keys().cloned());
     if kinds.is_empty() {
-        ui.weak("No presets in the project yet. Save one with the preset button in a component's header.");
+        ui.weak("No presets in the project yet. Save one with the preset button in an archetype's header.");
         return false;
     }
     let mut edited = false;

@@ -115,7 +115,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent, index: usize, tota
             });
             ui.label(
                 RichText::new(format!(
-                    "Event {} of {} · Game view shows the {}",
+                    "Event {} of {} · Scene Viewer shows the {}",
                     index + 1,
                     total,
                     view_label(s.frame_debugger.view, e.display)

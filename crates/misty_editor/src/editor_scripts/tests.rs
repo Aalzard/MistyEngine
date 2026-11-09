@@ -129,7 +129,7 @@ fn menu_items_register_validate_and_run() {
             "GameObject/Script Item"
         ]
     );
-    // "Tools" is a built-in menu (Rendering ▸ Convert … to Virtual Geometry): the script items
+    // "Tools" is a built-in menu (Rendering ▸ Convert … to Misty Mesh): the script items
     // join it.
     assert!(menus::extra_tops(&s).is_empty());
     // Running an item changes the scene; validate keeps the other one off without a selection.
@@ -165,6 +165,16 @@ fn menu_items_register_validate_and_run() {
         .expect("in the search palette");
     assert_eq!(hit.title, "Needs Selection");
     assert_eq!(hit.shortcut, "Ctrl+Alt+M");
+    // An item under the old "GameObject" menu name is listed under Object, and still runs its
+    // own path.
+    let old = cmds
+        .iter()
+        .find(|c| c.path == "Object/Script Item")
+        .expect("listed under Object");
+    assert!(matches!(
+        &old.run,
+        crate::search::menu_items::MenuRun::Action(Action::EditorMenu(p)) if p == "GameObject/Script Item"
+    ));
     cleanup(s);
 }
 
@@ -188,7 +198,8 @@ fn menu_bar_shows_script_menus() {
         "{actions:?}"
     );
     // Items under a built-in menu go at its end.
-    h.get_by_label("GameObject").click();
+    // A script item under the old "GameObject" menu name goes to the Object menu.
+    h.get_by_label("Object").click();
     h.run();
     assert!(h.query_by_label("Script Item").is_some());
     let s = h.into_state();

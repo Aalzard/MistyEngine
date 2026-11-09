@@ -354,7 +354,7 @@ pub fn navigation_rows(ui: &mut Ui, id: &str, nav: &mut Navigation, objs: &Objec
         let mut on = crate::ui_gizmos::visualizing_navigation();
         if ui
             .selectable_label(on, "Visualize")
-            .on_hover_text("Show navigation links in the Scene view")
+            .on_hover_text("Show navigation links in the Editor Scene")
             .clicked()
         {
             on = !on;

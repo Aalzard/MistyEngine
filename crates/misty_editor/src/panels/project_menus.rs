@@ -90,7 +90,7 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
     if ui
         .button(tr(AssetKind::MaterialFromShader.label()))
         .on_hover_text(tr!(
-            "A new material using the shader selected in the Project window"
+            "A new material using the shader selected in Asset Files"
         ))
         .clicked()
     {

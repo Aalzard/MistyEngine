@@ -207,7 +207,7 @@ fn row(
                 ui.selectable_value(&mut scope, VarScope::Graph, "Graph")
                     .on_hover_text("Private to this graph on each object");
                 ui.selectable_value(&mut scope, VarScope::Object, "Object").on_hover_text(
-                    "Stored on the GameObject: set per object in the Inspector, shared with its other graphs and Lua (GetVariable)",
+                    "Stored on the object: set per object in the Properties panel, shared with its other graphs and Lua (GetVariable)",
                 );
             });
         if scope != v.scope {

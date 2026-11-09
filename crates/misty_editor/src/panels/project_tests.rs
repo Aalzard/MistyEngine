@@ -485,7 +485,7 @@ fn right_click_on_empty_hierarchy_space_opens_the_create_menu() {
     click_at(&mut h, at, PointerButton::Secondary);
     assert!(
         h.query_by_label("Create Folder").is_some(),
-        "no Create menu on empty Hierarchy space"
+        "no Create menu on empty Scene Tree space"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

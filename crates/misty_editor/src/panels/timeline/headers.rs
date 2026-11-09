@@ -243,7 +243,7 @@ fn record_button(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track) {
     let can = super::record::can_record(s, path, &track.id);
     let color = if on { super::REC } else { theme::TEXT_DIM };
     let tip = if can {
-        "Record: changes to the bound object in the Scene view or Inspector become keys at the playhead"
+        "Record: changes to the bound object in the Editor Scene or the Properties panel become keys at the playhead"
     } else {
         "Record needs a bound Animation track without clips (keys go to the track itself)"
     };

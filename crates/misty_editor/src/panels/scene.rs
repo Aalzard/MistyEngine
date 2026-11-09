@@ -29,10 +29,10 @@ pub const DRAW_MODES: [&str; 18] = [
     "Virtual Shadow Levels",
     "Virtual Shadow Cache",
     "Virtual Shadow Pages",
-    "Virtual Geometry Clusters",
-    "Virtual Geometry Levels",
-    "Virtual Geometry Overdraw",
-    "Virtual Geometry Materials",
+    "Misty Mesh Clusters",
+    "Misty Mesh Levels",
+    "Misty Mesh Overdraw",
+    "Misty Mesh Materials",
     "Physics Debug",
 ];
 /// Wireframe only, no shading.
@@ -774,7 +774,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 ui.checkbox(&mut fx.post_processing, tr!("Post Processing"));
             })
             .0
-            .on_hover_text(tr!("Scene view effects"));
+            .on_hover_text(tr!("Editor Scene effects"));
             crate::tutorials::targets::mark_response(ui, "scene.effects_menu", &fx_menu);
             let fx_toggle = toggle_button(
                 ui,

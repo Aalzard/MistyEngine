@@ -388,17 +388,17 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
-        "Virtual Geometry",
-        "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster \
+        "Misty Mesh",
+        "Prototype: models imported with Misty Mesh draw as clusters with per-cluster \
         level of detail, culled on the GPU (the visibility buffer and occlusion culling are \
         picked per frame by their cost). Off = they draw as ordinary meshes. Tools ▸ \
-        Rendering ▸ Convert Scene to Virtual Geometry turns it on for dense models.",
+        Rendering ▸ Convert Scene to Misty Mesh turns it on for dense models.",
         |ui| ui.checkbox(&mut l.virtual_geometry, "").changed(),
     );
     if l.virtual_geometry {
         edited |= row(
             ui,
-            "Virtual Geometry Error",
+            "Misty Mesh Error",
             "Largest simplification error on screen, in pixels: lower draws more triangles.",
             |ui| {
                 ui.add(
@@ -548,7 +548,7 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "Lens Flares",
-        "Lens Flare components draw (light halos always do).",
+        "Lens Flare archetypes draw (light halos always do).",
         |ui| ui.checkbox(&mut l.lens_flares, "").changed(),
     );
     edited |= row(

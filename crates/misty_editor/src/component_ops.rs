@@ -35,9 +35,9 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::MoveComponent { entity, name, dir } => {
             if can_move(s, entity, &name, dir) {
                 s.record(if dir < 0 {
-                    "Move Component Up"
+                    "Move Archetype Up"
                 } else {
-                    "Move Component Down"
+                    "Move Archetype Down"
                 });
                 s.scene.move_component(entity, &name, dir);
             }

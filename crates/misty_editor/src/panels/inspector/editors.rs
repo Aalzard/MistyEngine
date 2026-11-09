@@ -383,7 +383,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
             super::spline_editors::edit(ui, state, e, spline)
         }
         _ => {
-            ui.weak(tr!("No editor for this component."));
+            ui.weak(tr!("No editor for this archetype."));
             false
         }
     }
@@ -1098,7 +1098,7 @@ fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
 pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     let resp = ui
         .vertical_centered(|ui| {
-            ui.add_sized([230.0, 24.0], egui::Button::new(tr!("Add Component")))
+            ui.add_sized([230.0, 24.0], egui::Button::new(tr!("Add Archetype")))
         })
         .inner;
     crate::tutorials::targets::mark_response(ui, "inspector.add_component", &resp);
@@ -1275,7 +1275,7 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                         state.push(Action::ResetScript { entity: e, slot });
                         ui.close();
                     }
-                    if ui.button(tr!("Remove Component")).clicked() {
+                    if ui.button(tr!("Remove Archetype")).clicked() {
                         state.push(Action::RemoveScript { entity: e, slot });
                         ui.close();
                     }

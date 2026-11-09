@@ -61,7 +61,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
     );
     let busy = super::interacting(ui.ctx());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
-        ui.label(RichText::new("Graph Inspector").strong().color(theme::TEXT));
+        ui.label(
+            RichText::new("Graph Properties")
+                .strong()
+                .color(theme::TEXT),
+        );
         ui.separator();
         match single(s) {
             Some(node) => {

@@ -546,7 +546,7 @@ fn object_page(ui: &mut Ui, state: &mut EditorState) {
         }
     }
     ui.weak(
-        "Same as the Static flag in the Inspector header. Add a NavMesh Modifier to give an \
+        "Same as the Static flag in the Properties panel header. Add a NavMesh Modifier to give an \
              object an area or leave it out of bakes.",
     );
 }

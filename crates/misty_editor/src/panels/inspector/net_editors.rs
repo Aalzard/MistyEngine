@@ -46,7 +46,7 @@ fn prefab_field(ui: &mut Ui, prefab: &mut Option<String>) -> bool {
         .selected_text(format!("⬢ {current}"))
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(prefab, None, "None").changed();
-            ui.weak("Drop a prefab with a Network Object from the Project window here.");
+            ui.weak("Drop a prefab with a Network Object from Asset Files here.");
         })
         .response
         .on_hover_text(

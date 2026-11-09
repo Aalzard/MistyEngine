@@ -85,7 +85,7 @@ fn create_add_track_add_clip_trim_move_and_undo() {
     s.selection.set(hero);
     let mut h = window(s);
     h.get_by_label(
-        "To begin a new timeline with Hero, create a Director component and a Timeline asset.",
+        "To begin a new timeline with Hero, create a Director archetype and a Timeline asset.",
     );
     h.get_by_label("Create").click();
     h.run();

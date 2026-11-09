@@ -665,12 +665,12 @@ fn editor_tools_menus_console_and_state() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|i| i["path"] == "GameObject/3D Object/Cube")
+            .any(|i| i["path"] == "Object/3D Object/Cube")
     );
     let r = ok(
         &mut s,
         "editor.run_menu_item",
-        json!({"path": "GameObject > 3D Object > Cube"}),
+        json!({"path": "Object > 3D Object > Cube"}),
     );
     assert!(
         r["console"]
@@ -685,8 +685,20 @@ fn editor_tools_menus_console_and_state() {
     err(
         &mut s,
         "editor.run_menu_item",
-        json!({"path": "GameObject/3D Object/Dragon"}),
+        json!({"path": "Object/3D Object/Dragon"}),
     );
+    // Menu paths from before the round 31 renames still run.
+    for old in [
+        "GameObject/3D Object/Sphere",
+        "gameobject > 3d object > capsule",
+        "Component/Physics/Rigidbody",
+        "Window/General/Inspector",
+        "Window/General/Hierarchy",
+    ] {
+        ok(&mut s, "editor.run_menu_item", json!({"path": old}));
+    }
+    assert!(names(&s).contains(&"Sphere".to_owned()));
+    assert!(names(&s).contains(&"Capsule".to_owned()));
     // Play mode needs the live editor.
     let msg = err(&mut s, "editor.play", json!({}));
     assert!(msg.contains("--mcp-connect"), "{msg}");

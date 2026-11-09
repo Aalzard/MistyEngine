@@ -335,9 +335,9 @@ pub fn component_menu(ui: &mut Ui, state: &mut EditorState, component: &str) {
         o.entity == Some(target) && o.key.component() == Some(component)
     });
     let revert = if added {
-        "Revert (Remove Component)"
+        "Revert (Remove Archetype)"
     } else {
-        "Revert Component Overrides"
+        "Revert Archetype Overrides"
     };
     if ui.button(revert).clicked() {
         state.push(Action::RevertPrefabOverrides {
@@ -380,7 +380,7 @@ pub fn removed_components(ui: &mut Ui, state: &mut EditorState) {
                             .strikethrough()
                             .color(theme::TEXT_DIM),
                     )
-                    .on_hover_text("This instance removed the prefab's component");
+                    .on_hover_text("This instance removed the prefab's archetype");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let keys = vec![item.key.clone()];
                         let apply = ui.add_enabled(
@@ -456,7 +456,7 @@ pub fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             }
             if ui
                 .button("Select")
-                .on_hover_text("Show the prefab asset in the Project window")
+                .on_hover_text("Show the prefab asset in Asset Files")
                 .clicked()
             {
                 state.push(Action::SelectPrefabAsset(e));
@@ -489,10 +489,10 @@ pub fn describe(state: &mut EditorState, rel: &str, o: &OverrideItem) -> (String
             format!("{component} ▸ {}", field_label(property)),
         ),
         Override::AddedComponent { component, .. } => {
-            (name(state), format!("{component} (added component)"))
+            (name(state), format!("{component} (added archetype)"))
         }
         Override::RemovedComponent { component, .. } => {
-            (name(state), format!("{component} (removed component)"))
+            (name(state), format!("{component} (removed archetype)"))
         }
         Override::AddedObject { name: n, .. } => (n.clone(), "Added object".to_owned()),
         Override::RemovedObject { object } => {
