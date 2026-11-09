@@ -2493,7 +2493,7 @@ checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 
 [[package]]
 name = "misty_editor"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bytemuck",
  "crc32fast",
@@ -2523,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "misty_engine"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ab_glyph",
  "block_compression",
@@ -2560,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "misty_player"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "misty_engine",
  "png",

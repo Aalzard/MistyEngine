@@ -20,9 +20,10 @@ Both are local: the stdio server has no network port at all, and the live bridge
 
 ## Set up a client
 
-Use the full path to `misty` (`misty.exe` on Windows) if it is not on your `PATH`, and the
-project folder (the one with `Assets/` in it). For the live editor, replace `--mcp` with
-`--mcp-connect`.
+Use the full path to the editor if it is not on your `PATH`: in an installed or downloaded
+release it is `MistyEngine.exe` (`MistyEngine` on Linux); built from source it is `misty`
+(`misty.exe`). Give it the project folder (the one with `Assets/` in it). For the live editor,
+replace `--mcp` with `--mcp-connect`.
 
 ### Claude Code
 
@@ -51,7 +52,7 @@ Settings ▸ Developer ▸ Edit Config opens `claude_desktop_config.json`:
 {
   "mcpServers": {
     "misty": {
-      "command": "C:\\Program Files\\Misty Engine\\misty.exe",
+      "command": "C:\\Program Files\\Misty Engine\\MistyEngine.exe",
       "args": ["--mcp", "C:\\Users\\me\\Misty Projects\\MyGame"]
     }
   }

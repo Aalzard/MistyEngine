@@ -1,6 +1,43 @@
 Misty Engine changelog
 ======================
 
+0.3.1 - templates, world streaming and visual scripting (November 2026)
+----------------------------------------------------------------------
+
+New project templates
+- First Person: a big flat white plain with the first-person player, ready to press Play.
+- Racing: a 1.2 km circuit, three cars (Sport, Muscle, Kart), boost, reset, chase camera and
+  lap timer; live settings for gravity, mass, grip and top speed. All in editable Lua.
+- MeadowDemo and Floating Platform (the platform in the sky) stay; PP Ready is removed.
+  Every template has bloom, tonemapping, volumetric clouds and sun shafts.
+- Lua: Physics.gravity, Rigidbody.mass, WheelCollider forward/sideways stiffness.
+
+World streaming
+- World Partition: grid cells as sub-scenes that load and unload in the background around
+  Streaming Sources, HLOD stand-ins for far cells, terrain tiles stitched without seams.
+- World Partition window with a minimap, stats overlay, Lua WorldPartition (IsAreaLoaded,
+  WaitForArea, OnAreaLoaded). Player builds pack the streamed world. StreamingDemo (4x4 km).
+
+Visual scripting
+- Script Graphs (.vgraph): Blueprint-style node graphs compiled to bytecode and attached like
+  scripts. Events, flow control, math, variables, subgraphs and macros, and a node for every
+  documented Lua API member.
+- Script Graph window: node search, type-checked wires, Blackboard, copy/paste, Collapse To
+  Macro, live debugging (glowing wires, pin values, F9 breakpoints, stepping).
+  VisualScriptingDemo, built without any Lua.
+
+Performance
+- MeadowDemo 2-9% faster at the same look: tree leaf depth pre-pass, cheaper sharp sun shafts
+  on Ultra, grass noise and cloud lookups skipped where they change nothing, shadow lists on
+  the render thread for small frames.
+- Editor: live-reload file checks moved off the main thread (no more stutter every half
+  second), cheaper Scene view gather and gizmos, Project window draws only what is visible.
+  Editor main thread -19%, worst frames -43%.
+
+Fixes
+- Decal and Shader Graph assets loaded from another project find their shaders and Sub Graphs.
+- AI tools (MCP) docs name the installed editor (MistyEngine.exe).
+
 0.3.0 - audio, terrain tools, VFX, Shader Graph and materials (November 2026)
 -----------------------------------------------------------------------------
 
