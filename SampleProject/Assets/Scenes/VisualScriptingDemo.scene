@@ -41,20 +41,20 @@
         },
         "Transform": {
           "euler_hint": [
-            38.0,
+            52.0,
             0.0,
             0.0
           ],
           "position": [
             0.0,
-            13.0,
-            -17.0
+            19.0,
+            -13.0
           ],
           "rotation": [
-            0.32556814,
+            0.43837115,
             0.0,
             0.0,
-            0.94551855
+            0.89879405
           ],
           "scale": [
             1.0,
@@ -1150,7 +1150,7 @@
             1.0
           ],
           "enabled": true,
-          "font_size": 30.0,
+          "font_size": 24.0,
           "line_spacing": 1.0,
           "raycast_target": true,
           "text": "Coins: 0 / 3",
@@ -1207,7 +1207,7 @@
           ],
           "anchored_position": [
             20.0,
-            -70.0
+            -56.0
           ],
           "pivot": [
             0.0,
@@ -1227,10 +1227,10 @@
             1.0
           ],
           "enabled": true,
-          "font_size": 20.0,
+          "font_size": 16.0,
           "line_spacing": 1.0,
           "raycast_target": true,
-          "text": "WASD / arrows move, Space jumps. All logic here is Script Graphs (Assets/VisualScripting).",
+          "text": "WASD / arrows move, Space jumps. All the logic is Script Graphs.",
           "wrap": true
         },
         "Transform": {

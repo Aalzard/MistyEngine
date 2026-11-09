@@ -12,7 +12,7 @@ use crate::theme;
 pub fn height(s: &EditorState) -> f32 {
     match single(s) {
         Some(_) => 330.0,
-        None => 120.0 + 18.0 * s.script_graph.errors.len().min(10) as f32,
+        None => 150.0 + 18.0 * s.script_graph.errors.len().min(10) as f32,
     }
 }
 

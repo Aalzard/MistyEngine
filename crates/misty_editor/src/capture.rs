@@ -414,6 +414,11 @@ pub fn apply_env(
             s.script_graph.search = Some(search);
         }
         s.script_graph.focused = true;
+        // `MISTY_GRAPH_PANELS=none` hides the Blackboard and the Graph Inspector.
+        if std::env::var("MISTY_GRAPH_PANELS").is_ok_and(|v| v == "none") {
+            s.script_graph.show_blackboard = false;
+            s.script_graph.show_inspector = false;
+        }
         crate::layout::focus_or_open(dock, crate::layout::Tab::ScriptGraph);
     }
     // `MISTY_RUN_TESTS=EditMode|PlayMode|1` runs the project's tests (both modes, to the end)

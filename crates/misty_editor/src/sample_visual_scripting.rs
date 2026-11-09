@@ -610,8 +610,8 @@ pub fn demo_scene() -> Scene {
     if let Some(cam) = s.find_by_name("Main Camera") {
         s.set_transform(
             cam,
-            Transform::from_position(Vec3::new(0.0, 13.0, -17.0))
-                .with_euler(Vec3::new(38.0, 0.0, 0.0)),
+            Transform::from_position(Vec3::new(0.0, 19.0, -13.0))
+                .with_euler(Vec3::new(52.0, 0.0, 0.0)),
         );
     }
     block(
@@ -736,7 +736,7 @@ pub fn demo_scene() -> Scene {
     {
         let mut t = s.world.get::<&mut UiText>(score).unwrap();
         t.text = "Coins: 0 / 3".into();
-        t.font_size = 30.0;
+        t.font_size = 24.0;
         t.color = [1.0, 0.86, 0.3, 1.0];
         t.alignment = TextAnchor::UpperLeft;
     }
@@ -746,14 +746,13 @@ pub fn demo_scene() -> Scene {
         anchor_min: corner,
         anchor_max: corner,
         pivot: corner,
-        anchored_position: Vec2::new(20.0, -70.0),
+        anchored_position: Vec2::new(20.0, -56.0),
         size_delta: Vec2::new(1100.0, 40.0),
     };
     {
         let mut t = s.world.get::<&mut UiText>(help).unwrap();
-        t.text = "WASD / arrows move, Space jumps. All logic here is Script Graphs (Assets/VisualScripting)."
-            .into();
-        t.font_size = 20.0;
+        t.text = "WASD / arrows move, Space jumps. All the logic is Script Graphs.".into();
+        t.font_size = 16.0;
         t.color = [1.0; 4];
         t.alignment = TextAnchor::UpperLeft;
     }

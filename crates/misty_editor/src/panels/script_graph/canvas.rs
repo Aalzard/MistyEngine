@@ -261,14 +261,18 @@ fn frame_all(w: &mut ScriptGraphWindow, area: Rect) {
         ((r.width() - 2.0 * margin) / bounds.width())
             .min((r.height() - 2.0 * margin) / bounds.height())
     };
-    let (free, zoom) = if fit(free) >= 0.55 {
-        (free, fit(free))
-    } else {
-        (area, fit(area))
-    };
-    let zoom = zoom.clamp(0.4, 1.0);
+    let zoom = fit(free);
+    if zoom >= 0.65 {
+        let zoom = zoom.min(1.0);
+        w.zoom = zoom;
+        w.pan = (free.center() - area.center()) / zoom - bounds.center().to_vec2();
+        return;
+    }
+    // Too big to read whole: show its top-left part (where the events start) readably.
+    let zoom = 0.65;
     w.zoom = zoom;
-    w.pan = (free.center() - area.center()) / zoom - bounds.center().to_vec2();
+    let corner = free.min + vec2(margin, margin);
+    w.pan = (corner - area.center()) / zoom - bounds.min.to_vec2();
 }
 
 /// Is the exec entry `(node, pin)` reached in the last few frames?

@@ -994,9 +994,10 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                         )
                         .on_hover_text(&e.message);
                     }
-                    None => {
+                    None if s.script_graph.live.is_none() => {
                         ui.label(RichText::new("✔ No problems").color(theme::TEXT_DIM));
                     }
+                    None => {}
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.toggle_value(&mut s.script_graph.show_inspector, "Graph Inspector");
