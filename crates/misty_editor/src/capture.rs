@@ -242,14 +242,14 @@ impl Capture {
     }
 }
 
-/// `MISTY_OPEN_MENU=<top menu>` (English name: `File`, `GameObject`…): that menu of the title
+/// `MISTY_OPEN_MENU=<top menu>` (English name: `File`, `Object`…; old names work): that menu of the title
 /// bar opens and stays open (screenshots of translated menus).
 pub fn open_menu_from_env(ui: &egui::Ui, label: &str, button: &egui::Response) {
     static MENU: OnceLock<Option<String>> = OnceLock::new();
     let wanted = MENU.get_or_init(|| std::env::var("MISTY_OPEN_MENU").ok());
     if wanted
         .as_deref()
-        .is_some_and(|w| w.trim().eq_ignore_ascii_case(label))
+        .is_some_and(|w| crate::renames::top_menu(w.trim()).eq_ignore_ascii_case(label))
     {
         let id = egui::Popup::default_response_id(button);
         if !egui::Popup::is_id_open(ui.ctx(), id) {
@@ -490,7 +490,7 @@ pub fn apply_env(
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {
-            if let Some(tab) = crate::layout::Tab::every().find(|t| t.title() == title.trim()) {
+            if let Some(tab) = crate::layout::Tab::from_title(title) {
                 crate::layout::focus_or_open(dock, tab);
             }
         }
@@ -645,7 +645,7 @@ pub fn apply_env(
     if let Some(mode) = std::env::var_os("MISTY_DRAW_MODE")
         && let Some(i) = crate::panels::scene::DRAW_MODES
             .iter()
-            .position(|m| *m == mode.to_string_lossy())
+            .position(|m| *m == crate::renames::current_phrase(&mode.to_string_lossy()))
     {
         s.scene_view.draw_mode = i;
     }

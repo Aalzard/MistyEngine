@@ -137,11 +137,11 @@ impl Tab {
 
     pub fn title(self) -> &'static str {
         match self {
-            Tab::Scene => "Scene",
-            Tab::Game => "Game",
-            Tab::Hierarchy => "Hierarchy",
-            Tab::Inspector => "Inspector",
-            Tab::Project => "Project",
+            Tab::Scene => "Editor Scene",
+            Tab::Game => "Scene Viewer",
+            Tab::Hierarchy => "Scene Tree",
+            Tab::Inspector => "Properties",
+            Tab::Project => "Asset Files",
             Tab::Console => "Console",
             Tab::Animation => "Animation",
             Tab::Lighting => "Lighting",
@@ -151,7 +151,7 @@ impl Tab {
             Tab::CodeEditor => "Code Editor",
             Tab::Profiler => "Profiler",
             Tab::WorldBuilder => "World Builder",
-            Tab::WorldPartition => "World Partition",
+            Tab::WorldPartition => "World Streaming",
             Tab::UndoHistory => "Undo History",
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
@@ -168,6 +168,30 @@ impl Tab {
             // The real title comes from the script (`PanelViewer::title`).
             Tab::Tool(_) => "Tool Window",
         }
+    }
+
+    /// The title before round 31 renamed it (scripts and `MISTY_TAB` may still use it).
+    /// Saved layouts store the variant name, not the title, so they need nothing.
+    pub fn legacy_title(self) -> Option<&'static str> {
+        match self {
+            Tab::Scene => Some("Scene"),
+            Tab::Game => Some("Game"),
+            Tab::Hierarchy => Some("Hierarchy"),
+            Tab::Inspector => Some("Inspector"),
+            Tab::Project => Some("Project"),
+            Tab::WorldPartition => Some("World Partition"),
+            _ => None,
+        }
+    }
+
+    /// The tab with this title, current or legacy (any case).
+    pub fn from_title(title: &str) -> Option<Tab> {
+        let title = title.trim();
+        Self::every().find(|t| {
+            t.title().eq_ignore_ascii_case(title)
+                || t.legacy_title()
+                    .is_some_and(|l| l.eq_ignore_ascii_case(title))
+        })
     }
 
     pub fn icon(self) -> &'static str {
@@ -400,6 +424,31 @@ mod tests {
                 assert!(dock.find_tab(&tab).is_none(), "{}", layout.name());
             }
         }
+    }
+
+    #[test]
+    fn saved_layouts_keep_their_tab_ids_after_the_renames() {
+        // Layouts store the variant, not the shown title, so files saved before the round 31
+        // renames (Inspector → Properties, …) load unchanged.
+        let json = serde_json::to_string(&default_layout()).unwrap();
+        for id in ["Scene", "Game", "Hierarchy", "Inspector", "Project"] {
+            assert!(json.contains(&format!("\"{id}\"")), "{id} in {json}");
+        }
+        let old: Vec<Tab> =
+            serde_json::from_str(r#"["Scene", "Game", "Hierarchy", "Inspector", "Project"]"#)
+                .unwrap();
+        assert_eq!(
+            old,
+            [Tab::Scene, Tab::Game, Tab::Hierarchy, Tab::Inspector, Tab::Project]
+        );
+        assert_eq!(Tab::Inspector.title(), "Properties");
+        assert_eq!(Tab::from_title("Inspector"), Some(Tab::Inspector));
+        assert_eq!(Tab::from_title("game"), Some(Tab::Game));
+        assert_eq!(Tab::from_title("Scene Viewer"), Some(Tab::Game));
+        assert_eq!(
+            Tab::from_title("World Partition"),
+            Some(Tab::WorldPartition)
+        );
     }
 
     #[test]

@@ -145,8 +145,13 @@ pub fn tr(english: &str) -> String {
 }
 
 /// The English text of a key: a key may end in `#context` ("Light#theme") when one English
-/// word needs two translations; the context is never shown.
+/// word needs two translations; the context is never shown. A stored name the editor shows
+/// under another name ("World Partition", see [`crate::renames::shown_name`]) gives that name.
 pub fn source_text(key: &str) -> &str {
+    let shown = crate::renames::shown_name(key);
+    if shown != key {
+        return shown;
+    }
     match key.rsplit_once('#') {
         Some((text, ctx))
             if !text.is_empty()

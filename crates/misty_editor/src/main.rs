@@ -71,6 +71,7 @@ mod project_settings_quality;
 mod project_settings_tags;
 mod project_thumbnail;
 mod ragdoll_wizard;
+mod renames;
 mod render_scene;
 #[cfg(test)]
 mod sample_2d;
