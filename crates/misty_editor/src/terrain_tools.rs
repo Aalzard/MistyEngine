@@ -265,6 +265,12 @@ pub fn scene_view(
             let (data, _) = store::get(&path)?;
             misty_engine::terrain::raycast_data(&data, origin - pos, dir).map(|p| p + pos)
         });
+    // Screenshots: `MISTY_TERRAIN_HOVER=x,z` shows the brush cursor there (terrain-local).
+    let hover = hover.or_else(|| {
+        let [x, z] = crate::capture::terrain_hover()?;
+        let (data, _) = store::get(&path)?;
+        Some(pos + Vec3::new(x, data.sample_height(x, z), z))
+    });
     state.terrain_tools.hover = hover.map(|p| (e, p));
 
     let (pressed, down, alt, shift, dt) = ui.input(|i| {

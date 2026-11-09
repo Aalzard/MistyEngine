@@ -266,6 +266,9 @@ pub fn slider(
     log: bool,
 ) -> bool {
     let (ch, reset) = row(ui, label, tip, Some(close(*v, default)), |ui| {
+        // Room for the number with its unit ("1500 /m²") inside the value column.
+        let s = ui.spacing_mut();
+        s.slider_width = (s.slider_width - if suffix.is_empty() { 0.0 } else { 14.0 }).max(40.0);
         let mut s = egui::Slider::new(v, range).suffix(suffix);
         if log {
             s = s.logarithmic(true);
@@ -355,7 +358,7 @@ pub fn range_slider(
     let (lo, hi) = (*bounds.start(), *bounds.end());
     let mut ch = false;
     ui.spacing_mut().item_spacing.x = 4.0;
-    let number_w = 58.0;
+    let number_w = (ui.available_width() * 0.27).clamp(44.0, 60.0);
     let (a, b) = (v[0], v[1]);
     ch |= ui
         .add_sized(
@@ -1032,19 +1035,18 @@ pub fn paint_thumb(ui: &Ui, rect: Rect, thumb: &Thumb) {
             crate::terrain_previews::paint_tuft(ui.painter(), rect, t);
         }
         Thumb::Image(id, swatch) => {
-            preview_backdrop(ui, rect, 0.0);
+            if swatch.is_none() {
+                preview_backdrop(ui, rect, 0.0);
+            }
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
             ui.painter().image(*id, rect, uv, Color32::WHITE);
             if let Some(c) = swatch {
-                let s = (rect.width() * 0.22).clamp(10.0, 18.0);
-                let r = Rect::from_min_size(rect.left_bottom() + vec2(4.0, -s - 4.0), vec2(s, s));
-                ui.painter().rect(
-                    r,
-                    3.0,
-                    *c,
-                    Stroke::new(1.0, Color32::from_white_alpha(200)),
-                    egui::StrokeKind::Outside,
-                );
+                // The texture's mean colour as a chip: a dark ring keeps it apart from the image.
+                let r = (rect.width() * 0.1).clamp(5.0, 9.0);
+                let at = rect.left_bottom() + vec2(r + 5.0, -r - 5.0);
+                let p = ui.painter();
+                p.circle_filled(at, r + 2.5, Color32::from_black_alpha(190));
+                p.circle(at, r, *c, Stroke::new(1.0, Color32::from_white_alpha(230)));
             }
         }
         Thumb::Icon { icon, pending } => {

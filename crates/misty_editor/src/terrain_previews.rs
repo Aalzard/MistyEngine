@@ -93,7 +93,7 @@ impl TuftParams {
             seed: s.seed_color,
             tip_dryness: s.tip_dryness,
             color_variation: s.color_variation,
-            blades: 36,
+            blades: 44,
             spread: 0.0,
         }
     }
@@ -199,7 +199,7 @@ pub fn build_tuft(p: &TuftParams) -> Tuft {
     let spread = if p.spread > 0.0 {
         p.spread
     } else {
-        0.05 + h1 * 0.18
+        0.04 + h1 * 0.22
     };
     let light = Vec3::new(-0.45, 0.75, -0.5).normalize();
     let (cp, sp) = (PITCH.cos(), PITCH.sin());
@@ -361,8 +361,8 @@ pub fn build_tuft(p: &TuftParams) -> Tuft {
     // Painter's order: far blades first.
     strips.sort_by(|a, b| b.depth.total_cmp(&a.depth));
     let mut out = Tuft {
-        view_height: (top * 1.12).max(0.6),
-        half_width: spread + top * 0.6,
+        view_height: (top * 1.15).max(0.28),
+        half_width: spread + top * 0.45,
         ..Default::default()
     };
     // A soft patch of ground under the tuft.

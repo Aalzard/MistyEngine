@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -256,6 +256,17 @@ pub fn open_menu_from_env(ui: &egui::Ui, label: &str, button: &egui::Response) {
             egui::Popup::open_id(ui.ctx(), id);
         }
     }
+}
+
+/// `MISTY_TERRAIN_HOVER=<x>,<z>`: the terrain brush cursor shown at that terrain-local point
+/// (screenshots of the cursor without a mouse).
+pub fn terrain_hover() -> Option<[f32; 2]> {
+    static AT: OnceLock<Option<[f32; 2]>> = OnceLock::new();
+    *AT.get_or_init(|| {
+        let v = std::env::var("MISTY_TERRAIN_HOVER").ok()?;
+        let (x, z) = v.split_once(',')?;
+        Some([x.trim().parse().ok()?, z.trim().parse().ok()?])
+    })
 }
 
 /// `MISTY_INSPECTOR_SCROLL=<px>`: the object Inspector scrolled down that far (screenshots of
