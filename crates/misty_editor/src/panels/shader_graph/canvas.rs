@@ -4,7 +4,6 @@
 //! and groups, dragging ports to connect, and the right-click menus (Copy, Cut, Paste,
 //! Duplicate, Group Selection).
 
-use egui::epaint::CubicBezierShape;
 use egui::{
     Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     UiBuilder, Vec2, pos2, vec2,
@@ -38,23 +37,8 @@ pub struct PropertyPayload(pub String);
 #[derive(Clone, Debug)]
 pub struct KeywordPayload(pub String);
 
-/// Graph ↔ screen mapping: screen = centre + (graph + pan) × zoom.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct View {
-    pub centre: Pos2,
-    pub pan: Vec2,
-    pub zoom: f32,
-}
-
-impl View {
-    pub fn screen(&self, p: Pos2) -> Pos2 {
-        self.centre + (p.to_vec2() + self.pan) * self.zoom
-    }
-
-    pub fn graph(&self, p: Pos2) -> Pos2 {
-        pos2(0.0, 0.0) + ((p - self.centre) / self.zoom - self.pan)
-    }
-}
+pub use crate::panels::node_canvas::View;
+use crate::panels::node_canvas::{draw_grid, wire};
 
 /// One end of a connection being dragged.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -536,39 +520,6 @@ fn navigate(ui: &Ui, w: &mut ShaderGraphWindow, area: Rect, resp: &Response) {
         w.pan += resp.drag_delta() / w.zoom();
         w.canvas.band = None;
     }
-}
-
-pub(crate) fn draw_grid(painter: &egui::Painter, area: Rect, view: View) {
-    for (step, alpha) in [(20.0, 10u8), (100.0, 18u8)] {
-        let px = step * view.zoom;
-        if px < 6.0 {
-            continue;
-        }
-        let stroke = Stroke::new(1.0, Color32::from_white_alpha(alpha));
-        let origin = view.screen(pos2(0.0, 0.0));
-        let mut x = origin.x - ((origin.x - area.left()) / px).floor() * px;
-        while x < area.right() {
-            painter.vline(x, area.y_range(), stroke);
-            x += px;
-        }
-        let mut y = origin.y - ((origin.y - area.top()) / px).floor() * px;
-        while y < area.bottom() {
-            painter.hline(area.x_range(), y, stroke);
-            y += px;
-        }
-    }
-}
-
-/// A connection curve.
-pub(crate) fn wire(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32) {
-    let dx = ((b.x - a.x).abs() * 0.5).max(40.0 * zoom);
-    let shape = CubicBezierShape::from_points_stroke(
-        [a, a + vec2(dx, 0.0), b - vec2(dx, 0.0), b],
-        false,
-        Color32::TRANSPARENT,
-        Stroke::new((2.4 * zoom).max(1.2), color),
-    );
-    painter.add(shape);
 }
 
 fn connections(painter: &egui::Painter, w: &ShaderGraphWindow, view: View) {

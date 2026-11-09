@@ -38,6 +38,8 @@ pub enum Tab {
     ShaderGraph,
     /// Window ▸ Rendering ▸ Effect Graph (or double-click an `.effect`).
     EffectGraph,
+    /// Window ▸ Visual Scripting ▸ Script Graph (or double-click a `.vgraph`).
+    ScriptGraph,
     /// Window ▸ Rendering ▸ Occlusion Culling.
     OcclusionCulling,
     /// Window ▸ Analysis ▸ Frame Debugger.
@@ -83,6 +85,7 @@ impl Tab {
         Tab::TilePalette,
         Tab::ShaderGraph,
         Tab::EffectGraph,
+        Tab::ScriptGraph,
         Tab::OcclusionCulling,
         Tab::FrameDebugger,
         Tab::MemoryProfiler,
@@ -110,7 +113,9 @@ impl Tab {
             // A list window, like the Hierarchy.
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
-            Tab::Animator | Tab::ShaderGraph | Tab::EffectGraph => Some(Tab::Scene),
+            Tab::Animator | Tab::ShaderGraph | Tab::EffectGraph | Tab::ScriptGraph => {
+                Some(Tab::Scene)
+            }
             // A wide time strip, like the Animation window it sits beside.
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -152,6 +157,7 @@ impl Tab {
             Tab::TilePalette => "Tile Palette",
             Tab::ShaderGraph => "Shader Graph",
             Tab::EffectGraph => "Effect Graph",
+            Tab::ScriptGraph => "Script Graph",
             Tab::OcclusionCulling => "Occlusion Culling",
             Tab::FrameDebugger => "Frame Debugger",
             Tab::MemoryProfiler => "Memory Profiler",
@@ -186,6 +192,7 @@ impl Tab {
             Tab::TilePalette => crate::panels::tile_palette::ICON,
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
             Tab::EffectGraph => crate::panels::effect_graph::ICON,
+            Tab::ScriptGraph => crate::panels::script_graph::ICON,
             Tab::OcclusionCulling => "◩",
             Tab::FrameDebugger => crate::panels::frame_debugger::ICON,
             Tab::MemoryProfiler => crate::panels::memory_profiler::ICON,
@@ -220,6 +227,7 @@ impl Tab {
             | Tab::TilePalette
             | Tab::ShaderGraph
             | Tab::EffectGraph
+            | Tab::ScriptGraph
             | Tab::OcclusionCulling
             | Tab::FrameDebugger
             | Tab::MemoryProfiler

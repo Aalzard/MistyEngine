@@ -1238,9 +1238,15 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                 let verb = if on { "Enable" } else { "Disable" };
                 state.mark_edited(&format!("{verb} Script"));
             }
-            ui.label("📜");
+            let graph = misty_engine::visual_script::is_graph_path(&script.path);
+            ui.label(if graph {
+                crate::panels::script_graph::ICON
+            } else {
+                "📜"
+            });
+            let kind = if graph { "Script Graph" } else { "Script" };
             let title =
-                crate::theme::bold(ui.ctx(), format!("{} (Script)", nicify(&script.name())));
+                crate::theme::bold(ui.ctx(), format!("{} ({kind})", nicify(&script.name())));
             let title = ui.add(egui::Label::new(title).sense(egui::Sense::click()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.menu_button("⋮", |ui| {
@@ -1253,7 +1259,12 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Edit Script").clicked() {
+                    let edit = if graph {
+                        "Edit Script Graph"
+                    } else {
+                        "Edit Script"
+                    };
+                    if ui.button(edit).clicked() {
                         open_script(state, &script.path);
                         ui.close();
                     }
@@ -1402,8 +1413,13 @@ fn script_value_ui(ui: &mut Ui, id: &str, v: &mut ScriptValue) -> bool {
     }
 }
 
-/// Open a script in the Code Editor (or the external editor chosen in Preferences).
+/// Open a script in the Code Editor (or the external editor chosen in Preferences); a Script
+/// Graph opens in the Script Graph window.
 pub fn open_script(state: &mut EditorState, rel: &str) {
+    if misty_engine::visual_script::is_graph_path(rel) {
+        crate::panels::script_graph::open(state, rel);
+        return;
+    }
     crate::panels::code_editor::open_script(state, rel, None);
 }
 

@@ -90,6 +90,8 @@ pub enum AssetKind {
     ShaderSubGraph,
     /// Visual Effects ▸ Effect Graph.
     EffectGraph,
+    /// Visual Script Graph (`.vgraph`): node-based game logic.
+    ScriptGraph,
     /// Visual Effects ▸ Effect Sub-graph (`.vfxoperator`).
     EffectSubgraph,
     /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
@@ -103,10 +105,11 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 12] = [
+    pub const ALL: [AssetKind; 13] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
+        AssetKind::ScriptGraph,
         AssetKind::Scene,
         AssetKind::Animation,
         AssetKind::AnimatorController,
@@ -124,6 +127,7 @@ impl AssetKind {
             AssetKind::Folder => "Folder",
             AssetKind::Material => "Material",
             AssetKind::Script => "Lua Script",
+            AssetKind::ScriptGraph => "Visual Script Graph",
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",

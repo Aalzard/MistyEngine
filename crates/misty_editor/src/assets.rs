@@ -169,6 +169,17 @@ impl AssetDatabase {
                             .messages
                             .push(format!("Could not read {}: {e}", self.relative(&path))),
                     }
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e == misty_engine::visual_script::EXTENSION)
+                {
+                    // Script Graphs attach like scripts; their fields are the Object variables.
+                    let rel = self.relative(&path);
+                    let meta = match old_scripts.get(&rel) {
+                        Some(m) if m.modified == mtime(&path) => m.clone(),
+                        _ => inspect(&path, &rel),
+                    };
+                    self.scripts.insert(rel, meta);
                 } else if path.extension().is_some_and(|e| e == "lua") {
                     let rel = self.relative(&path);
                     // Editor scripts are not components (see `editor_scripts`).
@@ -513,6 +524,16 @@ fn mtime(path: &Path) -> Option<SystemTime> {
 }
 
 fn inspect(path: &Path, rel: &str) -> ScriptMeta {
+    if misty_engine::visual_script::is_graph_path(rel) {
+        let fields = misty_engine::visual_script::ScriptGraph::load(path)
+            .map(|g| misty_engine::visual_script::inspect_fields(&g))
+            .map_err(|e| format!("{rel}: {e}"));
+        return ScriptMeta {
+            fields,
+            attributes: Default::default(),
+            modified: mtime(path),
+        };
+    }
     let info = std::fs::read_to_string(path)
         .map_err(|e| e.to_string())
         .and_then(|src| misty_engine::scripting::inspect_script(&src, rel));

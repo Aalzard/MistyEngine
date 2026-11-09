@@ -126,7 +126,7 @@ impl UserData for LVec3 {
 pub struct LTransform(pub Entity);
 
 /// After a script moves an object with a Rigidbody, move its body too.
-fn sync_body(w: &mut World, e: Entity) {
+pub(crate) fn sync_body(w: &mut World, e: Entity) {
     if w.physics.has_body(e) {
         let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
         w.physics.teleport(e, pos, rot);
@@ -382,6 +382,40 @@ impl UserData for LGameObject {
                 Ok(())
             })?
         });
+        // SendCustomEvent(name, ...): runs the Custom Event node `name` of the object's Script
+        // Graphs (and the `name` function of its Lua scripts) with the arguments, after this
+        // callback.
+        m.add_method(
+            "SendCustomEvent",
+            |lua, g, (name, args): (String, Variadic<Value>)| {
+                let args = args
+                    .into_iter()
+                    .map(|a| crate::visual_script::lua_bridge::from_lua(lua, a))
+                    .collect();
+                with_world(lua, |w| {
+                    w.graph_events
+                        .push(crate::visual_script::runtime::CustomEvent {
+                            target: Some(g.0),
+                            name: std::rc::Rc::from(name.as_str()),
+                            args,
+                        })
+                })
+            },
+        );
+        // GetVariable(name): an Object variable of the object (set by its Script Graphs or
+        // SetVariable), or nil.
+        m.add_method("GetVariable", |lua, g, name: String| {
+            match with_world(lua, |w| w.graph_vars.get(g.0, &name))? {
+                Some(v) => crate::visual_script::lua_bridge::to_lua(lua, &v),
+                None => Ok(Value::Nil),
+            }
+        });
+        // SetVariable(name, value): set an Object variable, shared with the object's Script
+        // Graphs.
+        m.add_method("SetVariable", |lua, g, (name, value): (String, Value)| {
+            let v = crate::visual_script::lua_bridge::from_lua(lua, value);
+            with_world(lua, |w| w.graph_vars.set(g.0, &name, v))
+        });
         m.add_method("CompareTag", |lua, g, tag: String| {
             with_world(lua, |w| {
                 alive(w, g.0).map(|_| w.scene.game_object(g.0).tag == tag)
@@ -471,7 +505,7 @@ pub struct LRigidbody(pub Entity);
 
 /// Force modes as a velocity change for one fixed step (mass from the Rigidbody component,
 /// so forces work before the physics engine has computed mass properties).
-fn delta_velocity(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 {
+pub(crate) fn delta_velocity(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 {
     let dt = w.physics.fixed_dt;
     let mass = w
         .scene

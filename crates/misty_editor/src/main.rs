@@ -193,6 +193,8 @@ mod sample_vfx2;
 #[cfg(test)]
 mod sample_video_text;
 #[cfg(test)]
+mod sample_visual_scripting;
+#[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
 mod sample_water;

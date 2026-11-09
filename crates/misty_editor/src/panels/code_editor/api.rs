@@ -150,6 +150,9 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #GameObject|SetActive|SetActive(active)|Enable or disable the object
 #GameObject|CompareTag|CompareTag(tag)|True when the tag matches
 #GameObject|GetComponent|GetComponent(type)|A component ("Rigidbody", "Animator", …) or nil
+#GameObject|SendCustomEvent|SendCustomEvent(name, ...)|Run the Custom Event `name` of the object's Script Graphs (and its scripts' `name` function)
+#GameObject|GetVariable|GetVariable(name)|An Object variable shared with the object's Script Graphs, or nil
+#GameObject|SetVariable|SetVariable(name, value)|Set an Object variable shared with the object's Script Graphs
 #Transform|position|position|World position
 #Transform|localPosition|localPosition|Position relative to the parent
 #Transform|eulerAngles|eulerAngles|World rotation in degrees

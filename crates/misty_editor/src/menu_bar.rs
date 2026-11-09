@@ -562,6 +562,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });
+    ui.menu_button("Visual Scripting", |ui| {
+        let tab = Tab::ScriptGraph;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     ui.menu_button("AI", |ui| {
         let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));

@@ -26,6 +26,7 @@ mod prefab_rows;
 pub(crate) use inspector::prefab_overrides::demo as prefab_demo;
 pub mod memory_profiler;
 pub mod navigation;
+pub(crate) mod node_canvas;
 pub mod occlusion;
 pub mod packages;
 pub mod profiler;
@@ -33,6 +34,7 @@ pub mod project;
 pub(crate) mod project_menus;
 mod project_tree;
 pub(crate) mod scene;
+pub mod script_graph;
 pub mod shader_graph;
 pub mod test_runner;
 pub mod tile_palette;
@@ -107,6 +109,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::TilePalette => tile_palette::show(ui, self.state),
             Tab::ShaderGraph => shader_graph::show(ui, self.state),
             Tab::EffectGraph => effect_graph::show(ui, self.state),
+            Tab::ScriptGraph => script_graph::show(ui, self.state),
             Tab::OcclusionCulling => occlusion::show(ui, self.state),
             Tab::FrameDebugger => frame_debugger::show(ui, self.state),
             Tab::MemoryProfiler => memory_profiler::show(ui, self.state, self.gpu.as_deref()),

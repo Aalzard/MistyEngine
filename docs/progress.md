@@ -3199,3 +3199,29 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   on the main thread (spikes every 0.5 s), gizmo lines (0.6 ms).
 - Grass visibility / shading (3–4 ms together) and the terrain's lighting stay the biggest GPU
   costs; look-changing options for the user are listed in the pending notes.
+
+## Round 22 — visual scripting (branch r22-visual-scripting)
+
+### Done (docs/pending/r22-visual-scripting.md, guide: docs/visual-scripting.md)
+- **Script Graphs** (`.vgraph`): node-based logic like Blueprints / Unity Visual Scripting,
+  attached through the Scripts list like Lua scripts (Inspector shows the Object variables).
+  White exec wires and typed data wires; pure nodes are lazy.
+- **Runtime in Rust**: graphs compile to a compact bytecode over per-instance registers (no Lua
+  generated); events Start / Update / FixedUpdate / LateUpdate / Enable / Disable, triggers and
+  collisions, Input System actions (performed / held / released), custom events (send,
+  broadcast, receive; to and from Lua), timers, Delay, OnDestroy.
+- **Nodes**: Branch, Sequence, For Loop, For Each, While (guarded), Do Once, Gate, Flip Flop,
+  Delay; math / logic / vector / quaternion / random / string / list; Graph and Object
+  variables; engine API nodes generated from the Lua binding table (common members native, the
+  rest through Lua); Call Lua Function; subgraph assets and macros (inlined).
+- **Script Graph window**: category search (filtered when a wire is dropped on empty canvas),
+  type-checked wires, error badges, Blackboard, Graph Inspector, groups, notes, copy / paste,
+  Collapse To Macro; Play-mode debugging with glowing exec wires, values on hover, breakpoints,
+  Step and Continue. Shared node-canvas helpers now also used by Shader Graph and Effect Graph.
+- Lua: `gameObject:SendCustomEvent`, `GetVariable`, `SetVariable`.
+- Sample `VisualScriptingDemo` (door, coins + score UI, patrol on a timer, jump pad, player —
+  all graphs, no Lua) with generator, `matches_its_generator` and a headless play test.
+
+### Not done yet
+- Hot reload of graphs while playing; graph state in save games; debugging inside macros;
+  typed pins for Lua-backed API nodes; the Scratch-like block mode (design note in the guide).

@@ -4,6 +4,9 @@ Scripts are `.lua` files in `Assets/`. Create one with **Project ▸ + ▸ Scrip
 attach it by dragging it onto an object (Scene view, Hierarchy, or Inspector ▸ Add Component ▸ Scripts), and
 double-click it to edit. Changes are picked up automatically; syntax errors appear in the Console.
 
+Prefer nodes to code? [Script Graphs](visual-scripting.md) attach the same way and talk to Lua scripts
+(custom events, `gameObject:GetVariable`, Call Lua Function).
+
 ```lua
 local Rotator = {
     speed = 90,                    -- public fields: number, boolean, string, Vector3

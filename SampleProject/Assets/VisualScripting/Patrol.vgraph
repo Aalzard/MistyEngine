@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        110.0
+      ],
+      "params": {
+        "name": "Point B"
+      }
+    },
+    {
+      "id": 3,
+      "type": "SetVariable",
+      "position": [
+        500.0,
+        0.0
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 4,
+      "type": "OnTimer",
+      "position": [
+        0.0,
+        330.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "GetVariable",
+      "position": [
+        0.0,
+        461.99997
+      ],
+      "params": {
+        "name": "Turn Every"
+      }
+    },
+    {
+      "id": 6,
+      "type": "FlipFlop",
+      "position": [
+        250.0,
+        330.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "GetVariable",
+      "position": [
+        375.0,
+        550.0
+      ],
+      "params": {
+        "name": "Point A"
+      }
+    },
+    {
+      "id": 8,
+      "type": "SetVariable",
+      "position": [
+        625.0,
+        330.0
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 9,
+      "type": "GetVariable",
+      "position": [
+        625.0,
+        605.0
+      ],
+      "params": {
+        "name": "Point B"
+      }
+    },
+    {
+      "id": 10,
+      "type": "SetVariable",
+      "position": [
+        875.0,
+        440.0
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 11,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        770.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        250.0,
+        880.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 13,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        990.0
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 14,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1100.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 15,
+      "type": "MultiplyFloat",
+      "position": [
+        500.0,
+        1100.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "MoveTowardsVector3",
+      "position": [
+        750.0,
+        935.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Api",
+      "position": [
+        1000.0,
+        770.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 18,
+      "type": "OnTriggerEnter",
+      "position": [
+        0.0,
+        1320.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Api",
+      "position": [
+        250.0,
+        1452.0
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "Branch",
+      "position": [
+        500.0,
+        1320.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "SendCustomEvent",
+      "position": [
+        750.0,
+        1320.0
+      ],
+      "params": {
+        "name": "Respawn"
+      }
+    },
+    {
+      "id": 22,
+      "type": "Api",
+      "position": [
+        1000.0,
+        1320.0
+      ],
+      "params": {
+        "member": "Log",
+        "mode": "call",
+        "owner": "Debug"
+      },
+      "values": {
+        "Message": {
+          "String": "Caught by the patrol!"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 4,
+      "input": "Interval"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "A",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Value",
+      "to": 8,
+      "input": "Value"
+    },
+    {
+      "from": 6,
+      "output": "B",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 10,
+      "input": "Value"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Delta Time",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 16,
+      "input": "Current"
+    },
+    {
+      "from": 13,
+      "output": "Value",
+      "to": 16,
+      "input": "Target"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "Max Delta"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 17,
+      "input": "Value"
+    },
+    {
+      "from": 18,
+      "output": "Other",
+      "to": 19,
+      "input": "Target"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 20,
+      "output": "True",
+      "to": 21,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Other",
+      "to": 21,
+      "input": "Target"
+    },
+    {
+      "from": 21,
+      "output": "Out",
+      "to": 22,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Point A",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          5.0,
+          0.75,
+          -1.0
+        ]
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Point B",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          9.0,
+          0.75,
+          -1.0
+        ]
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 2.5
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Turn Every",
+      "type": "float",
+      "value": {
+        "Float": 2.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Target",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        400.0,
+        70.0
+      ],
+      "text": "Patrol: a timer switches the target point; catching the player sends Respawn."
+    }
+  ]
+}

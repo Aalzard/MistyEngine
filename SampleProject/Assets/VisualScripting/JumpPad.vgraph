@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnTriggerEnter",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        250.0,
+        132.0
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Branch",
+      "position": [
+        500.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        220.0
+      ],
+      "params": {
+        "name": "Force"
+      }
+    },
+    {
+      "id": 5,
+      "type": "SendCustomEvent",
+      "position": [
+        750.0,
+        0.0
+      ],
+      "params": {
+        "args": "force",
+        "name": "Launch"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 2,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "True",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 5,
+      "input": "Target"
+    },
+    {
+      "from": 4,
+      "output": "Value",
+      "to": 5,
+      "input": "force"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Force",
+      "type": "float",
+      "value": {
+        "Float": 12.0
+      },
+      "scope": "Object"
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        360.0,
+        70.0
+      ],
+      "text": "Jump Pad: sends Launch(Force) to the player."
+    }
+  ]
+}

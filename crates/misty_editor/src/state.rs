@@ -337,6 +337,8 @@ pub struct EditorState {
     pub shader_graph: crate::panels::shader_graph::ShaderGraphWindow,
     /// Effect Graph window: the effect being edited, its undo and view.
     pub effect_graph: crate::panels::effect_graph::EffectGraphWindow,
+    /// The Script Graph window (visual scripting).
+    pub script_graph: crate::panels::script_graph::ScriptGraphWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
     /// Input Actions window: the asset being edited.
@@ -470,6 +472,7 @@ impl EditorState {
             timeline: Default::default(),
             shader_graph: Default::default(),
             effect_graph: Default::default(),
+            script_graph: Default::default(),
             audio_mixer: Default::default(),
             input_actions: Default::default(),
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),

@@ -1,0 +1,1264 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            52.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            19.0,
+            -13.0
+          ],
+          "rotation": [
+            0.43837115,
+            0.0,
+            0.0,
+            0.89879405
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.5,
+            3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            26.0,
+            1.0,
+            26.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wall Left",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.5,
+            1.5,
+            13.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            11.0,
+            3.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wall Right",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            7.5,
+            1.5,
+            13.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            11.0,
+            3.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider",
+            "Rigidbody"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Door",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/AO Crate.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": true,
+          "mass": 1.0,
+          "use_gravity": false
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.5,
+            13.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.0,
+            3.0,
+            0.4
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "size": [
+            4.0,
+            2.0,
+            3.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Door Trigger",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Door.vgraph"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.0,
+            11.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Character Controller": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "height": 2.0,
+          "min_move_distance": 0.001,
+          "radius": 0.5,
+          "skin_width": 0.08,
+          "slope_limit": 45.0,
+          "step_offset": 0.3
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Character Controller",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Player",
+          "tag": "Player"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Blue Steel.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Player.vgraph"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.1,
+            -6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Coin 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Laser.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Coin.vgraph"
+            }
+          ]
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -4.0,
+            1.0,
+            4.0
+          ],
+          "rotation": [
+            0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            0.7,
+            0.1,
+            0.7
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Coin 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Laser.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Coin.vgraph"
+            }
+          ]
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            4.0,
+            1.0,
+            4.0
+          ],
+          "rotation": [
+            0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            0.7,
+            0.1,
+            0.7
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Coin 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Laser.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Coin.vgraph"
+            }
+          ]
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.0,
+            9.0
+          ],
+          "rotation": [
+            0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            0.7,
+            0.1,
+            0.7
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider",
+            "Rigidbody",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Patrol",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/AO Crate.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": true,
+          "mass": 1.0,
+          "use_gravity": false
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Patrol.vgraph"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.0,
+            0.75,
+            -1.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.5,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": true,
+          "size": [
+            1.0,
+            10.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Jump Pad",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Laser.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "Force": 12.0
+              },
+              "path": "Assets/VisualScripting/JumpPad.vgraph"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.0,
+            0.05,
+            -2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.0,
+            0.1,
+            2.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ledge",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.0,
+            1.5,
+            3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.0,
+            3.0,
+            4.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.0,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            800.0,
+            600.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Score Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -20.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            600.0,
+            50.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/VisualScripting/Score.vgraph"
+            }
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            0.86,
+            0.3,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 24.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Coins: 0 / 3",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Help Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -56.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            1100.0,
+            40.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 16.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "WASD / arrows move, Space jumps. All the logic is Script Graphs.",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
+    }
+  ],
+  "version": 1
+}

@@ -481,6 +481,37 @@ impl Runtime {
         self.host.reset_haptics();
     }
 
+    /// The Script Graph debugger: the graph to debug, breakpoints, the object to watch; what
+    /// was reached, run-time errors and a paused flow.
+    pub fn graph_debugger(&mut self) -> &mut crate::visual_script::runtime::Debugger {
+        self.host.graph_debugger()
+    }
+
+    /// Value on a pin of the watched Script Graph instance, as text.
+    pub fn graph_value(&self, node: u32, pin: &str, output: bool) -> Option<String> {
+        self.host.graph_value(node, pin, output)
+    }
+
+    /// Variables of the watched Script Graph instance (name, value).
+    pub fn graph_variables(&self) -> Vec<(String, String)> {
+        self.host.graph_variables()
+    }
+
+    /// Step (`step`) or continue the Script Graph flow paused at a breakpoint.
+    pub fn graph_continue(&mut self, scene: &mut Scene, step: bool) {
+        self.host.graph_continue(scene, step);
+    }
+
+    /// Script Graphs running on objects.
+    pub fn graph_instance_count(&self) -> usize {
+        self.host.graph_instance_count()
+    }
+
+    /// Object variables of an object (Script Graphs, `gameObject:GetVariable`).
+    pub fn object_variables(&self, e: hecs::Entity) -> Vec<(String, crate::visual_script::Value)> {
+        self.host.object_variables(e)
+    }
+
     pub fn take_logs(&mut self) -> Vec<(LogKind, String)> {
         let mut out: Vec<(LogKind, String)> = std::mem::take(&mut self.pending)
             .into_iter()

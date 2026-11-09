@@ -66,6 +66,7 @@ pub mod vfs;
 pub mod vfx;
 pub mod vgeo;
 pub mod video;
+pub mod visual_script;
 pub mod water;
 pub mod world_gen;
 pub mod world_partition;
