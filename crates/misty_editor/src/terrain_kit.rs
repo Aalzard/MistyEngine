@@ -114,9 +114,31 @@ pub fn section<R>(
     title: &str,
     body: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {
+    section_open(ui, id, icon, title, true, body)
+}
+
+/// [`section`] that starts closed (less used settings).
+pub fn section_closed<R>(
+    ui: &mut Ui,
+    id: &str,
+    icon: Icon,
+    title: &str,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    section_open(ui, id, icon, title, false, body)
+}
+
+fn section_open<R>(
+    ui: &mut Ui,
+    id: &str,
+    icon: Icon,
+    title: &str,
+    open: bool,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
     let id = ui.make_persistent_id(("terrain_section", id));
     let mut state =
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, open);
     ui.add_space(SECTION_GAP * 0.5);
     let header = ui.horizontal(|ui| {
         ui.set_min_height(22.0);

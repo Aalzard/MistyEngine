@@ -3302,3 +3302,56 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+
+## Round 30 — Terrain Inspector redesign (branch r30-terrain-ui)
+
+### Done (screenshots `docs/screenshots/r30/*`)
+- **Tool bar**: the nine terrain tools as icon buttons in one bar (new icons in the editor's
+  icon set: raise / lower, set height, smooth, paint, holes, grass, tree, place, settings),
+  with a clear selected state and tooltips (name, what a click and Shift + click do). The
+  current tool's name, icon and help sit under it, with World Builder on the right.
+- **Brush section**: a shape picker of four thumbnails drawn from the brush's own falloff curve
+  (Hard, Firm, Soft, Feather), size (with `[` / `]`), opacity and falloff, each with a reset.
+  Set Height adds its target height and a confirmed Flatten All.
+- **Palettes of cards** for texture layers, grass and detail types, trees and Place Objects
+  prefabs: a thumbnail, the name, a selected outline, a badge (layer coverage %, blades or
+  meshes placed, trees planted, objects placed), hover actions (Duplicate, Remove, Select in
+  Project when the card stands for an asset), double-click to open the asset, drag a card onto
+  another to reorder (layer splat channels, tree instances and the grass's "grow on" layer
+  follow), a "+" card with an Add menu and empty states. Cards accept Project assets dropped on
+  the palette: textures become layers, models and prefabs (first renderer) become detail
+  meshes, `.tree` assets and prefabs are added to their palettes. Cards hold an optional asset
+  path, so the coming Grass Type asset can be a card without a layout change.
+- **Live previews** (`terrain_previews.rs`): grass tufts are built on the CPU from the
+  terrain's blade recipe and the grass shader's arc and colour model (heights, widths, bend,
+  seed-head panicles, healthy / dry mix, per-tuft hue and value jitter, dry tips), cached by a
+  settings hash and rebuilt the next frame after a change (at most four per frame). Trees use
+  their impostor (baked by the tree store's worker) lit on the CPU once per built version.
+  Detail meshes and prefabs are rendered offscreen by the engine renderer after the UI pass
+  (three per frame, keyed by mesh, material and file versions). Texture layers show their
+  albedo with a mean-colour swatch. Placeholders pulse while a preview is made.
+- **Settings of the selected item** in sections with icons (Shape, Colour, Density,
+  Placement, Rendering, Textures, Tiling, Surface…), aligned labels, units, two-handle range
+  sliders (heights, scales, slopes), gradient sliders that show the colour they pick (Healthy ↔
+  Dry, Brightness, Dry Tips), colour swatches with hex, a reset button on every changed field
+  and a tooltip on every control. The terrain grass card edits its look directly (healthy,
+  dry, seed colours, height, width, bend, density) with a link to its rules, wind and patches.
+- Fill / Clear with icons, the selected type's name in their tooltips, and a confirmation on
+  every destructive whole-terrain action (Clear details, Clear Trees, Clear All objects,
+  Fill All Holes, Flatten All).
+- **Scene view brush cursor**: coloured by tool (raise blue, Shift lower / erase orange-red,
+  paint violet, grass and trees green, smooth cyan, set height yellow), the falloff ring, the
+  brush's influence drawn as a dome (height = opacity, profile = falloff curve), Set Height's
+  target level and a centre mark.
+- New strings in Turkish and Arabic (`[terrain]` tables); cards mirror in right-to-left.
+- `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` capture options open a terrain tool and select a
+  palette item.
+- Tests: egui harness tests for the tool bar, selecting cards, adding and removing a grass type
+  with undo, previews requested and refreshed after a change, reset buttons, confirmed Clear,
+  `[` / `]`, and the Inspector's draw time; unit tests for tufts, counts, moving trees.
+
+### Not done yet
+- Brush shapes are falloff presets; custom brush masks (noise, stamps) need brush code
+  changes and were left out to keep the merge with the grass painting round easy.
+- Grass species colours come from the terrain grass's healthy / dry colours (a species tint
+  is not a separate colour yet); a Grass Type asset (`.grass`) is the next round.

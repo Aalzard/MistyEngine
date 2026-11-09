@@ -465,7 +465,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
     let mut s = d.trees.clone();
     let def = trees::TreeSettings::default();
     let mut ch = false;
-    kit::section(
+    kit::section_closed(
         ui,
         "trees_rendering",
         Icon::TerrainSettings,

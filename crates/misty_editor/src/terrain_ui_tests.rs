@@ -104,7 +104,7 @@ fn selecting_a_palette_card_picks_what_the_brush_paints() {
     for label in [
         "Shape",
         "Colour",
-        "Density",
+        "Blade Width",
         "Healthy ↔ Dry",
         "Brightness",
         "Seed Heads",
@@ -217,9 +217,7 @@ fn reset_buttons_restore_defaults_as_one_undo_step() {
         DetailLayer::default().bend
     );
     assert_eq!(h.state().undo.undo_label(), Some("Change Detail Layer"));
-    assert_eq!(h.get_all_by_label("Reset").count(), 0);
-    h.state_mut().undo_step();
-    assert_eq!(data(&path).detail_layers[0].bend, 1.2);
+    assert!(h.query_by_label("Reset").is_none());
     // Brush fields reset too (editor settings, no undo step).
     h.state_mut().terrain_tools.size = 80.0;
     h.run();
@@ -229,6 +227,8 @@ fn reset_buttons_restore_defaults_as_one_undo_step() {
         h.state().terrain_tools.size,
         terrain_tools::TerrainTools::default().size
     );
+    h.state_mut().undo_step();
+    assert_eq!(data(&path).detail_layers[0].bend, 1.2);
 }
 
 #[test]
@@ -252,8 +252,7 @@ fn clear_asks_first() {
     );
     h.get_by_label("Erase Tall everywhere on this terrain?");
     // The confirmation's own Clear button (the last one).
-    let confirm = h.get_all_by_label("Clear").last().unwrap().id();
-    h.get_by_id(confirm).click();
+    h.get_all_by_label("Clear").last().unwrap().click();
     h.run();
     h.run();
     assert!(data(&path).detail_layers[0].map.iter().all(|v| *v == 0));
@@ -314,6 +313,7 @@ fn inspector_draw_time_with_previews() {
         h.step();
     }
     let dragging: Vec<f64> = times.borrow().clone();
+    eprintln!("dragging frames (ms): {dragging:.1?}");
     let avg = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
     let max = |v: &[f64]| v.iter().copied().fold(0.0, f64::max);
     eprintln!(

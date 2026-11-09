@@ -158,7 +158,8 @@ fn dropped_mesh(state: &mut EditorState, rel: &str) -> Option<(MeshRef, Option<S
     found
 }
 
-pub fn details_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
+/// The palette of grass and detail types (above the brush section).
+pub fn details_palette(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
     let rows = d.detail_layers.len() + 1;
     if state.terrain_tools.detail >= rows {
         state.terrain_tools.detail = rows - 1;
@@ -280,7 +281,12 @@ pub fn details_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Terrain
             }
         },
     );
+}
 
+/// Target density, Fill / Clear and the selected type's settings (below the brush section).
+pub fn details_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
+    let rows = d.detail_layers.len() + 1;
+    let selected = state.terrain_tools.detail.min(rows - 1);
     paint_section(ui, state, path, d, selected);
 
     // The selected type's settings.
@@ -763,7 +769,7 @@ fn mesh_settings(ui: &mut Ui, state: &mut EditorState, l: &mut DetailLayer) -> b
             def.align_to_normal,
         );
     });
-    kit::section(
+    kit::section_closed(
         ui,
         "mesh_rendering",
         Icon::TerrainSettings,

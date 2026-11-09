@@ -456,7 +456,7 @@ fn terrain_inspector_button_opens_the_world_builder() {
         s,
     );
     h.run_steps(3);
-    h.get_by_label("⛰ World Builder").click();
+    h.get_by_label("World Builder").click();
     h.run_steps(3);
     let s = h.state_mut();
     let b = current_builder(s).expect("a builder for the terrain");
@@ -469,7 +469,7 @@ fn terrain_inspector_button_opens_the_world_builder() {
             .any(|a| matches!(a, Action::FocusTab(Tab::WorldBuilder)))
     );
     // A second click reuses that builder.
-    h.get_by_label("⛰ World Builder").click();
+    h.get_by_label("World Builder").click();
     h.run_steps(3);
     assert_eq!(world_gen::builders(&h.state().scene).len(), 1);
 }

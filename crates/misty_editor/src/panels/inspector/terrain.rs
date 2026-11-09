@@ -251,9 +251,14 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             if tool == TerrainTool::Details
                 && let Some(d) = d
             {
-                crate::terrain_details_ui::details_tab(ui, state, &path, d);
+                crate::terrain_details_ui::details_palette(ui, state, &path, d);
             }
             brush_settings(ui, state, &path, d);
+            if tool == TerrainTool::Details
+                && let Some(d) = d
+            {
+                crate::terrain_details_ui::details_settings(ui, state, &path, d);
+            }
             if tool == TerrainTool::Paint
                 && let Some(d) = d
             {
@@ -318,7 +323,7 @@ fn brush_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: Option<&T
         let strength = tools.strength;
         kit::row(
             ui,
-            &tr!("Shape"),
+            &tr!("Brush Shape"),
             &tr!("How the brush fades towards its rim, from a hard edge to a feathered one"),
             None,
             |ui| kit::brush_picker(ui, &mut tools.falloff, strength),
@@ -648,7 +653,7 @@ fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainD
             .0;
         },
     );
-    kit::section(ui, "layer_tiling", Icon::Layers, &tr!("Tiling"), |ui| {
+    kit::section_closed(ui, "layer_tiling", Icon::Layers, &tr!("Tiling"), |ui| {
         for (label, tip, v, min, d0) in [
             (
                 tr!("Tile Size"),
@@ -687,7 +692,7 @@ fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainD
             ch |= c || reset;
         }
     });
-    kit::section(
+    kit::section_closed(
         ui,
         "layer_surface",
         Icon::TerrainSettings,
