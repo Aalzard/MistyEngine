@@ -29,6 +29,8 @@ struct TreeParams {
     // xyz = unit direction towards the shadow-casting light (impostor shadows), w = 1 with
     // TAA (fades use a per-frame noise).
     light: vec4<f32>,
+    // x = crown shading (0..1).
+    shade: vec4<f32>,
 };
 
 @group(2) @binding(0) var<uniform> tree: TreeParams;

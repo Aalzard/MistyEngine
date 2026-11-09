@@ -32,6 +32,7 @@ pub mod skinned_mesh;
 pub mod sprite_components;
 pub mod static_flags;
 pub mod streaming;
+pub mod sun_height;
 pub mod ui_components;
 pub mod ui_image;
 pub mod ui_layout_components;

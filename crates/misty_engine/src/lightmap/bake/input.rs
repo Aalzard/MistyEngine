@@ -271,7 +271,7 @@ pub fn gather(scene: &Scene, materials: &dyn MaterialSource) -> BakeInput {
         input.lights.push(bake_light(&l, scene.world_matrix(e)));
     }
     let lights = render_scene::lights(scene);
-    input.sky = Sky::of(&Environment::new(scene.render_settings.clone(), &lights));
+    input.sky = Sky::of(&Environment::new(crate::render_scene::render_settings(scene), &lights));
     input
 }
 

@@ -480,6 +480,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.1,
                 leaf_size: 1.6,
                 leaf_color: [0.78, 0.84, 0.72],
+                crown_shading: 0.85,
                 wind: forest_wind.clone(),
                 ..TreeAsset::oak()
             },
@@ -494,6 +495,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.1,
                 leaf_size: 1.5,
                 leaf_color: [0.8, 0.88, 0.74],
+                crown_shading: 0.85,
                 wind: forest_wind.clone(),
                 ..TreeAsset::linden()
             },
@@ -513,6 +515,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.2,
                 leaf_size: 1.5,
                 leaf_color: [0.7, 0.8, 0.62],
+                crown_shading: 0.85,
                 wind: forest_wind,
                 ..TreeAsset::oak()
             },
@@ -533,6 +536,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.0,
                 leaf_size: 0.9,
                 leaf_color: [0.8, 0.86, 0.72],
+                crown_shading: 0.7,
                 ..TreeAsset::oak()
             },
         ),
@@ -552,6 +556,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.2,
                 leaf_size: 1.4,
                 leaf_color: [0.76, 0.84, 0.7],
+                crown_shading: 0.8,
                 ..TreeAsset::oak()
             },
         ),
@@ -569,6 +574,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 13,
                 leaf_density: 1.9,
                 leaf_size: 1.5,
+                crown_shading: 0.7,
                 ..TreeAsset::oak()
             },
         ),
@@ -892,7 +898,7 @@ fn volume() -> PostProcessVolume {
     f.max_fog_distance = 6000.0;
     f.attenuation_distance = 1700.0;
     f.base_height = 60.0;
-    f.maximum_height = 500.0;
+    f.maximum_height = 260.0;
     f.albedo = [0.62, 0.8, 1.0];
     f.anisotropy = 0.2;
     f.sky_haze = 0.9;
@@ -929,13 +935,15 @@ fn demo_scene(d: &TerrainData) -> Scene {
         l.intensity = 3.2;
         l.shadows = Shadows::Soft;
         l.contact_shadows = true;
+        // Bright and white this high; dimmer and warmer if the sun is moved lower.
+        l.intensity_from_sun_height = true;
     }
     let rs = &mut s.render_settings;
     rs.skybox.sun_disk = SunDisk::HighQuality;
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.38, 0.41, 0.45];
+    rs.skybox.sky_tint = [0.33, 0.37, 0.45];
     rs.realtime_gi = true;
     rs.environment_lighting.intensity = 0.75;
 

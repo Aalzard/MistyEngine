@@ -126,6 +126,11 @@ pub struct TreeAsset {
     pub leaf_variation: f32,
     /// Sunlight shining through the leaves (0 = opaque).
     pub translucency: f32,
+    /// 0..1: deep shade inside and under the crown, as in a high sun: inner and lower leaf
+    /// clusters get less sunlight and sky light, the sunlit outer dome stays bright
+    /// (0 = the soft, evenly lit crown).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub crown_shading: f32,
     /// Bark tint (sRGB, multiplies the bark texture).
     pub bark_color: [f32; 3],
     /// Project-relative textures: bark albedo and normal map (square, tileable; u around the
@@ -154,6 +159,10 @@ impl Default for TreeAsset {
     fn default() -> Self {
         Self::oak()
     }
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 /// Folder of the sample tree textures (SampleProject).
@@ -185,6 +194,7 @@ impl TreeAsset {
             leaf_color: [0.9, 0.9, 0.85],
             leaf_variation: 0.5,
             translucency: 0.6,
+            crown_shading: 0.0,
             bark_color: [1.0, 1.0, 1.0],
             bark_texture: sample_texture("OakBark"),
             bark_normal: sample_texture("OakBarkNormal"),
@@ -333,6 +343,7 @@ impl TreeAsset {
         fix(&mut self.leaf_size, 0.1, 4.0, 1.0);
         fix(&mut self.leaf_variation, 0.0, 1.0, 0.5);
         fix(&mut self.translucency, 0.0, 2.0, 0.6);
+        fix(&mut self.crown_shading, 0.0, 1.0, 0.0);
         for c in self.leaf_color.iter_mut().chain(&mut self.bark_color) {
             fix(c, 0.0, 2.0, 1.0);
         }

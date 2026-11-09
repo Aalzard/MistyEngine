@@ -69,8 +69,14 @@ fn scene() -> Scene {
 
 /// The scene's view re-posed for `name` (None = unknown name).
 pub(in crate::render) fn noon_view(name: &str) -> Option<GameView> {
+    noon_view_with(name, |_| {})
+}
+
+/// [`noon_view`] of the scene after `edit`.
+fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     let v = views().into_iter().find(|v| v.name == name)?;
-    let scene = scene();
+    let mut scene = scene();
+    edit(&mut scene);
     let materials = crate::assets::AssetCache::open(&root());
     let mut gv = GameView::new(&scene, &materials).expect("camera");
     gv.environment.grass_time = Some(3.0);
@@ -193,6 +199,56 @@ fn noon_valley_times() {
                 "noon {name} {level} {w}x{h} ({:.0} FPS)",
                 1000.0 / b.gpu
             ));
+        }
+    }
+}
+
+/// Light ▸ Intensity from Sun Height before / after: the hero view with the sun at a few
+/// heights, the option off and on, written as `sun_<off|on>_<degrees>.png` into
+/// `MISTY_NOON_DIR` (High, `MISTY_SIZE`, default 960×540).
+#[test]
+#[ignore = "writes comparison renders; run on purpose"]
+fn noon_valley_sun_heights() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let dir = PathBuf::from(std::env::var("MISTY_NOON_DIR").expect("MISTY_NOON_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (w, h) = std::env::var("MISTY_SIZE")
+        .ok()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        })
+        .unwrap_or((960, 540));
+    for on in [false, true] {
+        for elevation in [6.0f32, 15.0, 35.0, 72.0] {
+            let view = noon_view_with("hero", |s| {
+                let sun = s.find_by_name("Directional Light").expect("sun");
+                s.set_transform(
+                    sun,
+                    crate::scene::Transform::from_position(Vec3::new(0.0, 200.0, 0.0))
+                        .with_euler(Vec3::new(elevation, 25.0, 0.0)),
+                );
+                s.world
+                    .get::<&mut crate::scene::Light>(sun)
+                    .unwrap()
+                    .intensity_from_sun_height = on;
+            })
+            .expect("hero");
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &QualityLevel::high());
+            let target = r.create_view_target(&device, w, h);
+            let frame = view.frame();
+            for _ in 0..48 {
+                r.render(&device, &queue, &target, &frame);
+            }
+            let img = image::RgbaImage::from_raw(w, h, read_back(&device, &queue, &target))
+                .expect("read back");
+            let name = format!("sun_{}_{elevation:.0}.png", if on { "on" } else { "off" });
+            img.save(dir.join(&name)).unwrap();
+            eprintln!("wrote {name}");
         }
     }
 }

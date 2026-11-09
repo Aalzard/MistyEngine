@@ -82,12 +82,13 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                 return None;
             }
             let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
+            let (color, intensity) = sun_height_light(&l, rot * Vec3::Z);
             Some(LightData {
                 kind: l.kind,
                 position: pos,
                 direction: rot * Vec3::Z,
-                color: l.color,
-                intensity: l.intensity,
+                color,
+                intensity,
                 range: l.range,
                 spot_angle: l.spot_angle,
                 shadows: l.shadows,
@@ -117,10 +118,41 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
         .collect()
 }
 
+/// Colour and intensity of `l` shining along `direction`: dimmed and warmed by the
+/// atmosphere when it is a Directional Light with Intensity from Sun Height.
+fn sun_height_light(l: &Light, direction: Vec3) -> ([f32; 3], f32) {
+    if l.kind == LightType::Directional && l.intensity_from_sun_height {
+        crate::scene::sun_height::apply(l.color, l.intensity, direction)
+    } else {
+        (l.color, l.intensity)
+    }
+}
+
+/// The scene's Lighting settings as the renderer uses them: the sky's brightness follows the
+/// sun's height when the main Directional Light has Intensity from Sun Height.
+pub fn render_settings(scene: &Scene) -> crate::scene::render_settings::RenderSettings {
+    let mut s = scene.render_settings.clone();
+    let sun = scene
+        .active_with::<Light>()
+        .into_iter()
+        .filter_map(|e| {
+            let l = scene.world.get::<&Light>(e).ok()?;
+            (l.enabled && l.kind == LightType::Directional && l.intensity > 0.0)
+                .then(|| (l.intensity, l.intensity_from_sun_height, e))
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0));
+    if let Some((_, true, e)) = sun {
+        let (_, rot, _) = scene.world_matrix(e).to_scale_rotation_translation();
+        let elevation = crate::scene::sun_height::elevation(rot * Vec3::Z);
+        s.skybox.exposure *= crate::scene::sun_height::sky_scale(elevation);
+    }
+    s
+}
+
 /// The scene's Lighting settings with its main Directional Light as the sun, its baked or
 /// realtime reflection probes, and its enabled Fog Volumes.
 pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
-    let mut env = Environment::new(scene.render_settings.clone(), lights)
+    let mut env = Environment::new(render_settings(scene), lights)
         .with_probes(crate::render::probes::scene_probes(scene));
     env.fog_volumes = fog_volumes(scene);
     env.glows = glow_sources(scene);

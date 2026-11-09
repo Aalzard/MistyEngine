@@ -117,6 +117,7 @@ struct ParamsGpu {
     motion: [f32; 4],
     impostor: [f32; 4],
     light: [f32; 4],
+    shade: [f32; 4],
 }
 
 fn vertex_layouts() -> [wgpu::VertexBufferLayout<'static>; 2] {
@@ -1528,6 +1529,7 @@ fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
             impostor::VIEWS as f32,
         ],
         light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
+        shade: [a.crown_shading, 0.0, 0.0, 0.0],
     }
 }
 

@@ -39,7 +39,7 @@ impl CaptureInputs {
         Self {
             meshes: render_scene::mesh_draws(scene, materials, |_| false),
             terrains: crate::terrain::draws(scene),
-            environment: Environment::new(scene.render_settings.clone(), &lights),
+            environment: Environment::new(crate::render_scene::render_settings(scene), &lights),
             lights,
         }
     }

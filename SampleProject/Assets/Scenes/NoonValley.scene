@@ -48,8 +48,8 @@
       ],
       "kind": "Procedural",
       "sky_tint": [
-        0.38,
-        0.41,
+        0.33,
+        0.37,
         0.45
       ],
       "sun_disk": "HighQuality",
@@ -144,6 +144,7 @@
           "contact_shadows": true,
           "enabled": true,
           "intensity": 3.2,
+          "intensity_from_sun_height": true,
           "kind": "Directional",
           "range": 10.0,
           "shadows": "Soft",
@@ -311,7 +312,7 @@
             "denoising": true,
             "enabled": true,
             "max_fog_distance": 6000.0,
-            "maximum_height": 500.0,
+            "maximum_height": 260.0,
             "noise_intensity": 0.0,
             "noise_scale": 8.0,
             "noise_scroll": [

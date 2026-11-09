@@ -346,6 +346,11 @@ pub struct Light {
     /// Screen-space contact shadows (when a volume's Contact Shadows override is on).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub contact_shadows: bool,
+    /// Directional: dims and warms as the sun nears the horizon (atmospheric transmittance,
+    /// see [`super::sun_height`]), and the sky's brightness follows; Intensity and Colour are
+    /// the values with the sun overhead.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub intensity_from_sun_height: bool,
     /// Glow sprite around point / spot lights (left out of files while untouched).
     #[serde(skip_serializing_if = "super::light_glow::LightHalo::is_default")]
     pub halo: super::light_glow::LightHalo,
@@ -383,6 +388,7 @@ impl Default for Light {
             volumetric_multiplier: 1.0,
             volumetric_shadow_dimmer: 1.0,
             contact_shadows: false,
+            intensity_from_sun_height: false,
             halo: Default::default(),
             width: super::light_area::SIZE,
             height: super::light_area::SIZE,
