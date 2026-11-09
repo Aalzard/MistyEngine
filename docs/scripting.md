@@ -725,6 +725,9 @@ local grounded = Physics2D.Raycast(self.transform.position + Vector2.down * 0.5,
 ```
 
 Sample: `Assets/Scripts/PlayerController2D.lua`, `Assets/Scripts/CameraFollow2D.lua` (Platformer2D scene).
+The Hub's **2D Platformer** template starts with its own versions of both: the controller also
+jumps with W or Up, remembers a jump pressed just before landing, allows one just after leaving a
+ledge and makes a short hop when the key is let go early; the camera stops at the level's edges.
 
 ## Scripting defines
 

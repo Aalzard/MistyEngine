@@ -242,6 +242,63 @@ fn new_project_page_creates_and_opens_the_project() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// New Project lists the 2D Platformer (always available: it is generated); clicking its card
+/// picks it, and Create makes a project that opens on its scene with the Scene view in 2D.
+#[test]
+fn new_project_page_creates_a_2d_platformer() {
+    use crate::templates::Template;
+    let dir = temp("platformer_card");
+    let path = dir.join("hub.json");
+    HubConfig {
+        projects_folder: Some(dir.join("Projects")),
+        ..Default::default()
+    }
+    .save(&path)
+    .unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.state_mut().hub.start_new_project();
+    h.run();
+    let t = Template::Platformer2D;
+    assert!(t.available());
+    assert_eq!(h.query_all_by_label(t.description()).count(), 1, "the card");
+    h.get_by_label(t.name()).click();
+    h.run();
+    assert_eq!(h.state().hub.new_project.as_ref().unwrap().template, t);
+    // The card and the details.
+    assert_eq!(h.query_all_by_label(t.description()).count(), 2);
+    h.state_mut().hub.new_project.as_mut().unwrap().name = "Jumper".into();
+    h.run();
+    h.get_by_label("Create project").click();
+    for _ in 0..500 {
+        // The spinner keeps repainting: step instead of run.
+        h.step();
+        if h.state().opened.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let error = h
+        .state()
+        .hub
+        .new_project
+        .as_ref()
+        .and_then(|n| n.target().err());
+    let opened = h
+        .state()
+        .opened
+        .clone()
+        .unwrap_or_else(|| panic!("not opened: {error:?}"));
+    assert_eq!(opened, dir.join("Projects/Jumper"));
+    assert!(opened.join(crate::templates::SCENE).is_file());
+    let editor = crate::scene_files::EditorSettings::load(&opened);
+    assert!(
+        editor.scene_view_2d.is_some(),
+        "the Scene view starts in 2D"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// New Project lists every template with its one-line description (MeadowDemo's says it has a
 /// first-person player); clicking the MeadowDemo card picks it, and Create makes a project
 /// that opens on MeadowDemo.

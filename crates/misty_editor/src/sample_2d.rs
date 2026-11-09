@@ -16,20 +16,18 @@ use misty_engine::scene::{
     RectTransform, Rigidbody2D, Scene, ScriptRef, Scripts, SpriteRenderer, Transform, UiText,
 };
 use misty_engine::sprites::slice::{self, GridSlice};
-use misty_engine::sprites::{FilterMode, SpriteMode, TextureImporter, builtin};
+use misty_engine::sprites::{TextureImporter, builtin};
 
 use crate::actions::{Action, Create};
 use crate::project::ProjectBrowser;
 use crate::state::EditorState;
+use crate::templates::platformer_2d::art::{COIN_PNG, PLAYER_PNG, coin_png, importer, player_png};
 use crate::ui_create::UiElement;
 
 const SCENE: &str = "Assets/Scenes/Platformer2D.scene";
-const PLAYER_PNG: &str = "Assets/Sprites/Player.png";
 const TILES_PNG: &str = "Assets/Sprites/Tiles.png";
-const COIN_PNG: &str = "Assets/Sprites/Coin.png";
 const CONTROLLER: &str = "Assets/Scripts/PlayerController2D.lua";
 const FOLLOW: &str = "Assets/Scripts/CameraFollow2D.lua";
-const PPU: f32 = 16.0;
 const PLAYER_LAYER: u8 = 5;
 const IGNORE_RAYCAST_LAYER: u8 = 2;
 
@@ -129,67 +127,7 @@ fn project() -> PathBuf {
 }
 
 fn rgba(hex: u32) -> Rgba<u8> {
-    let b = hex.to_be_bytes();
-    Rgba([b[1], b[2], b[3], 255])
-}
-
-/// 16×16 hero: dark outline, blue suit, skin face with an eye looking right.
-fn player_png() -> RgbaImage {
-    const ART: [&str; 16] = [
-        "................",
-        ".....oooooo.....",
-        "....osssssso....",
-        "....ossssswo....",
-        "....osssssko....",
-        "....osssssso....",
-        ".....oooooo.....",
-        "...oobbbbbboo...",
-        "..obbbbbbbbbbo..",
-        "..obobbbbbbobo..",
-        "..ososbbbbsoso..",
-        "....obbbbbbo....",
-        "....obboobbo....",
-        "....obbo.obbo...",
-        "...ooooo.ooooo..",
-        "................",
-    ];
-    pixel_art(&ART, |c| match c {
-        'o' => Some(rgba(0x1b1b2f)),
-        's' => Some(rgba(0xf2c29b)),
-        'w' => Some(rgba(0xffffff)),
-        'k' => Some(rgba(0x222222)),
-        'b' => Some(rgba(0x3b6fd8)),
-        _ => None,
-    })
-}
-
-/// 8×8-cell pattern scaled into a 16×16 coin: gold disc, dark rim, light glint.
-fn coin_png() -> RgbaImage {
-    const ART: [&str; 16] = [
-        "................",
-        ".....oooooo.....",
-        "...ooyyyyyyoo...",
-        "..oyyyhhyyyyyo..",
-        "..oyyhhyyyyyyo..",
-        ".oyyhyyyddyyyyo.",
-        ".oyyyyyyddyyyyo.",
-        ".oyyyyyyddyyyyo.",
-        ".oyyyyyyddyyyyo.",
-        ".oyyyyyyddyyyyo.",
-        ".oyyyyyyddyyyyo.",
-        "..oyyyyyyyyyyo..",
-        "..oyyyyyyyyyyo..",
-        "...ooyyyyyyoo...",
-        ".....oooooo.....",
-        "................",
-    ];
-    pixel_art(&ART, |c| match c {
-        'o' => Some(rgba(0x8a5a00)),
-        'y' => Some(rgba(0xffc62e)),
-        'h' => Some(rgba(0xfff3b0)),
-        'd' => Some(rgba(0xd99a00)),
-        _ => None,
-    })
+    crate::templates::platformer_2d::art::rgba(hex, 255)
 }
 
 /// 32×16 sheet: grass-topped tile, then a plain dirt tile.
@@ -216,28 +154,6 @@ fn tiles_png() -> RgbaImage {
             dirt
         }
     })
-}
-
-fn pixel_art(rows: &[&str], color: impl Fn(char) -> Option<Rgba<u8>>) -> RgbaImage {
-    RgbaImage::from_fn(rows[0].len() as u32, rows.len() as u32, |x, y| {
-        let c = rows[y as usize].as_bytes()[x as usize] as char;
-        color(c).unwrap_or(Rgba([0, 0, 0, 0]))
-    })
-}
-
-/// Pixel-art sprite import: Nearest Neighbor filter, 16 pixels per unit.
-fn importer(sprites: Vec<misty_engine::sprites::SpriteRect>) -> TextureImporter {
-    TextureImporter {
-        pixels_per_unit: PPU,
-        filter_mode: FilterMode::Nearest,
-        sprite_mode: if sprites.is_empty() {
-            SpriteMode::Single
-        } else {
-            SpriteMode::Multiple
-        },
-        sprites,
-        ..TextureImporter::sprite()
-    }
 }
 
 fn textures() -> Vec<(&'static str, RgbaImage, TextureImporter)> {
