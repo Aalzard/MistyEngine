@@ -535,7 +535,8 @@ pub fn scene_lines(state: &EditorState, lines: &mut Lines) {
             0.9,
         ];
         let (a, b) = wp.cell_rect(c);
-        let y = info.height[0];
+        // At the top of the cell's contents: lines at the ground would be hidden by it.
+        let y = info.height[1];
         let inset = wp.cell_size() * 0.01;
         let p = |x: f32, z: f32| Vec3::new(x, y, z);
         let (x0, z0, x1, z1) = (a.x + inset, a.y + inset, b.x - inset, b.y - inset);

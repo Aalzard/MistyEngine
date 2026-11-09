@@ -208,6 +208,8 @@ pub struct Streamer {
     logs: Vec<String>,
     /// Time the hooks took per added object (ms, smoothed): kept free in the budget.
     hook_ms: f32,
+    /// Time removing one top-level object took (ms, peak fading slowly).
+    remove_ms: f32,
     /// Objects made but not started yet (physics bodies, scripts), oldest first.
     starting: VecDeque<(CellCoord, Entity)>,
 }
@@ -220,6 +222,9 @@ impl Default for Streamer {
 
 impl Streamer {
     pub fn new() -> Self {
+        // The background pool starts its threads now, at Play / load time, not inside the first
+        // streaming frame (tens of milliseconds on a busy machine).
+        let _ = crate::background::pool();
         let (tx, rx) = channel();
         Self {
             cells: BTreeMap::new(),
@@ -234,6 +239,7 @@ impl Streamer {
             owner: None,
             logs: Vec::new(),
             hook_ms: 0.2,
+            remove_ms: 0.2,
             starting: VecDeque::new(),
         }
     }
@@ -526,6 +532,9 @@ impl Streamer {
 
     /// Remove objects of unloading cells until the deadline.
     fn remove_some(&mut self, scene: &mut Scene, hooks: &mut dyn StreamHooks, deadline: Instant) {
+        // Like starting: one object at a time against what one costs (peak, fading slowly);
+        // at least one a frame while there is time, so unloading always progresses.
+        let mut removed = 0;
         for (c, cell) in self.cells.iter_mut() {
             let Phase::Removing {
                 id,
@@ -536,7 +545,9 @@ impl Streamer {
                 continue;
             };
             while let Some(r) = roots.front().copied() {
-                if Instant::now() >= deadline {
+                let each = Duration::from_secs_f32(self.remove_ms.max(0.0) / 1000.0);
+                let now = Instant::now();
+                if now >= deadline || (removed > 0 && now + each >= deadline) {
                     return;
                 }
                 roots.pop_front();
@@ -544,6 +555,13 @@ impl Streamer {
                     let t = Instant::now();
                     let name = scene.name(r);
                     hooks.remove(scene, &[r]);
+                    let ms = t.elapsed().as_secs_f32() * 1000.0;
+                    self.remove_ms = if ms > self.remove_ms {
+                        ms
+                    } else {
+                        self.remove_ms * 0.97 + ms * 0.03
+                    };
+                    removed += 1;
                     note_step(&mut self.stats, || format!("removing {name}"), t);
                 }
             }
