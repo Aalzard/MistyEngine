@@ -117,7 +117,9 @@ impl UserData for LRenderSettings {
         });
         // DateTime local date as "YYYY-MM-DD"
         f.add_field_method_get("moonDate", |lua, _| {
-            moon_get(lua, |m| format!("{:04}-{:02}-{:02}", m.year, m.month, m.day))
+            moon_get(lua, |m| {
+                format!("{:04}-{:02}-{:02}", m.year, m.month, m.day)
+            })
         });
         f.add_field_method_set("moonDate", |lua, _, v: String| {
             let (y, mo, d) = parse_date(&v).ok_or_else(|| {

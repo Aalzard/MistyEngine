@@ -81,7 +81,9 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
                     c
                 });
                 if m.mode == MoonMode::Manual {
-                    ch |= row(ui, "Azimuth", |ui| slider(ui, &mut m.azimuth, 0.0..=360.0, "°"));
+                    ch |= row(ui, "Azimuth", |ui| {
+                        slider(ui, &mut m.azimuth, 0.0..=360.0, "°")
+                    });
                     ch |= row(ui, "Altitude", |ui| {
                         slider(ui, &mut m.altitude, -10.0..=90.0, "°")
                     });
@@ -129,8 +131,12 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
             });
         }
         ch |= row(ui, "Size", |ui| slider(ui, &mut m.size, 0.5..=12.0, "×"));
-        ch |= row(ui, "Brightness", |ui| slider(ui, &mut m.brightness, 0.0..=4.0, ""));
-        ch |= row(ui, "Earthshine", |ui| slider(ui, &mut m.earthshine, 0.0..=4.0, ""));
+        ch |= row(ui, "Brightness", |ui| {
+            slider(ui, &mut m.brightness, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Earthshine", |ui| {
+            slider(ui, &mut m.earthshine, 0.0..=4.0, "")
+        });
         ch |= row(ui, "Texture", |ui| {
             let c = crate::panels::inspector::slots::texture_slot(
                 ui,

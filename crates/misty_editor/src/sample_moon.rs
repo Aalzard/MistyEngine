@@ -178,7 +178,13 @@ fn stones(s: &mut Scene, d: &TerrainData) {
             Vec3::new(1.1, tall, 0.6),
             -a.to_degrees() + 90.0,
         );
-        mesh(s, &format!("Standing Stone {}", i + 1), PrimitiveMesh::Cube, t, STONE);
+        mesh(
+            s,
+            &format!("Standing Stone {}", i + 1),
+            PrimitiveMesh::Cube,
+            t,
+            STONE,
+        );
     }
     let y = ground(d, centre.0, centre.1);
     mesh(
@@ -238,7 +244,13 @@ fn cabin(s: &mut Scene, d: &TerrainData) {
 }
 
 fn trees(s: &mut Scene, d: &TerrainData) {
-    let spots = [(-48.0, -10.0), (-58.0, -52.0), (18.0, -18.0), (70.0, -30.0), (-8.0, -78.0)];
+    let spots = [
+        (-48.0, -10.0),
+        (-58.0, -52.0),
+        (18.0, -18.0),
+        (70.0, -30.0),
+        (-8.0, -78.0),
+    ];
     for (i, (x, z)) in spots.into_iter().enumerate() {
         let tall = 5.0 + (i % 2) as f32 * 2.0;
         let y = ground(d, x, z);
@@ -247,16 +259,29 @@ fn trees(s: &mut Scene, d: &TerrainData) {
             s,
             &name,
             PrimitiveMesh::Cylinder,
-            at(Vec3::new(x, y + tall * 0.5, z), Vec3::new(0.35, tall * 0.5, 0.35), 0.0),
+            at(
+                Vec3::new(x, y + tall * 0.5, z),
+                Vec3::new(0.35, tall * 0.5, 0.35),
+                0.0,
+            ),
             BARK,
         );
         // Two bare branches.
         for (k, lean) in [(0, 38.0f32), (1, -46.0)] {
             let h = y + tall * (0.62 + 0.14 * k as f32);
-            let mut t = Transform::from_position(Vec3::new(x, h, z))
-                .with_euler(Vec3::new(0.0, 60.0 * i as f32 + 120.0 * k as f32, lean));
+            let mut t = Transform::from_position(Vec3::new(x, h, z)).with_euler(Vec3::new(
+                0.0,
+                60.0 * i as f32 + 120.0 * k as f32,
+                lean,
+            ));
             t.scale = Vec3::new(0.14, 1.3, 0.14);
-            mesh(s, &format!("{name} Branch {}", k + 1), PrimitiveMesh::Cylinder, t, BARK);
+            mesh(
+                s,
+                &format!("{name} Branch {}", k + 1),
+                PrimitiveMesh::Cylinder,
+                t,
+                BARK,
+            );
         }
     }
 }
@@ -381,7 +406,10 @@ fn moon_demo_matches_its_generator() {
         .iter()
         .find(|l| l.kind == LightType::Directional)
         .unwrap();
-    assert!((main.direction + moon.direction).length() < 1e-4, "lit from the moon");
+    assert!(
+        (main.direction + moon.direction).length() < 1e-4,
+        "lit from the moon"
+    );
     let cam = misty_engine::render_scene::GameView::new(&scene, &NoMaterials)
         .unwrap()
         .camera;
@@ -424,4 +452,119 @@ fn moon_demo_plays() {
     // Ten seconds = a quarter of the cycle.
     let (first, last) = (phases[0], *phases.last().unwrap());
     assert!((last - first - 0.25).abs() < 0.01, "{first} → {last}");
+}
+
+// ---- screenshots ---------------------------------------------------------------------------
+
+fn shots_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r27")
+}
+
+/// MoonDemo with its camera turned: `yaw` / `pitch` degrees, vertical field of view `fov`.
+fn aimed(d: &TerrainData, yaw: f32, pitch: f32, fov: f32) -> Scene {
+    let s = demo_scene(d);
+    let cam = s.find_by_name("Main Camera").unwrap();
+    let mut t = s.transform(cam);
+    t = Transform::from_position(t.position).with_euler(Vec3::new(pitch, yaw, 0.0));
+    let mut s = s;
+    s.set_transform(cam, t);
+    s.world
+        .get::<&mut misty_engine::scene::Camera>(cam)
+        .unwrap()
+        .fov = fov;
+    s
+}
+
+fn shoot(
+    gpu: &(misty_engine::wgpu::Device, misty_engine::wgpu::Queue),
+    assets: &misty_engine::assets::AssetCache,
+    scene: &Scene,
+    size: (u32, u32),
+) -> misty_engine::image::RgbaImage {
+    let (device, queue) = gpu;
+    let view = misty_engine::render_scene::GameView::new(scene, assets).unwrap();
+    let mut renderer = misty_engine::render::Renderer::new(device);
+    renderer.set_quality(device, &misty_engine::quality::QualityLevel::high());
+    let target = renderer.create_target(device, size.0, size.1);
+    for _ in 0..48 {
+        renderer.render(device, queue, &target, &view.frame());
+    }
+    let px = crate::project_thumbnail::read_pixels(device, queue, &target);
+    misty_engine::image::RgbaImage::from_raw(size.0, size.1, px).unwrap()
+}
+
+fn save_jpeg(name: &str, img: &misty_engine::image::RgbaImage) {
+    let dir = shots_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let rgb = misty_engine::image::DynamicImage::ImageRgba8(img.clone()).into_rgb8();
+    let mut file = std::fs::File::create(dir.join(format!("{name}.jpg"))).unwrap();
+    misty_engine::image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 90)
+        .encode_image(&rgb)
+        .unwrap();
+    eprintln!("wrote docs/screenshots/r27/{name}.jpg");
+}
+
+/// Renders `docs/screenshots/r27/`: the moon close up at six phases (and a strip of them), the
+/// moonlit valley under a full and a crescent moon, and twilight with a low rising moon.
+/// `MISTY_MOON_SHOTS=phases,night,twilight` renders only some.
+#[test]
+#[ignore = "writes screenshots into docs/screenshots/r27; run on purpose"]
+fn render_moon_screenshots() {
+    let Some(gpu) = crate::sample_render::headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let root = project();
+    misty_engine::assets::set_project_root(&root);
+    let assets = misty_engine::assets::AssetCache::open(&root);
+    let d = TerrainData::load(&root.join(DATA)).unwrap();
+    let only = std::env::var("MISTY_MOON_SHOTS").unwrap_or_default();
+    let wants = |k: &str| only.is_empty() || only.split(',').any(|o| o.trim() == k);
+    if wants("phases") {
+        let phases = [
+            ("waxing_crescent", 0.12),
+            ("first_quarter", 0.25),
+            ("waxing_gibbous", 0.38),
+            ("full", 0.5),
+            ("waning_gibbous", 0.63),
+            ("last_quarter", 0.75),
+        ];
+        let tile = 360u32;
+        let mut strip = misty_engine::image::RgbaImage::new(tile * phases.len() as u32, tile);
+        for (i, (name, phase)) in phases.into_iter().enumerate() {
+            // Telephoto straight at the moon.
+            let mut s = aimed(&d, MOON_AZIMUTH, -MOON_ALTITUDE, 7.0);
+            s.render_settings.moon.phase = phase;
+            let img = shoot(&gpu, &assets, &s, (tile, tile));
+            misty_engine::image::imageops::replace(&mut strip, &img, i as i64 * tile as i64, 0);
+            save_jpeg(&format!("moon_{name}"), &img);
+        }
+        save_jpeg("moon_phases", &strip);
+    }
+    if wants("night") {
+        for (name, phase) in [
+            ("moonlit_night_full", 0.5),
+            ("moonlit_night_crescent", 0.15),
+        ] {
+            let mut s = demo_scene(&d);
+            s.render_settings.moon.phase = phase;
+            save_jpeg(name, &shoot(&gpu, &assets, &s, (1600, 900)));
+        }
+    }
+    if wants("twilight") {
+        // The sun 4° below the western horizon, a nearly full moon rising low in the east.
+        let mut s = aimed(&d, 100.0, -4.0, 55.0);
+        let sun = s.find_by_name("Directional Light").unwrap();
+        let towards = misty_engine::moon::from_az_alt(280.0, -4.0);
+        let pos = s.transform(sun).position;
+        s.set_transform(
+            sun,
+            Transform::from_position(pos).with_euler(misty_engine::hdri::sun_euler(towards)),
+        );
+        let m = &mut s.render_settings.moon;
+        m.azimuth = 104.0;
+        m.altitude = 7.0;
+        m.phase = 0.47;
+        save_jpeg("twilight_moonrise", &shoot(&gpu, &assets, &s, (1600, 900)));
+    }
 }

@@ -193,15 +193,13 @@ pub fn moon_ecliptic(jd: f64) -> (f64, f64, f64) {
         sb += b * ecc(mm) * sin_d(arg(dd, mm, mpp, ff));
     }
     sl += 3958.0 * sin_d(a1) + 1962.0 * sin_d(lp - f) + 318.0 * sin_d(a2);
-    sb += -2235.0 * sin_d(lp) + 382.0 * sin_d(a3) + 175.0 * sin_d(a1 - f)
+    sb += -2235.0 * sin_d(lp)
+        + 382.0 * sin_d(a3)
+        + 175.0 * sin_d(a1 - f)
         + 175.0 * sin_d(a1 + f)
         + 127.0 * sin_d(lp - mp)
         - 115.0 * sin_d(lp + mp);
-    (
-        norm_deg(lp + sl / 1e6),
-        sb / 1e6,
-        385_000.56 + sr / 1000.0,
-    )
+    (norm_deg(lp + sl / 1e6), sb / 1e6, 385_000.56 + sr / 1000.0)
 }
 
 /// The moon's geocentric position.
@@ -299,8 +297,8 @@ pub fn sky(
     let (sa, sz) = horizontal(lst - s.ra, s.dec, lat);
     let (ma, mz) = horizontal(lst - m.ra, m.dec, lat);
     // Elongation (geocentric) → phase angle → lit fraction.
-    let cos_psi = sin_d(s.dec) * sin_d(m_geo.dec)
-        + cos_d(s.dec) * cos_d(m_geo.dec) * cos_d(s.ra - m_geo.ra);
+    let cos_psi =
+        sin_d(s.dec) * sin_d(m_geo.dec) + cos_d(s.dec) * cos_d(m_geo.dec) * cos_d(s.ra - m_geo.ra);
     let psi = cos_psi.clamp(-1.0, 1.0).acos();
     let r_sun = 149_597_870.7;
     let i = (r_sun * psi.sin()).atan2(m_geo.distance_km - r_sun * psi.cos());
@@ -402,6 +400,9 @@ mod tests {
         let q = sky(2024, 4, 15, 19.2, 0.0, 51.5, 0.0);
         assert!((q.illumination - 0.5).abs() < 0.02 && q.waxing, "{q:?}");
         let last = sky(2024, 5, 1, 11.5, 0.0, 51.5, 0.0);
-        assert!((last.illumination - 0.5).abs() < 0.03 && !last.waxing, "{last:?}");
+        assert!(
+            (last.illumination - 0.5).abs() < 0.03 && !last.waxing,
+            "{last:?}"
+        );
     }
 }

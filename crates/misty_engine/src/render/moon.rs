@@ -92,7 +92,8 @@ pub fn night_sky(env: &Environment) -> Option<NightSky> {
     let exposure = s.skybox.exposure.max(0.0);
     let zenith = (NIGHT_ZENITH + MOONLIT_ZENITH * lit) * exposure;
     let horizon = (NIGHT_HORIZON + MOONLIT_HORIZON * lit) * exposure;
-    let ground = Vec3::from(super::srgb_to_linear(s.skybox.ground)) * (0.006 + 0.03 * lit) * exposure;
+    let ground =
+        Vec3::from(super::srgb_to_linear(s.skybox.ground)) * (0.006 + 0.03 * lit) * exposure;
     Some(NightSky {
         share,
         zenith,
@@ -276,7 +277,10 @@ mod tests {
         while y > -0.5 {
             let (c, _) = main_light(y, 0.5);
             if let Some(l) = last {
-                assert!((c - l).abs().max_element() < 0.03, "jump at sun y {y}: {l} -> {c}");
+                assert!(
+                    (c - l).abs().max_element() < 0.03,
+                    "jump at sun y {y}: {l} -> {c}"
+                );
             }
             last = Some(c);
             y -= 0.0005;
@@ -284,7 +288,10 @@ mod tests {
         // The sky goes dark blue at night, and brighter with the full moon up.
         let night = night_mix(&env_with_sun(-0.6, 0.5), Vec3::Y, Vec3::ZERO);
         let moonless = night_mix(&env_with_sun(-0.6, 0.0), Vec3::Y, Vec3::ZERO);
-        assert!(night.z > night.x && night.z > moonless.z, "{night} {moonless}");
+        assert!(
+            night.z > night.x && night.z > moonless.z,
+            "{night} {moonless}"
+        );
         assert!(night.max_element() < 0.1);
     }
 }
@@ -405,7 +412,10 @@ mod gpu_tests {
             at(&full, r, 0.0, 0.0),
             at(&full, r, 0.6, 0.0),
         );
-        assert!(l > sky + 60.0 && rr > sky + 60.0 && c > sky + 60.0, "{l} {c} {rr} vs {sky}");
+        assert!(
+            l > sky + 60.0 && rr > sky + 60.0 && c > sky + 60.0,
+            "{l} {c} {rr} vs {sky}"
+        );
         let (quarter, _) = render(&device, &queue, &mut renderer, 0.25);
         let (ql, qr) = (at(&quarter, r, -0.6, 0.0), at(&quarter, r, 0.6, 0.0));
         let lit = ql.max(qr);
@@ -416,11 +426,17 @@ mod gpu_tests {
         let (new, _) = render(&device, &queue, &mut renderer, 0.0);
         let n = at(&new, r, 0.0, 0.0);
         assert!(n < c * 0.25, "new moon {n} vs full {c}");
-        assert!(n >= at(&new, r, 2.5, 0.0), "earthshine no darker than the sky");
+        assert!(
+            n >= at(&new, r, 2.5, 0.0),
+            "earthshine no darker than the sky"
+        );
         let (crescent, _) = render(&device, &queue, &mut renderer, 0.12);
         let edge = at(&crescent, r, 0.85, 0.0);
         let middle = at(&crescent, r, -0.3, 0.0);
-        assert!(edge > middle + 30.0, "crescent: limb {edge} vs middle {middle}");
+        assert!(
+            edge > middle + 30.0,
+            "crescent: limb {edge} vs middle {middle}"
+        );
     }
 
     /// GPU cost of the moon disc and the stars (ignored; run on purpose, under the GPU lock):

@@ -58,7 +58,9 @@ impl MoonMode {
     }
 
     pub fn from_name(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|m| m.name().eq_ignore_ascii_case(s))
+        Self::ALL
+            .into_iter()
+            .find(|m| m.name().eq_ignore_ascii_case(s))
     }
 }
 
@@ -182,11 +184,7 @@ pub fn air_mass(sin_alt: f32) -> f32 {
 pub fn transmittance(sin_alt: f32, thickness: f32) -> Vec3 {
     let tau = Vec3::new(0.10, 0.16, 0.30) * thickness.clamp(0.0, 5.0);
     let x = air_mass(sin_alt) - 1.0;
-    Vec3::new(
-        (-tau.x * x).exp(),
-        (-tau.y * x).exp(),
-        (-tau.z * x).exp(),
-    )
+    Vec3::new((-tau.x * x).exp(), (-tau.y * x).exp(), (-tau.z * x).exp())
 }
 
 /// How much of the sun's light is left as it sets (1 above the horizon, 0 about 3.4° below).
@@ -261,7 +259,10 @@ pub fn state(s: &MoonSettings, sun: Option<Vec3>) -> Option<MoonState> {
     let (direction, light_dir) = match s.mode {
         MoonMode::FollowSun => {
             let sun = sun?;
-            (follow_sun(sun, s.phase, s.latitude), sun.normalize_or(Vec3::Y))
+            (
+                follow_sun(sun, s.phase, s.latitude),
+                sun.normalize_or(Vec3::Y),
+            )
         }
         MoonMode::Manual => {
             let m = from_az_alt(s.azimuth, s.altitude);
@@ -328,9 +329,18 @@ mod tests {
             let k = lit_fraction(m, s);
             assert!((k - (1.0 - a.cos()) / 2.0).abs() < 1e-6, "{deg}: {k}");
         }
-        assert!(lit_fraction(m, Vec3::Z) < 1e-6, "new: same direction as the sun");
-        assert!((lit_fraction(m, Vec3::NEG_Z) - 1.0).abs() < 1e-6, "full: opposite");
-        assert!((lit_fraction(m, Vec3::X) - 0.5).abs() < 1e-6, "quarter: 90°");
+        assert!(
+            lit_fraction(m, Vec3::Z) < 1e-6,
+            "new: same direction as the sun"
+        );
+        assert!(
+            (lit_fraction(m, Vec3::NEG_Z) - 1.0).abs() < 1e-6,
+            "full: opposite"
+        );
+        assert!(
+            (lit_fraction(m, Vec3::X) - 0.5).abs() < 1e-6,
+            "quarter: 90°"
+        );
     }
 
     #[test]
@@ -349,19 +359,20 @@ mod tests {
         let sunset = sun_at(0.0, 270.0);
         let s = MoonSettings::default();
         for phase in [0.1f32, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9] {
-            let st = state(
-                &MoonSettings {
-                    phase,
-                    ..s.clone()
-                },
-                Some(sunset),
-            )
-            .unwrap();
+            let st = state(&MoonSettings { phase, ..s.clone() }, Some(sunset)).unwrap();
             let want = (1.0 - (phase * std::f32::consts::TAU).cos()) / 2.0;
-            assert!((st.illumination - want).abs() < 0.04, "{phase}: {}", st.illumination);
+            assert!(
+                (st.illumination - want).abs() < 0.04,
+                "{phase}: {}",
+                st.illumination
+            );
         }
         let full = state(&s, Some(sunset)).unwrap();
-        assert!(full.direction.x > 0.9 && full.direction.y.abs() < 0.1, "{:?}", full.direction);
+        assert!(
+            full.direction.x > 0.9 && full.direction.y.abs() < 0.1,
+            "{:?}",
+            full.direction
+        );
         // First quarter at sunset: high in the south.
         let q = state(
             &MoonSettings {
@@ -371,7 +382,11 @@ mod tests {
             Some(sunset),
         )
         .unwrap();
-        assert!(q.direction.z < -0.3 && q.direction.y > 0.3, "{:?}", q.direction);
+        assert!(
+            q.direction.z < -0.3 && q.direction.y > 0.3,
+            "{:?}",
+            q.direction
+        );
         // At midnight the full moon is up while the sun is down.
         let midnight = follow_sun(sun_at(-40.0, 0.0), 0.5, 45.0);
         assert!(midnight.y > 0.5, "{midnight}");
@@ -426,7 +441,10 @@ mod tests {
             let (s, m) = (sun_fade(y), moon_fade(y));
             assert!(s * m == 0.0, "both lights at {y}");
             if let Some((ls, lm)) = last {
-                assert!((s - ls).abs() < 0.02 && (m - lm).abs() < 0.02, "jump at {y}");
+                assert!(
+                    (s - ls).abs() < 0.02 && (m - lm).abs() < 0.02,
+                    "jump at {y}"
+                );
             }
             assert!((0.0..=1.0).contains(&night(y)));
             last = Some((s, m));

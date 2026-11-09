@@ -160,33 +160,33 @@ const MARIA: &[Cap] = &[
 struct Named(f32, f32, f32, f32, f32);
 
 const NAMED: &[Named] = &[
-    Named(-43.3, -11.4, 43.0, 1.0, 0.0),  // Tycho
-    Named(9.6, -20.1, 47.0, 0.95, 0.0),   // Copernicus
-    Named(8.1, -38.0, 16.0, 0.9, 0.0),    // Kepler
-    Named(23.7, -47.4, 20.0, 1.0, 0.0),   // Aristarchus
-    Named(16.1, 46.8, 14.0, 0.9, 0.0),    // Proclus
-    Named(-8.9, 61.0, 66.0, 0.7, 0.0),    // Langrenus
-    Named(-11.4, 26.4, 50.0, 0.7, 0.0),   // Theophilus
-    Named(-13.0, 23.0, 50.0, 0.3, 0.0),   // Cyrillus
+    Named(-43.3, -11.4, 43.0, 1.0, 0.0),   // Tycho
+    Named(9.6, -20.1, 47.0, 0.95, 0.0),    // Copernicus
+    Named(8.1, -38.0, 16.0, 0.9, 0.0),     // Kepler
+    Named(23.7, -47.4, 20.0, 1.0, 0.0),    // Aristarchus
+    Named(16.1, 46.8, 14.0, 0.9, 0.0),     // Proclus
+    Named(-8.9, 61.0, 66.0, 0.7, 0.0),     // Langrenus
+    Named(-11.4, 26.4, 50.0, 0.7, 0.0),    // Theophilus
+    Named(-13.0, 23.0, 50.0, 0.3, 0.0),    // Cyrillus
     Named(-58.4, -14.4, 113.0, 0.15, 0.0), // Clavius
-    Named(51.6, -9.3, 51.0, 0.3, 0.9),    // Plato
-    Named(-5.2, -68.6, 86.0, 0.2, 0.9),   // Grimaldi
-    Named(-9.3, -1.9, 77.0, 0.15, 0.35),  // Ptolemaeus
-    Named(-13.4, -2.8, 54.0, 0.25, 0.2),  // Alphonsus
-    Named(-18.2, -1.9, 48.0, 0.4, 0.0),   // Arzachel
-    Named(29.7, -4.0, 41.0, 0.3, 0.6),    // Archimedes
-    Named(14.5, -11.3, 29.0, 0.55, 0.0),  // Eratosthenes
-    Named(-25.1, 60.4, 88.0, 0.4, 0.0),   // Petavius
+    Named(51.6, -9.3, 51.0, 0.3, 0.9),     // Plato
+    Named(-5.2, -68.6, 86.0, 0.2, 0.9),    // Grimaldi
+    Named(-9.3, -1.9, 77.0, 0.15, 0.35),   // Ptolemaeus
+    Named(-13.4, -2.8, 54.0, 0.25, 0.2),   // Alphonsus
+    Named(-18.2, -1.9, 48.0, 0.4, 0.0),    // Arzachel
+    Named(29.7, -4.0, 41.0, 0.3, 0.6),     // Archimedes
+    Named(14.5, -11.3, 29.0, 0.55, 0.0),   // Eratosthenes
+    Named(-25.1, 60.4, 88.0, 0.4, 0.0),    // Petavius
     Named(-44.3, -54.6, 115.0, 0.1, 0.45), // Schickard
-    Named(-50.0, -6.2, 97.0, 0.1, 0.0),   // Maginus
-    Named(-5.6, 5.0, 75.0, 0.1, 0.0),     // Hipparchus
-    Named(-11.7, 4.0, 57.0, 0.2, 0.0),    // Albategnius
-    Named(-24.6, 22.3, 50.0, 0.8, 0.0),   // Stevinus-like bright crater (Furnerius A stand-in)
-    Named(-24.5, -65.3, 9.0, 0.95, 0.0),  // Byrgius A
-    Named(36.0, 102.9, 11.0, 1.0, 0.0),   // Giordano Bruno (far side)
-    Named(-26.4, -15.1, 56.0, 0.2, 0.0),  // Pitatus
-    Named(40.5, -9.4, 8.0, 0.75, 0.0),    // Aristillus-like
-    Named(-35.0, 7.0, 32.0, 0.6, 0.0),    // highland bright crater
+    Named(-50.0, -6.2, 97.0, 0.1, 0.0),    // Maginus
+    Named(-5.6, 5.0, 75.0, 0.1, 0.0),      // Hipparchus
+    Named(-11.7, 4.0, 57.0, 0.2, 0.0),     // Albategnius
+    Named(-24.6, 22.3, 50.0, 0.8, 0.0),    // Stevinus-like bright crater (Furnerius A stand-in)
+    Named(-24.5, -65.3, 9.0, 0.95, 0.0),   // Byrgius A
+    Named(36.0, 102.9, 11.0, 1.0, 0.0),    // Giordano Bruno (far side)
+    Named(-26.4, -15.1, 56.0, 0.2, 0.0),   // Pitatus
+    Named(40.5, -9.4, 8.0, 0.75, 0.0),     // Aristillus-like
+    Named(-35.0, 7.0, 32.0, 0.6, 0.0),     // highland bright crater
 ];
 
 /// Moon radius in km (named crater sizes → angles).
@@ -488,7 +488,9 @@ pub fn generate(w: u32) -> image::GrayAlphaImage {
     image::GrayAlphaImage::from_fn(w, w / 2, |x, y| {
         let i = y as usize * cv.w + x as usize;
         let a = (cv.albedo[i].clamp(0.0, 1.0) * 255.0).round() as u8;
-        let h = (128.0 + cv.height[i] / HEIGHT_SCALE).clamp(0.0, 255.0).round() as u8;
+        let h = (128.0 + cv.height[i] / HEIGHT_SCALE)
+            .clamp(0.0, 255.0)
+            .round() as u8;
         image::LumaA([a, h])
     })
 }
