@@ -210,7 +210,9 @@ skip both samples. Exact: same image (max 3/255 against the line reverted, the n
 - `cargo fmt --all`; `cargo clippy --workspace --all-targets --release`: 0 warnings.
 - Golden shots (`golden_shots`, final build, under the lock): all 20 within tolerance (MeadowDemo
   mean 0.15–0.39, changed ≤ 0.03 %; CyclesRoomDemo 0.00), the same drift as main.
-- `cargo test --workspace --release --no-fail-fast`: see the round's report.
+- `cargo test --workspace --release --no-fail-fast`: engine 1332 passed (89 ignored), editor
+  758 passed and 1 failed — `shader_graph_examples_render` (one of the known load-flaky tests;
+  it passes run alone), player and integration tests passed.
 
 ## Look-changing options for the user (not done; defaults unchanged)
 
