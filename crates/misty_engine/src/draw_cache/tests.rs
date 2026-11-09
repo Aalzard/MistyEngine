@@ -164,3 +164,40 @@ fn outlines_follow_the_selection_and_lod_levels_are_tagged() {
     let draws = cache.update(&s, &m, u32::MAX, |_| false);
     assert!(draws.iter().all(|d| !d.outline));
 }
+
+/// Unchanged objects keep their cached entry from call to call (no copies); any change after
+/// any number of unchanged calls still shows, and never a stale draw.
+#[test]
+fn kept_entries_never_hide_a_later_change() {
+    let mut s = Scene::new("t");
+    let m = Colors::default();
+    let a = cube(&mut s, "A", None, 0.0, "A.mat");
+    let b = cube(&mut s, "B", None, 2.0, "B.mat");
+    let mut cache = DrawCache::new();
+    check(&mut cache, &s, &m);
+    for _ in 0..3 {
+        let st = check(&mut cache, &s, &m);
+        assert_eq!((st.rebuilt, st.kept), (0, 2));
+    }
+    // Another mesh, another material path, a renderer flag, a move: each seen at once.
+    s.world.get::<&mut MeshFilter>(a).unwrap().mesh = Some(PrimitiveMesh::Sphere.into());
+    assert_eq!(check(&mut cache, &s, &m).rebuilt, 1);
+    check(&mut cache, &s, &m);
+    s.world.get::<&mut MeshRenderer>(b).unwrap().material = Some("C.mat".into());
+    assert_eq!(check(&mut cache, &s, &m).rebuilt, 1);
+    check(&mut cache, &s, &m);
+    s.world.get::<&mut MeshRenderer>(a).unwrap().receive_shadows = false;
+    assert_eq!(check(&mut cache, &s, &m).rebuilt, 1);
+    check(&mut cache, &s, &m);
+    s.set_transform(b, Transform::from_position(Vec3::new(5.0, 1.0, 0.0)));
+    assert_eq!(check(&mut cache, &s, &m).rebuilt, 1);
+    // Disabled, then enabled again after unchanged calls: drawn with its current values.
+    s.world.get::<&mut MeshRenderer>(a).unwrap().enabled = false;
+    assert!(check(&mut cache, &s, &m).relaid);
+    check(&mut cache, &s, &m);
+    s.world.get::<&mut MeshRenderer>(a).unwrap().receive_shadows = true;
+    s.world.get::<&mut MeshRenderer>(a).unwrap().enabled = true;
+    assert!(check(&mut cache, &s, &m).relaid);
+    let st = check(&mut cache, &s, &m);
+    assert_eq!((st.rebuilt, st.kept), (0, 2));
+}

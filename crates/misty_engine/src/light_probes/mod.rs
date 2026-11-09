@@ -136,6 +136,9 @@ pub fn asset_path_for(scene_path: &str) -> String {
 
 /// Active, enabled Light Probe Groups, in Hierarchy order.
 pub fn scene_groups(scene: &Scene) -> Vec<(hecs::Entity, LightProbeGroup)> {
+    if !scene.has_any::<LightProbeGroup>() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()

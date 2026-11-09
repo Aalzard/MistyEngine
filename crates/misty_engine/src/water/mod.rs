@@ -95,6 +95,9 @@ pub fn draws(scene: &Scene) -> Vec<WaterDraw> {
 
 /// [`draws`] of the objects `keep` accepts (a camera's culling mask).
 pub fn draws_where(scene: &Scene, keep: impl Fn(Entity) -> bool) -> Vec<WaterDraw> {
+    if !scene.has_any::<WaterSurface>() {
+        return Vec::new();
+    }
     let t = time();
     scene
         .walk()

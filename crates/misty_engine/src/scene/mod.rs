@@ -487,14 +487,23 @@ impl Scene {
         let mut out = Vec::with_capacity(self.len());
         fn visit(s: &Scene, e: Entity, depth: usize, out: &mut Vec<(Entity, usize)>) {
             out.push((e, depth));
-            for c in s.children(e) {
-                visit(s, c, depth + 1, out);
+            // The children list is borrowed, not copied (shared borrows nest).
+            if let Ok(node) = s.world.get::<&Node>(e) {
+                for &c in &node.children {
+                    visit(s, c, depth + 1, out);
+                }
             }
         }
         for r in &self.roots {
             visit(self, *r, 0, &mut out);
         }
         out
+    }
+
+    /// Does any object have component `T`? (A query over that component's archetypes: lets
+    /// per-frame lists skip walking the whole Hierarchy when nothing has it.)
+    pub fn has_any<T: hecs::Component>(&self) -> bool {
+        self.world.query::<&T>().iter().next().is_some()
     }
 
     /// Active itself and all parents active.

@@ -32,24 +32,33 @@ pub fn ray(camera: &Camera, rect: Rect, at: Pos2) -> (Vec3, Vec3) {
 /// Active objects drawn as icons: cameras, lights, audio sources and particle systems without a
 /// mesh.
 pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
+    use misty_engine::scene::{AudioSource, DecalProjector, FogVolume, ParticleSystem};
+    use misty_engine::scene::{ReflectionProbe, SpriteRenderer};
+    // Objects with an iconic component, from component queries (a handful in big scenes);
+    // then in Hierarchy order, without a mesh and active.
+    let w = &scene.world;
+    let mut iconic = std::collections::HashSet::new();
+    iconic.extend(w.query::<(Entity, &CameraComponent)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &Light)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &AudioSource)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &ParticleSystem)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &ReflectionProbe)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &FogVolume)>().iter().map(|(e, _)| e));
+    iconic.extend(w.query::<(Entity, &DecalProjector)>().iter().map(|(e, _)| e));
+    if iconic.is_empty() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()
         .map(|(e, _)| e)
-        .filter(|e| scene.active_in_hierarchy(*e))
+        .filter(|e| iconic.contains(e))
         .filter(|e| {
-            let w = &scene.world;
             let has_mesh = w.get::<&MeshFilter>(*e).is_ok_and(|m| m.mesh.is_some())
-                || w.get::<&misty_engine::scene::SpriteRenderer>(*e).is_ok();
-            let iconic = w.get::<&CameraComponent>(*e).is_ok()
-                || w.get::<&Light>(*e).is_ok()
-                || w.get::<&misty_engine::scene::AudioSource>(*e).is_ok()
-                || w.get::<&misty_engine::scene::ParticleSystem>(*e).is_ok()
-                || w.get::<&misty_engine::scene::ReflectionProbe>(*e).is_ok()
-                || w.get::<&misty_engine::scene::FogVolume>(*e).is_ok()
-                || w.get::<&misty_engine::scene::DecalProjector>(*e).is_ok();
-            !has_mesh && iconic
+                || w.get::<&SpriteRenderer>(*e).is_ok();
+            !has_mesh
         })
+        .filter(|e| scene.active_in_hierarchy(*e))
         .collect()
 }
 
