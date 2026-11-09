@@ -14,9 +14,11 @@
 //!   cargo in the background. Restarting writes a restore file ([`restore`]) that the new
 //!   process reads back (`misty --restore <file>`).
 //!
-//! Everything polls file times (every half second, cheap `stat` calls) and waits until a file
-//! has stopped changing before reading it, so half-written files are never loaded. Nothing
-//! reloads in Play mode; changes are picked up after Stop.
+//! Everything polls file times every half second and waits until a file has stopped changing
+//! before reading it, so half-written files are never loaded. The `stat` calls themselves run on
+//! the engine's background file watch (`misty_engine::file_watch`): a poll reads its last stamps
+//! and checks a file on disk only when its stamp differs ([`changed_stamp`]). Nothing reloads in
+//! Play mode; changes are picked up after Stop.
 
 pub mod assets;
 pub mod dev_build;
@@ -53,6 +55,23 @@ pub fn stamp(path: &Path) -> Option<Stamp> {
         modified: m.modified().ok(),
         len: m.len(),
     })
+}
+
+/// The file's stamp now, or `None` when it is the same as `seen`: the background file watch's
+/// stamp is looked at first (a map lookup) and only a difference is checked on disk, so
+/// nothing is decided on a stale stamp.
+pub fn changed_stamp(path: &Path, seen: Option<Stamp>) -> Option<Option<Stamp>> {
+    let cached = misty_engine::file_watch::cached_metadata(path).and_then(|m| {
+        m.is_file.then_some(Stamp {
+            modified: m.modified,
+            len: m.len,
+        })
+    });
+    if cached == seen {
+        return None;
+    }
+    let now = stamp(path);
+    (now != seen).then_some(now)
 }
 
 /// Waits for changed files to settle: a file counts as changed once its stamp has stayed the

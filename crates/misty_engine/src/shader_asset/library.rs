@@ -48,6 +48,11 @@ fn mtime(rel: &str) -> Option<SystemTime> {
         .ok()
 }
 
+/// [`mtime`] as the background file watch last saw it.
+fn cached_mtime(rel: &str) -> Option<SystemTime> {
+    crate::file_watch::cached_modified(&assets::absolute(rel))
+}
+
 fn error(message: String) -> ShaderError {
     ShaderError {
         line: 0,
@@ -162,6 +167,12 @@ pub fn poll_changes() -> Vec<String> {
     lib.last_poll = Some(now);
     let mut changed = Vec::new();
     for (rel, entry) in lib.entries.iter_mut() {
+        // The background file watch's stamps first; a difference is checked on disk.
+        if entry.modified == cached_mtime(rel)
+            && entry.deps.iter().all(|(d, t)| *t == cached_mtime(d))
+        {
+            continue;
+        }
         let deps_changed = entry.deps.iter().any(|(d, t)| *t != mtime(d));
         if entry.modified != mtime(rel) || deps_changed {
             // Unsaved graph text (the Shader Graph window's preview) has no file: keep it.

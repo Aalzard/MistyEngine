@@ -3225,3 +3225,25 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Hot reload of graphs while playing; graph state in save games; debugging inside macros;
   typed pins for Lua-backed API nodes; the Scratch-like block mode (design note in the guide).
+## Round 23 — Editor CPU frame (branch r23-editor-cpu)
+
+### Done (docs/pending/r23-editor-cpu.md)
+- Repeatable editor bench: MeadowDemo Scene view with a fixed camera (capture runs print the
+  p99 frame time now) and the flythrough, plus new Profiler scopes inside the Scene view's
+  gather and `Render.Submit`.
+- Live reload's file checks read stamps a background thread keeps fresh
+  (`misty_engine::file_watch`); a stamp that differs is checked on disk before anything
+  reloads. The 10–25 ms frame every half second is gone (worst pre-frame 23 → 0.9 ms).
+- Gizmo lines only for selected objects; the Scene view's per-frame lists skip whole-Hierarchy
+  walks for components the scene doesn't have, and the draw cache keeps unchanged entries
+  (gather 1.2–1.5 → 0.3 ms, overlays 0.2 → 0.05 ms).
+- Project window: off-screen tiles and rows paint nothing, no folder-tree copy per frame,
+  search results reused while the text stays the same.
+- Result: the editor's main-thread work in `ui()` 6.2 → 5.0 ms, frame p99 19.9 → 11.3 ms with a
+  fixed camera; the Scene view is GPU bound now (frame ≈ GPU frame, fixed camera and flythrough).
+
+### Not done yet
+- `Render.Submit` (wgpu's command encoding, 1.7–2.0 ms) still runs on the main thread: a worker
+  thread version saved nothing because the Scene view is the last panel drawn; it needs an
+  egui-wgpu paint-callback hand-off. The GUID watcher's rescan when assets appear still runs on
+  the main thread.

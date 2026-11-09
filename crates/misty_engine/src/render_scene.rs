@@ -178,6 +178,9 @@ pub fn glow_sources(scene: &Scene) -> Vec<GlowSource> {
 
 /// Enabled, active Fog Volumes in Hierarchy order.
 pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
+    if !scene.has_any::<FogVolume>() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()
@@ -191,6 +194,9 @@ pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
 
 /// The scene's enabled, active Decal Projectors (Hierarchy order: the tie-break of Priority).
 pub fn decal_draws(scene: &Scene) -> Vec<crate::render::DecalDraw> {
+    if !scene.has_any::<crate::scene::DecalProjector>() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()

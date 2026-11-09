@@ -322,8 +322,13 @@ fn library() -> std::sync::MutexGuard<'static, Library> {
 
 /// Newest of the model file and its `.meta` (import settings re-import the model too).
 fn mtime(path: &Path) -> Option<SystemTime> {
-    let meta = crate::vfs::modified(crate::asset_db::meta::meta_path(path).as_path());
-    crate::vfs::modified(path).max(meta)
+    mtime_with(path, crate::vfs::modified)
+}
+
+/// [`mtime`] through `modified` (the disk, or the file watch's cached stamps).
+fn mtime_with(path: &Path, modified: fn(&Path) -> Option<SystemTime>) -> Option<SystemTime> {
+    let meta = modified(crate::asset_db::meta::meta_path(path).as_path());
+    modified(path).max(meta)
 }
 
 /// The model at a project-relative path (read once, then cached until the file changes).
@@ -357,7 +362,10 @@ pub fn poll_changes() -> Vec<String> {
     lib.last_poll = Some(now);
     let mut changed = Vec::new();
     lib.entries.retain(|rel, e| {
-        let same = e.modified == mtime(&assets::absolute(rel));
+        let abs = assets::absolute(rel);
+        // The background file watch's stamps first; a difference is checked on disk.
+        let same = e.modified == mtime_with(&abs, crate::vfs::cached_modified)
+            || e.modified == mtime(&abs);
         if !same {
             changed.push(rel.clone());
         }

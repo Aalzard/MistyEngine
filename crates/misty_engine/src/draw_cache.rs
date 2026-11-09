@@ -169,9 +169,13 @@ impl DrawCache {
         self.calls += 1;
         self.stats = CacheStats::default();
         crate::mesh_builder::sync(scene);
+        let walk = crate::profiler::Scope::begin_lazy(|| "DrawCache.Walk", None);
         let (renderables, sprites, groups) = self.walk(scene, culling_mask, &selected);
         let lods = self.lod_ranges(scene, &groups);
+        drop(walk);
+        let meshes_scope = crate::profiler::Scope::begin_lazy(|| "DrawCache.Meshes", None);
         self.update_meshes(scene, materials, &renderables, &lods);
+        drop(meshes_scope);
         if self.batching.on {
             self.update_batches(&renderables);
         }
@@ -180,6 +184,7 @@ impl DrawCache {
             self.skin_view = crate::skinning::next_view_id();
         }
         // Sprites are few and cheap: rebuilt every call.
+        crate::profile_scope!("DrawCache.Extras");
         let views = (scene.world.view::<&SpriteRenderer>(), &self.nodes);
         let (target, meshes) = match self.batching.on {
             true => (&mut self.batching.out, self.batching.meshes),
@@ -503,18 +508,26 @@ impl DrawCache {
                 fresh.push(None);
                 self.stats.kept += 1;
             }
-            self.renderers[id] = Some(RendererEntry {
-                entity: e,
-                mesh: mesh.clone(),
-                renderer: r.clone(),
-                outline: item.outline,
-                lod,
-                materials: slots,
-                first,
-                count,
-                call: calls,
-                batched,
-                is_static: item.is_static,
+            self.renderers[id] = Some(match old {
+                // Unchanged: keep the entry (no copies of the mesh and renderer every call).
+                Some(mut o) if !dirty => {
+                    o.call = calls;
+                    o.batched = batched;
+                    o
+                }
+                _ => RendererEntry {
+                    entity: e,
+                    mesh: mesh.clone(),
+                    renderer: r.clone(),
+                    outline: item.outline,
+                    lod,
+                    materials: slots,
+                    first,
+                    count,
+                    call: calls,
+                    batched,
+                    is_static: item.is_static,
+                },
             });
         }
         if in_place {

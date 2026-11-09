@@ -49,6 +49,11 @@ fn mtime(rel: &str) -> Option<SystemTime> {
         .ok()
 }
 
+/// [`mtime`] as the background file watch last saw it.
+fn cached_mtime(rel: &str) -> Option<SystemTime> {
+    crate::file_watch::cached_modified(&assets::absolute(rel))
+}
+
 fn read(rel: &str) -> Entry {
     let mut deps = Vec::new();
     let effect = crate::vfs::read_to_string(assets::absolute(rel))
@@ -111,6 +116,12 @@ pub fn poll_changes() -> Vec<String> {
     lib.last_poll = Some(now);
     let mut changed = Vec::new();
     for (rel, entry) in lib.entries.iter_mut() {
+        // The background file watch's stamps first; a difference is checked on disk.
+        let cached_same = entry.modified == cached_mtime(rel)
+            && entry.deps.iter().all(|(p, t)| cached_mtime(p) == *t);
+        if cached_same {
+            continue;
+        }
         if !entry.working_copy && (entry.modified != mtime(rel) || deps_changed(&entry.deps)) {
             *entry = read(rel);
             changed.push(rel.clone());

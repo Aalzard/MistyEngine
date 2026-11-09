@@ -304,10 +304,11 @@ impl AssetDatabase {
         let paths: Vec<String> = self.scripts.keys().cloned().collect();
         for rel in paths {
             let abs = self.absolute(&rel);
-            let changed = self
-                .scripts
-                .get(&rel)
-                .is_some_and(|m| m.modified != mtime(&abs));
+            // The background file watch's stamp first; a difference is checked on disk.
+            let changed = self.scripts.get(&rel).is_some_and(|m| {
+                m.modified != misty_engine::file_watch::cached_modified(&abs)
+                    && m.modified != mtime(&abs)
+            });
             if changed {
                 let meta = inspect(&abs, &rel);
                 if let Err(e) = &meta.fields {

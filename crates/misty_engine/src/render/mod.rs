@@ -2080,7 +2080,12 @@ impl Renderer {
         self.vgeo.copy_stats(device, &mut encoder);
         {
             crate::profile_scope!("Render.Submit");
-            queue.submit([encoder.finish()]);
+            let commands = {
+                crate::profile_scope!("Render.Submit.Finish");
+                encoder.finish()
+            };
+            crate::profile_scope!("Render.Submit.Queue");
+            queue.submit([commands]);
         }
         self.vgeo.stats_submitted();
         let vg = self.vgeo.collect_stats();

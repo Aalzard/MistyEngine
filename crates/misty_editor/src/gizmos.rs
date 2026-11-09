@@ -302,19 +302,21 @@ impl Lines {
 /// Lines for every active object; selected ones are highlighted.
 pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
     let mut lines = Lines::default();
-    for (e, _) in scene.walk() {
-        if !scene.active_in_hierarchy(e) {
+    // Only selected objects draw these: nothing to walk without a selection, and the matrices
+    // are only worked out for the selected ones (in Hierarchy order, as before).
+    let walk = match selection.is_empty() {
+        true => Vec::new(),
+        false => scene.walk(),
+    };
+    for (e, _) in walk {
+        if !selection.contains(e) || !scene.active_in_hierarchy(e) {
             continue;
         }
-        let is_sel = selection.contains(e);
         let m = scene.world_matrix(e);
         // Unscaled matrix for camera/light gizmos.
         let (_, rot, pos) = m.to_scale_rotation_translation();
         let rigid = Mat4::from_rotation_translation(rot, pos);
         let w = &scene.world;
-        if !is_sel {
-            continue;
-        }
         if let Ok(cam) = w.get::<&Camera>(e) {
             lines.frustum(&rigid, &cam, CAMERA);
         }

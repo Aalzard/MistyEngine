@@ -18,6 +18,7 @@ pub mod build_report;
 pub mod camera;
 pub mod clock;
 pub mod draw_cache;
+pub mod file_watch;
 pub mod hdri;
 pub mod input;
 pub mod light2d;

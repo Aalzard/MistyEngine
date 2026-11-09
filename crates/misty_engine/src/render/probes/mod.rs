@@ -105,6 +105,9 @@ pub fn asset_path_for(scene_path: &str, index: usize) -> String {
 
 /// Active, enabled probes of a scene, in Hierarchy order.
 pub fn scene_probe_list(scene: &Scene) -> Vec<(hecs::Entity, ReflectionProbe)> {
+    if !scene.has_any::<ReflectionProbe>() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()

@@ -121,7 +121,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         let entries = if browser.search.is_empty() {
             browser.entries.clone()
         } else {
-            browser.search_results()
+            browser.cached_search_results()
         };
         let mut open = None;
         egui::ScrollArea::vertical()
@@ -348,16 +348,24 @@ fn grid_view(
             resp.widget_info(|| {
                 egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, false, label)
             });
+            // Tiles scrolled out of view keep their place and interaction but draw nothing
+            // (big folders otherwise paint every icon and name each frame).
+            let visible = ui.is_rect_visible(rect);
             let is_sel = browser.selected.as_ref() == Some(&e.path);
-            if is_sel {
+            if visible && is_sel {
                 ui.painter().rect_filled(rect, 3.0, theme::SELECTION);
-            } else if resp.hovered() {
+            } else if visible && resp.hovered() {
                 ui.painter()
                     .rect_filled(rect, 3.0, Color32::from_rgb(69, 69, 69));
             }
-            tile_icon(ui, e, rect, cell, &mut browser.thumbnails);
+            if visible {
+                tile_icon(ui, e, rect, cell, &mut browser.thumbnails);
+            }
             // Version control status on the icon's bottom-left corner.
-            let resp = match vcs.badge_at(&browser.root, &e.path) {
+            let badge = visible
+                .then(|| vcs.badge_at(&browser.root, &e.path))
+                .flatten();
+            let resp = match badge {
                 Some(b) => {
                     let size = (cell * 0.22).clamp(11.0, 16.0);
                     let at = rect.left_top() + egui::vec2(size * 0.7, cell - size * 0.5);
@@ -372,7 +380,7 @@ fn grid_view(
                     egui::vec2(cell + 6.0, 18.0),
                 );
                 project_menus::rename_field(ui, r, browser, req);
-            } else {
+            } else if visible {
                 ui.painter().text(
                     rect.center_bottom() - egui::vec2(0.0, 9.0),
                     Align2::CENTER_CENTER,

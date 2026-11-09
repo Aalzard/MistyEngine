@@ -116,12 +116,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let occlusion_view = crate::panels::occlusion::visualizing(state, ui.ctx());
             // Editor script gizmos (`OnDrawGizmos`) run before the view settings are borrowed.
             let mut script_lines = gizmos::Lines::default();
+            let gather = misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Gather", None);
             if state.scene_view.gizmos {
+                misty_engine::profile_scope!("SceneView.ScriptGizmos");
                 crate::editor_scripts::gizmos::lines(state, &mut script_lines);
             } else {
                 state.editor_scripts.gizmo_frame = Default::default();
             }
-            let gather = misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Gather", None);
+            let draws_scope = misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Draws", None);
             let mut meshes = render_scene::cached_draws(state);
             // Prefab Mode in context: the scene around the instance, dimmed.
             if let Some(context) = crate::prefab_mode::context_draws(state) {
@@ -141,6 +143,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                     meshes = std::sync::Arc::new(all);
                 }
             }
+            drop(draws_scope);
             let gizmo_scope =
                 misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Gizmos", None);
             let mut lines = if sv.gizmos {
@@ -186,6 +189,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let mut overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             crate::mesh_builder::lines(state, &camera, &mut lines, &mut overlay);
             drop(gizmo_scope);
+            let queries_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "SceneView.SceneQueries", None);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
@@ -201,6 +206,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                     (l, env)
                 }
             };
+            drop(queries_scope);
+            let settings_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Settings", None);
             environment.probes.debug = sv.draw_mode == PROBES_MODE;
             environment.lightmaps.debug = match sv.draw_mode {
                 LIGHTMAP_MODE => misty_engine::lightmap::LightmapDebug::Baked,
@@ -317,6 +325,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 &state.scene,
                 true,
             ));
+            drop(settings_scope);
             drop(gather);
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             // Canvases in the world, drawn with the scene's depth.

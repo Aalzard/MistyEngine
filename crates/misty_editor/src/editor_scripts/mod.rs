@@ -564,7 +564,9 @@ fn changed(state: &mut EditorState, rescan: bool) -> Option<String> {
     let root = state.project.root.clone();
     let es = &mut state.editor_scripts;
     for (rel, t) in &es.files {
-        if mtime(&root.join(rel)) != *t {
+        let abs = root.join(rel);
+        // The background file watch's stamp first; a difference is checked on disk.
+        if misty_engine::file_watch::cached_modified(&abs) != *t && mtime(&abs) != *t {
             return Some(format!("{rel} changed"));
         }
     }
@@ -572,7 +574,10 @@ fn changed(state: &mut EditorState, rescan: bool) -> Option<String> {
     let stale: Vec<String> = es
         .game_files
         .iter()
-        .filter(|(rel, t)| mtime(&root.join(rel)) != **t)
+        .filter(|(rel, t)| {
+            let abs = root.join(rel);
+            misty_engine::file_watch::cached_modified(&abs) != **t && mtime(&abs) != **t
+        })
         .map(|(rel, _)| rel.clone())
         .collect();
     for rel in stale {
