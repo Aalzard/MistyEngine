@@ -188,6 +188,19 @@ impl FrameHistory {
 mod tests {
     use super::*;
 
+    /// The views redraw while grass (painted chunks included) or textures are still landing,
+    /// and go idle once nothing is.
+    #[test]
+    fn pending_work_keeps_the_views_drawing() {
+        let mut s = RenderStats::default();
+        assert!(!s.busy());
+        s.grass_pending = 1;
+        assert!(s.busy());
+        s.grass_pending = 0;
+        s.loading = 2;
+        assert!(s.busy());
+    }
+
     #[test]
     fn hitches_are_frames_over_twice_the_median() {
         let mut h = FrameHistory::default();

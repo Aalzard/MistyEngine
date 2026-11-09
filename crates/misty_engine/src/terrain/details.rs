@@ -578,14 +578,24 @@ fn scatter_level_in(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32, parallel: b
 }
 
 /// The blades in drop-out key order (stable: equal keys keep the scatter's order; sorted in
-/// parallel when `parallel`).
-fn by_key(mut out: Vec<(f32, Blade)>, parallel: bool) -> Vec<Blade> {
+/// parallel when `parallel`). Sorts 8-byte (key, index) words rather than the 76-byte
+/// blades: the order of a stable sort by `total_cmp`, a few times quicker.
+fn by_key(out: Vec<(f32, Blade)>, parallel: bool) -> Vec<Blade> {
+    // The key's bits made to sort like `total_cmp`, above the index (ties keep their order).
+    let word = |(i, (k, _)): (usize, &(f32, Blade))| {
+        let b = k.to_bits();
+        let ordered = if b >> 31 == 1 { !b } else { b | 0x8000_0000 };
+        (u64::from(ordered) << 32) | i as u64
+    };
+    let at = |w: &u64| out[(*w & 0xffff_ffff) as usize].1;
     if parallel {
-        out.par_sort_by(|a, b| a.0.total_cmp(&b.0));
-        out.into_par_iter().map(|(_, b)| b).collect()
+        let mut order: Vec<u64> = out.par_iter().enumerate().map(word).collect();
+        order.par_sort_unstable();
+        order.par_iter().map(at).collect()
     } else {
-        out.sort_by(|a, b| a.0.total_cmp(&b.0));
-        out.into_iter().map(|(_, b)| b).collect()
+        let mut order: Vec<u64> = out.iter().enumerate().map(word).collect();
+        order.sort_unstable();
+        order.iter().map(at).collect()
     }
 }
 
@@ -653,6 +663,23 @@ mod tests {
         generate(&mut d);
         assert_eq!(d.detail_map[5 * n + 10], 0, "layer 1 here");
         assert_eq!(d.detail_map[5 * n + 40], 255);
+    }
+
+    #[test]
+    fn blades_sort_like_a_stable_sort_by_key() {
+        let blade = |x: f32| Blade {
+            position: [x, 0.0, 0.0, 1.0],
+            ..Zeroable::zeroed()
+        };
+        let keys = [0.5, 0.25, 0.5, 0.0, 1.5, 0.25, 0.999, 0.0];
+        let out: Vec<(f32, Blade)> = (keys.iter().enumerate())
+            .map(|(i, k)| (*k, blade(i as f32)))
+            .collect();
+        let mut want = out.clone();
+        want.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let want: Vec<Blade> = want.into_iter().map(|(_, b)| b).collect();
+        assert_eq!(by_key(out.clone(), false), want);
+        assert_eq!(by_key(out, true), want);
     }
 
     #[test]

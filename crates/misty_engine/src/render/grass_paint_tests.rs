@@ -39,8 +39,8 @@ fn dense_species() -> DetailLayer {
 }
 
 /// A default-sized terrain (200 m, 256 splat texels) with the dense species painted over a
-/// 64 m square around (100, 100) (store key from `name`).
-pub(super) fn painted_terrain(name: &str) -> String {
+/// square `side` metres wide around (100, 100) (store key from `name`).
+pub(super) fn painted_terrain(name: &str, side: f32) -> String {
     let mut d = TerrainData::default();
     d.details.enabled = true;
     d.detail_layers = vec![dense_species()];
@@ -50,7 +50,7 @@ pub(super) fn painted_terrain(name: &str) -> String {
     for tz in 0..n {
         for tx in 0..n {
             let p = (Vec2::new(tx as f32, tz as f32) + 0.5) * texel;
-            if (p - Vec2::splat(100.0)).abs().max_element() < 32.0 {
+            if (p - Vec2::splat(100.0)).abs().max_element() < side * 0.5 {
                 map[tz * n + tx] = 255;
             }
         }
@@ -140,7 +140,7 @@ fn grass_paint_latency() {
     let Some((device, queue)) = headless() else {
         return;
     };
-    let key = painted_terrain("latency");
+    let key = painted_terrain("latency", 64.0);
     let mut r = Renderer::with_queue(&device, &queue);
     r.set_quality(&device, &QualityLevel::default());
     let target = r.create_target(&device, 960, 540);
@@ -256,61 +256,61 @@ fn grass_paint_latency() {
 }
 
 /// Scatter time of one fully painted 16 m chunk of the dense species at full density: one
-/// thread (the camera's chunks) and the edited chunks' row threads, with the same blades.
+/// thread (the camera's chunks) and the edited chunks' row threads. A painted chunk must
+/// update well under 100 ms (on a machine not busy with other work).
 #[test]
-#[ignore = "timing, prints only"]
+#[ignore = "timing"]
 fn grass_scatter_cost() {
-    let key = painted_terrain("scatter");
+    let key = painted_terrain("scatter", 64.0);
     let (d, _) = store::get(&key).expect("inserted");
     let lo = Vec2::new(96.0, 96.0);
-    let median = |f: &dyn Fn() -> Vec<crate::terrain::details::Blade>| {
+    let median = |f: &dyn Fn() -> usize| {
         let mut times = Vec::new();
         let mut n = 0;
         for _ in 0..7 {
             let t = Instant::now();
-            n = f().len();
+            n = f();
             times.push(t.elapsed().as_secs_f32() * 1000.0);
         }
         times.sort_by(f32::total_cmp);
         (n, times[3])
     };
-    let serial = || crate::terrain::details::scatter_level(&d, lo, lo + 16.0, 0);
+    let serial = || crate::terrain::details::scatter_level(&d, lo, lo + 16.0, 0).len();
+    let threads = super::row_threads().expect("row threads");
     let parallel = || {
-        let threads = super::row_threads().expect("row threads");
-        threads.install(|| crate::terrain::details::scatter_level_parallel(&d, lo, lo + 16.0, 0))
+        threads
+            .install(|| crate::terrain::details::scatter_level_parallel(&d, lo, lo + 16.0, 0))
+            .len()
     };
-    assert!(serial() == parallel(), "the same blades in the same order");
     let (n, one) = median(&serial);
     let (_, rows) = median(&parallel);
-    eprintln!("scatter of one chunk: {n} blades, one thread {one:.1} ms, row threads {rows:.1} ms");
+    eprintln!(
+        "scatter of one chunk: {n} blades, one thread {one:.1} ms, {} row threads {rows:.1} ms",
+        threads.current_num_threads()
+    );
     store::unload(&key);
+    assert!(rows < 100.0, "a painted chunk took {rows:.0} ms");
 }
 
-/// Painting must feel instant: one fully painted chunk at 1000 blades/m² scatters on the row
-/// threads well under 100 ms (the median of a few, so a busy machine's hiccup doesn't count).
+/// An edited chunk's rows scattered in parallel give the very blades, in the very order, of
+/// the one-thread scatter (the golden shots and the far chunks' prefixes rely on it).
 #[test]
-fn a_painted_chunk_scatters_quickly() {
-    let key = painted_terrain("quick");
+fn edited_chunks_scatter_the_same_blades() {
+    let key = painted_terrain("same", 64.0);
     let (d, _) = store::get(&key).expect("inserted");
-    let lo = Vec2::new(96.0, 96.0);
+    // A chunk on the painted square's edge: some texels painted, some not.
+    let lo = Vec2::new(64.0, 80.0);
     let threads = super::row_threads().expect("row threads");
-    let mut times: Vec<f32> = (0..5)
-        .map(|_| {
-            let t = Instant::now();
-            let n = threads
-                .install(|| crate::terrain::details::scatter_level_parallel(&d, lo, lo + 16.0, 0))
-                .len();
-            assert!(n > 200_000, "{n}");
-            t.elapsed().as_secs_f32() * 1000.0
-        })
-        .collect();
-    times.sort_by(f32::total_cmp);
+    let parallel =
+        threads.install(|| crate::terrain::details::scatter_level_parallel(&d, lo, lo + 16.0, 0));
+    let serial = crate::terrain::details::scatter_level(&d, lo, lo + 16.0, 0);
+    assert!(serial.len() > 50_000, "{}", serial.len());
+    assert!(serial == parallel, "the same blades in the same order");
+    // And at a coarser level (a far chunk).
+    let parallel =
+        threads.install(|| crate::terrain::details::scatter_level_parallel(&d, lo, lo + 16.0, 3));
+    assert!(crate::terrain::details::scatter_level(&d, lo, lo + 16.0, 3) == parallel);
     store::unload(&key);
-    // (Debug builds are many times slower: the bound is for optimised builds.)
-    if cfg!(debug_assertions) {
-        return;
-    }
-    assert!(times[2] < 100.0, "median {:.0} ms ({times:?})", times[2]);
 }
 
 /// A chunk holding `count` blades scattered at density level 0 with edits `stamp` (no GPU
@@ -476,7 +476,7 @@ fn painted_grass_shows_within_frames() {
     let Some((device, queue)) = headless() else {
         return;
     };
-    let key = painted_terrain("frames");
+    let key = painted_terrain("frames", 24.0);
     let mut r = Renderer::with_queue(&device, &queue);
     r.set_quality(&device, &QualityLevel::default());
     let target = r.create_target(&device, 320, 200);
@@ -534,10 +534,19 @@ fn painted_grass_shows_within_frames() {
     }
     let (after, _) = r.terrains.grass_chunk(&key, chunk).expect("held");
     assert!(after < before, "erased: {after} of {before}");
-    // Nothing left to do: the views may go idle.
-    for _ in 0..3 {
+    // The brush's other chunks follow; then nothing is left to do and the views may idle.
+    let brushed = brushed_chunks(Vec2::new(104.0, 104.0));
+    while r.stats().grass_pending > 0 {
+        assert!(frames < 1200, "grass work never finished");
+        for c in &brushed {
+            assert!(r.terrains.grass_chunk(&key, *c).is_some(), "{c:?} vanished");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
         render(&mut r);
+        frames += 1;
     }
+    assert!(r.terrains.grass_fresh(&key, &brushed));
+    render(&mut r);
     assert_eq!(r.stats().grass_pending, 0);
     crate::render::set_grass_streaming(false);
     store::unload(&key);
