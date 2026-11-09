@@ -322,6 +322,8 @@ impl Pipelines {
         for e in &mut view_entries {
             e.visibility |= S::COMPUTE;
         }
+        // The moon's texture (sky.wgsl only, render/moon.rs).
+        view_entries.push(super::hdri_sky::moon_layout_entry());
         let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
         let lightmap = super::lightmap_gpu::layout_entries();

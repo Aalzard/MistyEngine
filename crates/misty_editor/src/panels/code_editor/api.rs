@@ -130,6 +130,25 @@ RenderSettings|fogStartDistance|fogStartDistance|Linear fog start
 RenderSettings|fogEndDistance|fogEndDistance|Linear fog end
 RenderSettings|ambientIntensity|ambientIntensity|Environment Lighting intensity
 RenderSettings|reflectionIntensity|reflectionIntensity|Environment Reflections intensity
+RenderSettings|moon|moon|Moon on/off (disc, stars and moonlight at night)
+RenderSettings|moonMode|moonMode|"FollowSun", "Manual" or "DateTime"
+RenderSettings|moonPhase|moonPhase|Phase 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter
+RenderSettings|moonAzimuth|moonAzimuth|Manual: degrees from north towards east
+RenderSettings|moonAltitude|moonAltitude|Manual: degrees above the horizon
+RenderSettings|moonDate|moonDate|DateTime: local date "YYYY-MM-DD"
+RenderSettings|moonTime|moonTime|DateTime: local time in hours
+RenderSettings|moonUtcOffset|moonUtcOffset|DateTime: hours east of UTC
+RenderSettings|moonLatitude|moonLatitude|Observer latitude (degrees north)
+RenderSettings|moonLongitude|moonLongitude|Observer longitude (degrees east)
+RenderSettings|moonSize|moonSize|Moon size, multiple of its real size
+RenderSettings|moonBrightness|moonBrightness|Moon disc brightness
+RenderSettings|moonEarthshine|moonEarthshine|Earthshine on the dark side
+RenderSettings|moonLightIntensity|moonLightIntensity|Moonlight intensity at full moon
+RenderSettings|moonLightColor|moonLightColor|Moonlight colour
+RenderSettings|stars|stars|Star field brightness at night
+RenderSettings|moonTexture|moonTexture|Moon texture path (nil = built-in)
+RenderSettings|moonIllumination|moonIllumination|Lit fraction of the moon (read-only)
+RenderSettings|moonDirection|moonDirection|Vector3 towards the moon (read-only)
 AudioSource|PlayClipAtPoint|PlayClipAtPoint(clipPath, position [, volume])|A 3D one-shot at a fixed point
 AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil

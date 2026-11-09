@@ -1,0 +1,427 @@
+//! MoonDemo sample scene in `SampleProject`: a moonlit valley at night. Rolling meadows under
+//! dark ridges, a ring of standing stones on a knoll casting moon shadows, a cabin with a warm
+//! window, a few dead trees, a little ground haze and the stars. The sun is 24° below the
+//! horizon; the moon (Manual, a big disc above the stones) lights the scene through the main
+//! Directional Light. `MoonCycle.lua` runs the phases round (new → crescent → quarter →
+//! gibbous → full → waning) every 40 seconds so the terminator, the earthshine and the
+//! moonlight's strength can be watched. The terrain reuses TerrainDemo2's textures.
+//! Regenerate with `cargo test --release -p misty_editor -- --ignored write_moon_demo`; the
+//! other tests check the committed files and that the scene plays.
+
+use std::path::PathBuf;
+
+use glam::Vec3;
+use misty_engine::moon::MoonMode;
+use misty_engine::scene::{
+    Light, LightType, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh, Scene, ScriptRef,
+    Scripts, Shadows, Terrain, TerrainCollider, TonemapMode, Transform,
+};
+use misty_engine::terrain::auto_paint::{self, AutoPaintRules};
+use misty_engine::terrain::{TerrainData, TerrainLayer, noise};
+
+const DATA: &str = "Assets/Terrains/MoonDemo.terrain";
+const SCENE: &str = "Assets/Scenes/MoonDemo.scene";
+const SCRIPT: &str = "Assets/Scripts/MoonCycle.lua";
+// Written by `sample_terrain2`.
+const GRASS: &str = "Assets/Textures/Terrain/Meadow.png";
+const SCREE: &str = "Assets/Textures/Terrain/Scree.png";
+const ROCK: &str = "Assets/Textures/Terrain/Cliff.png";
+// Existing sample materials.
+const STONE: &str = "Assets/Materials/Ruin Stone.mat";
+const WALL: &str = "Assets/Materials/Night Plaster.mat";
+const ROOF: &str = "Assets/Materials/Night Brick.mat";
+const BARK: &str = "Assets/Materials/Bark.mat";
+const WINDOW: &str = "Assets/Materials/Lantern Glow.mat";
+
+/// The files this generator writes and the GUIDs of their metas.
+const METAS: [(&str, &str); 3] = [
+    (DATA, "6d6f6f6e64656d6f7465727261696e31"),
+    (SCENE, "6d6f6f6e64656d6f7363656e65303031"),
+    (SCRIPT, "6d6f6f6e6379636c656c756173637231"),
+];
+
+const SIZE: Vec3 = Vec3::new(1600.0, 260.0, 1600.0);
+const CORNER: Vec3 = Vec3::new(-800.0, 0.0, -800.0);
+
+/// Where the moon hangs (Manual): south-east, above the stones.
+const MOON_AZIMUTH: f32 = 150.0;
+const MOON_ALTITUDE: f32 = 21.0;
+
+const CYCLE_LUA: &str = r#"-- MoonCycle: runs the moon through its phases (new, waxing crescent, first quarter,
+-- gibbous, full, waning) so you can watch the terminator, the earthshine on the dark side
+-- and the moonlight dimming and brightening with it.
+local MoonCycle = {
+    period = 40,      -- seconds for a whole lunar month
+    start = 0.12,     -- phase at Start (0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter)
+}
+
+function MoonCycle:Start()
+    RenderSettings.moonPhase = self.start
+end
+
+function MoonCycle:Update()
+    local phase = self.start + Time.time / self.period
+    RenderSettings.moonPhase = phase - Mathf.Floor(phase)
+end
+
+return MoonCycle
+"#;
+
+fn project() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
+}
+
+/// Normalised height at local (x, z) metres: a valley opening towards the moon (south-east of
+/// the camera) with a knoll for the stones and ridges around.
+fn height(x: f32, z: f32) -> f32 {
+    let (cx, cz) = (x - 800.0, z - 800.0);
+    let r = (cx * cx + cz * cz).sqrt();
+    let rim = ((r - 380.0) / 380.0).clamp(0.0, 1.0);
+    let rolling = noise::fbm(x, z, 140.0, 4, 7) * 0.5 + 0.5;
+    let ridges = noise::ridged(x, z, 420.0, 5, 13);
+    // The knoll under the stones, 70 m south-east of the camera.
+    let (kx, kz) = (cx - 40.0, cz + 60.0);
+    let knoll = (-(kx * kx + kz * kz) / (2.0 * 26.0 * 26.0)).exp();
+    (0.03 + 0.03 * rolling + knoll * 0.022 + rim * rim * (0.18 + 0.7 * ridges * ridges))
+        .clamp(0.0, 1.0)
+}
+
+fn layer(name: &str, diffuse: &str, tile: f32, slope: [f32; 2], priority: i32) -> TerrainLayer {
+    TerrainLayer {
+        name: name.into(),
+        diffuse: Some(diffuse.into()),
+        tile_size: [tile, tile],
+        rules: AutoPaintRules {
+            enabled: true,
+            slope,
+            spread: 0.25,
+            breakup: 0.6,
+            breakup_scale: 40.0,
+            priority,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn terrain_data() -> TerrainData {
+    let mut d = TerrainData::new(257, SIZE, 256);
+    let s = d.spacing();
+    for iz in 0..d.heightmap_resolution {
+        for ix in 0..d.heightmap_resolution {
+            d.set_height(ix, iz, height(ix as f32 * s.x, iz as f32 * s.y));
+        }
+    }
+    d.layers = vec![
+        layer("Meadow", GRASS, 9.0, [0.0, 22.0], 0),
+        layer("Scree", SCREE, 7.0, [20.0, 34.0], 1),
+        layer("Cliff", ROCK, 30.0, [34.0, 90.0], 2),
+    ];
+    d.rule_seed = 9;
+    auto_paint::generate(&mut d);
+    d
+}
+
+fn ground(d: &TerrainData, x: f32, z: f32) -> f32 {
+    CORNER.y + d.sample_height(x - CORNER.x, z - CORNER.z)
+}
+
+fn volume() -> PostProcessVolume {
+    let mut v = PostProcessVolume::default();
+    v.tonemapping.active = true;
+    v.tonemapping.mode = TonemapMode::Aces;
+    v.bloom.active = true;
+    v.bloom.intensity = 0.6;
+    v.bloom.threshold = 0.9;
+    // Night is dark: open the exposure like a night photo.
+    v.color_adjustments.active = true;
+    v.color_adjustments.post_exposure = 2.0;
+    let f = &mut v.fog;
+    f.active = true;
+    f.max_fog_distance = 1200.0;
+    f.attenuation_distance = 2500.0;
+    f.base_height = 0.0;
+    f.maximum_height = 40.0;
+    f.anisotropy = 0.5;
+    f.volumetric_distance = 120.0;
+    v
+}
+
+fn mesh(s: &mut Scene, name: &str, mesh: PrimitiveMesh, t: Transform, material: &str) {
+    let e = s.spawn(name, None);
+    s.set_transform(e, t);
+    s.add(e, MeshFilter::primitive(mesh));
+    s.add(
+        e,
+        MeshRenderer {
+            material: Some(material.into()),
+            ..Default::default()
+        },
+    );
+}
+
+fn at(p: Vec3, scale: Vec3, yaw: f32) -> Transform {
+    let mut t = Transform::from_position(p).with_euler(Vec3::new(0.0, yaw, 0.0));
+    t.scale = scale;
+    t
+}
+
+fn stones(s: &mut Scene, d: &TerrainData) {
+    let centre = (40.0, -60.0);
+    for i in 0..9 {
+        let a = i as f32 / 9.0 * std::f32::consts::TAU;
+        let (x, z) = (centre.0 + a.cos() * 9.0, centre.1 + a.sin() * 9.0);
+        let tall = 2.6 + (i % 3) as f32 * 0.5;
+        let y = ground(d, x, z) + tall * 0.5 - 0.3;
+        let t = at(
+            Vec3::new(x, y, z),
+            Vec3::new(1.1, tall, 0.6),
+            -a.to_degrees() + 90.0,
+        );
+        mesh(s, &format!("Standing Stone {}", i + 1), PrimitiveMesh::Cube, t, STONE);
+    }
+    let y = ground(d, centre.0, centre.1);
+    mesh(
+        s,
+        "Altar Stone",
+        PrimitiveMesh::Cube,
+        at(
+            Vec3::new(centre.0, y + 0.3, centre.1),
+            Vec3::new(2.4, 0.7, 1.2),
+            20.0,
+        ),
+        STONE,
+    );
+}
+
+fn cabin(s: &mut Scene, d: &TerrainData) {
+    let (x, z) = (-22.0, -34.0);
+    let y = ground(d, x, z);
+    mesh(
+        s,
+        "Cabin",
+        PrimitiveMesh::Cube,
+        at(Vec3::new(x, y + 1.6, z), Vec3::new(6.0, 3.6, 4.5), 25.0),
+        WALL,
+    );
+    mesh(
+        s,
+        "Cabin Roof",
+        PrimitiveMesh::Cube,
+        at(Vec3::new(x, y + 3.8, z), Vec3::new(6.6, 0.8, 5.1), 25.0),
+        ROOF,
+    );
+    // The window faces the camera (towards -Z rotated by the cabin's yaw).
+    let yaw = 25f32.to_radians();
+    let out = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
+    let w = Vec3::new(x, y + 1.7, z) + out * 2.26;
+    mesh(
+        s,
+        "Cabin Window",
+        PrimitiveMesh::Cube,
+        at(w, Vec3::new(1.2, 0.9, 0.05), 25.0),
+        WINDOW,
+    );
+    let lamp = s.spawn("Window Light", None);
+    s.set_transform(lamp, Transform::from_position(w + out * 0.6));
+    s.add(
+        lamp,
+        Light {
+            kind: LightType::Point,
+            color: [1.0, 0.62, 0.3],
+            intensity: 2.5,
+            range: 9.0,
+            shadows: Shadows::None,
+            ..Default::default()
+        },
+    );
+}
+
+fn trees(s: &mut Scene, d: &TerrainData) {
+    let spots = [(-48.0, -10.0), (-58.0, -52.0), (18.0, -18.0), (70.0, -30.0), (-8.0, -78.0)];
+    for (i, (x, z)) in spots.into_iter().enumerate() {
+        let tall = 5.0 + (i % 2) as f32 * 2.0;
+        let y = ground(d, x, z);
+        let name = format!("Dead Tree {}", i + 1);
+        mesh(
+            s,
+            &name,
+            PrimitiveMesh::Cylinder,
+            at(Vec3::new(x, y + tall * 0.5, z), Vec3::new(0.35, tall * 0.5, 0.35), 0.0),
+            BARK,
+        );
+        // Two bare branches.
+        for (k, lean) in [(0, 38.0f32), (1, -46.0)] {
+            let h = y + tall * (0.62 + 0.14 * k as f32);
+            let mut t = Transform::from_position(Vec3::new(x, h, z))
+                .with_euler(Vec3::new(0.0, 60.0 * i as f32 + 120.0 * k as f32, lean));
+            t.scale = Vec3::new(0.14, 1.3, 0.14);
+            mesh(s, &format!("{name} Branch {}", k + 1), PrimitiveMesh::Cylinder, t, BARK);
+        }
+    }
+}
+
+fn demo_scene(d: &TerrainData) -> Scene {
+    let mut s = Scene::default_3d("MoonDemo");
+    let eye = (0.0, 0.0);
+    if let Some(cam) = s.find_by_name("Main Camera") {
+        let y = ground(d, eye.0, eye.1) + 2.2;
+        s.set_transform(
+            cam,
+            Transform::from_position(Vec3::new(eye.0, y, eye.1))
+                .with_euler(Vec3::new(-7.0, 158.0, 0.0)),
+        );
+        let mut c = s
+            .world
+            .get::<&mut misty_engine::scene::Camera>(cam)
+            .unwrap();
+        c.far = 3000.0;
+    }
+    if let Some(sun) = s.find_by_name("Directional Light") {
+        // The sun 24° below the northern horizon: night. The moon takes over this light.
+        let towards = misty_engine::moon::from_az_alt(340.0, -24.0);
+        s.set_transform(
+            sun,
+            Transform::from_position(Vec3::new(0.0, 50.0, 0.0))
+                .with_euler(misty_engine::hdri::sun_euler(towards)),
+        );
+        let mut l = s.world.get::<&mut Light>(sun).unwrap();
+        l.color = [1.0, 0.95, 0.88];
+        l.intensity = 1.6;
+        l.shadows = Shadows::Soft;
+    }
+    let m = &mut s.render_settings.moon;
+    m.mode = MoonMode::Manual;
+    m.azimuth = MOON_AZIMUTH;
+    m.altitude = MOON_ALTITUDE;
+    m.phase = 0.12;
+    m.size = 5.0;
+    m.light_intensity = 0.45;
+    m.stars = 1.5;
+    s.render_settings.skybox.atmosphere_thickness = 0.9;
+
+    let terrain = s.spawn("Terrain", None);
+    s.set_transform(terrain, Transform::from_position(CORNER));
+    s.add(
+        terrain,
+        Terrain {
+            terrain_data: DATA.into(),
+            ..Default::default()
+        },
+    );
+    s.add(terrain, TerrainCollider::default());
+    stones(&mut s, d);
+    cabin(&mut s, d);
+    trees(&mut s, d);
+    let runner = s.spawn("Moon Cycle", None);
+    s.add(
+        runner,
+        Scripts {
+            list: vec![ScriptRef {
+                path: SCRIPT.into(),
+                ..Default::default()
+            }],
+        },
+    );
+    let fx = s.spawn("Global Volume", None);
+    s.add(fx, volume());
+    s
+}
+
+#[test]
+#[ignore = "writes into SampleProject; run on purpose to regenerate"]
+fn write_moon_demo() {
+    let root = project();
+    let d = terrain_data();
+    d.save(&root.join(DATA)).unwrap();
+    std::fs::write(root.join(SCRIPT), CYCLE_LUA).unwrap();
+    demo_scene(&d).save(&root.join(SCENE)).unwrap();
+    // Metas for this generator's own files only.
+    for (rel, guid) in METAS {
+        let meta = root.join(format!("{rel}.meta"));
+        if !meta.exists() {
+            std::fs::write(meta, format!("{{\n  \"guid\": \"{guid}\"\n}}\n")).unwrap();
+        }
+    }
+}
+
+#[test]
+fn moon_demo_matches_its_generator() {
+    let root = project();
+    for rel in [GRASS, SCREE, ROCK, STONE, WALL, ROOF, BARK, WINDOW] {
+        assert!(root.join(rel).exists(), "{rel}");
+    }
+    let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
+    let generated = terrain_data();
+    assert_eq!(on_disk.layers, generated.layers);
+    assert_eq!(on_disk.size, generated.size);
+    for (a, b) in on_disk.heights.iter().zip(&generated.heights) {
+        assert!((a - b).abs() < 3.0 / 65535.0);
+    }
+    let lua = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
+    assert_eq!(lua.replace("\r\n", "\n"), CYCLE_LUA);
+    let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    crate::test_util::assert_json_close(
+        &scene.to_json(),
+        &demo_scene(&generated).to_json(),
+        "regenerate with write_moon_demo",
+    );
+    for (rel, _) in METAS {
+        assert!(root.join(format!("{rel}.meta")).exists(), "{rel}.meta");
+    }
+    // Night: the sun is down, the moon up in front of the camera and lighting the scene.
+    let lights = misty_engine::render_scene::lights(&scene);
+    let env = misty_engine::render_scene::environment(&scene, &lights);
+    assert!(env.sun.unwrap().direction.y < -0.3);
+    let moon = misty_engine::render::moon::moon_state(&env).unwrap();
+    assert!(moon.direction.y > 0.3);
+    let moonlit = misty_engine::render::moon::night_lights(&lights, &env).unwrap();
+    let main = moonlit
+        .iter()
+        .find(|l| l.kind == LightType::Directional)
+        .unwrap();
+    assert!((main.direction + moon.direction).length() < 1e-4, "lit from the moon");
+    let cam = misty_engine::render_scene::GameView::new(&scene, &NoMaterials)
+        .unwrap()
+        .camera;
+    assert!(cam.forward().dot(moon.direction) > 0.8, "moon in view");
+}
+
+struct NoMaterials;
+impl misty_engine::render_scene::MaterialSource for NoMaterials {
+    fn params(&self, _: Option<&str>) -> misty_engine::render::MaterialParams {
+        Default::default()
+    }
+}
+
+/// Playing works: the script runs the phase round without errors.
+#[test]
+fn moon_demo_plays() {
+    use misty_engine::runtime::Time;
+    use misty_engine::scripting::{Input, ScriptHost};
+    let root = project();
+    let data = TerrainData::load(&root.join(DATA)).unwrap();
+    let mut scene = demo_scene(&data);
+    let terrain = scene.find_by_name("Terrain").unwrap();
+    scene
+        .world
+        .get::<&mut Terrain>(terrain)
+        .unwrap()
+        .terrain_data = root.join(DATA).to_string_lossy().into_owned();
+    let physics = misty_engine::physics::Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    assert!(physics.warnings.is_empty(), "{:?}", physics.warnings);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut phases = Vec::new();
+    for _ in 0..600 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        assert!(logs.is_empty(), "{logs:?}");
+        phases.push(scene.render_settings.moon.phase);
+    }
+    // Ten seconds = a quarter of the cycle.
+    let (first, last) = (phases[0], *phases.last().unwrap());
+    assert!((last - first - 0.25).abs() < 0.01, "{first} → {last}");
+}

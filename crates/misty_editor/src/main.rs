@@ -125,6 +125,8 @@ mod sample_meadow;
 #[cfg(test)]
 mod sample_mesh_builder;
 #[cfg(test)]
+mod sample_moon;
+#[cfg(test)]
 mod sample_multiscene;
 #[cfg(test)]
 mod sample_navigation;

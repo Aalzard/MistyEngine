@@ -29,6 +29,7 @@ pub mod material_features;
 pub mod memory_snapshot;
 pub mod mesh_builder;
 pub mod models;
+pub mod moon;
 pub mod navigation;
 pub mod network;
 pub mod occlusion;

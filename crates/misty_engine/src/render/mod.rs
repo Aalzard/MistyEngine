@@ -31,6 +31,7 @@ pub mod material_v2;
 mod memory_items;
 pub mod mesh;
 mod misty_gi;
+pub mod moon;
 mod motion;
 pub mod overrides;
 pub mod particles;
@@ -1407,6 +1408,12 @@ impl Renderer {
             }
         } else {
             Frame { post, ..*frame }
+        };
+        // At night the main Directional Light turns to the moon (render/moon.rs).
+        let moonlit = moon::night_lights(frame.lights, frame.environment);
+        let frame = &match &moonlit {
+            Some(lights) => Frame { lights, ..*frame },
+            None => Frame { ..*frame },
         };
         // Frame Debugger ▸ Emission: every material unlit, showing only its emission.
         let emissive: Vec<MeshDraw>;
