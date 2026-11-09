@@ -141,11 +141,11 @@ pub fn floating_platform() -> Scene {
     let mut s = Scene::default_3d("Main");
     camera(
         &mut s,
-        Vec3::new(0.0, 7.0, -21.0),
-        Vec3::new(14.0, 0.0, 0.0),
+        Vec3::new(0.0, 5.5, -22.0),
+        Vec3::new(9.0, 0.0, 0.0),
         2000.0,
     );
-    sun(&mut s, Vec3::new(22.0, 205.0, 0.0), [1.0, 0.9, 0.78], 1.5);
+    sun(&mut s, Vec3::new(15.0, 205.0, 0.0), [1.0, 0.88, 0.74], 1.5);
     let sky = &mut s.render_settings.skybox;
     sky.sun_disk = SunDisk::HighQuality;
     // A soft blue-grey below the horizon instead of brown earth: the platform floats.

@@ -22,14 +22,14 @@ fn grey(v: f32) -> Rgb<u8> {
 /// White with faint grey lines every 64 pixels (one tile; the material repeats it).
 pub fn grid() -> RgbImage {
     RgbImage::from_fn(256, 256, |x, y| {
-        let line = |v: u32| v % 128 < 2 || v % 128 > 125;
+        let line = |v: u32| v % 128 < 1 || v % 128 > 126;
         let fine = |v: u32| v % 32 == 0;
         if line(x) || line(y) {
-            grey(0.80)
+            grey(0.86)
         } else if fine(x) || fine(y) {
-            grey(0.88)
+            grey(0.92)
         } else {
-            grey(0.95)
+            grey(0.97)
         }
     })
 }

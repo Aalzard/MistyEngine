@@ -35,8 +35,9 @@ const VIEW_DISTANCE: f32 = 3000.0;
 /// The player starts this far above the ground and drops onto it (a Character Controller
 /// starting exactly on a surface can slip through it).
 const SPAWN_HEIGHT: f32 = 0.1;
-/// The sun, as Euler angles of the Directional Light (degrees): 35° up.
-const SUN: Vec3 = Vec3::new(35.0, 200.0, 0.0);
+/// The sun, as Euler angles of the Directional Light (degrees): 24° up, so its glow is at the
+/// top of the player's first view.
+const SUN: Vec3 = Vec3::new(24.0, 200.0, 0.0);
 
 /// Write the First Person template into `root` (a project folder with its settings). Returns
 /// the Scene view to start with.
@@ -139,11 +140,12 @@ pub(super) fn scene(prefab: &Prefab) -> (Scene, SavedView) {
 
     let mut volume = scenes::sky_volume();
     // A light haze hides the ground's far edge and gives the plain some depth.
+    volume.color_adjustments.post_exposure = 0.6;
     let f = &mut volume.fog;
     f.active = true;
     f.volumetric = false;
     f.max_fog_distance = VIEW_DISTANCE;
-    f.attenuation_distance = 1500.0;
+    f.attenuation_distance = 4000.0;
     f.base_height = 0.0;
     f.maximum_height = 200.0;
     scenes::add_volume(&mut s, volume);
