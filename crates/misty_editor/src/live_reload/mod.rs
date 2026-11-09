@@ -14,9 +14,11 @@
 //!   cargo in the background. Restarting writes a restore file ([`restore`]) that the new
 //!   process reads back (`misty --restore <file>`).
 //!
-//! Everything polls file times (every half second, cheap `stat` calls) and waits until a file
-//! has stopped changing before reading it, so half-written files are never loaded. Nothing
-//! reloads in Play mode; changes are picked up after Stop.
+//! Everything polls file times every half second and waits until a file has stopped changing
+//! before reading it, so half-written files are never loaded. The `stat` calls themselves run on
+//! the engine's background file watch (`misty_engine::file_watch`): a poll reads its last stamps
+//! and checks a file on disk only when its stamp differs ([`changed_stamp`]). Nothing reloads in
+//! Play mode; changes are picked up after Stop.
 
 pub mod assets;
 pub mod dev_build;
