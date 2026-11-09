@@ -288,13 +288,20 @@ impl BuiltinLayout {
 }
 
 /// Default layout: Hierarchy | Scene+Game over Project+Console+Animation, Inspector on the right.
+/// Mirrored in a right-to-left UI (Inspector on the left, Hierarchy on the right).
 pub fn default_layout() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene, Tab::Game, Tab::CodeEditor]);
     let tree = dock.main_surface_mut();
-    let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
-    let [top, _bottom] =
-        tree.split_below(left, 0.66, vec![Tab::Project, Tab::Console, Tab::Animation]);
-    let [_scene, _hierarchy] = tree.split_left(top, 0.24, vec![Tab::Hierarchy]);
+    let bottom = vec![Tab::Project, Tab::Console, Tab::Animation];
+    if crate::i18n::is_rtl() {
+        let [views, _inspector] = tree.split_left(NodeIndex::root(), 0.22, vec![Tab::Inspector]);
+        let [top, _bottom] = tree.split_below(views, 0.66, bottom);
+        let [_scene, _hierarchy] = tree.split_right(top, 0.76, vec![Tab::Hierarchy]);
+    } else {
+        let [views, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
+        let [top, _bottom] = tree.split_below(views, 0.66, bottom);
+        let [_scene, _hierarchy] = tree.split_left(top, 0.24, vec![Tab::Hierarchy]);
+    }
     dock
 }
 

@@ -18,6 +18,7 @@ use super::bridge::{Event, Server};
 use super::protocol::{self, Session, Step};
 use super::shot::Shooter;
 use super::tools::{Cx, Job, Outcome, Then, ToolResult};
+use crate::i18n::tr;
 use crate::state::EditorState;
 
 /// A destructive request nobody answered is denied after this long.
@@ -320,10 +321,10 @@ fn confirm_ui(ctx: &egui::Context, b: &Bridge) -> Option<bool> {
                 let left = CONFIRM_TIMEOUT.saturating_sub(a.since.elapsed()).as_secs();
                 ui.weak(format!("Denied automatically in {left} s"));
                 ui.horizontal(|ui| {
-                    if ui.button("Allow").clicked() {
+                    if ui.button(tr!("Allow")).clicked() {
                         answer = Some(true);
                     }
-                    if ui.button("Deny").clicked() {
+                    if ui.button(tr!("Deny")).clicked() {
                         answer = Some(false);
                     }
                 });
@@ -336,12 +337,10 @@ fn confirm_ui(ctx: &egui::Context, b: &Bridge) -> Option<bool> {
 
 /// The AI Tools section of Edit ▸ Preferences.
 pub fn preferences_ui(ui: &mut egui::Ui, b: &mut Bridge, project: &Path) {
-    ui.strong("AI Tools");
+    ui.strong(tr!("AI Tools"));
     let r = ui
-        .checkbox(&mut b.allowed, "Allow AI tools (MCP)")
-        .on_hover_text(
-            "Lets AI agents on this computer (Claude, Codex…) drive the editor through a local, token-protected connection. Deleting, overwriting and building ask you first.",
-        );
+        .checkbox(&mut b.allowed, tr!("Allow AI tools (MCP)"))
+        .on_hover_text(tr!("Lets AI agents on this computer (Claude, Codex…) drive the editor through a local, token-protected connection. Deleting, overwriting and building ask you first."));
     if r.changed() {
         b.error = None;
         if let Err(e) = save_allowed(b.allowed) {
@@ -357,17 +356,17 @@ pub fn preferences_ui(ui: &mut egui::Ui, b: &mut Bridge, project: &Path) {
                 "Listening on 127.0.0.1:{port}, {} client(s) connected.",
                 b.clients()
             ));
-            ui.weak("Client command:");
+            ui.weak(tr!("Client command:"));
             let cmd = format!("misty --mcp-connect \"{}\"", project.display());
             ui.horizontal(|ui| {
                 ui.monospace(&cmd);
-                if ui.small_button("Copy").clicked() {
+                if ui.small_button(tr!("Copy")).clicked() {
                     ui.ctx().copy_text(cmd.clone());
                 }
             });
         }
         (None, None) => {
-            ui.weak("Off: no AI client can reach this editor.");
+            ui.weak(tr!("Off: no AI client can reach this editor."));
         }
     }
 }

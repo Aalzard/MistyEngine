@@ -1,5 +1,6 @@
 //! The Settings page (Learn is in `learn.rs`).
 
+use crate::i18n::tr;
 use egui::RichText;
 
 use super::config::HubTheme;
@@ -7,11 +8,11 @@ use super::{Hub, style};
 
 pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
     let p = style::palette(hub.config.theme);
-    ui.heading(RichText::new("Settings").strong());
+    ui.heading(RichText::new(tr!("Settings")).strong());
     ui.add_space(14.0);
     let mut changed = false;
-    section(ui, &p, "Projects", |ui| {
-        ui.label("Default location for new projects");
+    section(ui, &p, &tr!("Projects"), |ui| {
+        ui.label(tr!("Default location for new projects"));
         ui.horizontal(|ui| {
             let mut folder = hub.config.projects_folder().display().to_string();
             let edit = ui.add(egui::TextEdit::singleline(&mut folder).desired_width(420.0));
@@ -19,13 +20,13 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
                 hub.config.projects_folder = Some(folder.into());
                 changed = true;
             }
-            if ui.button("Browse…").clicked()
+            if ui.button(tr!("Browse…")).clicked()
                 && let Some(dir) = super::pick_folder(&hub.config.projects_folder())
             {
                 hub.config.projects_folder = Some(dir);
                 changed = true;
             }
-            if hub.config.projects_folder.is_some() && ui.button("Reset").clicked() {
+            if hub.config.projects_folder.is_some() && ui.button(tr!("Reset")).clicked() {
                 hub.config.projects_folder = None;
                 changed = true;
             }
@@ -33,9 +34,10 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
         ui.add_space(6.0);
         let recent = hub.config.recent.len();
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{recent} recent projects")).color(p.dim));
+            let text = tr!("{count} recent projects", count = recent);
+            ui.label(RichText::new(text).color(p.dim));
             if ui
-                .add_enabled(recent > 0, egui::Button::new("Clear list"))
+                .add_enabled(recent > 0, egui::Button::new(tr!("Clear list")))
                 .clicked()
             {
                 hub.config.recent.clear();
@@ -43,11 +45,15 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
             }
         });
     });
-    section(ui, &p, "Appearance", |ui| {
+    section(ui, &p, &tr!("Appearance"), |ui| {
         ui.horizontal(|ui| {
-            ui.label("Theme");
+            ui.label(tr!("Theme"));
             ui.add_space(8.0);
-            for (theme, label) in [(HubTheme::Dark, "Dark"), (HubTheme::Light, "Light")] {
+            for (theme, label) in [
+                (HubTheme::Dark, tr!("Dark")),
+                // "#theme": the colour scheme, not a light source.
+                (HubTheme::Light, tr!("Light#theme")),
+            ] {
                 if ui
                     .selectable_value(&mut hub.config.theme, theme, label)
                     .changed()
@@ -57,14 +63,22 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
             }
         });
         ui.label(
-            RichText::new("Applies to the Hub; the editor keeps its dark theme.")
+            RichText::new(tr!("Applies to the Hub; the editor keeps its dark theme."))
                 .small()
                 .color(p.dim),
         );
+        // The Hub and the editor share the language (Edit ▸ Preferences ▸ Language).
+        ui.add_space(6.0);
+        if let Some(lang) = crate::i18n::picker_row(ui, "hub_language") {
+            crate::i18n::set_language(lang);
+            hub.config.editor_language =
+                (lang != crate::i18n::Language::English).then(|| lang.code().to_owned());
+            changed = true;
+        }
     });
     if let Some(path) = &hub.config_path {
         ui.label(
-            RichText::new(format!("Settings are saved in {}", path.display()))
+            RichText::new(tr!("Settings are saved in {file}", file = path.display()))
                 .small()
                 .color(p.dim),
         );

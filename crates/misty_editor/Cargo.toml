@@ -37,6 +37,12 @@ tar = { version = "0.4.44", default-features = false }
 # MCP server (`mcp`): the live-editor bridge's random token, headless screenshots.
 getrandom = "0.3"
 pollster = "0.4"
+# Editor UI languages: the translation files (TOML), Arabic letter joining (presentation forms,
+# MIT) and right-to-left reordering (UAX #9, MIT / Apache-2.0) for egui, which draws characters
+# without shaping.
+toml = { version = "1.1", default-features = false, features = ["std", "parse", "serde"] }
+ar-reshaper = { version = "1.5", default-features = false }
+unicode-bidi = "0.3.18"
 
 [build-dependencies]
 # Windows exe icon + version info (compiles a resource script with the SDK's rc.exe).

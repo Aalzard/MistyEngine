@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use config::{HubConfig, HubTheme};
 use egui::{Color32, RichText, TextureHandle};
 
+use crate::i18n::tr;
 use crate::templates::Template;
 
 /// The same version the About window and the exe's version info show.
@@ -121,7 +122,11 @@ impl Hub {
         if let Some(path) = &self.config_path
             && let Err(e) = self.config.save(path)
         {
-            self.notice = Some(format!("Could not save {}: {e}", path.display()));
+            self.notice = Some(tr!(
+                "Could not save {file}: {error}",
+                file = path.display(),
+                error = e
+            ));
         }
     }
 
@@ -133,9 +138,9 @@ impl Hub {
     /// Open `project` in the editor (recorded as most recent).
     fn open_project(&mut self, project: &Path) {
         if !project.join("Assets").is_dir() {
-            self.notice = Some(format!(
-                "{} is not a Misty project (it has no Assets folder).",
-                project.display()
+            self.notice = Some(tr!(
+                "{folder} is not a Misty project (it has no Assets folder).",
+                folder = project.display()
             ));
             return;
         }
@@ -157,8 +162,13 @@ impl Hub {
             .frame(egui::Frame::NONE)
             .show_separator_line(false)
             .show(ui, |ui| title_bar(ui, &p, self.config.theme));
-        egui::Panel::left("hub_nav")
-            .exact_size(216.0)
+        // The page links sit on the reading side: the right in a right-to-left UI.
+        let nav = if crate::i18n::is_rtl() {
+            egui::Panel::right("hub_nav")
+        } else {
+            egui::Panel::left("hub_nav")
+        };
+        nav.exact_size(216.0)
             .resizable(false)
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(p.nav).inner_margin(egui::Margin {
@@ -216,14 +226,14 @@ impl Hub {
         });
         ui.add_space(26.0);
         let links = [
-            (Page::Projects, "🗀", "Projects"),
-            (Page::Learn, "🎓", "Learn"),
-            (Page::Settings, "⚙", "Settings"),
+            (Page::Projects, "🗀", tr!("Projects")),
+            (Page::Learn, "🎓", tr!("Learn")),
+            (Page::Settings, "⚙", tr!("Settings")),
         ];
         for (page, icon, label) in links {
             let selected =
                 self.page == page && (self.new_project.is_none() || page == Page::Projects);
-            if nav_item(ui, &p, icon, label, selected).clicked() {
+            if nav_item(ui, &p, icon, &label, selected).clicked() {
                 self.page = page;
                 if page != Page::Projects && self.new_project.as_ref().is_some_and(|n| !n.busy()) {
                     self.new_project = None;
@@ -280,7 +290,14 @@ fn title_bar(ui: &mut egui::Ui, p: &style::Palette, theme: config::HubTheme) {
         hover,
     };
     let title = crate::title_bar::title_job("Misty Hub", "", &bar);
-    crate::title_bar::show(ui, &bar, title, |ui| ui.max_rect().left());
+    // No menus: their edge is the near end of the bar.
+    crate::title_bar::show(ui, &bar, title, |ui| {
+        if crate::i18n::is_rtl() {
+            ui.max_rect().right()
+        } else {
+            ui.max_rect().left()
+        }
+    });
 }
 
 fn nav_item(
@@ -303,20 +320,28 @@ fn nav_item(
     let color = if selected { p.text } else { p.dim };
     let font = egui::FontId::proportional(14.5);
     let y = rect.center().y;
+    // Icon then label from the reading side (mirrored in a right-to-left UI).
+    let (icon_pos, label_pos, align) = if crate::i18n::is_rtl() {
+        (
+            egui::pos2(rect.right() - 12.0, y),
+            egui::pos2(rect.right() - 40.0, y),
+            egui::Align2::RIGHT_CENTER,
+        )
+    } else {
+        (
+            egui::pos2(rect.left() + 12.0, y),
+            egui::pos2(rect.left() + 40.0, y),
+            egui::Align2::LEFT_CENTER,
+        )
+    };
     ui.painter().text(
-        egui::pos2(rect.left() + 12.0, y),
-        egui::Align2::LEFT_CENTER,
+        icon_pos,
+        align,
         icon,
         font.clone(),
         if selected { style::ACCENT } else { p.dim },
     );
-    ui.painter().text(
-        egui::pos2(rect.left() + 40.0, y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        font,
-        color,
-    );
+    ui.painter().text(label_pos, align, label, font, color);
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label)
     });

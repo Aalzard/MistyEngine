@@ -6,6 +6,7 @@ use misty_engine::render::{FogDebug, FogSettings, Frame, GridPlane, PostSettings
 
 use super::AssetPayload;
 use crate::branding::icons::{self, Icon};
+use crate::i18n::tr;
 use crate::scene_camera::{AxisView, SceneCamera};
 use crate::state::{EditorState, Tool, object_icon};
 use crate::theme;
@@ -474,7 +475,7 @@ fn speed_overlay(ui: &Ui, rect: Rect, cam: &SceneCamera) {
         return;
     };
     let at = pos2(rect.center().x, rect.bottom() - 28.0);
-    let text = format!("Camera Speed {speed:.2}");
+    let text = tr!("Camera Speed {speed}", speed = format!("{speed:.2}"));
     let font = FontId::proportional(13.0);
     let galley = ui
         .painter()
@@ -561,12 +562,12 @@ fn tools_overlay(ui: &mut Ui, rect: Rect, state: &mut EditorState) {
         let r = slot(i as f32, 0.0);
         let selected = state.tool == tool;
         let clicked = match tool.brand_icon() {
-            Some(icon) => icons::button_at(ui, r, icon, selected, tool.tooltip()).clicked(),
+            Some(icon) => icons::button_at(ui, r, icon, selected, &tr(tool.tooltip())).clicked(),
             None => {
                 let b = egui::Button::new(egui::RichText::new(tool.icon()).size(15.0))
                     .selected(selected)
                     .frame_when_inactive(false);
-                ui.put(r, b).on_hover_text(tool.tooltip()).clicked()
+                ui.put(r, b).on_hover_text(tr(tool.tooltip())).clicked()
             }
         };
         if clicked {
@@ -581,7 +582,8 @@ fn tools_overlay(ui: &mut Ui, rect: Rect, state: &mut EditorState) {
         egui::Stroke::new(1.0, line.gamma_multiply(0.6)),
     );
     let grid = &mut state.scene_view.grid;
-    if icons::button_at(ui, r, Icon::Grid, *grid, "Toggle grid visibility").clicked() {
+    let tip = tr!("Toggle grid visibility");
+    if icons::button_at(ui, r, Icon::Grid, *grid, &tip).clicked() {
         *grid = !*grid;
     }
 }
@@ -707,27 +709,35 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
     let s = &mut *state;
     let mut quality_edited = false;
     panel_toolbar(ui, |ui| {
-        let pivot = if s.pivot_center { "Center" } else { "Pivot" };
+        let pivot = if s.pivot_center {
+            tr!("Center")
+        } else {
+            tr!("Pivot")
+        };
         egui::ComboBox::from_id_salt("scene_pivot")
             .selected_text(pivot)
             .width(64.0)
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut s.pivot_center, false, "Pivot");
-                ui.selectable_value(&mut s.pivot_center, true, "Center");
+                ui.selectable_value(&mut s.pivot_center, false, tr!("Pivot"));
+                ui.selectable_value(&mut s.pivot_center, true, tr!("Center"));
             });
-        let space = if s.global_space { "Global" } else { "Local" };
+        let space = if s.global_space {
+            tr!("Global")
+        } else {
+            tr!("Local")
+        };
         egui::ComboBox::from_id_salt("scene_space")
             .selected_text(space)
             .width(64.0)
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut s.global_space, true, "Global");
-                ui.selectable_value(&mut s.global_space, false, "Local");
+                ui.selectable_value(&mut s.global_space, true, tr!("Global"));
+                ui.selectable_value(&mut s.global_space, false, tr!("Local"));
             });
         // Grid snapping needs the world-aligned handle, like the familiar toolbar toggle.
         let snap_tip =
-            "Toggle grid snapping (Global handle only). Hold Ctrl to snap by increments.";
+            tr!("Toggle grid snapping (Global handle only). Hold Ctrl to snap by increments.");
         let snap_button = ui.add_enabled_ui(s.global_space, |ui| {
-            toggle_button(ui, s.snap.grid_snap, "🧲", snap_tip)
+            toggle_button(ui, s.snap.grid_snap, "🧲", &snap_tip)
         });
         if snap_button.inner.clicked() {
             s.snap.grid_snap = !s.snap.grid_snap;
@@ -743,33 +753,34 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 crate::scene_icons::menu(ui, &mut sv.icons)
             })
             .0
-            .on_hover_text("Gizmo icon size and color");
+            .on_hover_text(tr!("Gizmo icon size and color"));
             if std::mem::take(&mut sv.open_icon_menu) {
                 crate::widgets::open_dropdown(ui.ctx(), &icon_menu);
             }
-            if toggle_button(ui, sv.gizmos, "Gizmos", "Toggle gizmos").clicked() {
+            let (name, tip) = (tr!("Gizmos"), tr!("Toggle gizmos"));
+            if toggle_button(ui, sv.gizmos, name, &tip).clicked() {
                 sv.gizmos = !sv.gizmos;
             }
             crate::widgets::dropdown(ui, "📷 ⏷", |ui| camera_settings(ui, &mut sv.camera))
                 .0
-                .on_hover_text("Scene camera settings");
+                .on_hover_text(tr!("Scene camera settings"));
             let fx_menu = crate::widgets::dropdown(ui, "⏷", |ui| {
                 let fx = &mut sv.effects;
-                ui.checkbox(&mut fx.skybox, "Skybox");
-                ui.checkbox(&mut fx.fog, "Fog");
-                ui.checkbox(&mut fx.clouds, "Clouds");
-                ui.checkbox(&mut fx.glows, "Halos & Flares");
-                ui.checkbox(&mut fx.screen_space, "Screen Space GI & Reflections");
-                ui.checkbox(&mut fx.post_processing, "Post Processing");
+                ui.checkbox(&mut fx.skybox, tr!("Skybox"));
+                ui.checkbox(&mut fx.fog, tr!("Fog"));
+                ui.checkbox(&mut fx.clouds, tr!("Clouds"));
+                ui.checkbox(&mut fx.glows, tr!("Halos & Flares"));
+                ui.checkbox(&mut fx.screen_space, tr!("Screen Space GI & Reflections"));
+                ui.checkbox(&mut fx.post_processing, tr!("Post Processing"));
             })
             .0
-            .on_hover_text("Scene view effects");
+            .on_hover_text(tr!("Scene view effects"));
             crate::tutorials::targets::mark_response(ui, "scene.effects_menu", &fx_menu);
             let fx_toggle = toggle_button(
                 ui,
                 sv.skybox,
                 "☁",
-                "Toggle skybox, fog, clouds, halos and post-processing",
+                &tr!("Toggle skybox, fog, clouds, halos and post-processing"),
             );
             crate::tutorials::targets::mark(
                 ui,
@@ -780,29 +791,32 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 sv.skybox = !sv.skybox;
             }
 
-            if toggle_button(ui, sv.audio, "🔊", "Toggle audio").clicked() {
+            if toggle_button(ui, sv.audio, "🔊", &tr!("Toggle audio")).clicked() {
                 sv.audio = !sv.audio;
             }
-            if toggle_button(ui, sv.lighting, "💡", "Toggle scene lighting").clicked() {
+            if toggle_button(ui, sv.lighting, "💡", &tr!("Toggle scene lighting")).clicked() {
                 sv.lighting = !sv.lighting;
             }
-            if toggle_button(ui, sv.is_2d, "2D", "Toggle 2D view").clicked() {
+            if toggle_button(ui, sv.is_2d, "2D", &tr!("Toggle 2D view")).clicked() {
                 sv.is_2d = !sv.is_2d;
             }
-            let quality_menu = crate::widgets::dropdown(ui, "Quality ⏷", |ui| {
+            let quality_label = tr!("Quality ⏷");
+            let quality_menu = crate::widgets::dropdown(ui, &quality_label, |ui| {
                 quality_edited |= crate::scene_quality::menu(ui, quality)
             })
             .0
-            .on_hover_text("Quality level, anti-aliasing, render scale and upscale filter");
+            .on_hover_text(tr!(
+                "Quality level, anti-aliasing, render scale and upscale filter"
+            ));
             if std::mem::take(&mut sv.open_quality_menu) {
                 crate::widgets::open_dropdown(ui.ctx(), &quality_menu);
             }
             egui::ComboBox::from_id_salt("scene_draw_mode")
-                .selected_text(DRAW_MODES[sv.draw_mode])
+                .selected_text(tr(DRAW_MODES[sv.draw_mode]))
                 .width(110.0)
                 .show_ui(ui, |ui| {
                     for (i, m) in DRAW_MODES.iter().enumerate() {
-                        ui.selectable_value(&mut sv.draw_mode, i, *m);
+                        ui.selectable_value(&mut sv.draw_mode, i, tr(m));
                     }
                 });
         });
@@ -818,17 +832,17 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
     use crate::scene_camera::CameraSettings;
     ui.set_min_width(240.0);
     let s = &mut cam.settings;
-    ui.strong("Scene Camera");
+    ui.strong(tr!("Scene Camera"));
     egui::Grid::new("scene_cam_settings")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Field of View");
+            ui.label(tr!("Field of View"));
             ui.add(egui::Slider::new(&mut s.fov, 4.0..=120.0).suffix("°"));
             ui.end_row();
-            ui.label("Dynamic Clipping");
+            ui.label(tr!("Dynamic Clipping"));
             ui.checkbox(&mut s.dynamic_clipping, "");
             ui.end_row();
-            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label("Clipping Near"));
+            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label(tr!("Clipping Near")));
             ui.add_enabled(
                 !s.dynamic_clipping,
                 egui::DragValue::new(&mut s.near)
@@ -836,7 +850,7 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
                     .range(0.001..=100.0),
             );
             ui.end_row();
-            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label("Clipping Far"));
+            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label(tr!("Clipping Far")));
             ui.add_enabled(
                 !s.dynamic_clipping,
                 egui::DragValue::new(&mut s.far)
@@ -846,25 +860,25 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
             ui.end_row();
         });
     ui.separator();
-    ui.strong("Navigation");
+    ui.strong(tr!("Navigation"));
     egui::Grid::new("scene_cam_nav")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Camera Speed")
-                .on_hover_text("Fly speed (right mouse + scroll changes it while flying)");
+            ui.label(tr!("Camera Speed"))
+                .on_hover_text(tr!("Fly speed (right mouse + scroll changes it while flying)"));
             ui.add(egui::Slider::new(&mut s.speed, CameraSettings::SPEED_RANGE).logarithmic(true));
             ui.end_row();
-            ui.label("Acceleration")
-                .on_hover_text("Flying speeds up while a key is held");
+            ui.label(tr!("Acceleration"))
+                .on_hover_text(tr!("Flying speeds up while a key is held"));
             ui.checkbox(&mut s.acceleration, "");
             ui.end_row();
-            ui.label("Easing")
-                .on_hover_text("Moves ease in and out. Off, the camera follows input exactly");
+            ui.label(tr!("Easing"))
+                .on_hover_text(tr!("Moves ease in and out. Off, the camera follows input exactly"));
             ui.checkbox(&mut s.easing, "");
             ui.end_row();
             ui.add_enabled_ui(s.easing, |ui| {
-                ui.label("Damping")
-                    .on_hover_text("How long flying and wheel zoom ease in and glide out")
+                ui.label(tr!("Damping"))
+                    .on_hover_text(tr!("How long flying and wheel zoom ease in and glide out"))
             });
             ui.add_enabled(
                 s.easing,
@@ -874,9 +888,7 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
             );
             ui.end_row();
             ui.add_enabled_ui(s.easing, |ui| {
-                ui.label("Look Smoothing").on_hover_text(
-                    "Smoothing of mouse look, orbit and pan. Keep it small: 0.012 s is under one frame at 60 FPS",
-                )
+                ui.label(tr!("Look Smoothing")).on_hover_text(tr!("Smoothing of mouse look, orbit and pan. Keep it small: 0.012 s is under one frame at 60 FPS"))
             });
             ui.add_enabled(
                 s.easing,
@@ -886,7 +898,7 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
             );
             ui.end_row();
         });
-    if ui.small_button("Reset").clicked() {
+    if ui.small_button(tr!("Reset")).clicked() {
         *s = CameraSettings::default();
     }
 }

@@ -64,7 +64,8 @@ pub fn bold(ctx: &egui::Context, text: impl Into<String>) -> egui::RichText {
         .color(Color32::from_rgb(232, 232, 232))
 }
 
-/// Use the OS UI font when present, with a symbol font as glyph fallback for icons.
+/// Use the OS UI font when present, with a symbol font as glyph fallback for icons and the
+/// built-in Arabic font for Arabic letters.
 pub fn load_fonts(ctx: &egui::Context) {
     let candidates: [(&str, &str, bool); 3] = [
         ("ui", "C:/Windows/Fonts/segoeui.ttf", true),
@@ -92,6 +93,21 @@ pub fn load_fonts(ctx: &egui::Context) {
                 list.push(name.to_owned());
             }
         }
+    }
+    // Arabic: after the UI font (Segoe UI has Arabic, and its metrics set the row height), before
+    // the symbol fonts. Built in, so the Arabic UI works on any system; its presentation forms
+    // are what `i18n::shape` produces.
+    fonts.font_data.insert(
+        "arabic".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(
+            misty_engine::ui::rich::fonts::ARABIC_FONT_DATA,
+        )),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        let list = fonts.families.entry(family.clone()).or_default();
+        // Never first: the first font of a family sets its row height.
+        let at = list.iter().position(|n| n == "ui").map_or(1, |i| i + 1);
+        list.insert(at.min(list.len()), "arabic".to_owned());
     }
     // Bold titles: the bold face first, then the regular fallbacks for symbols.
     if let Ok(bytes) = std::fs::read("C:/Windows/Fonts/segoeuib.ttf") {

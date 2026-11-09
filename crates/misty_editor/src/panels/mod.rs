@@ -9,7 +9,7 @@ mod console;
 pub(crate) mod folder_colors;
 mod game;
 pub(crate) mod hierarchy;
-mod inspector;
+pub(crate) mod inspector;
 pub(crate) use inspector::create_physics_material;
 pub use inspector::preset_window;
 pub(crate) use inspector::script_fields;
@@ -75,7 +75,13 @@ impl TabViewer for PanelViewer<'_> {
             let title = crate::editor_scripts::windows::title(self.state, *id);
             return format!("{} {title}", tab.icon()).into();
         }
-        format!("{} {}", tab.icon(), tab.title()).into()
+        // In the editor's language; the icon goes on the reading side.
+        let title = crate::i18n::tr(tab.title());
+        if crate::i18n::is_rtl() {
+            format!("{title} {}", tab.icon()).into()
+        } else {
+            format!("{} {title}", tab.icon()).into()
+        }
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {

@@ -74,6 +74,7 @@ use misty_engine::scene::registry;
 
 use crate::actions::Action;
 use crate::branding::icons::{self, Icon};
+use crate::i18n::tr;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 
@@ -184,7 +185,7 @@ fn lock_row(ui: &mut Ui, state: &mut EditorState) {
             };
             if ui
                 .add(egui::Button::new(lock).frame(false))
-                .on_hover_text("Lock Inspector")
+                .on_hover_text(tr!("Lock Inspector"))
                 .clicked()
             {
                 state.inspector_locked = !state.inspector_locked;
@@ -243,13 +244,13 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
                 .changed();
         }
         changed |= ui
-            .add(egui::Checkbox::new(&mut go.is_static, "Static").indeterminate(mixed_static))
+            .add(egui::Checkbox::new(&mut go.is_static, tr!("Static")).indeterminate(mixed_static))
             .changed();
         changed |= occlusion_editors::static_menu(ui, &mut go);
     });
     ui.horizontal(|ui| {
         crate::widgets::input_fills(ui);
-        ui.label("Tag");
+        ui.label(tr!("Tag"));
         egui::ComboBox::from_id_salt("insp_tag")
             .selected_text(if mixed_tag {
                 mixed::DASH
@@ -265,9 +266,9 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
                     }
                 }
                 ui.separator();
-                open_tags |= ui.selectable_label(false, "Add Tag…").clicked();
+                open_tags |= ui.selectable_label(false, tr!("Add Tag…")).clicked();
             });
-        ui.label("Layer");
+        ui.label(tr!("Layer"));
         let layer_name = match names.layer_name(go.layer as i32) {
             "" => go.layer.to_string(),
             n => n.to_owned(),
@@ -285,7 +286,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
                     changed |= ui.selectable_value(&mut go.layer, i, label).changed();
                 }
                 ui.separator();
-                open_tags |= ui.selectable_label(false, "Add Layer…").clicked();
+                open_tags |= ui.selectable_label(false, tr!("Add Layer…")).clicked();
             });
     });
     if open_tags {
@@ -345,6 +346,62 @@ fn component_brand_icon(state: &EditorState, e: Entity, name: &str) -> Option<Ic
     }
 }
 
+/// Components whose names the translation files cover: the ones a new user meets first (the
+/// Inspector, Add Component and the Component menu show names in the editor's language when
+/// translated, in English otherwise).
+#[cfg(test)]
+pub fn translated_components() -> &'static [&'static str] {
+    &[
+        "Transform",
+        "Rect Transform",
+        "Camera",
+        "Light",
+        "Mesh Filter",
+        "Mesh Renderer",
+        "Skinned Mesh Renderer",
+        "Rigidbody",
+        "Box Collider",
+        "Sphere Collider",
+        "Capsule Collider",
+        "Mesh Collider",
+        "Character Controller",
+        "Hinge Joint",
+        "Fixed Joint",
+        "Spring Joint",
+        "Audio Source",
+        "Audio Listener",
+        "Audio Reverb Zone",
+        "Animator",
+        "Animation",
+        "Particle System",
+        "Visual Effect",
+        "Post-process Volume",
+        "Reflection Probe",
+        "Light Probe Group",
+        "LOD Group",
+        "Terrain",
+        "Terrain Collider",
+        "Wind Zone",
+        "Fog Volume",
+        "Decal Projector",
+        "Canvas",
+        "Canvas Scaler",
+        "Image",
+        "Text",
+        "Button",
+        "Localized Text",
+        "Sprite Renderer",
+        "Rigidbody 2D",
+        "Box Collider 2D",
+        "Circle Collider 2D",
+        "Nav Mesh Agent",
+        "NavMesh Surface",
+        "Video Player",
+        "Saveable",
+        "Water Surface",
+    ]
+}
+
 /// Foldout header with enable toggle and ⋮ menu, then the component's fields.
 fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str) {
     let e = targets[0];
@@ -368,7 +425,7 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
                 state.mark_edited(&format!("{verb} {name}"));
             }
         }
-        let bold = theme::bold(ui.ctx(), name);
+        let bold = theme::bold(ui.ctx(), tr(name));
         let title = match component_brand_icon(state, e, name) {
             Some(icon) => {
                 let tint = ui.visuals().strong_text_color();
@@ -443,21 +500,21 @@ fn component_menu(
         entities: all.clone(),
         name: n.clone(),
     };
-    act(ui, state, "Reset", true, reset);
+    act(ui, state, &tr!("Reset"), true, reset);
     ui.separator();
     let remove = Action::RemoveComponent {
         entities: all.clone(),
         name: n.clone(),
     };
-    act(ui, state, "Remove Component", removable, remove);
-    for (label, dir) in [("Move Up", -1), ("Move Down", 1)] {
+    act(ui, state, &tr!("Remove Component"), removable, remove);
+    for (label, dir) in [(tr!("Move Up"), -1), (tr!("Move Down"), 1)] {
         let enabled = single && can_move(state, e, name, dir);
         let entity = e;
         let name = n.clone();
         act(
             ui,
             state,
-            label,
+            &label,
             enabled,
             Action::MoveComponent { entity, name, dir },
         );
@@ -467,12 +524,12 @@ fn component_menu(
         entity: e,
         name: n.clone(),
     };
-    act(ui, state, "Copy Component", true, copy);
+    act(ui, state, &tr!("Copy Component"), true, copy);
     let as_new = targets.iter().any(|t| can_paste_as_new(state, *t));
     let paste_new = Action::PasteComponentAsNew {
         entities: all.clone(),
     };
-    act(ui, state, "Paste Component As New", as_new, paste_new);
+    act(ui, state, &tr!("Paste Component As New"), as_new, paste_new);
     let can_paste = state
         .component_clipboard
         .as_ref()
@@ -481,7 +538,7 @@ fn component_menu(
         entities: all,
         name: n,
     };
-    act(ui, state, "Paste Component Values", can_paste, paste);
+    act(ui, state, &tr!("Paste Component Values"), can_paste, paste);
     if single {
         prefab_overrides::component_menu(ui, state, name);
     }
@@ -722,7 +779,7 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         material::material_asset(ui, state, rel);
         material::preview(ui, state, rel);
     } else {
-        ui.weak("No import settings for this asset.");
+        ui.weak(tr!("No import settings for this asset."));
     }
 }
 
@@ -764,12 +821,14 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                     }
                 });
             ui.add_space(6.0);
-            ui.label(crate::theme::bold(ui.ctx(), "Root components"));
+            ui.label(crate::theme::bold(ui.ctx(), tr!("Root components")));
             for c in prefab.root_components() {
                 ui.label(format!("{} {c}", editors::icon(&c)));
             }
             ui.add_space(6.0);
-            ui.weak("Drag into the Scene view or Hierarchy to create an instance.");
+            ui.weak(tr!(
+                "Drag into the Scene view or Hierarchy to create an instance."
+            ));
         }
         Err(err) => {
             ui.colored_label(theme::AXIS_X, err);
@@ -786,7 +845,7 @@ fn prefab_asset_actions(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         .and_then(|p| p.base().map(str::to_owned));
     if let Some(base) = base {
         ui.horizontal(|ui| {
-            ui.label("Variant of");
+            ui.label(tr!("Variant of"));
             let text = format!(
                 "{} {}",
                 crate::state::PREFAB_ICON,
@@ -804,8 +863,8 @@ fn prefab_asset_actions(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         let model = crate::prefabs::read_only(rel);
         if ui
-            .add_enabled(!model, egui::Button::new("Open Prefab"))
-            .on_hover_text("Edit it in Prefab Mode")
+            .add_enabled(!model, egui::Button::new(tr!("Open Prefab")))
+            .on_hover_text(tr!("Edit it in Prefab Mode"))
             .clicked()
         {
             state.push(Action::OpenPrefab {
@@ -814,8 +873,8 @@ fn prefab_asset_actions(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             });
         }
         if ui
-            .button("Create Variant")
-            .on_hover_text("A new prefab that inherits from this one")
+            .button(tr!("Create Variant"))
+            .on_hover_text(tr!("A new prefab that inherits from this one"))
             .clicked()
         {
             state.push(Action::CreatePrefabVariant(rel.to_owned()));

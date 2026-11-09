@@ -5,6 +5,7 @@
 //! controls without visible text are named here ([`name`], `labelled_by`). The UI scale
 //! (Edit ▸ Preferences ▸ General) is egui's zoom factor, saved per user in `hub.json`.
 
+use crate::i18n::tr;
 use egui::{Response, WidgetInfo, WidgetType};
 
 pub const MIN_UI_SCALE: f32 = 0.75;
@@ -87,7 +88,7 @@ impl UiScale {
 pub fn ui_scale_row(ui: &mut egui::Ui, scale: &mut UiScale) -> Option<f32> {
     let mut picked = None;
     ui.horizontal(|ui| {
-        let label = ui.label("UI Scale");
+        let label = ui.label(tr!("UI Scale"));
         let r = egui::ComboBox::from_id_salt("pref_ui_scale")
             .selected_text(format!("{:.0}%", scale.value * 100.0))
             .show_ui(ui, |ui| {
@@ -103,9 +104,9 @@ pub fn ui_scale_row(ui: &mut egui::Ui, scale: &mut UiScale) -> Option<f32> {
                     }
                 }
             });
-        r.response
-            .labelled_by(label.id)
-            .on_hover_text("Size of the whole editor interface (text, buttons, panels)");
+        r.response.labelled_by(label.id).on_hover_text(tr!(
+            "Size of the whole editor interface (text, buttons, panels)"
+        ));
     });
     picked
 }

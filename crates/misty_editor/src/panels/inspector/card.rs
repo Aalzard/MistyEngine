@@ -139,18 +139,38 @@ pub fn fit_widgets(ui: &mut Ui, value_w: f32) {
     crate::widgets::input_fills(ui);
 }
 
-/// Bold sub-section header ("Shadow Settings") between groups of rows, outside a grid.
+/// A property row's label (the left column). In a right-to-left UI it is right-aligned, next to
+/// its value.
+pub fn prop_label(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> Response {
+    if !crate::i18n::is_rtl() {
+        return ui.label(text);
+    }
+    let w = label_width_or(ui, 110.0);
+    let h = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(
+        egui::vec2(w, h),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            ui.set_min_width(w);
+            ui.add(egui::Label::new(text).truncate())
+        },
+    )
+    .inner
+}
+
+/// Bold sub-section header ("Shadow Settings") between groups of rows, outside a grid (shown in
+/// the editor's language).
 pub fn sub_header(ui: &mut Ui, title: &str) -> Response {
     ui.add_space(6.0);
-    let text = theme::bold(ui.ctx(), title);
+    let text = theme::bold(ui.ctx(), crate::i18n::tr(title));
     let r = ui.label(text);
     ui.add_space(1.0);
     r
 }
 
-/// Bold sub-section header as its own row inside a [`grid`].
+/// Bold sub-section header as its own row inside a [`grid`] (shown in the editor's language).
 pub fn grid_sub_header(ui: &mut Ui, title: &str) {
-    let text = theme::bold(ui.ctx(), title);
+    let text = theme::bold(ui.ctx(), crate::i18n::tr(title));
     ui.label(text);
     ui.end_row();
 }

@@ -3,6 +3,7 @@
 use egui::{RichText, Ui};
 
 use crate::console::LogLevel;
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
@@ -18,28 +19,31 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     );
 
     panel_toolbar(ui, |ui| {
-        if ui.button("Clear").clicked() {
+        if ui.button(tr!("Clear")).clicked() {
             c.clear();
         }
         ui.menu_button("⏷", |ui| {
-            ui.checkbox(&mut c.clear_on_play, "Clear on Play");
+            ui.checkbox(&mut c.clear_on_play, tr!("Clear on Play"));
         });
-        if toggle_button(ui, c.collapse, "Collapse", "Merge identical messages").clicked() {
+        let (name, tip) = (tr!("Collapse"), tr!("Merge identical messages"));
+        if toggle_button(ui, c.collapse, name, &tip).clicked() {
             c.collapse = !c.collapse;
         }
-        if toggle_button(ui, c.error_pause, "Error Pause", "Pause Play mode on error").clicked() {
+        let (name, tip) = (tr!("Error Pause"), tr!("Pause Play mode on error"));
+        if toggle_button(ui, c.error_pause, name, &tip).clicked() {
             c.error_pause = !c.error_pause;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let err = RichText::new(format!("⛔ {n_err}")).color(LogLevel::Error.color());
-            if toggle_button(ui, c.show_errors, err, "Show errors").clicked() {
+            if toggle_button(ui, c.show_errors, err, &tr!("Show errors")).clicked() {
                 c.show_errors = !c.show_errors;
             }
             let warn = RichText::new(format!("⚠ {n_warn}")).color(LogLevel::Warning.color());
-            if toggle_button(ui, c.show_warnings, warn, "Show warnings").clicked() {
+            if toggle_button(ui, c.show_warnings, warn, &tr!("Show warnings")).clicked() {
                 c.show_warnings = !c.show_warnings;
             }
-            if toggle_button(ui, c.show_info, format!("ℹ {n_info}"), "Show messages").clicked() {
+            let tip = tr!("Show messages");
+            if toggle_button(ui, c.show_info, format!("ℹ {n_info}"), &tip).clicked() {
                 c.show_info = !c.show_info;
             }
             search_field(ui, &mut c.search, 160.0);
@@ -111,7 +115,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                                     crate::panels::code_editor::console_link(&e.message)
                                 {
                                     link_rect = Some(
-                                        ui.link(link).on_hover_text("Open in the Code Editor").rect,
+                                        ui.link(link)
+                                            .on_hover_text(tr!("Open in the Code Editor"))
+                                            .rect,
                                     );
                                 }
                                 if c.collapse {

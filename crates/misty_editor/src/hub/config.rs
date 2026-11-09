@@ -55,6 +55,10 @@ pub struct HubConfig {
     /// Edit ▸ Preferences ▸ UI Scale (the editor's zoom factor); `None` = 100 %.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_ui_scale: Option<f32>,
+    /// Edit ▸ Preferences ▸ Language: the editor UI's language code ("tr", "ar"); `None` =
+    /// English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_language: Option<String>,
 }
 
 impl HubConfig {
@@ -153,6 +157,19 @@ pub fn set_editor_ui_scale(scale: f32) -> Result<(), String> {
     let path = config_path().ok_or("no config folder")?;
     let mut c = HubConfig::load(&path);
     c.editor_ui_scale = ((scale - 1.0).abs() > 1e-3).then_some(scale);
+    c.save(&path)
+}
+
+/// The editor's UI language preference (a code: "tr"), if one was chosen.
+pub fn editor_language() -> Option<String> {
+    config_path().and_then(|p| HubConfig::load(&p).editor_language)
+}
+
+/// Save the editor's UI language preference ("en" is the default and is not stored).
+pub fn set_editor_language(code: &str) -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.editor_language = (code != "en").then(|| code.to_owned());
     c.save(&path)
 }
 

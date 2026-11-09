@@ -76,14 +76,16 @@ pub fn vec3_row_mixed(
         input_fills(ui);
         let h = ui.spacing().interact_size.y;
         let label_w = label_width_or(ui, 72.0);
-        ui.allocate_ui_with_layout(
-            egui::vec2(label_w, h),
-            egui::Layout::left_to_right(egui::Align::Center),
-            |ui| {
-                ui.set_min_width(label_w);
-                ui.add(egui::Label::new(label).truncate());
-            },
-        );
+        // Shown in the editor's language, right-aligned in a right-to-left UI.
+        let layout = if crate::i18n::is_rtl() {
+            egui::Layout::right_to_left(egui::Align::Center)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Center)
+        };
+        ui.allocate_ui_with_layout(egui::vec2(label_w, h), layout, |ui| {
+            ui.set_min_width(label_w);
+            ui.add(egui::Label::new(crate::i18n::tr(label)).truncate());
+        });
         ui.add_space(LABEL_GAP - ui.spacing().item_spacing.x);
         let avail = ui.available_width();
         // Per axis: letter (~10 px), field and two item gaps, so the row never overflows.
@@ -194,7 +196,7 @@ pub fn panel_toolbar<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 pub fn search_field(ui: &mut Ui, text: &mut String, width: f32) -> Response {
     let field = ui.add(
         egui::TextEdit::singleline(text)
-            .hint_text("🔍 Search")
+            .hint_text(crate::i18n::tr!("🔍 Search"))
             .desired_width(width),
     );
     crate::a11y::name(field, egui::WidgetType::TextEdit, "Search")

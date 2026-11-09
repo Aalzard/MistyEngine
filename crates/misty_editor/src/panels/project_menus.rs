@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use egui::{Rect, Ui};
 
 use crate::actions::{Action, AssetKind};
+use crate::i18n::tr;
 use crate::project::ProjectBrowser;
 
 /// What a menu or field asked for this frame (applied by the Project window).
@@ -19,7 +20,7 @@ pub struct Requests {
 /// Create ▸ entries (Project "+" button, Assets ▸ Create and the context menus).
 pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
     for kind in AssetKind::ALL {
-        if ui.button(kind.label()).clicked() {
+        if ui.button(tr(kind.label())).clicked() {
             actions.push(Action::CreateAsset(kind));
             ui.close();
         }
@@ -38,10 +39,10 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
             }
         }
     });
-    ui.menu_button("Testing", |ui| {
+    ui.menu_button(tr!("Testing"), |ui| {
         for mode in misty_engine::testing::TestMode::ALL {
             let kind = AssetKind::Test(mode);
-            if ui.button(kind.label()).clicked() {
+            if ui.button(tr(kind.label())).clicked() {
                 actions.push(Action::CreateAsset(kind));
                 ui.close();
             }
@@ -51,38 +52,40 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
 
 /// Shader ▸ Surface / Unlit Shader, and Material from Shader.
 fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
-    ui.menu_button("Shader", |ui| {
+    ui.menu_button(tr!("Shader"), |ui| {
         for kind in [AssetKind::SurfaceShader, AssetKind::UnlitShader] {
-            if ui.button(kind.label()).clicked() {
+            if ui.button(tr(kind.label())).clicked() {
                 actions.push(Action::CreateAsset(kind));
                 ui.close();
             }
         }
     });
-    ui.menu_button("Visual Effects", |ui| {
+    ui.menu_button(tr!("Visual Effects"), |ui| {
         for kind in [AssetKind::EffectGraph, AssetKind::EffectSubgraph] {
-            if ui.button(kind.label()).clicked() {
+            if ui.button(tr(kind.label())).clicked() {
                 actions.push(Action::CreateAsset(kind));
                 ui.close();
             }
         }
     });
-    ui.menu_button("Shader Graph", |ui| {
+    ui.menu_button(tr!("Shader Graph"), |ui| {
         for kind in [
             AssetKind::LitShaderGraph,
             AssetKind::UnlitShaderGraph,
             AssetKind::DecalShaderGraph,
             AssetKind::ShaderSubGraph,
         ] {
-            if ui.button(kind.label()).clicked() {
+            if ui.button(tr(kind.label())).clicked() {
                 actions.push(Action::CreateAsset(kind));
                 ui.close();
             }
         }
     });
     if ui
-        .button(AssetKind::MaterialFromShader.label())
-        .on_hover_text("A new material using the shader selected in the Project window")
+        .button(tr(AssetKind::MaterialFromShader.label()))
+        .on_hover_text(tr!(
+            "A new material using the shader selected in the Project window"
+        ))
         .clicked()
     {
         actions.push(Action::CreateAsset(AssetKind::MaterialFromShader));
@@ -92,7 +95,7 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
 
 /// Right-click menu of an asset or folder.
 pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Requests) {
-    ui.menu_button("Create", |ui| {
+    ui.menu_button(tr!("Create"), |ui| {
         create_items(ui, &mut req.actions);
         // Create ▸ Prefab Variant of the prefab (or model) right-clicked.
         if let Some(r) = rel
@@ -101,8 +104,8 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
         {
             ui.separator();
             if ui
-                .button("Prefab Variant")
-                .on_hover_text("A new prefab that inherits from this one")
+                .button(tr!("Prefab Variant"))
+                .on_hover_text(tr!("A new prefab that inherits from this one"))
                 .clicked()
             {
                 req.actions.push(Action::CreatePrefabVariant(r.clone()));
@@ -118,47 +121,47 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
     // Scenes: open next to the scenes already in the Hierarchy.
     if let Some(rel) = rel.as_ref().filter(|r| is_scene(r)) {
         ui.separator();
-        if ui.button("Open Scene").clicked() {
+        if ui.button(tr!("Open Scene")).clicked() {
             req.actions.push(Action::OpenScenePath(rel.clone()));
             ui.close();
         }
-        if ui.button("Open Scene Additive").clicked() {
+        if ui.button(tr!("Open Scene Additive")).clicked() {
             req.actions.push(Action::OpenSceneAdditive(rel.clone()));
             ui.close();
         }
     }
     ui.separator();
-    if ui.button("Rename").clicked() {
+    if ui.button(tr!("Rename")).clicked() {
         req.rename = Some(p.clone());
         ui.close();
     }
-    if ui.button("Duplicate").clicked() {
+    if ui.button(tr!("Duplicate")).clicked() {
         req.actions.push(Action::DuplicateAsset(p.clone()));
         ui.close();
     }
-    if ui.button("Delete").clicked() {
+    if ui.button(tr!("Delete")).clicked() {
         req.delete = Some(p.clone());
         ui.close();
     }
     ui.separator();
     if path.is_file() {
-        if ui.button("Reimport").clicked() {
+        if ui.button(tr!("Reimport")).clicked() {
             req.actions.push(Action::ReimportAsset(p.clone()));
             ui.close();
         }
-        if ui.button("Find References In Scene").clicked() {
+        if ui.button(tr!("Find References In Scene")).clicked() {
             req.actions.push(Action::FindReferencesInScene(p));
             ui.close();
         }
         ui.separator();
     }
     if let Some(rel) = rel
-        && ui.button("Copy Path").clicked()
+        && ui.button(tr!("Copy Path")).clicked()
     {
         req.copy_path = Some(rel);
         ui.close();
     }
-    if ui.button("Refresh").clicked() {
+    if ui.button(tr!("Refresh")).clicked() {
         req.actions.push(Action::Refresh);
         ui.close();
     }
@@ -166,13 +169,13 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
 
 /// Right-click menu of the empty area of a folder.
 pub fn folder_menu(ui: &mut Ui, folder: &Path, req: &mut Requests) {
-    ui.menu_button("Create", |ui| create_items(ui, &mut req.actions));
+    ui.menu_button(tr!("Create"), |ui| create_items(ui, &mut req.actions));
     if ui.button(explorer_label()).clicked() {
         req.actions
             .push(Action::ShowInExplorer(folder.to_path_buf()));
         ui.close();
     }
-    if ui.button("Refresh").clicked() {
+    if ui.button(tr!("Refresh")).clicked() {
         req.actions.push(Action::Refresh);
         ui.close();
     }
@@ -236,16 +239,16 @@ pub fn delete_dialog(
     let mut answer = None;
     let modal = egui::Modal::new(egui::Id::new("project_delete_confirm")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.heading("Delete selected asset?");
+        ui.heading(tr!("Delete selected asset?"));
         ui.label(rel);
         ui.add_space(4.0);
-        ui.weak("It will be moved to the Recycle Bin / Trash.");
+        ui.weak(tr!("It will be moved to the Recycle Bin / Trash."));
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button("Delete").clicked() {
+            if ui.button(tr!("Delete")).clicked() {
                 answer = Some(true);
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr!("Cancel")).clicked() {
                 answer = Some(false);
             }
         });

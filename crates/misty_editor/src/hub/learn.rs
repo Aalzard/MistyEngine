@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use egui::{Align, Layout, RichText};
 
 use super::{Hub, config, style};
+use crate::i18n::tr;
 use crate::templates::Template;
 use crate::tutorials::{self, TutorialInfo};
 
@@ -71,10 +72,12 @@ impl Hub {
 
 pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     let p = style::palette(hub.config.theme);
-    ui.heading(RichText::new("Learn").strong());
+    ui.heading(RichText::new(tr!("Learn")).strong());
     ui.label(
-        RichText::new("Step-by-step tutorials that teach the editor, right in the editor.")
-            .color(p.dim),
+        RichText::new(tr!(
+            "Step-by-step tutorials that teach the editor, right in the editor."
+        ))
+        .color(p.dim),
     );
     ui.add_space(14.0);
     let mut start = None;
@@ -90,10 +93,10 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
             }
             ui.add_space(6.0);
             ui.label(
-                RichText::new(
+                RichText::new(tr!(
                     "Each tutorial opens a project of yours (or the Tutorial Playground) on a new, \
-                     untitled scene.",
-                )
+                     untitled scene."
+                ))
                 .small()
                 .color(p.dim),
             );
@@ -121,28 +124,28 @@ fn row(ui: &mut egui::Ui, p: &style::Palette, t: &TutorialInfo, done: bool) -> b
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 3.0;
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(t.title).size(15.0).strong());
+                        ui.label(RichText::new(tr(t.title)).size(15.0).strong());
                         if done {
                             ui.label(
-                                RichText::new("✓ Done")
+                                RichText::new(tr!("✓ Done"))
                                     .small()
                                     .strong()
                                     .color(egui::Color32::from_rgb(110, 196, 120)),
                             );
                         }
                     });
-                    ui.label(RichText::new(t.description).color(p.dim));
+                    ui.label(RichText::new(tr(t.description)).color(p.dim));
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let label = if done { "Again" } else { "Start" };
+                    let label = if done { tr!("Again") } else { tr!("Start") };
                     let button = if done {
                         egui::Button::new(label)
                     } else {
-                        style::primary(label)
+                        style::primary(&label)
                     };
                     clicked = ui.add(button).clicked();
                     ui.label(
-                        RichText::new(format!("{} min", t.minutes))
+                        RichText::new(tr!("{minutes} min", minutes = t.minutes))
                             .small()
                             .color(p.dim),
                     );
@@ -174,13 +177,15 @@ fn pick_project(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette) {
     let modal = egui::Modal::new(egui::Id::new("hub_tutorial_pick")).show(ui.ctx(), |ui| {
         ui.set_width(420.0);
         ui.label(
-            RichText::new(format!("Start “{title}”"))
+            RichText::new(tr!("Start “{title}”", title = tr(title)))
                 .size(16.0)
                 .strong(),
         );
         ui.label(
-            RichText::new("Open it in which project? It starts on a new, untitled scene.")
-                .color(p.dim),
+            RichText::new(tr!(
+                "Open it in which project? It starts on a new, untitled scene."
+            ))
+            .color(p.dim),
         );
         ui.add_space(8.0);
         for path in &recent {
@@ -202,9 +207,12 @@ fn pick_project(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette) {
         let in_list = recent.iter().any(|r| config::same_path(r, &playground));
         if !in_list {
             let label = if playground.join("Assets").is_dir() {
-                format!("Open {PLAYGROUND}")
+                tr!("Open {project}", project = PLAYGROUND)
             } else {
-                format!("New {PLAYGROUND} (Floating Platform template)")
+                tr!(
+                    "New {project} (Floating Platform template)",
+                    project = PLAYGROUND
+                )
             };
             if ui.button(label).clicked() {
                 choice = Some(None);
@@ -212,7 +220,7 @@ fn pick_project(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette) {
         }
         ui.add_space(6.0);
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr!("Cancel")).clicked() {
                 ui.close();
             }
         });

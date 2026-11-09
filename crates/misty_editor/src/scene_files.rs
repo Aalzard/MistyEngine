@@ -9,6 +9,7 @@ use misty_engine::scene::file::EXTENSION;
 use misty_engine::scene::{Scene, SceneId};
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::tr;
 use crate::state::EditorState;
 
 /// Per-user editor state (not meant for version control, like a Library folder).
@@ -610,30 +611,39 @@ pub fn prompt_ui(ctx: &egui::Context, s: &mut EditorState) -> Option<AfterPrompt
     egui::Modal::new(egui::Id::new("scene_modified_prompt")).show(ctx, |ui| {
         ui.set_width(360.0);
         ui.heading(if several {
-            "Scenes Have Been Modified"
+            tr!("Scenes Have Been Modified")
         } else {
-            "Scene Has Been Modified"
+            tr!("Scene Has Been Modified")
         });
         ui.add_space(6.0);
-        let which = if several { "scenes" } else { "scene" };
-        ui.label(format!(
-            "Do you want to save the changes you made in the {which} {}?",
-            names.join(", ")
-        ));
-        ui.label(egui::RichText::new("Your changes will be lost if you don't save them.").weak());
+        let names = names.join(", ");
+        ui.label(if several {
+            tr!(
+                "Do you want to save the changes you made in the scenes {names}?",
+                names = names
+            )
+        } else {
+            tr!(
+                "Do you want to save the changes you made in the scene {names}?",
+                names = names
+            )
+        });
+        ui.label(
+            egui::RichText::new(tr!("Your changes will be lost if you don't save them.")).weak(),
+        );
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
+            if ui.button(tr!("Save")).clicked() {
                 if scenes.iter().all(|id| save_scene(s, *id)) {
                     result = Some(pending.clone());
                 }
                 close = true;
             }
-            if ui.button("Don't Save").clicked() {
+            if ui.button(tr!("Don't Save")).clicked() {
                 result = Some(pending.clone());
                 close = true;
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr!("Cancel")).clicked() {
                 close = true;
             }
         });
