@@ -24,7 +24,7 @@ pub struct Dependencies {
 }
 
 /// Extensions whose files are JSON documents that can reference other assets.
-const JSON_ASSETS: [&str; 17] = [
+const JSON_ASSETS: [&str; 18] = [
     "scene",
     "prefab",
     "mat",
@@ -43,6 +43,8 @@ const JSON_ASSETS: [&str; 17] = [
     "strings",
     // Tree recipes name their bark and leaf textures (terrain trees).
     "tree",
+    // Script Graphs name subgraph assets and prefabs.
+    "vgraph",
 ];
 
 fn ext(rel: &str) -> String {

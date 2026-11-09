@@ -272,6 +272,10 @@ pub struct World {
     pub cursor: CursorState,
     /// Multiplayer: mode, connections, spawned network objects.
     pub network: crate::network::NetSession,
+    /// Object variables of Script Graphs (`gameObject:GetVariable`).
+    pub graph_vars: crate::visual_script::ObjectVariables,
+    /// Custom events sent this frame, delivered after the callback or flow that sent them.
+    pub graph_events: Vec<crate::visual_script::runtime::CustomEvent>,
 }
 
 impl World {
@@ -332,6 +336,8 @@ impl World {
             video_events: Vec::new(),
             cursor: CursorState::default(),
             network,
+            graph_vars: Default::default(),
+            graph_events: Vec::new(),
         }
     }
 }
@@ -396,6 +402,10 @@ pub struct ScriptHost {
     ui: UiInteraction,
     /// Network class info cache and settle state.
     net: network_api::NetHostState,
+    /// Script Graphs running on objects.
+    graphs: crate::visual_script::GraphRuntime,
+    /// How long the last frame's Script Graph Update pass took.
+    graph_update_time: std::time::Duration,
 }
 
 impl ScriptHost {
@@ -472,6 +482,8 @@ impl ScriptHost {
             instances: Vec::new(),
             ui: UiInteraction::default(),
             net: Default::default(),
+            graphs: Default::default(),
+            graph_update_time: Default::default(),
         };
         let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = host.with_world(|w| {
             w.scene
@@ -579,6 +591,11 @@ impl ScriptHost {
     }
 
     fn instantiate(&mut self, e: Entity, slot: usize, script: &crate::scene::ScriptRef) {
+        if crate::visual_script::is_graph_path(&script.path) {
+            self.graphs
+                .instantiate(&self.lua, &self.root, e, slot, script);
+            return;
+        }
         let Some(class) = self.class(&script.path) else {
             return;
         };
@@ -689,8 +706,12 @@ impl ScriptHost {
         self.controller_hits();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
+            let delivered = self.deliver_custom_events();
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
+                if delivered {
+                    continue;
+                }
                 // Network objects need their scripts' Awake before OnNetworkSpawn.
                 self.network_settle();
                 return;
@@ -955,15 +976,17 @@ impl ScriptHost {
         }
     }
 
-    fn dispatch(&self, contacts: &[Contact]) {
+    fn dispatch(&mut self, contacts: &[Contact]) {
+        use crate::visual_script::compile::EventKind;
         for c in contacts {
-            let event = match (c.trigger, c.started) {
-                (true, true) => "OnTriggerEnter",
-                (true, false) => "OnTriggerExit",
-                (false, true) => "OnCollisionEnter",
-                (false, false) => "OnCollisionExit",
+            let (event, kind) = match (c.trigger, c.started) {
+                (true, true) => ("OnTriggerEnter", EventKind::TriggerEnter),
+                (true, false) => ("OnTriggerExit", EventKind::TriggerExit),
+                (false, true) => ("OnCollisionEnter", EventKind::CollisionEnter),
+                (false, false) => ("OnCollisionExit", EventKind::CollisionExit),
             };
             for (me, other) in [(c.a, c.b), (c.b, c.a)] {
+                self.graphs.contact(&self.lua, me, other, &kind);
                 for (i, inst) in self.instances.iter().enumerate() {
                     if inst.entity == me && self.runnable(inst) {
                         let arg = self
@@ -1072,9 +1095,17 @@ impl ScriptHost {
         }
 
         {
+            profile_scope!("ScriptGraphs.Start", Category::Scripts);
+            self.graphs.start_phase(&self.lua);
+            self.flush_spawned();
+        }
+
+        {
             // After Start (listeners added there hear this frame), before Update.
             profile_scope!("Input.Events", Category::Scripts);
             self.input_events(input_events);
+            self.graphs.input_phase(&self.lua);
+            self.flush_spawned();
         }
         {
             profile_scope!("UI.Events", Category::Ui);
@@ -1086,6 +1117,13 @@ impl ScriptHost {
             {
                 profile_scope!("Scripts.FixedUpdate", Category::Scripts);
                 self.call_all("FixedUpdate");
+                let fixed = self.with_world(|w| w.physics.fixed_dt);
+                self.graphs.fire_all(
+                    &self.lua,
+                    &crate::visual_script::compile::EventKind::FixedUpdate,
+                    &[crate::visual_script::Value::Float(fixed)],
+                );
+                self.flush_spawned();
             }
             profile_scope!("Physics.Step", Category::Physics);
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
@@ -1118,6 +1156,13 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.Update", Category::Scripts);
             self.call_all("Update");
+        }
+        {
+            profile_scope!("ScriptGraphs.Update", Category::Scripts);
+            let t = std::time::Instant::now();
+            self.graphs.update_phase(&self.lua, time.delta);
+            self.graph_update_time = t.elapsed();
+            self.flush_spawned();
         }
         {
             profile_scope!("Navigation.Update", Category::Navigation);
@@ -1156,6 +1201,12 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.LateUpdate", Category::Scripts);
             self.call_all("LateUpdate");
+            self.graphs.fire_all(
+                &self.lua,
+                &crate::visual_script::compile::EventKind::LateUpdate,
+                &[],
+            );
+            self.flush_spawned();
         }
         self.update_cameras(crate::vcam::BrainUpdate::LateUpdate, time.delta);
         self.process_destroy();
@@ -1393,6 +1444,8 @@ impl ScriptHost {
             });
             // Spawned network objects are despawned first (OnNetworkDespawn, clients told).
             self.network_destroying(&subtree);
+            // Script Graphs get OnDestroy while the objects still exist.
+            self.graphs.destroy(&self.lua, &subtree);
             let doomed: Vec<Entity> = self.with_world(|w| {
                 if !w.scene.contains(e) {
                     return Vec::new();
@@ -1474,6 +1527,115 @@ impl ScriptHost {
 
     pub fn instance_count(&self) -> usize {
         self.instances.len()
+    }
+
+    /// How long the last frame's Script Graph Update pass took (every graph's On Update,
+    /// Delays and timers).
+    pub fn graph_update_time(&self) -> std::time::Duration {
+        self.graph_update_time
+    }
+
+    /// Script Graphs running on objects.
+    pub fn graph_instance_count(&self) -> usize {
+        self.graphs.instance_count()
+    }
+
+    /// The Script Graph debugger (graph, breakpoints, watched object; hits, errors, pause).
+    pub fn graph_debugger(&mut self) -> &mut crate::visual_script::runtime::Debugger {
+        &mut self.graphs.debug
+    }
+
+    /// Value on a pin of the watched graph instance, as text (the debugger's hover).
+    pub fn graph_value(&self, node: u32, pin: &str, output: bool) -> Option<String> {
+        self.with_world(|w| {
+            self.graphs
+                .value(w, node, pin, output)
+                .map(|v| v.to_text(Some(&w.scene)))
+        })
+    }
+
+    /// Variables of the watched graph instance (name, value as text).
+    pub fn graph_variables(&self) -> Vec<(String, String)> {
+        self.with_world(|w| {
+            self.graphs
+                .watched_variables(w)
+                .into_iter()
+                .map(|(n, v)| (n, v.to_text(Some(&w.scene))))
+                .collect()
+        })
+    }
+
+    /// Between frames: step the flow paused at a breakpoint to the next node (`step`), or let
+    /// it run on.
+    pub fn graph_continue(&mut self, scene: &mut Scene, step: bool) {
+        let scene_in = std::mem::take(scene);
+        self.with_world(|w| w.scene = scene_in);
+        if step {
+            self.graphs.step(&self.lua);
+        } else {
+            self.graphs.resume(&self.lua);
+        }
+        self.flush_spawned();
+        *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// Object variables of an object (name, value), e.g. for tests and the Inspector.
+    pub fn object_variables(&self, e: Entity) -> Vec<(String, crate::visual_script::Value)> {
+        self.with_world(|w| {
+            w.graph_vars
+                .of(e)
+                .into_iter()
+                .map(|(n, v)| (n.to_string(), v))
+                .collect()
+        })
+    }
+
+    /// Custom events waiting (graphs' Send Custom Event, `gameObject:SendCustomEvent`):
+    /// delivered to Custom Event nodes and to Lua functions of that name. True when any were.
+    fn deliver_custom_events(&mut self) -> bool {
+        let mut any = false;
+        for _ in 0..256 {
+            let events = self.with_world(|w| std::mem::take(&mut w.graph_events));
+            if events.is_empty() {
+                return any;
+            }
+            any = true;
+            for ev in events {
+                self.graphs.custom(&self.lua, &ev);
+                self.custom_event_to_lua(&ev);
+            }
+        }
+        self.with_world(|w| w.graph_events.clear());
+        self.log(
+            LogKind::Error,
+            "Custom events kept sending more custom events; stopped".into(),
+        );
+        any
+    }
+
+    /// A custom event calls the function of its name on the target's Lua scripts (or every
+    /// object's, when broadcast).
+    fn custom_event_to_lua(&self, ev: &crate::visual_script::runtime::CustomEvent) {
+        for inst in &self.instances {
+            if ev.target.is_some_and(|t| t != inst.entity) || !self.runnable(inst) {
+                continue;
+            }
+            let Ok(t) = self.lua.registry_value::<Table>(&inst.table) else {
+                continue;
+            };
+            let Ok(Some(f)) = t.get::<Option<Function>>(&*ev.name) else {
+                continue;
+            };
+            let mut args = vec![Value::Table(t)];
+            for a in &ev.args {
+                args.push(
+                    crate::visual_script::lua_bridge::to_lua(&self.lua, a).unwrap_or(Value::Nil),
+                );
+            }
+            if let Err(e) = f.call::<()>(mlua::MultiValue::from_vec(args)) {
+                self.log(LogKind::Error, format!("{} ({}): {e}", inst.name, ev.name));
+            }
+        }
     }
 }
 

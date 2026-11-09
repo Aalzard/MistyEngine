@@ -195,6 +195,23 @@ impl InputSystem {
         self.sets.get(id)?.as_ref()
     }
 
+    /// The state of the action `name` (`Jump` or `Player/Jump`) in the loaded sets: the first
+    /// enabled one, else the first found (Script Graph input events).
+    pub fn action_state(&self, name: &str) -> Option<&super::state::ActionState> {
+        let mut first = None;
+        for set in self.sets.iter().flatten() {
+            if let Some((m, a)) = set.asset.find_action(name)
+                && let Some(st) = set.state(m, a)
+            {
+                if st.enabled {
+                    return Some(st);
+                }
+                first.get_or_insert(st);
+            }
+        }
+        first
+    }
+
     pub fn set_mut(&mut self, id: usize) -> Option<&mut ActionSet> {
         self.sets.get_mut(id)?.as_mut()
     }
