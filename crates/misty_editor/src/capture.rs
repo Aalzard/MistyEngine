@@ -307,6 +307,18 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_TERRAIN_TOOL=details` (raise, set_height, smooth, paint, holes, details, trees,
+    // place, settings) opens that Terrain Inspector tool; `MISTY_TERRAIN_ITEM=2` selects that
+    // palette item of it (texture layer, detail row, tree).
+    if let Some(tool) = std::env::var_os("MISTY_TERRAIN_TOOL") {
+        crate::terrain_tools::apply_env(
+            s,
+            &tool.to_string_lossy(),
+            std::env::var("MISTY_TERRAIN_ITEM")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+        );
+    }
     // `MISTY_EDIT_LIGHT_PROBES=1` turns on Edit Light Probes for the selected group.
     if std::env::var_os("MISTY_EDIT_LIGHT_PROBES").is_some() {
         s.light_probes.set_editing(true);

@@ -1,10 +1,12 @@
-//! Terrain and Terrain Collider Inspectors. The Terrain editor has a row of tool tabs (Raise or
-//! Lower, Set Height, Smooth, Paint Texture, Settings) with brush settings, the layer list and
-//! the terrain data settings; Paint Texture also holds the collapsible procedural sections of
-//! `terrain_rules` (Auto Paint Rules, Generate, Grass & Details, Cliffs, Color Harmony). Data edits go through `terrain_tools` (one undo step each);
-//! component fields return `true` like other editors.
+//! Terrain and Terrain Collider Inspectors. The Terrain editor has an icon tool bar (Raise or
+//! Lower, Set Height, Smooth, Paint Texture, Holes, Paint Details, Paint Trees, Place Objects,
+//! Settings), the brush section (shape picker, size, opacity, falloff), the texture layers as a
+//! palette of thumbnail cards with the selected layer's settings, and the terrain data settings;
+//! Paint Texture also holds the collapsible procedural sections of `terrain_rules` (Auto Paint
+//! Rules, Generate, Grass & Details, Cliffs, Color Harmony). Data edits go through
+//! `terrain_tools` (one undo step each); component fields return `true` like other editors.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Terrain, TerrainCollider};
 use misty_engine::terrain::{
@@ -14,7 +16,10 @@ use misty_engine::terrain::{
 
 use super::editors::grid;
 use super::slots::texture_slot;
+use crate::branding::icons::Icon;
+use crate::i18n::tr;
 use crate::state::EditorState;
+use crate::terrain_kit as kit;
 use crate::terrain_tools::{self, TerrainTool};
 use crate::tutorials::targets;
 
@@ -123,44 +128,91 @@ fn data_picker(
     ch
 }
 
+/// `[` and `]` make the brush smaller and larger while a terrain brush tool is open (not while
+/// typing in a field).
+fn brush_shortcuts(ui: &Ui, state: &mut EditorState) {
+    if !state.terrain_tools.tool.is_brush() || ui.ctx().egui_wants_keyboard_input() {
+        return;
+    }
+    let (smaller, larger) = ui.input(|i| {
+        (
+            i.key_pressed(egui::Key::OpenBracket),
+            i.key_pressed(egui::Key::CloseBracket),
+        )
+    });
+    let size = &mut state.terrain_tools.size;
+    if smaller {
+        *size = (*size / 1.2).max(0.5);
+    }
+    if larger {
+        *size = (*size * 1.2).min(300.0);
+    }
+}
+
+/// The tool's icon in the tool bar.
+pub fn tool_icon(tool: TerrainTool) -> Icon {
+    match tool {
+        TerrainTool::RaiseLower => Icon::TerrainRaise,
+        TerrainTool::SetHeight => Icon::TerrainSetHeight,
+        TerrainTool::Smooth => Icon::TerrainSmooth,
+        TerrainTool::Paint => Icon::TerrainPaint,
+        TerrainTool::Holes => Icon::TerrainHoles,
+        TerrainTool::Details => Icon::TerrainGrass,
+        TerrainTool::Trees => Icon::TerrainTree,
+        TerrainTool::Place => Icon::TerrainPlace,
+        TerrainTool::Settings => Icon::TerrainSettings,
+    }
+}
+
 fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut t) = state.scene.world.get::<&Terrain>(e).map(|c| (*c).clone()) else {
         return false;
     };
-    // Tool tabs (nine: they wrap in a narrow Inspector).
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        for tool in TerrainTool::ALL {
-            let selected = state.terrain_tools.tool == tool;
-            let b = egui::Button::new(RichText::new(tool.icon()).size(16.0))
-                .selected(selected)
-                .min_size(egui::vec2(30.0, 26.0));
-            let b = ui.add(b);
-            targets::header(ui, &format!("tool/{}", tool.label()), b.rect);
-            if b.on_hover_text(tool.label()).clicked() {
-                state.terrain_tools.tool = tool;
-            }
-        }
-    });
-    // The World Builder generates whole terrains: make it easy to find from here.
+    misty_engine::profile_scope!("Inspector.Terrain");
+    brush_shortcuts(ui, state);
+    // The tool bar: one icon per tool (they wrap in a narrow Inspector).
+    let current = state.terrain_tools.tool;
+    let tools: Vec<kit::Tool> = TerrainTool::ALL
+        .iter()
+        .map(|tool| kit::Tool {
+            icon: tool_icon(*tool),
+            label: tool.label(),
+            tip: tr(tool.help()),
+            selected: *tool == current,
+        })
+        .collect();
+    if let Some(i) = kit::tool_bar(ui, "terrain_tools", &tools, |ui, label, rect| {
+        targets::header(ui, &format!("tool/{label}"), rect)
+    }) {
+        state.terrain_tools.tool = TerrainTool::ALL[i];
+    }
+    let tool = state.terrain_tools.tool;
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
+        let accent = kit::accent(ui);
+        crate::branding::icons::image(ui, tool_icon(tool), 18.0, accent);
+        ui.label(
+            egui::RichText::new(tr(tool.label()))
+                .size(14.0)
+                .strong()
+                .color(ui.visuals().strong_text_color()),
+        );
+        // The World Builder generates whole terrains: make it easy to find from here.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let b = ui
-                .add(egui::Button::new("⛰ World Builder").min_size(egui::vec2(0.0, 22.0)))
-                .on_hover_text(
-                    "Generate this terrain from a template, noise, erosion, stamps and biomes \
-                    (opens the World Builder; creates one for this terrain if needed)",
-                );
+            let b = kit::icon_button(
+                ui,
+                Icon::TerrainRaise,
+                &tr!("World Builder"),
+                &tr!("Generate this terrain from a template, noise, erosion, stamps and biomes (opens the World Builder; creates one for this terrain if needed)"),
+            );
             targets::header(ui, "World Builder", b.rect);
             if b.clicked() {
                 crate::panels::world_builder::open_for_terrain(state, e);
             }
         });
     });
-    let tool = state.terrain_tools.tool;
-    super::card::sub_header(ui, tool.label());
-    ui.weak(tool.help());
-    ui.add_space(4.0);
+    ui.add(egui::Label::new(egui::RichText::new(tr(tool.help())).weak()).wrap());
+    ui.add_space(2.0);
 
     let path = t.terrain_data.clone();
     let data = store::get(&path).map(|(d, _)| d);
@@ -168,8 +220,10 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.colored_label(
             egui::Color32::from_rgb(230, 180, 60),
             match store::error(&path) {
-                Some(err) if !path.is_empty() => format!("Terrain data could not be loaded: {err}"),
-                _ => "Assign Terrain Data in the Settings tab.".into(),
+                Some(err) if !path.is_empty() => {
+                    tr!("Terrain data could not be loaded: {error}", error = err)
+                }
+                _ => tr!("Assign Terrain Data in the Settings tab."),
             },
         );
         return false;
@@ -188,12 +242,24 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             }
         }
         _ => {
-            brush_settings(ui, state, data.as_deref().map(|d| d.size.y).unwrap_or(1.0));
+            let d = data.as_deref();
             if tool == TerrainTool::Paint
-                && let Some(d) = data.as_deref()
+                && let Some(d) = d
             {
                 layers(ui, state, &path, d);
+            }
+            if tool == TerrainTool::Details
+                && let Some(d) = d
+            {
+                crate::terrain_details_ui::details_tab(ui, state, &path, d);
+            }
+            brush_settings(ui, state, &path, d);
+            if tool == TerrainTool::Paint
+                && let Some(d) = d
+            {
+                layer_settings(ui, state, &path, d);
                 // Procedural painting: rules of the selected layer, Generate, grass, look.
+                ui.add_space(kit::SECTION_GAP);
                 let layer = state.terrain_tools.layer;
                 crate::terrain_rules::layer_rules(ui, state, &path, d, layer);
                 ui.add_space(4.0);
@@ -204,38 +270,10 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 crate::terrain_rules::cliffs_section(ui, state, &path, d);
                 crate::terrain_rules::harmony_section(ui, state, &path, d);
             }
-            if tool == TerrainTool::Details
-                && let Some(d) = data.as_deref()
-            {
-                crate::terrain_details_ui::details_tab(ui, state, &path, d);
-            }
             if tool == TerrainTool::Holes
-                && let Some(d) = data.as_deref()
+                && let Some(d) = d
             {
-                let cut = d.holes.iter().filter(|h| **h != 0).count();
-                ui.add_space(4.0);
-                ui.weak(format!(
-                    "{cut} of {} cells cut out (holes are saved in the terrain data).",
-                    d.cells() * d.cells()
-                ));
-                if ui
-                    .add_enabled(cut > 0, egui::Button::new("Fill All Holes"))
-                    .clicked()
-                {
-                    terrain_tools::begin_edit(state, &path, "Fill Terrain Holes");
-                    store::modify(&path, |d| d.holes.clear());
-                }
-            }
-            if tool == TerrainTool::SetHeight
-                && let Some(d) = data.as_deref()
-                && ui
-                    .button("Flatten All")
-                    .on_hover_text("Set the whole terrain to the target height")
-                    .clicked()
-            {
-                let h = (state.terrain_tools.target_height / d.size.y).clamp(0.0, 1.0);
-                terrain_tools::begin_edit(state, &path, "Flatten Terrain");
-                store::modify(&path, |d| d.heights.fill(h));
+                holes_section(ui, state, &path, d);
             }
         }
     }
@@ -245,150 +283,439 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     ch
 }
 
-fn brush_settings(ui: &mut Ui, state: &mut EditorState, max_height: f32) {
-    let tools = &mut state.terrain_tools;
-    grid(ui, "terrain_brush", |ui| {
-        targets::label(ui, "Brush Size");
-        ui.add(egui::Slider::new(&mut tools.size, 0.5..=200.0).logarithmic(true));
-        ui.end_row();
-        ui.label("Opacity");
-        ui.add(egui::Slider::new(&mut tools.strength, 0.0..=1.0));
-        ui.end_row();
-        ui.label("Falloff");
-        ui.add(egui::Slider::new(&mut tools.falloff, 0.0..=1.0))
-            .on_hover_text("0 = hard edge, 1 = fades from the centre");
-        ui.end_row();
-        if tools.tool == TerrainTool::SetHeight {
-            ui.label("Height");
-            ui.add(
-                egui::DragValue::new(&mut tools.target_height)
-                    .speed(0.1)
-                    .range(0.0..=max_height)
-                    .suffix(" m"),
-            );
-            ui.end_row();
+/// Paint Holes: how much is cut out, and filling every hole.
+fn holes_section(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
+    let cut = d.holes.iter().filter(|h| **h != 0).count();
+    kit::section(ui, "holes", Icon::TerrainHoles, &tr!("Holes"), |ui| {
+        ui.weak(tr!(
+            "{cut} of {total} cells cut out (holes are saved in the terrain data).",
+            cut = cut,
+            total = d.cells() * d.cells()
+        ));
+        if kit::confirm_button(
+            ui,
+            Icon::Fill,
+            &tr!("Fill All Holes"),
+            &tr!("Close every hole of this terrain"),
+            &tr!("Fill all {count} holes of this terrain?", count = cut),
+            &tr!("Fill"),
+            cut > 0,
+        ) {
+            terrain_tools::begin_edit(state, path, "Fill Terrain Holes");
+            store::modify(path, |d| d.holes.clear());
         }
-        false
     });
 }
 
-/// Paint Texture layer list: pick the layer to paint, add/remove layers, edit the selected one.
+/// Brush shape, size, opacity and falloff (and the Set Height target), with the shape
+/// picker's thumbnails drawn from the brush's own falloff curve.
+fn brush_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: Option<&TerrainData>) {
+    let max_height = d.map(|d| d.size.y).unwrap_or(1.0);
+    let defaults = terrain_tools::TerrainTools::default();
+    let mut flatten = false;
+    kit::section(ui, "brush", Icon::Brush, &tr!("Brush"), |ui| {
+        let tools = &mut state.terrain_tools;
+        let strength = tools.strength;
+        kit::row(
+            ui,
+            &tr!("Shape"),
+            &tr!("How the brush fades towards its rim, from a hard edge to a feathered one"),
+            None,
+            |ui| kit::brush_picker(ui, &mut tools.falloff, strength),
+        );
+        kit::slider(
+            ui,
+            &tr!("Brush Size"),
+            &tr!("Brush diameter in metres. [ makes it smaller, ] larger."),
+            &mut tools.size,
+            0.5..=200.0,
+            defaults.size,
+            " m",
+            true,
+        );
+        kit::mark_last_row(ui, "Brush Size");
+        kit::slider(
+            ui,
+            &tr!("Opacity"),
+            &tr!("How strongly and how fast the brush works"),
+            &mut tools.strength,
+            0.0..=1.0,
+            defaults.strength,
+            "",
+            false,
+        );
+        kit::slider(
+            ui,
+            &tr!("Falloff"),
+            &tr!("0 = hard edge, 1 = fades from the centre to the rim"),
+            &mut tools.falloff,
+            0.0..=1.0,
+            defaults.falloff,
+            "",
+            false,
+        );
+        if tools.tool == TerrainTool::SetHeight {
+            kit::slider(
+                ui,
+                &tr!("Height"),
+                &tr!("The height Set Height moves the ground to"),
+                &mut tools.target_height,
+                0.0..=max_height,
+                defaults.target_height.min(max_height),
+                " m",
+                false,
+            );
+            ui.add_space(4.0);
+            flatten = kit::confirm_button(
+                ui,
+                Icon::TerrainSetHeight,
+                &tr!("Flatten All"),
+                &tr!("Set the whole terrain to the target height"),
+                &tr!("Flatten the whole terrain to the target height?"),
+                &tr!("Flatten"),
+                d.is_some(),
+            );
+        }
+    });
+    if flatten && let Some(d) = d {
+        let h = (state.terrain_tools.target_height / d.size.y).clamp(0.0, 1.0);
+        terrain_tools::begin_edit(state, path, "Flatten Terrain");
+        store::modify(path, |d| d.heights.fill(h));
+    }
+}
+
+/// A texture layer's albedo thumbnail with its mean colour as a swatch.
+fn layer_thumb(ui: &Ui, state: &mut EditorState, l: &TerrainLayer) -> kit::Thumb {
+    let Some(rel) = l.diffuse.as_deref() else {
+        return kit::Thumb::Icon {
+            icon: Icon::Layers,
+            pending: false,
+        };
+    };
+    let abs = state.assets.absolute(rel);
+    let tex = state.project.thumbnails.get(ui.ctx(), &abs);
+    let swatch = state.project.thumbnails.terrain.swatch(ui.ctx(), &abs);
+    match tex {
+        Some(t) => kit::Thumb::Image(t.id(), swatch),
+        None => kit::Thumb::Icon {
+            icon: Icon::Layers,
+            pending: false,
+        },
+    }
+}
+
+/// Move layer `from` to `to`: its splat channel moves with it.
+pub(crate) fn move_layer(d: &mut TerrainData, from: usize, to: usize) {
+    let n = d.layers.len();
+    if from >= n || to >= n || from == to {
+        return;
+    }
+    let texels = d.alphamap_resolution * d.alphamap_resolution;
+    for t in 0..texels {
+        let mut w = d.layer_weights(t);
+        let v = w[..n].to_vec();
+        let mut v2 = v.clone();
+        let x = v2.remove(from);
+        v2.insert(to, x);
+        w[..n].copy_from_slice(&v2);
+        d.set_layer_weights(t, &w);
+    }
+    let l = d.layers.remove(from);
+    d.layers.insert(to, l);
+    // The grass's "grow on" layer follows its layer.
+    if let Some(on) = d.details.on_layer {
+        let mut order: Vec<usize> = (0..n).collect();
+        let m = order.remove(from);
+        order.insert(to, m);
+        d.details.on_layer = order.iter().position(|o| *o == on);
+    }
+}
+
+/// Paint Texture palette: pick the layer to paint, add / duplicate / remove / reorder layers.
 fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
-    ui.add_space(6.0);
-    let title = ui.label(crate::theme::bold(ui.ctx(), "Layers"));
+    let n = d.layers.len();
+    if state.terrain_tools.layer >= n && n > 0 {
+        state.terrain_tools.layer = n - 1;
+    }
     let selected = state.terrain_tools.layer;
-    let list = egui::Frame::group(ui.style()).show(ui, |ui| {
-        if d.layers.is_empty() {
-            ui.weak("No layers yet. Add one to paint it.");
-        }
-        for (i, l) in d.layers.iter().enumerate() {
-            let tex = l
-                .diffuse
-                .as_deref()
-                .and_then(|p| std::path::Path::new(p).file_stem())
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "No texture".into());
-            let text = format!("{}  {}   ({tex})", i + 1, l.name);
-            if ui.selectable_label(selected == i, text).clicked() {
-                state.terrain_tools.layer = i;
-            }
-        }
-    });
-    targets::header(ui, "Layers", title.rect.union(list.response.rect));
-    let textures = state.assets.textures.clone();
-    ui.horizontal(|ui| {
-        let full = d.layers.len() >= MAX_LAYERS;
-        let add = ui.add_enabled(!full, egui::Button::new("+ Add Layer"));
-        targets::header(ui, "+ Add Layer", add.rect);
-        if add
-            .on_hover_text(format!("At most {MAX_LAYERS} layers"))
-            .clicked()
-        {
-            terrain_tools::begin_edit(state, path, "Add Terrain Layer");
-            let new_map = d.layers.len().is_multiple_of(LAYERS_PER_MAP) && !d.layers.is_empty();
-            let add = |d: &mut TerrainData| {
-                d.layers.push(TerrainLayer {
-                    name: format!("Layer {}", d.layers.len()),
+    let version = store::get(path).map(|(_, v)| v).unwrap_or(0);
+    let counts = state.project.thumbnails.terrain.counts(path, d, version);
+    let full = n >= MAX_LAYERS;
+    let section = kit::section(ui, "layers", Icon::Layers, &tr!("Layers"), |ui| {
+        let top = ui.cursor().min;
+        let cards: Vec<kit::Card> = (d.layers.iter().enumerate())
+            .map(|(i, l)| {
+                let cover = counts.layers.get(i).copied().unwrap_or(0.0);
+                let tex = l
+                    .diffuse
+                    .as_deref()
+                    .map(|p| p.to_owned())
+                    .unwrap_or_else(|| tr!("No texture"));
+                kit::Card {
+                    name: l.name.clone(),
+                    thumb: layer_thumb(ui, state, l),
+                    badge: Some(format!("{:.0}%", cover * 100.0)),
+                    tip: format!(
+                        "{} {}: {tex}\n{}",
+                        tr!("Layer"),
+                        i + 1,
+                        tr!(
+                            "Covers {share}% of the terrain. Drag to reorder.",
+                            share = format!("{:.0}", cover * 100.0)
+                        )
+                    ),
+                    asset: l.diffuse.clone(),
+                    can_duplicate: !full,
+                    can_remove: true,
+                    dimmed: false,
+                }
+            })
+            .collect();
+        let out = kit::palette(
+            ui,
+            "layers",
+            &cards,
+            Some(selected),
+            Some(kit::AddCard {
+                label: &tr!("Add Layer"),
+                tip: &tr!(
+                    "Add a texture layer (at most {max}); drop textures here to add them as layers",
+                    max = MAX_LAYERS
+                ),
+                enabled: !full,
+                target: "+ Add Layer",
+            }),
+            true,
+            &|rel: &str| misty_engine::assets::is_texture(rel),
+            &tr!("No layers yet: add one to paint it."),
+            |ui, name, rect| targets::header(ui, name, rect),
+        );
+        if out.add.as_ref().is_some_and(|r| r.clicked()) {
+            add_layer(
+                state,
+                path,
+                d,
+                TerrainLayer {
+                    name: format!("Layer {n}"),
                     ..Default::default()
-                });
-                // Layers 5, 9, 13 start another splat map.
-                d.fit_splat_maps();
-            };
-            if new_map {
-                store::modify(path, add);
-            } else {
-                store::modify_settings(path, add);
+                },
+            );
+        }
+        for ev in out.events {
+            match ev {
+                kit::CardEvent::Select(i) => state.terrain_tools.layer = i,
+                kit::CardEvent::Duplicate(i) => {
+                    if let Some(l) = d.layers.get(i) {
+                        let mut copy = l.clone();
+                        copy.name = tr!("{name} Copy", name = copy.name);
+                        add_layer(state, path, d, copy);
+                    }
+                }
+                kit::CardEvent::Remove(i) => {
+                    terrain_tools::begin_edit(state, path, "Remove Terrain Layer");
+                    store::modify(path, |d| remove_layer(d, i));
+                    if state.terrain_tools.layer >= i {
+                        state.terrain_tools.layer = state.terrain_tools.layer.saturating_sub(1);
+                    }
+                }
+                kit::CardEvent::Move { from, to } => {
+                    terrain_tools::begin_edit(state, path, "Reorder Terrain Layers");
+                    store::modify(path, |d| move_layer(d, from, to));
+                    state.terrain_tools.layer = to;
+                }
+                kit::CardEvent::Locate(i) => {
+                    if let Some(p) = d.layers.get(i).and_then(|l| l.diffuse.clone()) {
+                        crate::terrain_details_ui::locate_asset(state, &p);
+                    }
+                }
+                kit::CardEvent::Open(_) => {}
+                kit::CardEvent::Drop(rel) => {
+                    if !full {
+                        add_layer(
+                            state,
+                            path,
+                            d,
+                            TerrainLayer {
+                                name: crate::terrain_details_ui::stem(&rel),
+                                diffuse: Some(rel),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
             }
-            state.terrain_tools.layer = d.layers.len();
         }
-        if ui
-            .add_enabled(selected < d.layers.len(), egui::Button::new("− Remove"))
-            .on_hover_text("Remove this layer (its weight goes to the other layers)")
-            .clicked()
-        {
-            terrain_tools::begin_edit(state, path, "Remove Terrain Layer");
-            store::modify(path, |d| remove_layer(d, selected));
-            state.terrain_tools.layer = selected.saturating_sub(1);
-        }
+        egui::Rect::from_min_max(top, ui.cursor().min)
     });
+    if let Some(rect) = section {
+        targets::header(ui, "Layers", rect);
+    }
+}
+
+/// Add `layer` at the end (layers 5, 9, 13 start another splat map) and select it.
+fn add_layer(state: &mut EditorState, path: &str, d: &TerrainData, layer: TerrainLayer) {
+    if d.layers.len() >= MAX_LAYERS {
+        return;
+    }
+    terrain_tools::begin_edit(state, path, "Add Terrain Layer");
+    let new_map = d.layers.len().is_multiple_of(LAYERS_PER_MAP) && !d.layers.is_empty();
+    let add = |d: &mut TerrainData| {
+        d.layers.push(layer);
+        d.fit_splat_maps();
+    };
+    if new_map {
+        store::modify(path, add);
+    } else {
+        store::modify_settings(path, add);
+    }
+    state.terrain_tools.layer = d.layers.len();
+}
+
+/// The selected layer's textures, tiling and surface.
+fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
+    let selected = state.terrain_tools.layer;
     let Some(mut layer) = d.layers.get(selected).cloned() else {
         return;
     };
-    ui.add_space(4.0);
-    let changed = grid(ui, "terrain_layer", |ui| {
-        let mut ch = false;
-        ui.label("Name");
-        ch |= ui.text_edit_singleline(&mut layer.name).changed();
-        ui.end_row();
-        targets::label(ui, "Diffuse");
-        ch |= texture_slot(ui, "terrain_layer_diffuse", &mut layer.diffuse, &textures);
-        ui.end_row();
-        ui.label("Normal Map");
-        ui.horizontal(|ui| {
-            ch |= texture_slot(ui, "terrain_layer_normal", &mut layer.normal_map, &textures);
-            if layer.normal_map.is_some() {
-                ch |= ui
-                    .add(
-                        egui::DragValue::new(&mut layer.normal_scale)
-                            .speed(0.01)
-                            .range(0.0..=4.0),
-                    )
-                    .on_hover_text("Normal map strength")
-                    .changed();
-            }
-        });
-        ui.end_row();
-        ui.label("Height Map");
-        ch |= texture_slot(ui, "terrain_layer_height", &mut layer.height_map, &textures);
-        ui.end_row();
-        for (label, v, min) in [
-            ("Tile Size", &mut layer.tile_size, 0.1),
-            ("Tile Offset", &mut layer.tile_offset, f32::MIN),
-        ] {
-            ui.label(label);
+    let def = TerrainLayer::default();
+    let textures = state.assets.textures.clone();
+    let mut ch = false;
+    // The layer, large, with its name and colour.
+    ui.add_space(kit::SECTION_GAP * 0.5);
+    let thumb = layer_thumb(ui, state, &layer);
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(56.0, 56.0), egui::Sense::hover());
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        child.set_clip_rect(ui.clip_rect().intersect(rect));
+        kit::paint_thumb(&child, rect, &thumb);
+        ui.vertical(|ui| {
+            ui.label(crate::theme::bold(
+                ui.ctx(),
+                tr!("Layer {n}", n = selected + 1),
+            ));
             ui.horizontal(|ui| {
-                for (axis, c) in ["X", "Z"].into_iter().zip(v.iter_mut()) {
+                ch |= ui
+                    .add(egui::TextEdit::singleline(&mut layer.name).desired_width(140.0))
+                    .on_hover_text(tr!("Layer name"))
+                    .changed();
+            });
+        });
+    });
+    kit::section(
+        ui,
+        "layer_textures",
+        Icon::TerrainPaint,
+        &tr!("Textures"),
+        |ui| {
+            ch |= kit::row(
+                ui,
+                &tr!("Diffuse"),
+                &tr!("Albedo texture of this ground (drop a texture here)"),
+                None,
+                |ui| texture_slot(ui, "terrain_layer_diffuse", &mut layer.diffuse, &textures),
+            )
+            .0;
+            kit::mark_last_row(ui, "Diffuse");
+            ch |= kit::row(
+                ui,
+                &tr!("Normal Map"),
+                &tr!("Bumps and detail lit by the sun; the number is its strength"),
+                None,
+                |ui| {
+                    let mut c =
+                        texture_slot(ui, "terrain_layer_normal", &mut layer.normal_map, &textures);
+                    if layer.normal_map.is_some() {
+                        c |= ui
+                            .add(
+                                egui::DragValue::new(&mut layer.normal_scale)
+                                    .speed(0.01)
+                                    .range(0.0..=4.0),
+                            )
+                            .on_hover_text(tr!("Normal map strength"))
+                            .changed();
+                    }
+                    c
+                },
+            )
+            .0;
+            ch |= kit::row(
+                ui,
+                &tr!("Height Map"),
+                &tr!("Greyscale heights used to blend layers (none = the albedo's brightness)"),
+                None,
+                |ui| texture_slot(ui, "terrain_layer_height", &mut layer.height_map, &textures),
+            )
+            .0;
+        },
+    );
+    kit::section(ui, "layer_tiling", Icon::Layers, &tr!("Tiling"), |ui| {
+        for (label, tip, v, min, d0) in [
+            (
+                tr!("Tile Size"),
+                tr!("World size of one texture repeat (metres along X and Z)"),
+                &mut layer.tile_size,
+                0.1,
+                def.tile_size,
+            ),
+            (
+                tr!("Tile Offset"),
+                tr!("Shifts the tiling (metres along X and Z)"),
+                &mut layer.tile_offset,
+                f32::MIN,
+                def.tile_offset,
+            ),
+        ] {
+            let (c, reset) = kit::row(ui, &label, &tip, Some(*v == d0), |ui| {
+                let mut c = false;
+                for (axis, x) in ["X", "Z"].into_iter().zip(v.iter_mut()) {
                     ui.label(axis);
-                    ch |= ui
-                        .add(egui::DragValue::new(c).speed(0.05).range(min..=f32::MAX))
+                    c |= ui
+                        .add(
+                            egui::DragValue::new(x)
+                                .speed(0.05)
+                                .range(min..=f32::MAX)
+                                .suffix(" m"),
+                        )
+                        .on_hover_text(&tip)
                         .changed();
                 }
+                c
             });
-            ui.end_row();
+            if reset {
+                *v = d0;
+            }
+            ch |= c || reset;
         }
-        ui.label("Metallic");
-        ch |= ui
-            .add(egui::Slider::new(&mut layer.metallic, 0.0..=1.0))
-            .changed();
-        ui.end_row();
-        ui.label("Smoothness");
-        ch |= ui
-            .add(egui::Slider::new(&mut layer.smoothness, 0.0..=1.0))
-            .changed();
-        ui.end_row();
-        ch
     });
-    if changed {
+    kit::section(
+        ui,
+        "layer_surface",
+        Icon::TerrainSettings,
+        &tr!("Surface"),
+        |ui| {
+            ch |= kit::slider(
+                ui,
+                &tr!("Metallic"),
+                &tr!("0 for ground and rock; 1 only for bare metal"),
+                &mut layer.metallic,
+                0.0..=1.0,
+                def.metallic,
+                "",
+                false,
+            );
+            ch |= kit::slider(
+                ui,
+                &tr!("Smoothness"),
+                &tr!("Rough (0) to glossy (1): wet rock, ice"),
+                &mut layer.smoothness,
+                0.0..=1.0,
+                def.smoothness,
+                "",
+                false,
+            );
+        },
+    );
+    if ch {
         terrain_tools::begin_edit(state, path, "Change Terrain Layer");
         store::modify_settings(path, |d| d.layers[selected] = layer);
     }
