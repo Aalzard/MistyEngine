@@ -2132,10 +2132,28 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>A component (&quot;Rigidbody&quot;, &quot;Animator&quot;, …) or nil</p>
 </div>
+<div class="entry" data-key="gameobject:getvariable(name) an object variable shared with the object's script graphs, or nil">
+<div class="sig">gameObject:GetVariable(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>An Object variable shared with the object's Script Graphs, or nil</p>
+<p class="notes">GetVariable(name): an Object variable of the object (set by its Script Graphs or SetVariable), or nil.</p>
+</div>
+<div class="entry" data-key="gameobject:sendcustomevent(name, ...) run the custom event `name` of the object's script graphs (and its scripts' `name` function)">
+<div class="sig">gameObject:SendCustomEvent(name, ...)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Run the Custom Event <code>name</code> of the object's Script Graphs (and its scripts' <code>name</code> function)</p>
+<p class="notes">SendCustomEvent(name, ...): runs the Custom Event node <code>name</code> of the object's Script Graphs (and the <code>name</code> function of its Lua scripts) with the arguments, after this callback.</p>
+</div>
 <div class="entry" data-key="gameobject:setactive(active) enable or disable the object">
 <div class="sig">gameObject:SetActive(active)</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Enable or disable the object</p>
+</div>
+<div class="entry" data-key="gameobject:setvariable(name, value) set an object variable shared with the object's script graphs">
+<div class="sig">gameObject:SetVariable(name, value)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Set an Object variable shared with the object's Script Graphs</p>
+<p class="notes">SetVariable(name, value): set an Object variable, shared with the object's Script Graphs.</p>
 </div>
 <div class="entry" data-key="gameobject.activeself own active flag">
 <div class="sig">gameObject.activeSelf</div>

@@ -163,15 +163,14 @@ impl Default for GraphRuntime {
 
 /// Object alive, active in the hierarchy and its Scripts entry enabled.
 pub fn runnable(w: &World, e: Entity, slot: usize) -> bool {
-    w.scene.contains(e)
+    // A missing Scripts component also means the object is gone.
+    w.scene
+        .world
+        .get::<&Scripts>(e)
+        .ok()
+        .and_then(|s| s.list.get(slot).map(|r| r.enabled))
+        .unwrap_or(false)
         && w.scene.active_in_hierarchy(e)
-        && w
-            .scene
-            .world
-            .get::<&Scripts>(e)
-            .ok()
-            .and_then(|s| s.list.get(slot).map(|r| r.enabled))
-            .unwrap_or(false)
 }
 
 fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Option<R> {
