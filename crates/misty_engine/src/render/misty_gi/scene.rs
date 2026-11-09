@@ -257,8 +257,14 @@ fn terrain_height(d: &crate::terrain::TerrainData, u: f32, v: f32) -> f32 {
     top * (1.0 - fz) + bottom * fz
 }
 
-/// Trunk and crown proxies of a terrain's trees.
-fn tree_instances(t: &crate::terrain::TerrainDraw, out: &mut Vec<Instance>) {
+/// Trunk and crown proxies of a terrain's trees (those that can reach `region`, the world box
+/// the clipmap levels cover: the rest would be culled from every level anyway, and a forest of
+/// a hundred thousand trees made the per-frame list and its upload enormous).
+fn tree_instances(
+    t: &crate::terrain::TerrainDraw,
+    region: Option<(Vec3, Vec3)>,
+    out: &mut Vec<Instance>,
+) {
     let d = &t.data;
     let protos: Vec<Option<std::sync::Arc<crate::trees::store::Built>>> = d
         .trees
@@ -279,6 +285,13 @@ fn tree_instances(t: &crate::terrain::TerrainDraw, out: &mut Vec<Instance>) {
             );
         let height = a.height * inst.height_scale;
         let width = a.crown_width * a.height * inst.width_scale;
+        if let Some((lo, hi)) = region {
+            let r = Vec3::new(width, 0.0, width) * 0.5 + Vec3::splat(1.0);
+            let (a0, a1) = (foot - r, foot + r + Vec3::Y * height);
+            if a0.cmpgt(hi).any() || a1.cmplt(lo).any() {
+                continue;
+            }
+        }
         let crown_base = a.crown_base.clamp(0.0, 0.95) * height;
         let trunk_r = (a.trunk_radius * inst.width_scale).max(0.05);
         // Trunk up to the middle of the crown.
@@ -314,6 +327,17 @@ pub fn build(
     mesh_brick: &mut dyn FnMut(&MeshRef) -> Option<Brick>,
     terrain_region: &mut dyn FnMut(&crate::terrain::TerrainDraw) -> Option<TerrainRegion>,
 ) -> SceneList {
+    build_within(frame, None, mesh_brick, terrain_region)
+}
+
+/// [`build`] with the trees limited to those that can reach `region` (the levels' world box,
+/// margins included).
+pub fn build_within(
+    frame: &Frame,
+    reach: Option<(Vec3, Vec3)>,
+    mesh_brick: &mut dyn FnMut(&MeshRef) -> Option<Brick>,
+    terrain_region: &mut dyn FnMut(&crate::terrain::TerrainDraw) -> Option<TerrainRegion>,
+) -> SceneList {
     let mut list = SceneList::default();
     for d in frame.meshes.iter().filter(|d| traced(d)) {
         if let Some(i) = mesh_instance(d, mesh_brick) {
@@ -343,7 +367,7 @@ pub fn build(
             aabb_min: v4(t.position + Vec3::new(0.0, lo - 1000.0, 0.0), 0.0),
             aabb_max: v4(t.position + Vec3::new(size.x, hi, size.z), 0.0),
         });
-        tree_instances(t, &mut list.instances);
+        tree_instances(t, reach, &mut list.instances);
     }
     list.lights = lights(frame);
     list
