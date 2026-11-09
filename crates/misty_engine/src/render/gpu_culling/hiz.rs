@@ -13,7 +13,11 @@ impl HizPipelines {
     pub fn new(device: &wgpu::Device) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty hiz"),
-            source: wgpu::ShaderSource::Wgsl(HIZ_SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::render::pipelines::patched(HIZ_SRC)
+                    .into_owned()
+                    .into(),
+            ),
         });
         let pipeline = |entry| {
             crate::render::pipelines::note_pipeline();

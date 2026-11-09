@@ -87,7 +87,9 @@ impl Passes {
         let module = |label, src: String| {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(src.into()),
+                source: wgpu::ShaderSource::Wgsl(
+                    crate::render::pipelines::patched(&src).into_owned().into(),
+                ),
             })
         };
         let ssgi = module("misty ssgi", format!("{COMMON_SRC}\n{SSGI_SRC}"));

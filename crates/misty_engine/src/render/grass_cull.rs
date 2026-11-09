@@ -103,7 +103,9 @@ impl CullPipelines {
     pub fn new(device: &wgpu::Device) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty grass cull"),
-            source: wgpu::ShaderSource::Wgsl(SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::render::pipelines::patched(SRC).into_owned().into(),
+            ),
         });
         let storage = |binding, read_only| wgpu::BindGroupLayoutEntry {
             binding,

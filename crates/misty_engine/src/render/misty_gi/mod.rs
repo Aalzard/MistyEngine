@@ -145,7 +145,9 @@ fn pipeline(device: &wgpu::Device, label: &str, file: &str, entry: &str) -> wgpu
     );
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(code.into()),
+        source: wgpu::ShaderSource::Wgsl(
+            crate::render::pipelines::patched(&code).into_owned().into(),
+        ),
     });
     // The layout comes from the bindings the entry point uses (each kernel a subset).
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

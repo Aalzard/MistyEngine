@@ -141,12 +141,13 @@ impl VisPipelines {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty grass visibility"),
             source: wgpu::ShaderSource::Wgsl(
-                format!(
+                pipelines::patched(&format!(
                     "{}\n{}\n{}",
                     pipelines::COMMON,
                     pipelines::GRASS_SRC,
                     include_str!("shaders/grass_vis.wgsl")
-                )
+                ))
+                .into_owned()
                 .into(),
             ),
         });
