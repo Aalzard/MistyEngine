@@ -316,8 +316,10 @@ impl EditorApp {
             }
             // Delete removes selected keys / states when the Animation / Animator window has focus.
             // The Shader Graph window handles its own Delete, undo/redo, save and duplicate.
-            if (self.state.shader_graph.wants_keys() || self.state.effect_graph.wants_keys())
-                && matches!(key, Key::Delete | Key::Z | Key::Y | Key::S | Key::D)
+            if (self.state.shader_graph.wants_keys()
+                || self.state.effect_graph.wants_keys()
+                || self.state.script_graph.wants_keys())
+                && matches!(key, Key::Delete | Key::Z | Key::Y | Key::S | Key::D | Key::G)
             {
                 continue;
             }
@@ -343,7 +345,7 @@ impl EditorApp {
             // Editor script menu shortcuts, after the built-in ones.
             crate::editor_scripts::menus::shortcuts(ctx, &mut self.state);
         }
-        if !typing && !self.state.project.focused {
+        if !typing && !self.state.project.focused && !self.state.script_graph.wants_keys() {
             self.clipboard_shortcuts(ctx);
         }
         if !code_editor
@@ -357,6 +359,7 @@ impl EditorApp {
             && !flying
             && !self.state.shader_graph.wants_keys()
             && !self.state.effect_graph.wants_keys()
+            && !self.state.script_graph.wants_keys()
         {
             for tool in Tool::ALL {
                 if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(tool.key())) {

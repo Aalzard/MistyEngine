@@ -561,7 +561,7 @@ fn drop_scene(state: &mut EditorState, path: &str) {
 pub fn drop_asset(state: &mut EditorState, e: Entity, path: &str) {
     if path.ends_with(".mat") {
         state.assign_material(e, path);
-    } else if path.ends_with(".lua") {
+    } else if path.ends_with(".lua") || misty_engine::visual_script::is_graph_path(path) {
         state.push(Action::AddScript {
             entity: e,
             path: path.to_owned(),

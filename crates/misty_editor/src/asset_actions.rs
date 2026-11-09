@@ -164,6 +164,13 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .save(&path)
                 .map(|_| path)
         }
+        AssetKind::ScriptGraph => {
+            let ext = misty_engine::visual_script::EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Script Graph", ext);
+            crate::panels::script_graph::new_graph()
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::EffectGraph => {
             let ext = misty_engine::vfx::EXTENSION;
             let path = asset_ops::unique_path(&dir, "New Effect Graph", ext);

@@ -125,6 +125,8 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     };
     s.time.advance(dt);
     let input = std::mem::take(&mut s.game_input);
+    // The Script Graph window's debugger: the graph, breakpoints and object to watch.
+    crate::panels::script_graph::sync_debugger(s);
     if let Some(runtime) = s.runtime.as_mut() {
         runtime.update(&mut s.scene, &s.time, input);
         // SaveSystem.Load reloaded the scene: its objects are new.
@@ -134,6 +136,8 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         }
     }
     flush_logs(s);
+    // A flow that reached a breakpoint pauses Play.
+    crate::panels::script_graph::read_debugger(s);
     handle_requests(s);
 }
 

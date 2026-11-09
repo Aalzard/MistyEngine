@@ -385,6 +385,37 @@ pub fn apply_env(
         s.effect_graph.open(&file, &rel);
         crate::layout::focus_or_open(dock, crate::layout::Tab::EffectGraph);
     }
+    // `MISTY_SCRIPTGRAPH=Assets/…/Door.vgraph` opens it in the Script Graph window;
+    // `MISTY_GRAPH_BREAK=<node id>` puts a breakpoint on a node and `MISTY_GRAPH_SELECT=<ids>`
+    // (comma separated) selects nodes.
+    if let Some(rel) = std::env::var_os("MISTY_SCRIPTGRAPH") {
+        let rel = rel.to_string_lossy().into_owned();
+        let file = s.assets.absolute(&rel);
+        s.script_graph.open(&file, &rel);
+        let ids = |var: &str| -> Vec<u32> {
+            std::env::var(var)
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|x| x.trim().parse().ok())
+                .collect()
+        };
+        s.script_graph.breakpoints.extend(ids("MISTY_GRAPH_BREAK"));
+        s.script_graph.selected.extend(ids("MISTY_GRAPH_SELECT"));
+        // `MISTY_GRAPH_SEARCH=<text>` opens the node search with that text typed (empty = the
+        // category tree).
+        if let Ok(q) = std::env::var("MISTY_GRAPH_SEARCH") {
+            let mut search = crate::panels::script_graph::search::Search::new(
+                egui::pos2(760.0, 260.0),
+                egui::pos2(0.0, 0.0),
+                None,
+                Vec::new(),
+            );
+            search.query = q;
+            s.script_graph.search = Some(search);
+        }
+        s.script_graph.focused = true;
+        crate::layout::focus_or_open(dock, crate::layout::Tab::ScriptGraph);
+    }
     // `MISTY_RUN_TESTS=EditMode|PlayMode|1` runs the project's tests (both modes, to the end)
     // and opens the Test Runner on that mode; `MISTY_TEST_SELECT=<test name>` selects a test.
     if let Some(mode) = std::env::var_os("MISTY_RUN_TESTS") {

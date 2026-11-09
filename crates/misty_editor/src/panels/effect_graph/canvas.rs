@@ -20,7 +20,7 @@ use misty_engine::vfx::{
 use super::fields::{self, small_scope};
 use super::layout::{self, ContextLayout, OperatorLayout};
 use super::{EffectGraphWindow, interacting, search};
-use crate::panels::shader_graph::canvas::{View, draw_grid, wire};
+use crate::panels::node_canvas::{View, draw_grid, wire};
 use crate::state::EditorState;
 use crate::theme;
 
@@ -419,20 +419,7 @@ fn links(painter: &egui::Painter, w: &EffectGraphWindow, view: View) {
 }
 
 fn error_badge(ui: &Ui, painter: &egui::Painter, at: Pos2, z: f32, id: u32, message: &str) {
-    painter.circle_filled(at, 8.0 * z, super::ERROR);
-    painter.text(
-        at,
-        Align2::CENTER_CENTER,
-        "!",
-        FontId::proportional(12.0 * z),
-        Color32::WHITE,
-    );
-    ui.interact(
-        Rect::from_center_size(at, vec2(16.0, 16.0) * z),
-        ui.id().with(("vfx_err", id)),
-        Sense::hover(),
-    )
-    .on_hover_text(message);
+    crate::panels::node_canvas::error_badge(ui, painter, at, z, ui.id().with(("vfx_err", id)), message);
 }
 
 /// One context with its settings and blocks. Returns true if something in it was clicked.
