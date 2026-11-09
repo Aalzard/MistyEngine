@@ -85,7 +85,7 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     match action {
         Some(RowAction::Open(path)) => hub.open_project(&path),
         Some(RowAction::Reveal(path)) => {
-            if let Err(e) = crate::asset_actions::show_in_explorer(&path) {
+            if let Err(e) = crate::explorer::show(&path, crate::explorer::Reveal::Select) {
                 hub.notice = Some(format!("Could not show {}: {e}", path.display()));
             }
         }

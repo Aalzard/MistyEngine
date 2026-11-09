@@ -367,28 +367,8 @@ fn delete(s: &mut EditorState, path: &Path) {
     }
 }
 
-/// Open the OS file browser with `path` selected.
+/// Show `path` in the OS file browser: a folder opens itself, a file opens its folder with the
+/// file selected (see [`crate::explorer`]).
 pub(crate) fn show_in_explorer(path: &Path) -> std::io::Result<()> {
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut c = std::process::Command::new("explorer");
-        c.arg(format!(
-            "/select,{}",
-            path.display().to_string().replace('/', "\\")
-        ));
-        c
-    };
-    #[cfg(target_os = "macos")]
-    let mut cmd = {
-        let mut c = std::process::Command::new("open");
-        c.arg("-R").arg(path);
-        c
-    };
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let mut cmd = {
-        let mut c = std::process::Command::new("xdg-open");
-        c.arg(path.parent().unwrap_or(path));
-        c
-    };
-    cmd.spawn().map(|_| ())
+    crate::explorer::show(path, crate::explorer::Reveal::OpenFolders)
 }

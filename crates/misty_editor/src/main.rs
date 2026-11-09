@@ -27,6 +27,7 @@ mod commands;
 mod component_ops;
 mod console;
 mod editor_scripts;
+mod explorer;
 mod fps_player;
 mod game_input;
 mod gizmos;
