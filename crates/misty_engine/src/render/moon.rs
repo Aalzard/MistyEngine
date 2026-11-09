@@ -45,12 +45,12 @@ pub(crate) struct MoonUniform {
 }
 
 /// Linear night colours (zenith, horizon) without a moon, and what a full moon high up adds.
-const NIGHT_ZENITH: Vec3 = Vec3::new(0.0022, 0.0036, 0.0095);
-const NIGHT_HORIZON: Vec3 = Vec3::new(0.0042, 0.0056, 0.0105);
-const MOONLIT_ZENITH: Vec3 = Vec3::new(0.010, 0.018, 0.042);
-const MOONLIT_HORIZON: Vec3 = Vec3::new(0.016, 0.022, 0.038);
+const NIGHT_ZENITH: Vec3 = Vec3::new(0.0040, 0.0065, 0.0170);
+const NIGHT_HORIZON: Vec3 = Vec3::new(0.0075, 0.0100, 0.0185);
+const MOONLIT_ZENITH: Vec3 = Vec3::new(0.007, 0.012, 0.028);
+const MOONLIT_HORIZON: Vec3 = Vec3::new(0.011, 0.015, 0.026);
 /// Disc radiance of a full moon at Brightness 1 (× the texture's albedo).
-const DISC: Vec3 = Vec3::new(2.0, 1.94, 1.84);
+const DISC: Vec3 = Vec3::new(1.1, 1.07, 1.01);
 
 /// The scene's moon this frame (None: off, solid-colour sky, or Follow Sun without a sun).
 pub fn moon_state(env: &Environment) -> Option<MoonState> {
@@ -93,7 +93,7 @@ pub fn night_sky(env: &Environment) -> Option<NightSky> {
     let zenith = (NIGHT_ZENITH + MOONLIT_ZENITH * lit) * exposure;
     let horizon = (NIGHT_HORIZON + MOONLIT_HORIZON * lit) * exposure;
     let ground =
-        Vec3::from(super::srgb_to_linear(s.skybox.ground)) * (0.006 + 0.03 * lit) * exposure;
+        Vec3::from(super::srgb_to_linear(s.skybox.ground)) * (0.012 + 0.025 * lit) * exposure;
     Some(NightSky {
         share,
         zenith,
@@ -132,7 +132,7 @@ pub(crate) fn uniform(env: &Environment, image: Option<&MoonImage>) -> MoonUnifo
     let flags = f32::from(u8::from(img.has_height))
         + 2.0 * f32::from(u8::from(img.projection == moon::texture::Projection::Disc));
     // Earthshine: the Earth seen from the moon is full when the moon is new.
-    let earthshine = s.moon.earthshine.max(0.0) * 0.03 * (1.0 - m.illumination);
+    let earthshine = s.moon.earthshine.max(0.0) * 0.015 * (1.0 - m.illumination);
     let exposure = s.skybox.exposure.max(0.0);
     let color = DISC
         * s.moon.brightness.max(0.0)

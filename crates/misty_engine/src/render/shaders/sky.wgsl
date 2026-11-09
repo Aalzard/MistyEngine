@@ -157,21 +157,19 @@ fn star_field(dir: vec3<f32>) -> vec3<f32> {
     let g = (uv * 0.5 + 0.5) * cells;
     let cell = floor(g);
     let h = star_hash(vec3<u32>(vec2<u32>(cell), face));
-    if (h.x > 0.45) {
+    if (h.x > 0.3) {
         return vec3<f32>(0.0);
     }
     let pos = vec2<f32>(0.25) + 0.5 * h.yz;
     // Angular distance from the star (a cell is about 90° / cells across).
     let cell_angle = 1.5707963 / cells;
     let dist = length(g - cell - pos) * cell_angle;
-    let px = pixel_angle();
-    let sigma = max(px * 0.75, 0.00012);
+    // About a pixel wide whatever the zoom, so a star keeps its brightness.
+    let sigma = max(pixel_angle() * 0.6, 0.00005);
     // Most stars are faint, a few bright.
-    let mag = pow(h.w, 14.0) * 6.0 + pow(h.w, 3.0) * 0.25 + 0.02;
-    // The same energy whatever the pixel size: a wider blob is dimmer.
-    let energy = (0.0006 / sigma) * (0.0006 / sigma);
-    let glow = exp(-(dist * dist) / (sigma * sigma)) * mag * min(energy, 4.0);
-    let tint = mix(vec3<f32>(1.0, 0.82, 0.62), vec3<f32>(0.72, 0.84, 1.0), fract(h.x * 7.31));
+    let mag = pow(h.w, 22.0) * 4.0 + pow(h.w, 6.0) * 0.3 + 0.01;
+    let glow = exp(-(dist * dist) / (sigma * sigma)) * mag;
+    let tint = mix(vec3<f32>(1.0, 0.82, 0.62), vec3<f32>(0.72, 0.84, 1.0), fract(h.x * 11.31));
     let horizon = smoothstep(-0.02, 0.2, dir.y);
     return tint * glow * k * horizon * view.sky_ground.w;
 }
@@ -206,9 +204,12 @@ fn fs_main(in: FullscreenOut) -> SkyTargets {
         // The HDRI's very bright texels (its sun) glow through bloom like the procedural disc.
         sun = max(c - vec3<f32>(8.0), vec3<f32>(0.0));
     }
-    // The moon (hidden below the horizon) in front of the stars.
+    // The moon (hidden below the horizon) in front of the stars; a bright (moonlit, twilight)
+    // sky washes the faint stars out.
     let moon = moon_disc(dir) * smoothstep(-0.02, 0.01, dir.y);
-    c += moon.rgb + star_field(dir) * (1.0 - moon.a);
+    let sky_lum = dot(c, vec3<f32>(0.3, 0.6, 0.1)) / max(view.sky_ground.w, 1e-3);
+    let wash = clamp(0.012 / max(sky_lum, 1e-4), 0.0, 1.0);
+    c += moon.rgb + star_field(dir) * (1.0 - moon.a) * wash;
     sun += moon.rgb * 0.3;
     var visible = 1.0;
     if (view.fog_color.w > 0.5) {

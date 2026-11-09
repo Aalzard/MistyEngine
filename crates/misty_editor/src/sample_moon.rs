@@ -201,31 +201,32 @@ fn stones(s: &mut Scene, d: &TerrainData) {
 }
 
 fn cabin(s: &mut Scene, d: &TerrainData) {
-    let (x, z) = (-22.0, -34.0);
+    const YAW: f32 = 188.0;
+    let (x, z) = (14.0, -62.0);
     let y = ground(d, x, z);
     mesh(
         s,
         "Cabin",
         PrimitiveMesh::Cube,
-        at(Vec3::new(x, y + 1.6, z), Vec3::new(6.0, 3.6, 4.5), 25.0),
+        at(Vec3::new(x, y + 1.6, z), Vec3::new(6.0, 3.6, 4.5), YAW),
         WALL,
     );
     mesh(
         s,
         "Cabin Roof",
         PrimitiveMesh::Cube,
-        at(Vec3::new(x, y + 3.8, z), Vec3::new(6.6, 0.8, 5.1), 25.0),
+        at(Vec3::new(x, y + 3.8, z), Vec3::new(6.6, 0.8, 5.1), YAW),
         ROOF,
     );
     // The window faces the camera (towards -Z rotated by the cabin's yaw).
-    let yaw = 25f32.to_radians();
+    let yaw = YAW.to_radians();
     let out = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
     let w = Vec3::new(x, y + 1.7, z) + out * 2.26;
     mesh(
         s,
         "Cabin Window",
         PrimitiveMesh::Cube,
-        at(w, Vec3::new(1.2, 0.9, 0.05), 25.0),
+        at(w, Vec3::new(1.2, 0.9, 0.05), YAW),
         WINDOW,
     );
     let lamp = s.spawn("Window Light", None);
@@ -247,7 +248,7 @@ fn trees(s: &mut Scene, d: &TerrainData) {
     let spots = [
         (-48.0, -10.0),
         (-58.0, -52.0),
-        (18.0, -18.0),
+        (30.0, -34.0),
         (70.0, -30.0),
         (-8.0, -78.0),
     ];
@@ -288,7 +289,7 @@ fn trees(s: &mut Scene, d: &TerrainData) {
 
 fn demo_scene(d: &TerrainData) -> Scene {
     let mut s = Scene::default_3d("MoonDemo");
-    let eye = (0.0, 0.0);
+    let eye = (18.0, -22.0);
     if let Some(cam) = s.find_by_name("Main Camera") {
         let y = ground(d, eye.0, eye.1) + 2.2;
         s.set_transform(
