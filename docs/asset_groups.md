@@ -1,15 +1,15 @@
 # Asset Groups (addressable assets)
 
 Asset Groups let a game load assets **by address or label** while it runs, instead of placing
-them in a scene or a `Resources` folder. Addressable assets are packed into **bundle files** that
+them in a scene or a `Resources` folder. Assets loaded by address are packed into **bundle files** that
 ship with the game or are downloaded later from a server.
 
 ## Making an asset addressable
 
-- Select it in the Project window: the Inspector's first row has an **Addressable** checkbox.
+- Select it in Asset Files: the Properties panel's first row has a **Load by Address** checkbox.
   Ticking it adds the asset to the *Default Local Group* with its path as the address; edit the
   address (any string, e.g. `Enemies/Ghost`) and the comma-separated **Labels** right there.
-- Or drag assets from the Project window onto a group in the **Asset Groups** window
+- Or drag assets from Asset Files onto a group in the **Asset Groups** window
   (Window ▸ Asset Management ▸ Asset Groups).
 
 Everything is stored in `ProjectSettings/AssetGroups.json` (entries keep the asset's GUID, so a

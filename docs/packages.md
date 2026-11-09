@@ -2,7 +2,7 @@
 
 A package is a folder of reusable content (scripts, prefabs, scenes, any asset) with a
 `package.json` at its root. Packages live in the project's `Packages/<name>` folder and show up
-in the Project window under the **Packages** root, next to Assets.
+in Asset Files under the **Packages** root, next to Assets.
 
 ## package.json
 
@@ -71,7 +71,7 @@ Window ▸ Package Manager…
 
 Resolution picks, for every package needed directly or through other packages, the newest
 version every range allows. Packages copied into the project (disk, zip, git) are pinned to the
-version they hold. Registry packages are read-only in the Project window (they are replaced on
+version they hold. Registry packages are read-only in Asset Files (they are replaced on
 update).
 
 ## Registries

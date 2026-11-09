@@ -1,7 +1,7 @@
 # Scripting (Lua)
 
-Scripts are `.lua` files in `Assets/`. Create one with **Project ▸ + ▸ Script** (or Add Component ▸ New script),
-attach it by dragging it onto an object (Scene view, Hierarchy, or Inspector ▸ Add Component ▸ Scripts), and
+Scripts are `.lua` files in `Assets/`. Create one with **Asset Files ▸ + ▸ Script** (or Add Archetype ▸ New script),
+attach it by dragging it onto an object (Editor Scene, Scene Tree, or Properties ▸ Add Archetype ▸ Scripts), and
 double-click it to edit. Changes are picked up automatically; syntax errors appear in the Console.
 
 Prefer nodes to code? [Script Graphs](visual-scripting.md) attach the same way and talk to Lua scripts
@@ -10,7 +10,7 @@ Prefer nodes to code? [Script Graphs](visual-scripting.md) attach the same way a
 ```lua
 local Rotator = {
     speed = 90,                    -- public fields: number, boolean, string, Vector3
-    axis = Vector3.new(0, 1, 0),   -- shown in the Inspector as "Speed", "Axis"
+    axis = Vector3.new(0, 1, 0),   -- shown in the Properties panel as "Speed", "Axis"
 }
 
 function Rotator:Update()
@@ -32,8 +32,8 @@ and Localization below).
 Scripts on network objects get `OnNetworkSpawn`, `OnNetworkDespawn` and the ownership callbacks (see
 Networking below).
 
-## Inspector attributes
-List attributes per field in the class's `_attributes` table to change how the Inspector shows it:
+## Field attributes
+List attributes per field in the class's `_attributes` table to change how the Properties panel shows it:
 
 ```lua
 local Satellite = { center = Vector3.new(0, 1, 0), radius = 3, angle = 0 }
@@ -75,7 +75,7 @@ own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing 
 | Canvas (UI) | `GetComponent("Canvas")`: `renderMode` (`"ScreenSpaceOverlay"`, `"ScreenSpaceCamera"`, `"WorldSpace"`), `sortingOrder`, `planeDistance`, `enabled`, `gameObject` |
 | CanvasGroup (UI) | `GetComponent("CanvasGroup")`: `alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`, `enabled`, `gameObject` |
 | AspectRatioFitter (UI) | `GetComponent("AspectRatioFitter")`: `aspectMode` (`"None"`, `"WidthControlsHeight"`, `"HeightControlsWidth"`, `"FitInParent"`, `"EnvelopeParent"`), `aspectRatio`, `gameObject` |
-| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Inspector |
+| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Properties panel |
 | Toggle (UI) | `GetComponent("Toggle")`: `isOn`, `interactable`, `group` (ToggleGroup or nil), `onValueChanged` (bool) |
 | ToggleGroup (UI) | `allowSwitchOff`, `AnyTogglesOn()`, `SetAllTogglesOff()` |
 | Slider (UI) | `value` (clamped, rounded with whole numbers), `minValue`, `maxValue`, `wholeNumbers`, `normalizedValue`, `interactable`, `onValueChanged` (number) |
@@ -87,7 +87,7 @@ own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing 
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
-| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Game view focus (click it), gamepads always reach a playing game |
+| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Scene Viewer focus (click it), gamepads always reach a playing game |
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
@@ -159,7 +159,7 @@ UI, …) of **actions**. Each action has a type and **bindings**:
 - **Control schemes** (Keyboard&Mouse, Gamepad, Touch) list the devices they need; bindings join them through
   their groups ("Use in control scheme").
 
-The **Player Input** component (Component ▸ Input) plays an asset for one player: Actions, Default Map, Default
+The **Player Input** component (Archetype ▸ Input) plays an asset for one player: Actions, Default Map, Default
 Scheme, Auto-Switch and a Behavior:
 
 - **Send Messages** calls `On<Action>(value)` on the object's scripts (`OnMove(v)`, `OnJump()`): on performed,
@@ -170,7 +170,7 @@ Scheme, Auto-Switch and a Behavior:
 
 A single player may use every device; its binding mask follows the current control scheme, which switches when
 another device is used (Auto-Switch). With several Player Inputs each one is paired with its own devices in
-Hierarchy order (the first gets the keyboard and mouse, the next ones a gamepad each), gets its own copy of the
+Scene Tree order (the first gets the keyboard and mouse, the next ones a gamepad each), gets its own copy of the
 asset, and is told when its pad is unplugged and comes back.
 
 ```lua
@@ -255,7 +255,7 @@ function Spawner:Update()
 end
 return Spawner
 ```
-Create the prefab by dragging an object from the Hierarchy into the Project window.
+Create the prefab by dragging an object from the Scene Tree into Asset Files.
 
 ### Loading addressable assets
 
@@ -267,7 +267,7 @@ Assets.Run(function()
 end)
 Assets.LoadAsync("props"):OnCompleted(function(h) Debug.Log(#h.results, "props") end)
 ```
-Mark assets Addressable in the Inspector or the Asset Groups window; see `docs/asset_groups.md`.
+Tick **Load by Address** in the Properties panel or use the Asset Groups window; see `docs/asset_groups.md`.
 
 ### Playing sounds
 
@@ -362,7 +362,7 @@ through humanoid Avatars).
 
 ### UI buttons
 
-Create a button with **GameObject ▸ UI ▸ Button** (a Canvas is added if the scene has none). In its Button
+Create a button with **Object ▸ UI ▸ Button** (a Canvas is added if the scene has none). In its Button
 component, press **+** under **On Click ()**, pick the object that has your script and type the method name:
 
 ```lua
@@ -383,9 +383,9 @@ that defines the method gets the call (before this frame's `Update`). Sample: `A
 
 ### UI events and listeners
 
-Widgets report changes in two ways, like the familiar UnityEvents:
+Widgets report changes in two ways:
 
-- **In the Inspector:** On Value Changed / On End Edit lists (Toggle, Slider, Scrollbar, Input Field, Dropdown)
+- **In the Properties panel:** On Value Changed / On End Edit lists (Toggle, Slider, Scrollbar, Input Field, Dropdown)
   work like On Click; the method gets the new value (`true`/`false`, a number, the text or the option index).
 - **From Lua:** `onClick`, `onValueChanged` and `onEndEdit` have `AddListener(fn)`, `RemoveListener(fn)` and
   `RemoveAllListeners()`.
@@ -485,7 +485,7 @@ Queries see the positions of the last physics step (and work in `Awake`/`Start`)
 
 ### Character Controller
 
-Add **Component ▸ Physics ▸ Character Controller** (it is its own capsule collider; remove other colliders or
+Add **Archetype ▸ Physics ▸ Character Controller** (it is its own capsule collider; remove other colliders or
 put them on another layer). Move it from a script; it slides along walls, climbs steps up to Step Offset and
 slopes up to Slope Limit, and isn't pushed by physics.
 
@@ -512,7 +512,7 @@ right after the callback that called `Move`; `hit` has `gameObject`, `collider`,
 
 ### First Person Player
 
-**GameObject ▸ First Person Player** creates a ready-to-play first-person rig (the sample project also has it
+**Object ▸ First Person Player** creates a ready-to-play first-person rig (the sample project also has it
 as `Assets/Prefabs/First Person Player.prefab`, played in `Scenes/FirstPersonDemo.scene`, a test course with
 ramps, stairs, platforms, a narrow bridge and a low tunnel):
 
@@ -524,7 +524,7 @@ Player              Character Controller (1.8 m, radius 0.35) + FirstPersonContr
 ```
 
 The scripts are added to `Assets/Scripts` when the project has none (never overwritten), so every field below
-can be tuned in the Inspector. WASD moves (Horizontal / Vertical), Shift runs (Run), Space jumps (Jump), Ctrl
+can be tuned in the Properties panel. WASD moves (Horizontal / Vertical), Shift runs (Run), Space jumps (Jump), Ctrl
 crouches (Crouch), the mouse looks (Mouse X / Mouse Y) and Escape gives the cursor back (a click takes it
 again). Add a **Player Input** to the Player and the controller reads its Move, Look, Jump, Sprint and Crouch
 actions instead (the mouse Look binding scaled by 0.1 like Mouse X / Mouse Y; the right stick turns at
@@ -565,7 +565,7 @@ publishing the same signal table. Tests: `Assets/Tests/FirstPersonTests.playtest
 
 ### Wheel Collider
 
-Add **Component ▸ Physics ▸ Wheel Collider** to a child of an object with a Rigidbody (one per wheel). Each
+Add **Archetype ▸ Physics ▸ Wheel Collider** to a child of an object with a Rigidbody (one per wheel). Each
 physics step the wheel casts a ray down its suspension (the object's position is the top; the wheel hangs up to
 Suspension Distance below it), pushes the body up with the spring and damper (at rest it sits at the spring's
 Target Position, 0 = fully compressed, 1 = fully extended), and its tyre grips along the Forward and Sideways
@@ -591,7 +591,7 @@ Euler angles: there is no Quaternion type) for moving your own models. Sample: `
 
 ### Joints
 
-Fixed, Hinge and Spring Joints are set up in the Inspector (Connected Body = another object with a Rigidbody, or
+Fixed, Hinge and Spring Joints are set up in the Properties panel (Connected Body = another object with a Rigidbody, or
 None for the world) and need no script. Bodies keep reacting to `AddForce`, `velocity` and so on while jointed.
 
 ### Terrain
@@ -687,7 +687,7 @@ Vector3, so `#path` is the corner count) with `path.status`. Area-mask arguments
 
 `Camera.main` is the first enabled camera tagged MainCamera (nil without one): `ScreenPointToRay(screenPoint)`
 returns `{ origin, direction }`, `WorldToScreenPoint(v)` returns pixels (from the bottom-left) and the depth.
-`Input.mousePosition` is the pointer in Game view pixels from the bottom-left (z = 0).
+`Input.mousePosition` is the pointer in Scene Viewer pixels from the bottom-left (z = 0).
 
 ```lua
 -- Click to move.
@@ -836,7 +836,7 @@ Samples: `Assets/Tests/MathTests.test.lua`, `PlayerControllerTests.playtest.lua`
 `VehicleTests.playtest.lua` (VehicleDemo), `FirstPersonTests.playtest.lua` (FirstPersonDemo).
 
 ### Save games
-Give each object whose state should be saved a **Saveable** component (Component ▸ Miscellaneous). It has a
+Give each object whose state should be saved a **Saveable** component (Archetype ▸ Miscellaneous). It has a
 stable **Save ID** (a GUID; copies, duplicates and prefab instances get new ones) and options: Transform,
 Active State, Rigidbody Velocity, and extra component data (`"Light"` = the whole component,
 `"Light.intensity"` = one field).
@@ -890,8 +890,8 @@ Localization.Get("score", { 12 })                 -- "{0} points"
 Localization.Get("greeting", { name = "Ana" })    -- "Hello, {name}!"
 self.gameObject:GetComponent("LocalizedText").args = { self.coins }
 ```
-The **Localized Text** component (Component ▸ UI) sets the UI Text on its object from a key and arguments
-(Inspector entries `name=value` fill `{name}`) and follows locale changes. Right-to-left scripts are not
+The **Localized Text** component (Archetype ▸ UI) sets the UI Text on its object from a key and arguments
+(Properties entries `name=value` fill `{name}`) and follows locale changes. Right-to-left scripts are not
 laid out right to left yet, and the built-in UI font has no Arabic glyphs.
 
 Sample: `Scenes/SaveLocDemo.scene` with `SaveLocMenu.lua`, `CoinCounter.lua` and
@@ -904,18 +904,18 @@ client and gives each an **owner**; a **Network Transform** replicates motion; s
 **Network Variables** and call functions across the network with **RPCs**. Traffic goes over UDP (reliable
 ordered, reliable unordered and unreliable channels).
 
-**Setup**: add a Network Manager (Component ▸ Netcode) to one object in the scene: Address and Port (where
+**Setup**: add a Network Manager (Archetype ▸ Netcode) to one object in the scene: Address and Port (where
 clients connect, 127.0.0.1:7777 by default), Listen Address, Tick Rate (network updates per second), Player
 Prefab (spawned for every client that joins, owned by it), Connection Approval, Max Connections, Timeout,
 Scene Management (clients load the server's scene when they join and whenever it changes), LAN Discovery,
 and a **Network Simulator** (latency, jitter, packet loss) for testing. Give every networked object (and
 the player prefab) a Network Object.
 
-**Starting**: from a script (`Network.StartHost()`, …), from the Network Manager Inspector's Start Host /
+**Starting**: from a script (`Network.StartHost()`, …), from the Network Manager Properties panel's Start Host /
 Start Server / Start Client buttons while playing, or with **Window ▸ Multiplayer ▸ Multiplayer Play
 Mode**: tick Player 2–4 and press Play; the editor hosts and opens a player window per ticked player that
 joins as a client on this machine (the windows load the scene as it was when Play was pressed, saved or
-not, and close on Stop). A small overlay in the Game view shows the round trip time, packets and bandwidth.
+not, and close on Stop). A small overlay in the Scene Viewer shows the round trip time, packets and bandwidth.
 Built games: `misty_player --net-host`, `--net-server` or `--net-client 192.168.1.20:7777`.
 
 | | |
@@ -1019,19 +1019,19 @@ dedicated-server builds without a window, Network Animator / Rigidbody component
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or
-`Assets/Tools/Editor/`) are **editor scripts**: they add menu items, tool windows, custom Inspectors, Scene
+`Assets/Tools/Editor/`) are **editor scripts**: they add menu items, tool windows, custom Properties views, Scene
 view gizmos and handles, and asset hooks. They run in the editor's own Lua state, never in a build (builds
 leave every `Editor` folder out), and reload by themselves when one is saved. The game API is there too,
 so `GameObject.Find`, `transform.position`, `Vector3` and `Debug.Log` work on the scene being edited.
 
 Errors go to the Console with file and line (click to open the script). A callback that fails stays off
-until its script changes (tool windows and Inspectors show a Try again button), and one that runs too long
-is stopped: 0.5 s per frame for `OnGUI`, Inspectors, gizmos and handles, 5 s for a menu item, a script
+until its script changes (tool windows and Properties views show a Try again button), and one that runs too long
+is stopped: 0.5 s per frame for `OnGUI`, Properties views, gizmos and handles, 5 s for a menu item, a script
 loading, an update callback or an asset hook.
 
 Sample: `Assets/Editor/ScatterTool.lua` (Tools ▸ Scatter Tool and Tools ▸ Align to Floor),
 `Assets/Editor/SatelliteInspector.lua` and `Assets/Scripts/Satellite.lua` (add the Satellite script to any
-object to see its gizmos, its Inspector and the centre handle).
+object to see its gizmos, its custom Properties view and the centre handle).
 
 ### Menu items
 ```lua
@@ -1056,7 +1056,7 @@ function Counter:OnGUI()
 end
 MenuItem("Tools/Counter", function() Counter:Open() end)
 ```
-A tool window is a dock tab like the built-in panels: it opens by the Inspector, docks and floats anywhere,
+A tool window is a dock tab like the built-in panels: it opens by the Properties panel, docks and floats anywhere,
 and layouts remember it. Its numbers, booleans, strings, Vector3s and Colors are kept across reloads and
 restarts (`Library/ToolWindows.json`). `Window:Open()`, `Window:Close()`, `Window:Repaint()`; `OnEnable()`
 runs after each load.
@@ -1068,12 +1068,12 @@ runs after each load.
 | `GUI.Toggle(label, on)`, `GUI.Slider(label, v, min, max)` | the new value |
 | `GUI.IntField(label, v)`, `GUI.FloatField(label, v)`, `GUI.TextField(label, s)` | the new value |
 | `GUI.ColorField(label, color)`, `GUI.Vector3Field(label, v)` | the new value |
-| `GUI.ObjectField(label, value [, kind])` | a GameObject (`kind` "GameObject", the default) or an asset path of that kind ("prefab", "material", "texture", "model", "audio", "script" or an extension); pick from the list or drop an asset from the Project window |
+| `GUI.ObjectField(label, value [, kind])` | a GameObject (`kind` "GameObject", the default) or an asset path of that kind ("prefab", "material", "texture", "model", "audio", "script" or an extension); pick from the list or drop an asset from Asset Files |
 | `GUI.Foldout(label, open)` | the new open state (draw the contents yourself while open) |
 | `GUI.Horizontal(fn)`, `GUI.Vertical(fn)`, `GUI.Scroll(fn)` | lay out what `fn` draws |
 | `GUI.Space([px])`, `GUI.Separator()` | |
 
-### Custom Inspectors
+### Custom Properties views
 ```lua
 local SatelliteInspector = CustomInspector("Satellite")    -- the script's file name
 function SatelliteInspector:OnInspectorGUI()
@@ -1088,12 +1088,12 @@ function SatelliteInspector:OnSceneGUI()                  -- while the object is
 end
 ```
 `self.target` reads and writes the script's public fields (the saved value, else the default) and has
-`gameObject` and `transform`. One Inspector instance lives per inspected script, so values kept on `self`
+`gameObject` and `transform`. One custom Properties view instance lives per inspected script, so values kept on `self`
 last while it stays selected.
 
 ### Gizmos and handles
 Game scripts can define `OnDrawGizmos()` (every object) and `OnDrawGizmosSelected()` (selected objects).
-They run in the Scene view while editing (with the Gizmos toggle on), never in Play mode or builds; `self`
+They run in the Editor Scene while editing (with the Gizmos toggle on), never in Play mode or builds; `self`
 has the script's field values, `gameObject` and `transform`.
 
 | | |
@@ -1108,7 +1108,7 @@ has the script's field values, `gameObject` and `transform`.
 ### Editor API
 | | |
 |---|---|
-| `Selection.active`, `Selection.objects`, `Selection.asset` | the active GameObject, all selected ones, the asset selected in the Project window (a path); all assignable |
+| `Selection.active`, `Selection.objects`, `Selection.asset` | the active GameObject, all selected ones, the asset selected in Asset Files (a path); all assignable |
 | `Selection.count`, `Selection.Clear()`, `Selection.Contains(go)` | |
 | `Undo.Record(obj, "Name")` | call before changing objects: everything until the call returns is one undo step (it also marks the scene changed) |
 | `Undo.BeginGroup("Name")` … `Undo.EndGroup()` | one step over several calls (an update callback working over frames) |

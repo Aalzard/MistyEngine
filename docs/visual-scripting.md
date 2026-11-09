@@ -1,7 +1,7 @@
 # Visual scripting
 
-Script Graphs are node-based game logic, in the spirit of Unreal Blueprints and Unity Visual
-Scripting. A graph is an asset (`.vgraph`, JSON) that runs on a GameObject like a Lua script:
+Script Graphs are node-based game logic: you connect nodes instead of writing code. A graph is an
+asset (`.vgraph`, JSON) that runs on an object like a Lua script:
 events start flows along white **exec** wires, and typed **data** wires carry values between
 nodes. Graphs and Lua scripts work side by side and talk to each other.
 
@@ -12,8 +12,8 @@ nodes. Graphs and Lua scripts work side by side and talk to each other.
 - **Assets ▸ Create ▸ Visual Script Graph** makes `New Script Graph.vgraph` with On Start and
   On Update events. Double-click a `.vgraph` to open it in the **Script Graph** window (also
   Window ▸ Visual Scripting ▸ Script Graph).
-- Attach it like a script: **Add Component ▸ Scripts** lists graphs next to Lua scripts, or drag
-  the asset onto an object in the Hierarchy. The Inspector shows it as *Name (Script Graph)*; its fields are the
+- Attach it like a script: **Add Archetype ▸ Scripts** lists graphs next to Lua scripts, or drag
+  the asset onto an object in the Scene Tree. The Properties panel shows it as *Name (Script Graph)*; its fields are the
   graph's **Object variables**, set per object.
 - **Save Asset** (Ctrl+S) writes the file. The window has its own undo / redo (Ctrl+Z / Ctrl+Y).
 
@@ -35,9 +35,9 @@ nodes. Graphs and Lua scripts work side by side and talk to each other.
   all, wheel to zoom, middle mouse or Alt+drag to pan. Right-click the canvas for sticky notes.
 - Nodes with a problem get a red **!** badge with the message (unknown node, missing variable,
   a wire whose types don't fit, data wires that loop, a For Each without a list…); the toolbar
-  shows the first problem and the **Graph Inspector** lists them all.
+  shows the first problem and the **Graph Properties** lists them all.
 - **Blackboard** (left): the graph's variables — name, type, scope (Graph or Object), starting
-  value — with Get / Set buttons. **Graph Inspector** (right): settings of the selected node
+  value — with Get / Set buttons. **Graph Properties** (right): settings of the selected node
   (variable, event name and arguments, input action, pin counts, Lua script and function,
   subgraph pins).
 
@@ -96,7 +96,7 @@ values you can read with **Get Lua Field**.
 ## Variables
 
 - **Graph** variables are private to one running graph.
-- **Object** variables live on the GameObject: the Inspector sets them per object, the object's
+- **Object** variables live on the GameObject: the Properties panel sets them per object, the object's
   other graphs share them, other objects reach them with Get / Set Object Variable, and Lua reads
   and writes them with `gameObject:GetVariable(name)` / `gameObject:SetVariable(name, value)`.
 

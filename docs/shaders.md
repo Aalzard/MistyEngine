@@ -9,7 +9,7 @@ editor.
 
 Create one with **Assets ▸ Create ▸ Shader ▸ Surface Shader** (or **Unlit Shader**). Select it and
 use **Assets ▸ Create ▸ Material from Shader**, or pick it from any material's **Shader** dropdown.
-The material Inspector then shows one field for each property you declared. Values are saved in
+The material's Properties panel then shows one field for each property you declared. Values are saved in
 the `.mat` file under `"properties"`.
 
 Edits recompile live. While you type in the Code Editor, the shader is checked with naga after a
@@ -24,7 +24,7 @@ appears in the Console, where you can click it to open the Code Editor.
 // @shader surface
 // @property _Color color "Color" = (1, 1, 1, 1)
 // @property _MainTex texture2d "Albedo" = white
-// @property _Smoothness range(0, 1) = 0.5   // Tooltip shown in the Inspector
+// @property _Smoothness range(0, 1) = 0.5   // Tooltip shown in the Properties panel
 
 fn surface(input: SurfaceInput) -> SurfaceOutput {
     var o = default_output(input);
@@ -85,7 +85,7 @@ top of the file.
 
 Property types:
 
-| Type | WGSL | Inspector | Default value |
+| Type | WGSL | Properties | Default value |
 |---|---|---|---|
 | `float` | `material.NAME: f32` | number field | a number (0) |
 | `range(min, max)` (or `float range(…)`) | `f32` | slider | a number (min) |
@@ -144,7 +144,7 @@ A **Shader Graph** (`.shadergraph`) builds a shader from nodes instead of WGSL. 
 **Assets ▸ Create ▸ Shader Graph ▸ Lit Shader Graph** (or **Unlit Shader Graph**) and double-click
 it to open the **Shader Graph** window (also under **Window ▸ Rendering**). A graph is just another
 shader asset: it shows up in every material's **Shader** dropdown and in **Material from Shader**,
-and its Blackboard properties appear in the material Inspector like `@property` lines do.
+and its Blackboard properties appear in the material's Properties panel like `@property` lines do.
 
 - **Canvas**: wheel zooms, middle mouse or Alt+drag pans, F frames everything. Drag nodes to move
   them, click or drag a rubber band to select, Delete removes, Ctrl+D duplicates.
