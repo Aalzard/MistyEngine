@@ -146,3 +146,13 @@ Profiled: main-thread work 5.87 / 6.22 / 6.22 → 4.91 / 5.07 / 5.01 ms; p99 18.
   asset preparation, 1–3 ms) and egui's paint and present.
 - Hierarchy (0.2 ms, already virtualised) and Inspector were cheap in this scene; not measured on
   a scene with thousands of rows.
+
+## Checks
+
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- `cargo test --workspace --release --no-fail-fast`: 2134 passed, 169 ignored, 2 failed in the
+  full run and passed alone: `scripting::video_api::tests::video_player_events_and_controls_from_lua`
+  (timing under load) and `sample_shader_graph_examples::shader_graph_examples_render` (a Sub
+  Graph read through the process-wide project root while other tests change it, the same as the
+  known-flaky `shader_graph_demo_renders`). The new tests pass.
+- Golden check (`golden_shots`, under the GPU-timing lock): every shot unchanged (0.00 % changed).
