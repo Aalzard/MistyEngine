@@ -147,6 +147,8 @@ fn dynamic_keys() -> Vec<String> {
     add(&mut crate::panels::scene::DRAW_MODES.iter().copied());
     add(&mut crate::menu_bar::COMPONENT_CATEGORIES.iter().copied());
     add(&mut ["Physics 2D", "Video"].into_iter());
+    // A stored component and category name shown as "World Streaming" (`renames::shown_name`).
+    add(&mut ["World Partition"].into_iter());
     add(&mut crate::panels::project::TYPE_FILTERS.iter().copied());
     add(&mut ["Lock View to Selected", "✔ Lock View to Selected"].into_iter());
     // Light Inspector rows shown through `targets::label` (fog_editors::light_rows).
@@ -335,7 +337,7 @@ fn english_is_the_source_and_the_fallback() {
 fn switching_language_translates_on_the_next_call() {
     set_language(Language::Turkish);
     assert_eq!(tr("File"), "Dosya");
-    assert_eq!(tr("Inspector"), "Denetçi");
+    assert_eq!(tr("Properties"), "Özellikler");
     assert!(!is_rtl());
     set_language(Language::Arabic);
     assert!(is_rtl());
@@ -344,7 +346,7 @@ fn switching_language_translates_on_the_next_call() {
     assert_eq!(tr("File"), "\u{FEE3}\u{FEE0}\u{FED2}");
     // Translating twice (a label passed through `tr` again) changes nothing.
     assert_eq!(tr(&tr("File")), tr("File"));
-    assert_eq!(tr(&tr("Inspector")), tr("Inspector"));
+    assert_eq!(tr(&tr("Properties")), tr("Properties"));
     set_language(Language::English);
     assert_eq!(tr("File"), "File");
 }
