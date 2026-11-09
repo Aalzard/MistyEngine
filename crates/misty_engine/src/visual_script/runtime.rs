@@ -716,7 +716,6 @@ impl GraphRuntime {
             .copied()?;
         Some(match at {
             PortSlot::Reg(s) => inst.st.regs.get(s as usize)?.clone(),
-            PortSlot::Var(v) => inst.st.vars.get(v as usize)?.clone(),
             PortSlot::ObjVar(v) => w
                 .graph_vars
                 .at(e, *inst.obj_index.get(v as usize)? as usize),
@@ -739,9 +738,8 @@ impl GraphRuntime {
             .prog
             .vars
             .iter()
-            .zip(&inst.st.vars)
-            .filter(|(v, _)| !v.name.contains('/'))
-            .map(|(v, x)| (v.name.to_string(), x.clone()))
+            .filter(|v| !v.name.contains('/'))
+            .map(|v| (v.name.to_string(), inst.st.regs[v.slot as usize].clone()))
             .collect();
         for (k, v) in inst.prog.object_vars.iter().enumerate() {
             let i = inst.obj_index.get(k).copied().unwrap_or(0) as usize;

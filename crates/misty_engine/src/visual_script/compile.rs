@@ -142,10 +142,7 @@ pub enum Op {
         duration: Slot,
         resume: u32,
     },
-    GetVar {
-        var: u16,
-        out: Slot,
-    },
+    /// Graph variable `var` (it lives in its register) = from.
     SetVar {
         var: u16,
         from: Slot,
@@ -248,7 +245,6 @@ fn op_name(op: &Op) -> &'static str {
         Op::Guard { .. } => "Guard",
         Op::FlipFlop { .. } => "FlipFlop",
         Op::Delay { .. } => "Delay",
-        Op::GetVar { .. } => "GetVar",
         Op::SetVar { .. } => "SetVar",
         Op::GetObjVar { .. } => "GetObjVar",
         Op::SetObjVar { .. } => "SetObjVar",
@@ -306,6 +302,8 @@ pub struct VarInfo {
     pub name: Rc<str>,
     pub ty: PinType,
     pub default: Value,
+    /// Its register (Graph variables).
+    pub slot: Slot,
 }
 
 /// A Lua call made by the runtime.
@@ -362,7 +360,6 @@ pub struct SendDef {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PortSlot {
     Reg(Slot),
-    Var(u16),
     ObjVar(u16),
 }
 
@@ -695,6 +692,14 @@ impl<'a> Compiler<'a> {
                 return self.pull(src, "Value");
             }
             "Tunnel" => return self.pull(src, out),
+            // A Graph variable lives in a register: read it there.
+            "GetVariable" => {
+                if let Some((VarScope::Graph, var)) =
+                    self.var_index.get(s.node.param("name")).copied()
+                {
+                    return self.vars[var as usize].slot;
+                }
+            }
             _ => {}
         }
         if self.is_pure(src) && !self.emitted.contains(&src) {
@@ -816,7 +821,9 @@ impl<'a> Compiler<'a> {
                 let out = self.out_slot(id, "Value");
                 match self.var(id) {
                     Some((VarScope::Graph, var)) => {
-                        self.emit(Op::GetVar { var, out });
+                        // (Normally read straight from the variable's register; see `pull`.)
+                        let from = self.vars[var as usize].slot;
+                        self.emit(Op::Copy { from, to: out });
                     }
                     Some((VarScope::Object, var)) => {
                         self.emit(Op::GetObjVar { var, out });
@@ -1326,6 +1333,7 @@ pub fn compile(g: &ScriptGraph, files: &dyn Resolver) -> Result<Program, Vec<Gra
             name: Rc::from(v.name.as_str()),
             ty: v.ty,
             default: v.value.coerce(v.ty).to_value(),
+            slot: 0,
         };
         let list = match v.scope {
             VarScope::Graph => &mut vars,
@@ -1357,6 +1365,11 @@ pub fn compile(g: &ScriptGraph, files: &dyn Resolver) -> Result<Program, Vec<Gra
         reported,
     };
     c.emit(Op::Ret);
+    // Graph variables live in registers.
+    for k in 0..c.vars.len() {
+        let d = c.vars[k].default.clone();
+        c.vars[k].slot = c.alloc(d);
+    }
     let mut events = Vec::new();
     let mut ids: Vec<u32> = flat.nodes.iter().map(|n| n.node.id).collect();
     ids.sort_unstable();
@@ -1440,7 +1453,7 @@ pub fn compile(g: &ScriptGraph, files: &dyn Resolver) -> Result<Program, Vec<Gra
             && let Some((scope, var)) = c.var_index.get(f.node.param("name")).copied()
         {
             let slot = match scope {
-                VarScope::Graph => PortSlot::Var(var),
+                VarScope::Graph => PortSlot::Reg(c.vars[var as usize].slot),
                 VarScope::Object => PortSlot::ObjVar(var),
             };
             port_slots.insert((id, "Value".to_owned(), true), slot);

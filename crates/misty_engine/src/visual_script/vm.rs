@@ -46,7 +46,6 @@ pub struct Pending {
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub regs: Vec<Value>,
-    pub vars: Vec<Value>,
     pub delays: Vec<Pending>,
 }
 
@@ -56,7 +55,6 @@ impl State {
         regs[0] = Value::Object(this);
         Self {
             regs,
-            vars: prog.vars.iter().map(|v| v.default.clone()).collect(),
             delays: Vec::new(),
         }
     }
@@ -332,15 +330,13 @@ fn run_impl<const DEBUG: bool>(
                 }
                 ret!();
             }
-            Op::GetVar { var, out } => {
-                st.regs[out as usize] = st.vars[var as usize].clone();
-            }
             Op::SetVar { var, from, out } => {
-                let v = fit(&st.regs[from as usize], prog.vars[var as usize].ty);
+                let info = &prog.vars[var as usize];
+                let v = fit(&st.regs[from as usize], info.ty);
                 if out != NO_SLOT {
                     st.regs[out as usize] = v.clone();
                 }
-                st.vars[var as usize] = v;
+                st.regs[info.slot as usize] = v;
             }
             Op::GetObjVar { var, out } => {
                 let i = obj_index[var as usize];
