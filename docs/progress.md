@@ -3350,7 +3350,32 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   with undo, previews requested and refreshed after a change, reset buttons, confirmed Clear,
   `[` / `]`, and the Inspector's draw time; unit tests for tufts, counts, moving trees.
 
+- **Cost**: the Terrain Inspector on Paint Details with seven grass cards and the large preview
+  draws in about 1 ms a frame steady and 1.3 ms a frame while a setting is dragged (a card and
+  the large tuft rebuilt every frame), release build, egui harness
+  (`terrain_ui_tests::inspector_draw_time_with_previews`); the first frame that shows the
+  sections costs 30-40 ms once (icon textures rasterised per size). A tuft costs ~0.1 ms, a
+  tree thumbnail ~1 ms once per tree version, an offscreen mesh / prefab thumbnail one small
+  renderer pass.
+- Screenshots (`docs/screenshots/r30/`): before / after of Paint Details, Paint Trees, texture
+  layers and the tool bar; after: detail mesh settings, Place Objects, the brush cursor, Arabic,
+  200 % UI scale and the light theme.
+
+### Notes for the grass painting round
+- Any change to a grass species (also look-only ones: Healthy ↔ Dry and Brightness are baked
+  into each blade by the scatter) changes `terrain_grass::scatter_key`, which drops every grass
+  chunk at once (`keep_chunks(|_| false)`): while a slider is dragged the whole field vanishes
+  and re-scatters. Same for the terrain grass's height, width, bend and seed heads (its colours
+  are uniforms and update at once). Keeping the old chunks until their replacements are
+  uploaded, and moving species dry mix / tint into a small per-species uniform table, would make
+  these edits instant in the Scene view.
+
 ### Not done yet
+- At 200 % UI scale the Inspector panel of a 1920 px window is narrower than its content (all
+  components, not only the terrain); the tool bar wraps.
+- `scene_files::tests::opening_a_scene_lifts_a_view_left_under_the_terrain` can fail when run
+  alongside other tests that open their own project folder (the engine's project root is
+  global); it passes alone.
 - Brush shapes are falloff presets; custom brush masks (noise, stamps) need brush code
   changes and were left out to keep the merge with the grass painting round easy.
 - Grass species colours come from the terrain grass's healthy / dry colours (a species tint
