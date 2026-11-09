@@ -1,3 +1,9 @@
+<p>
+  <img src="crates/misty_editor/assets/branding/logo_small.png" width="48" height="48" alt="Misty Engine logo">
+  &nbsp;
+  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/Support-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Support Misty Engine on PayPal" height="28"></a>
+</p>
+
 # Misty Engine
 
 Misty Engine is a free, open source game engine and editor written in Rust. If you have used Unity, it
@@ -6,13 +12,14 @@ scripts on your objects. The goal is to bring the best of several engines into o
 workflow, high-end visuals, open source, and lots of tools built in. It is built on wgpu, egui, hecs,
 rapier and Lua.
 
-> **Early test version (0.2.0).** Things will change and some things will break. Please try it, and
+> **Early test version (0.3.1).** Things will change and some things will break. Please try it, and
 > tell us what you find.
 
-![MeadowDemo: thin field grass with tree shadows, real-time GI](docs/screenshots/gfx/treelook_after_behind.png)
+![MeadowDemo: looking into the low sun through haze, with rocks in focus and a soft depth of field](docs/screenshots/readme_hero.jpg)
 
-*MeadowDemo, rendered live in the editor: millions of thin grass blades, trees casting soft shadows
-across the turf, and Misty GI lighting the shade. It is also a project template you can start from.*
+*MeadowDemo, rendered by the engine: looking into the low sun through volumetric fog, with sun
+shafts, millions of grass blades, rocks in focus and a soft depth of field. It is also a project
+template you can start from.*
 
 ## Download
 

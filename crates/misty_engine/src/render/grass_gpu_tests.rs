@@ -810,3 +810,103 @@ fn grass_variants() {
         );
     }
 }
+
+/// The README's header image: MeadowDemo on Ultra, looking into the low sun past the biggest
+/// rock, with the scene's fog and sun shafts and a shallow depth of field focused on the rock.
+/// Run on purpose: `cargo test --release -p misty_engine --lib readme_hero_shot -- --ignored`
+/// (`MISTY_HERO_OUT` = output png, default `docs/screenshots/readme_hero.png`;
+/// `MISTY_HERO_BACK` / `MISTY_HERO_SIDE` / `MISTY_HERO_UP` move the camera, metres).
+#[test]
+#[ignore = "renders the README header image; run on purpose"]
+fn readme_hero_shot() {
+    use crate::scene::{DepthOfFieldOverride, DofMode};
+    use glam::{Mat3, Quat};
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let env = |k: &str, d: f32| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(d)
+    };
+    let scene = meadow_scene(Shot::WideGolden);
+    // Toward the sun: against the light's forward (+Z) axis.
+    let sun = scene.find_by_name("Directional Light").expect("sun");
+    let to_sun = -scene
+        .world_matrix(sun)
+        .transform_vector3(Vec3::Z)
+        .normalize();
+    let flat = Vec3::new(to_sun.x, 0.0, to_sun.z).normalize();
+    // The biggest rock (largest world scale) under "Rocks".
+    let rocks = scene.find_by_name("Rocks").expect("Rocks");
+    let rock = scene
+        .children(rocks)
+        .into_iter()
+        .map(|e| scene.world_matrix(e).to_scale_rotation_translation())
+        .max_by(|a, b| a.0.max_element().total_cmp(&b.0.max_element()))
+        .expect("a rock");
+    let (rock_scale, _, rock_pos) = rock;
+    let side = flat.cross(Vec3::Y).normalize();
+    let back = env("MISTY_HERO_BACK", 16.0);
+    let eye = rock_pos - flat * back
+        + side * env("MISTY_HERO_SIDE", 5.5)
+        + Vec3::Y * env("MISTY_HERO_UP", 1.0);
+    // Look toward the sun, tilted down so the sun sits near the top of the frame.
+    let target_pitch = to_sun.y.asin().to_degrees() - env("MISTY_HERO_DOWN", 17.0);
+    let fwd = (flat * target_pitch.to_radians().cos() + Vec3::Y * target_pitch.to_radians().sin())
+        .normalize();
+    let right = Vec3::Y.cross(fwd).normalize();
+    let up = fwd.cross(right);
+    let materials = crate::assets::AssetCache::open(&root());
+    let mut view = GameView::new(&scene, &materials).expect("camera");
+    view.environment.grass_time = Some(3.0);
+    view.camera.position = eye;
+    view.camera.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, fwd));
+    // Focus on the rock's near face (its mesh is a few metres across at scale 1).
+    let focus = (rock_pos - eye).length() - 2.0 * rock_scale.max_element();
+    // Haze toward the mountains, so the low sun throws shafts through it.
+    view.post.fog = crate::render::FogSettings::from_override(&crate::scene::FogOverride {
+        active: true,
+        max_fog_distance: 1500.0,
+        volumetric_distance: 160.0,
+        attenuation_distance: env("MISTY_HERO_FOG", 900.0),
+        base_height: rock_pos.y + 25.0,
+        maximum_height: rock_pos.y + 160.0,
+        volumetric: true,
+        quality: crate::scene::FogQuality::High,
+        denoising: true,
+        ..Default::default()
+    });
+    view.post.depth_of_field = DepthOfFieldOverride {
+        active: true,
+        mode: DofMode::Bokeh,
+        focus_distance: focus,
+        focal_length: 50.0,
+        aperture: env("MISTY_HERO_APERTURE", 2.8),
+        ..Default::default()
+    };
+    eprintln!(
+        "sun {to_sun:?}, rock {rock_pos:?} scale {rock_scale:?}, eye {eye:?}, focus {focus:.1} m"
+    );
+    let (w, h) = (1920, 1080);
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &QualityLevel::ultra());
+    let target = r.create_target(&device, w, h);
+    let frame = view.frame();
+    for _ in 0..96 {
+        r.render(&device, &queue, &target, &frame);
+    }
+    let rgba = read_back(&device, &queue, &target);
+    let out = std::env::var_os("MISTY_HERO_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/readme_hero.png")
+        });
+    image::RgbaImage::from_raw(w, h, rgba)
+        .expect("size")
+        .save(&out)
+        .expect("png");
+    eprintln!("wrote {}", out.display());
+}
