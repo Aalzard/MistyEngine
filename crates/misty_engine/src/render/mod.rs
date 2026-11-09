@@ -20,6 +20,7 @@ mod glow;
 mod gpu_culling;
 mod gpu_timer;
 mod grass_cull;
+mod trees_cull;
 mod grass_near_shadow;
 mod grass_pool;
 mod grass_vis;
@@ -1811,6 +1812,8 @@ impl Renderer {
         self.terrains
             .encode_grass_cull(frame.terrains, &mut encoder);
         self.mark(&mut encoder, "Grass culling");
+        self.trees.encode_cull(&mut encoder);
+        self.mark(&mut encoder, "Tree culling");
         if frame.shaded
             && !frame.water.is_empty()
             && frame_debug::whole(

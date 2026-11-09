@@ -8,13 +8,14 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 6] = [
+pub const NAMES: [&str; 7] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
     "grass_vis_depth",
     "shaft_cascades",
     "tree_depth",
+    "tree_gpu_cull",
 ];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
@@ -23,6 +24,7 @@ static GI_SETTLE: AtomicBool = AtomicBool::new(true);
 static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
+static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -32,6 +34,7 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "grass_vis_depth" => Some(&GRASS_VIS_DEPTH),
         "shaft_cascades" => Some(&SHAFT_CASCADES),
         "tree_depth" => Some(&TREE_DEPTH),
+        "tree_gpu_cull" => Some(&TREE_GPU_CULL),
         _ => None,
     }
 }
@@ -97,4 +100,11 @@ pub fn shaft_cascades() -> bool {
 /// `draw_main`).
 pub fn tree_depth() -> bool {
     get(&TREE_DEPTH)
+}
+
+/// Terrain trees are culled and sorted into their lists on the GPU and drawn indirectly
+/// (trees_cull.rs) instead of a per-tree loop on the CPU every frame (with cascaded shadows;
+/// the virtual shadow map keeps the CPU lists).
+pub fn tree_gpu_cull() -> bool {
+    get(&TREE_GPU_CULL)
 }

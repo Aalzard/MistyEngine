@@ -35,8 +35,34 @@ const SCENE: &str = "Assets/Scenes/NoonValley.scene";
 const LIMESTONE: &str = "Assets/NoonValley/Textures/Limestone.png";
 const LIMESTONE_NORMAL: &str = "Assets/NoonValley/Textures/LimestoneNormal.png";
 const LIMESTONE_HEIGHT: &str = "Assets/NoonValley/Textures/LimestoneHeight.png";
+// From tools/noon_valley_textures.py (2048²: leaf litter, twigs; bark; fern and groundcover
+// leaf atlases).
 const FOREST_FLOOR: &str = "Assets/NoonValley/Textures/ForestFloor.png";
 const FOREST_FLOOR_NORMAL: &str = "Assets/NoonValley/Textures/ForestFloorNormal.png";
+const FOREST_FLOOR_HEIGHT: &str = "Assets/NoonValley/Textures/ForestFloorHeight.png";
+
+fn nv_texture(name: &str) -> String {
+    format!("{DIR}/Textures/{name}.png")
+}
+
+/// The NoonValley bark maps of `species` ("Oak", "Birch") on a recipe.
+fn with_bark(mut t: TreeAsset, species: &str) -> TreeAsset {
+    t.bark_texture = nv_texture(&format!("{species}Bark"));
+    t.bark_normal = nv_texture(&format!("{species}BarkNormal"));
+    t.bark_roughness = nv_texture(&format!("{species}BarkRoughness"));
+    t.bark_occlusion = nv_texture(&format!("{species}BarkAO"));
+    t.bark_height = nv_texture(&format!("{species}BarkHeight"));
+    t
+}
+
+/// A leaf atlas of tools/noon_valley_textures.py (`name` = "Fern", "Groundcover").
+fn with_leaves(mut t: TreeAsset, name: &str) -> TreeAsset {
+    t.leaf_texture = nv_texture(name);
+    t.leaf_normal = nv_texture(&format!("{name}Normal"));
+    t.leaf_roughness = nv_texture(&format!("{name}Roughness"));
+    t.leaf_translucency = nv_texture(&format!("{name}Translucency"));
+    t
+}
 // MeadowDemo's ground (soil and litter under the grass) and hill turf.
 const GROUND: &str = "Assets/Textures/Meadow/MeadowThatch.png";
 const GROUND_NORMAL: &str = "Assets/Textures/Meadow/MeadowThatchNormal.png";
@@ -198,7 +224,7 @@ fn grass() -> details::DetailSettings {
         on_layer: Some(0),
         density: 800.0,
         draw_distance: 160.0,
-        height: [0.07, 0.21],
+        height: [0.16, 0.5],
         width: 0.04,
         healthy_color: [0.47, 0.63, 0.19],
         dry_color: [0.66, 0.66, 0.36],
@@ -216,7 +242,7 @@ fn grass() -> details::DetailSettings {
         lush_amount: 0.65,
         dry_amount: 0.45,
         color_variation: 0.5,
-        height_variation: 0.55,
+        height_variation: 0.75,
         density_variation: 0.25,
         ground_tint: 1.0,
         cast_shadows: true,
@@ -396,75 +422,21 @@ fn limestone() -> [RgbaImage; 3] {
     maps(n, &color, &height, 6.0)
 }
 
-/// Forest floor under the canopy: dark soil, old leaves and moss. Albedo and normal.
-fn forest_floor() -> [RgbaImage; 2] {
-    let n = TEX;
-    let mut color = vec![[0.0f32; 3]; n * n];
-    let mut height = vec![0.0f32; n * n];
-    for y in 0..n {
-        for x in 0..n {
-            let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
-            let big = tile_fbm(u, v, 5, 3, 201);
-            let moss = smooth(0.55, 0.7, tile_fbm(u, v, 9, 3, 203));
-            let soil = [0.07, 0.055, 0.035].map(|c| c * (0.75 + 0.5 * big));
-            let m = [0.06, 0.09, 0.03];
-            color[y * n + x] = std::array::from_fn(|i| soil[i] + (m[i] - soil[i]) * moss);
-            height[y * n + x] = 0.3 * big + 0.1 * moss;
-        }
-    }
-    // Fallen leaves, later ones on top.
-    for k in 0..9000 {
-        let r = |salt: u32| noise::hash(k, salt as i32, 0x1eaf);
-        let (cx, cy) = (r(1) * n as f32, r(2) * n as f32);
-        let (len, wid) = (5.0 + 7.0 * r(3), 2.5 + 3.0 * r(4));
-        let a = r(5) * std::f32::consts::TAU;
-        let tone = 0.7 + 0.6 * r(6);
-        let base = if r(7) < 0.6 {
-            [0.2, 0.14, 0.07]
-        } else {
-            [0.14, 0.13, 0.06]
-        };
-        let top = 0.4 + 0.6 * k as f32 / 9000.0;
-        let reach = len.ceil() as i32 + 1;
-        let (ca, sa) = (a.cos(), a.sin());
-        for oy in -reach..=reach {
-            for ox in -reach..=reach {
-                let (lx, ly) = (
-                    ox as f32 * ca + oy as f32 * sa,
-                    -ox as f32 * sa + oy as f32 * ca,
-                );
-                let d = (lx / len).powi(2) + (ly / wid).powi(2);
-                if d > 1.0 {
-                    continue;
-                }
-                let px = (cx as i32 + ox).rem_euclid(n as i32) as usize;
-                let py = (cy as i32 + oy).rem_euclid(n as i32) as usize;
-                let i = py * n + px;
-                let h = top + 0.05 * (1.0 - d);
-                if h > height[i] {
-                    height[i] = h;
-                    color[i] = base.map(|c| c * tone * (1.0 - 0.3 * d));
-                }
-            }
-        }
-    }
-    let [albedo, _, normal] = maps(n, &color, &height, 5.0);
-    [albedo, normal]
-}
-
 fn tree_path(name: &str) -> String {
     format!("{DIR}/Trees/{name}.tree")
 }
 
 /// The valley's trees: file, recipe. 0–2 make the forest (tall, packed crowns), 3 is a bush,
-/// 4 a low-crowned tree for the forest's edges, 5 a broad lone oak of the meadow.
+/// 4 a low-crowned tree for the forest's edges, 5 a broad lone oak of the meadow, 6 a birch
+/// among the forest trees, 7 a fern and 8 a broad-leaved groundcover plant (the forest's
+/// undergrowth).
 fn tree_assets() -> Vec<(String, TreeAsset)> {
     let forest_wind = TreeWind {
         trunk_bend: 0.5,
         branch_sway: 0.7,
         leaf_flutter: 0.9,
     };
-    vec![
+    let assets = vec![
         (
             tree_path("Forest Oak"),
             TreeAsset {
@@ -579,7 +551,91 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 ..TreeAsset::oak()
             },
         ),
-    ]
+        (
+            tree_path("Forest Birch"),
+            TreeAsset {
+                seed: 33,
+                height: 19.0,
+                crown_width: 0.38,
+                crown_base: 0.4,
+                leaf_density: 1.6,
+                crown_shading: 0.7,
+                ..TreeAsset::birch()
+            },
+        ),
+        (
+            tree_path("Fern"),
+            TreeAsset {
+                seed: 35,
+                height: 0.9,
+                crown_shape: CrownShape::Spreading,
+                crown_width: 1.7,
+                crown_base: 0.0,
+                trunk_radius: 0.012,
+                leader: 0.0,
+                trunk_bend: 0.0,
+                branches: 9,
+                branch_angle: 72.0,
+                branch_curve: -0.55,
+                twigs: 2,
+                leaf_density: 2.4,
+                leaf_size: 0.62,
+                leaf_color: [1.0, 1.0, 1.0],
+                leaf_variation: 0.35,
+                translucency: 0.8,
+                crown_shading: 0.35,
+                wind: TreeWind {
+                    trunk_bend: 0.2,
+                    branch_sway: 1.4,
+                    leaf_flutter: 1.2,
+                },
+                ..with_leaves(TreeAsset::oak(), "Fern")
+            },
+        ),
+        (
+            tree_path("Groundcover"),
+            TreeAsset {
+                seed: 37,
+                height: 0.5,
+                crown_shape: CrownShape::Spreading,
+                crown_width: 2.2,
+                crown_base: 0.0,
+                trunk_radius: 0.008,
+                leader: 0.0,
+                trunk_bend: 0.0,
+                branches: 10,
+                branch_angle: 75.0,
+                branch_curve: -0.3,
+                twigs: 3,
+                leaf_density: 2.6,
+                leaf_size: 0.38,
+                leaf_color: [1.0, 1.0, 1.0],
+                leaf_variation: 0.4,
+                translucency: 0.7,
+                crown_shading: 0.3,
+                wind: TreeWind {
+                    trunk_bend: 0.1,
+                    branch_sway: 1.0,
+                    leaf_flutter: 1.0,
+                },
+                ..with_leaves(TreeAsset::oak(), "Groundcover")
+            },
+        ),
+    ];
+    // The big trees carry the high-resolution bark (close up inside the forest).
+    assets
+        .into_iter()
+        .map(|(path, t)| {
+            let species = if path.ends_with("Birch.tree") {
+                "Birch"
+            } else if path.ends_with("Fern.tree") || path.ends_with("Groundcover.tree") {
+                return (path, t);
+            } else {
+                "Oak"
+            };
+            (path, with_bark(t, species))
+        })
+        .collect()
 }
 
 /// Lone trees and bushes in the meadow: (right, ahead) of the camera in metres, prototype,
@@ -644,16 +700,36 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 if r(4) < 0.5 { 3 } else { 4 }
             } else {
                 match r(4) {
-                    k if k < 0.42 => 0,
-                    k if k < 0.74 => 1,
-                    k if k < 0.96 => 2,
+                    k if k < 0.38 => 0,
+                    k if k < 0.66 => 1,
+                    k if k < 0.86 => 2,
+                    k if k < 0.96 => 6,
                     _ => 3,
                 }
             };
             // Bigger towards the far woods; edge trees a little lower.
             let edge = smooth(0.0, 0.6, f);
             let height = (0.8 + 0.45 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45);
-            // Undergrowth within 700 m: a bush between the trunks of every few trees.
+            // Undergrowth within 700 m: ferns and broad-leaved plants between the trunks
+            // (one to three per tree, more in the light of clearings and edges), and a bush
+            // for every few trees.
+            if dist < 700.0 {
+                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(f < 0.9);
+                for k in 0..plants {
+                    let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0xfe12);
+                    let at = p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell;
+                    let fern = q(3) < 0.55;
+                    let s = 0.7 + 0.7 * q(4);
+                    out.push(TreeInstance {
+                        position: at / size,
+                        prototype: if fern { 7 } else { 8 },
+                        rotation: q(5) * std::f32::consts::TAU,
+                        height_scale: s,
+                        width_scale: s * (0.85 + 0.3 * q(6)),
+                        color: q(7),
+                    });
+                }
+            }
             if dist < 700.0 && r(10) < 0.3 {
                 let b = p + Vec2::new(r(11) - 0.5, r(12) - 0.5) * cell * 0.8;
                 out.push(TreeInstance {
@@ -733,6 +809,8 @@ fn terrain_data() -> TerrainData {
             name: "Forest Floor".into(),
             diffuse: Some(FOREST_FLOOR.into()),
             normal_map: Some(FOREST_FLOOR_NORMAL.into()),
+            height_map: Some(FOREST_FLOOR_HEIGHT.into()),
+            normal_scale: 1.2,
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
             // Under the canopy: little sky light reaches the ground.
@@ -870,6 +948,14 @@ fn volume() -> PostProcessVolume {
     v.color_adjustments.post_exposure = 0.1;
     v.color_adjustments.contrast = 12.0;
     v.color_adjustments.saturation = -2.0;
+    // Eye adaptation: walking into the forest's shade the view brightens over a second or two
+    // (never darker than the meadow's own exposure).
+    let ae = &mut v.auto_exposure;
+    ae.active = true;
+    ae.limit_min = -1.8;
+    ae.limit_max = 0.0;
+    ae.speed_dark_to_light = 1.5;
+    ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
     v.ambient_occlusion.intensity = 1.4;
     v.ambient_occlusion.radius = 2.5;
@@ -1029,9 +1115,6 @@ fn write_noon_valley() {
     albedo.save(root.join(LIMESTONE)).unwrap();
     height.save(root.join(LIMESTONE_HEIGHT)).unwrap();
     normal.save(root.join(LIMESTONE_NORMAL)).unwrap();
-    let [albedo, normal] = forest_floor();
-    albedo.save(root.join(FOREST_FLOOR)).unwrap();
-    normal.save(root.join(FOREST_FLOOR_NORMAL)).unwrap();
     for (rel, tree) in tree_assets() {
         tree.save(&root.join(rel)).unwrap();
     }
@@ -1055,6 +1138,7 @@ fn noon_valley_matches_its_generator() {
         LIMESTONE_HEIGHT,
         FOREST_FLOOR,
         FOREST_FLOOR_NORMAL,
+        FOREST_FLOOR_HEIGHT,
         GROUND,
         GROUND_NORMAL,
         GROUND_HEIGHT,

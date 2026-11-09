@@ -45,10 +45,10 @@ const fn view(name: &'static str, yaw: f32, pitch: f32, offset: Vec3) -> View {
 /// The views: the reference composition, towards the sun, away from it, both sides, up at the
 /// forest and cliffs, down into the grass, and along the treeline from closer in.
 pub(in crate::render) const VIEWS: &[&str] = &[
-    "hero", "sun", "away", "left", "forest", "down", "treeline",
+    "hero", "sun", "away", "left", "forest", "down", "treeline", "inside", "inside2",
 ];
 
-fn views() -> [View; 7] {
+fn views() -> [View; 9] {
     [
         view("hero", 0.0, 2.0, Vec3::ZERO),
         // Yaw replaced by the sun's bearing; looking up at it.
@@ -58,6 +58,9 @@ fn views() -> [View; 7] {
         view("forest", 62.0, 14.0, Vec3::ZERO),
         view("down", 10.0, -38.0, Vec3::new(0.0, -0.7, 0.0)),
         view("treeline", 30.0, 3.0, Vec3::new(40.0, 0.0, 200.0)),
+        // Inside the wood along the meadow's far edge: among the trunks, the canopy overhead.
+        view("inside", 70.0, 4.0, Vec3::new(-60.0, 0.0, 530.0)),
+        view("inside2", -25.0, 12.0, Vec3::new(-160.0, 0.0, 570.0)),
     ]
 }
 
@@ -107,6 +110,10 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     }
     gv.camera.position = eye;
     gv.camera.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, fwd));
+    // `MISTY_NOON_AE=off`: eye adaptation off (the before / after shots).
+    if std::env::var("MISTY_NOON_AE").is_ok_and(|v| v == "off") {
+        gv.post.auto_exposure.active = false;
+    }
     Some(gv)
 }
 
@@ -250,5 +257,44 @@ fn noon_valley_sun_heights() {
             img.save(dir.join(&name)).unwrap();
             eprintln!("wrote {name}");
         }
+    }
+}
+
+/// Tree count scaling: the hero view with the terrain's trees copied (jittered) up to
+/// `MISTY_NOON_TREES` (default 250 000), GPU and CPU times on High (`MISTY_QUALITY`), with the
+/// GPU tree culling on and (`MISTY_FAST_OFF=tree_gpu_cull`) off.
+#[test]
+#[ignore = "timing, prints only"]
+fn noon_valley_stress() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let want: usize = std::env::var("MISTY_NOON_TREES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(250_000);
+    let mut view = noon_view("hero").expect("hero");
+    let t = &mut view.terrains[0];
+    let mut d = (*t.data).clone();
+    let base = d.trees.instances.clone();
+    let mut k = 0u32;
+    while d.trees.instances.len() < want {
+        let src = base[k as usize % base.len()];
+        k += 1;
+        let jx = crate::terrain::noise::hash(k as i32, 1, 0x57e5) - 0.5;
+        let jz = crate::terrain::noise::hash(k as i32, 2, 0x57e5) - 0.5;
+        let mut i = src;
+        i.position += glam::Vec2::new(jx, jz) * (6.0 / d.size.x);
+        i.position = i.position.clamp(glam::Vec2::splat(0.0), glam::Vec2::splat(1.0));
+        d.trees.instances.push(i);
+    }
+    let n = d.trees.instances.len();
+    t.key = format!("{}#stress{n}", t.key);
+    t.data = std::sync::Arc::new(d);
+    let (w, h) = size();
+    for (level, quality) in levels("high") {
+        let b = breakdown(&device, &queue, &view, &quality, (w, h));
+        b.print(&format!("noon stress {n} trees {level} {w}x{h}"));
     }
 }
