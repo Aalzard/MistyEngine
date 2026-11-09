@@ -92,7 +92,13 @@ pub struct ProjectBrowser {
     pub packages: Vec<FolderNode>,
     /// Package folders that came from a registry: no renaming, moving or deleting inside.
     pub read_only: Vec<PathBuf>,
+    /// The last search's text, when it ran and its results (see [`Self::cached_search_results`]).
+    search_cache: Option<(String, std::time::Instant, Vec<AssetEntry>)>,
 }
+
+/// How long a search's results are reused while its text stays the same (the folder walk
+/// otherwise ran every frame while searching).
+pub const SEARCH_CACHE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl ProjectBrowser {
     pub fn open(root: PathBuf) -> Self {
@@ -118,6 +124,7 @@ impl ProjectBrowser {
             expanded: [assets.clone()].into(),
             packages: Vec::new(),
             read_only: Vec::new(),
+            search_cache: None,
         };
         browser.refresh();
         browser
@@ -129,6 +136,7 @@ impl ProjectBrowser {
 
     /// Re-read the folder tree and the current folder's contents.
     pub fn refresh(&mut self) {
+        self.search_cache = None;
         self.tree = build_tree(&self.assets_dir(), "Assets");
         self.entries = list_dir(&self.current);
         self.packages = package_trees(&self.packages_dir());
@@ -210,6 +218,20 @@ impl ProjectBrowser {
         let mut out = Vec::new();
         collect_matches(&self.assets_dir(), &filter, &mut out);
         out
+    }
+
+    /// [`Self::search_results`], walked again when the text changes, the browser refreshes
+    /// (assets added, moved, renamed or deleted) or after [`SEARCH_CACHE`].
+    pub fn cached_search_results(&mut self) -> Vec<AssetEntry> {
+        if let Some((text, at, results)) = &self.search_cache
+            && *text == self.search
+            && at.elapsed() < SEARCH_CACHE
+        {
+            return results.clone();
+        }
+        let results = self.search_results();
+        self.search_cache = Some((self.search.clone(), std::time::Instant::now(), results.clone()));
+        results
     }
 }
 
@@ -355,6 +377,33 @@ mod tests {
         let names: Vec<_> = browser.entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"Scenes"), "got {names:?}");
         assert!(browser.tree.children.iter().any(|c| c.name == "Scripts"));
+    }
+
+    #[test]
+    fn cached_search_never_shows_a_stale_list() {
+        let root = std::env::temp_dir().join(format!("misty_search_cache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Props")).unwrap();
+        std::fs::write(root.join("Assets/Props/Barrel.mat"), "{}").unwrap();
+        let mut b = ProjectBrowser::open(root.clone());
+        let names = |b: &mut ProjectBrowser| -> Vec<String> {
+            b.cached_search_results().into_iter().map(|e| e.name).collect()
+        };
+        b.search = "barrel".into();
+        assert_eq!(names(&mut b), ["Barrel.mat"]);
+        // Another text: searched again at once.
+        b.search = "crate".into();
+        assert!(names(&mut b).is_empty());
+        // A new file: a refresh (what the editor does when assets appear) drops the cache.
+        std::fs::write(root.join("Assets/Props/Crate.mat"), "{}").unwrap();
+        b.refresh();
+        assert_eq!(names(&mut b), ["Crate.mat"]);
+        // Removed outside the editor without a refresh: gone once the cache is older than
+        // SEARCH_CACHE, never shown longer.
+        std::fs::remove_file(root.join("Assets/Props/Crate.mat")).unwrap();
+        std::thread::sleep(SEARCH_CACHE + std::time::Duration::from_millis(50));
+        assert!(names(&mut b).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

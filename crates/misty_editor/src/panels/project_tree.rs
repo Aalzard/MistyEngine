@@ -35,13 +35,20 @@ pub fn show(
     header(ui, "★  Favorites");
 
     // Visible folders depth-first (closed folders hide their children), then Packages.
-    let tree = browser.tree.clone();
+    // The trees are moved out for the rows and put back below (copying them every frame cost
+    // an allocation per folder); the rows only read and change other browser fields.
+    let empty = FolderNode {
+        path: PathBuf::new(),
+        name: String::new(),
+        children: Vec::new(),
+    };
+    let tree = std::mem::replace(&mut browser.tree, empty);
     let mut rows: Vec<(&FolderNode, usize)> = Vec::new();
     visit(&tree, 0, &browser.expanded, &mut rows);
     let packages_root = FolderNode {
         path: browser.packages_dir(),
         name: "Packages".into(),
-        children: browser.packages.clone(),
+        children: std::mem::take(&mut browser.packages),
     };
     let first_package = rows.len();
     visit(&packages_root, 0, &browser.expanded, &mut rows);
@@ -61,6 +68,8 @@ pub fn show(
             req,
         );
     }
+    browser.tree = tree;
+    browser.packages = packages_root.children;
 }
 
 fn visit<'a>(

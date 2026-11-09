@@ -819,6 +819,10 @@ pub fn row_with_icon(
 ) -> egui::Response {
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
+    // Rows scrolled out of view (long Project lists and folder trees) draw nothing.
+    if !ui.is_rect_visible(rect) {
+        return resp;
+    }
     if selected {
         ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
     } else if resp.hovered() {
