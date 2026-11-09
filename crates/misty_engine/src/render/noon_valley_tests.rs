@@ -298,3 +298,50 @@ fn noon_valley_stress() {
         b.print(&format!("noon stress {n} trees {level} {w}x{h}"));
     }
 }
+
+/// GPU tree culling draws the same trees as the CPU lists: MeadowDemo's close oak and the
+/// trees behind the player (meshes, impostors and their shadows) rendered both ways differ by
+/// at most render-to-render noise.
+#[test]
+fn tree_gpu_cull_matches_the_cpu_lists() {
+    use crate::render::trees::gpu_tests::{Shot as TreeShot, meadow_view};
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            crate::render::fast_paths::set("tree_gpu_cull", true);
+        }
+    }
+    let _restore = Restore;
+    let (w, h) = (480, 270);
+    for shot in [TreeShot::Close, TreeShot::Behind] {
+        let view = meadow_view(shot);
+        let mut images = Vec::new();
+        for gpu in [false, true] {
+            crate::render::fast_paths::set("tree_gpu_cull", gpu);
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &QualityLevel::medium());
+            let target = r.create_target(&device, w, h);
+            let frame = view.frame();
+            for _ in 0..24 {
+                r.render(&device, &queue, &target, &frame);
+            }
+            images.push(read_back(&device, &queue, &target));
+        }
+        let (a, b) = (&images[0], &images[1]);
+        let mut sum = 0u64;
+        let mut big = 0usize;
+        for (x, y) in a.iter().zip(b) {
+            let d = x.abs_diff(*y) as u64;
+            sum += d;
+            big += usize::from(d > 24);
+        }
+        let mean = sum as f64 / a.len() as f64;
+        let share = big as f64 / a.len() as f64;
+        eprintln!("{}: mean {mean:.3}, {:.3} % over 24 levels", shot.name(), share * 100.0);
+        assert!(mean < 1.0 && share < 0.01, "{}: mean {mean}, share {share}", shot.name());
+    }
+}
