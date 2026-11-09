@@ -39,7 +39,7 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     ui.add_space(6.0);
     ui.add(
         egui::TextEdit::singleline(&mut hub.search)
-            .hint_text("🔍  Search projects")
+            .hint_text(tr!("🔍  Search projects"))
             .desired_width(320.0),
     );
     if let Some(n) = &hub.notice {

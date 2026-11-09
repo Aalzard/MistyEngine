@@ -53,6 +53,20 @@
 "{folder} is not a Misty project (it has no Assets folder)." = "{folder} ليس مشروع Misty (لا يحتوي على مجلد Assets)."
 "Could not save {file}: {error}" = "تعذّر حفظ {file}: {error}"
 
+"🔍  Search projects" = "🔍  البحث في المشاريع"
+"just now" = "الآن"
+"1 minute ago" = "قبل دقيقة"
+"{count} minutes ago" = "قبل {count} دقيقة"
+"1 hour ago" = "قبل ساعة"
+"{count} hours ago" = "قبل {count} ساعة"
+"1 day ago" = "قبل يوم"
+"{count} days ago" = "قبل {count} يوم"
+"1 week ago" = "قبل أسبوع"
+"{count} weeks ago" = "قبل {count} أسبوع"
+"1 month ago" = "قبل شهر"
+"{count} months ago" = "قبل {count} شهر"
+"1 year ago" = "قبل سنة"
+"{count} years ago" = "قبل {count} سنة"
 [templates]
 "MeadowDemo" = "عرض المرج"
 "First Person" = "منظور الشخص الأول"
@@ -361,6 +375,7 @@
 "Video" = "الفيديو"
 
 [inspector]
+"Scales the penumbra: 1 = the light's physical size (rectangle lights: their width and height), larger = softer, 0 = as sharp as the shadow map allows." = "يغيّر حجم شبه الظل: 1 = الحجم الفعلي للضوء (عرض الأضواء المستطيلة وارتفاعها)، والأكبر أنعم، و0 بأقصى حدة تسمح بها خريطة الظل."
 "Lock Inspector" = "قفل المفتش"
 "Static" = "ثابت"
 "Tag" = "الوسم"
@@ -458,6 +473,17 @@
 "Mirror for RTL" = "عكس للكتابة من اليمين"
 "Text that starts in a right-to-left script (Arabic, Hebrew) swaps Left and Right alignment, so one Text suits every language of a Localized Text" = "النص الذي يبدأ بكتابة من اليمين إلى اليسار (العربية والعبرية) يبدّل محاذاة اليسار واليمين، فيناسب نص واحد كل لغات النص المترجم"
 
+"Shadow Angle" = "زاوية الظل"
+"Angular diameter of the sun (the real sun is about 0.53°)." = "القطر الزاوي للشمس (الشمس الحقيقية نحو 0.53°)."
+"Shadow Radius" = "نصف قطر الظل"
+"Radius of the light source in metres: larger = softer shadows." = "نصف قطر مصدر الضوء بالأمتار: كلما كبر نعمت الظلال."
+"Shadow Softness" = "نعومة الظل"
+"Bias" = "الانحياز"
+"Pushes the shadow away from the surface (shadow-map texels)." = "يدفع الظل بعيدًا عن السطح (بوحدات خريطة الظل)."
+"Normal Bias" = "انحياز العمودي"
+"Offsets the lookup along the surface normal (shadow-map texels)." = "يزيح أخذ العينة على طول العمودي على السطح (بوحدات خريطة الظل)."
+"Volumetric Multiplier" = "مضاعف الإضاءة الحجمية"
+"Volumetric Shadow Dimmer" = "مخفّت الظل الحجمي"
 [audio]
 "Output" = "الإخراج"
 "None (Audio Clip)" = "لا شيء (مقطع صوتي)"

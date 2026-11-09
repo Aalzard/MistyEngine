@@ -1,6 +1,8 @@
 //! Light ▸ Shadows rows under Shadow Type: the source size that soft shadows widen with
 //! (sun angle or source radius) and the depth / normal biases.
 
+use crate::i18n::tr;
+use crate::panels::inspector::card::prop_label;
 use egui::{DragValue, Ui};
 use misty_engine::scene::{Light, LightType, Shadows};
 
@@ -14,8 +16,9 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
     let mut ch = false;
     if l.shadows == Shadows::Soft {
         if l.kind == LightType::Directional {
-            ui.label("Shadow Angle")
-                .on_hover_text("Angular diameter of the sun (the real sun is about 0.53°).");
+            prop_label(ui, tr!("Shadow Angle")).on_hover_text(tr!(
+                "Angular diameter of the sun (the real sun is about 0.53°)."
+            ));
             let field = DragValue::new(&mut l.shadow_angle)
                 .speed(0.01)
                 .range(0.0..=20.0)
@@ -24,8 +27,9 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
             ui.end_row();
         } else if l.kind != LightType::Rectangle {
             // Rectangle lights soften with their size instead.
-            ui.label("Shadow Radius")
-                .on_hover_text("Radius of the light source in metres: larger = softer shadows.");
+            prop_label(ui, tr!("Shadow Radius")).on_hover_text(tr!(
+                "Radius of the light source in metres: larger = softer shadows."
+            ));
             let field = DragValue::new(&mut l.shadow_radius)
                 .speed(0.005)
                 .range(0.0..=10.0)
@@ -33,10 +37,10 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
             ch |= ui.add(mixed::drag("shadow_radius", field)).changed();
             ui.end_row();
         }
-        ui.label("Shadow Softness").on_hover_text(
+        prop_label(ui, tr!("Shadow Softness")).on_hover_text(tr!(
             "Scales the penumbra: 1 = the light's physical size (rectangle lights: their \
-             width and height), larger = softer, 0 = as sharp as the shadow map allows.",
-        );
+             width and height), larger = softer, 0 = as sharp as the shadow map allows."
+        ));
         let field = DragValue::new(&mut l.shadow_softness)
             .speed(0.01)
             .range(0.0..=8.0)
@@ -44,15 +48,17 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
         ch |= ui.add(mixed::drag("shadow_softness", field)).changed();
         ui.end_row();
     }
-    ui.label("Bias")
-        .on_hover_text("Pushes the shadow away from the surface (shadow-map texels).");
+    prop_label(ui, tr!("Bias")).on_hover_text(tr!(
+        "Pushes the shadow away from the surface (shadow-map texels)."
+    ));
     let bias = DragValue::new(&mut l.shadow_bias)
         .speed(0.01)
         .range(0.0..=10.0);
     ch |= ui.add(mixed::drag("shadow_bias", bias)).changed();
     ui.end_row();
-    ui.label("Normal Bias")
-        .on_hover_text("Offsets the lookup along the surface normal (shadow-map texels).");
+    prop_label(ui, tr!("Normal Bias")).on_hover_text(tr!(
+        "Offsets the lookup along the surface normal (shadow-map texels)."
+    ));
     let normal = DragValue::new(&mut l.shadow_normal_bias)
         .speed(0.01)
         .range(0.0..=10.0);

@@ -149,6 +149,8 @@ fn dynamic_keys() -> Vec<String> {
     add(&mut ["Physics 2D", "Video"].into_iter());
     add(&mut crate::panels::project::TYPE_FILTERS.iter().copied());
     add(&mut ["Lock View to Selected", "✔ Lock View to Selected"].into_iter());
+    // Light Inspector rows shown through `targets::label` (fog_editors::light_rows).
+    add(&mut ["Volumetric Multiplier", "Volumetric Shadow Dimmer"].into_iter());
     add(&mut misty_engine::light2d::Light2DType::ALL
         .iter()
         .map(|k| k.label()));
@@ -339,7 +341,7 @@ fn switching_language_translates_on_the_next_call() {
     assert!(is_rtl());
     // Shaped for egui: "ملف" (file) joined and in visual order.
     assert_eq!(tr("File"), shape::visual("ملف", shape::Base::Rtl));
-    assert_eq!(tr("File"), "\u{FED2}\u{FEE0}\u{FEE3}");
+    assert_eq!(tr("File"), "\u{FEE3}\u{FEE0}\u{FED2}");
     // Translating twice (a label passed through `tr` again) changes nothing.
     assert_eq!(tr(&tr("File")), tr("File"));
     assert_eq!(tr(&tr("Inspector")), tr("Inspector"));
@@ -380,10 +382,10 @@ fn language_codes_and_names() {
 #[test]
 fn user_content_is_shaped_only_when_it_needs_it() {
     assert!(matches!(display("Main Camera"), Cow::Borrowed(_)));
-    // An Arabic object name: joined and reversed, whatever the UI language.
+    // An Arabic object name: joined, whatever the UI language.
     assert_eq!(
         display("\u{645}\u{631}\u{62d}\u{628}\u{627}"),
-        "\u{FE8E}\u{FE92}\u{FEA3}\u{FEAE}\u{FEE3}"
+        "\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E}"
     );
 }
 

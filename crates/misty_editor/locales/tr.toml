@@ -52,6 +52,20 @@
 "{folder} is not a Misty project (it has no Assets folder)." = "{folder} bir Misty projesi değil (Assets klasörü yok)."
 "Could not save {file}: {error}" = "{file} kaydedilemedi: {error}"
 
+"🔍  Search projects" = "🔍  Projelerde ara"
+"just now" = "az önce"
+"1 minute ago" = "1 dakika önce"
+"{count} minutes ago" = "{count} dakika önce"
+"1 hour ago" = "1 saat önce"
+"{count} hours ago" = "{count} saat önce"
+"1 day ago" = "1 gün önce"
+"{count} days ago" = "{count} gün önce"
+"1 week ago" = "1 hafta önce"
+"{count} weeks ago" = "{count} hafta önce"
+"1 month ago" = "1 ay önce"
+"{count} months ago" = "{count} ay önce"
+"1 year ago" = "1 yıl önce"
+"{count} years ago" = "{count} yıl önce"
 [templates]
 "MeadowDemo" = "Çayır Demosu"
 "First Person" = "Birinci Şahıs"
@@ -361,6 +375,7 @@
 "Video" = "Video"
 
 [inspector]
+"Scales the penumbra: 1 = the light's physical size (rectangle lights: their width and height), larger = softer, 0 = as sharp as the shadow map allows." = "Yarı gölgeyi ölçekler: 1 = ışığın fiziksel boyutu (dikdörtgen ışıklarda genişliği ve yüksekliği), büyüdükçe daha yumuşak, 0 = gölge haritasının izin verdiği kadar keskin."
 "Lock Inspector" = "Denetçiyi Kilitle"
 "Static" = "Statik"
 "Tag" = "Etiket"
@@ -460,6 +475,17 @@
 "Mirror for RTL" = "Sağdan Sola İçin Yansıt"
 "Text that starts in a right-to-left script (Arabic, Hebrew) swaps Left and Right alignment, so one Text suits every language of a Localized Text" = "Sağdan sola yazılan bir yazıyla (Arapça, İbranice) başlayan metinde Sol ve Sağ hizalama yer değiştirir; böylece tek bir Metin, Yerelleştirilmiş Metnin her diline uyar"
 
+"Shadow Angle" = "Gölge Açısı"
+"Angular diameter of the sun (the real sun is about 0.53°)." = "Güneşin açısal çapı (gerçek güneş yaklaşık 0,53°)."
+"Shadow Radius" = "Gölge Yarıçapı"
+"Radius of the light source in metres: larger = softer shadows." = "Işık kaynağının metre cinsinden yarıçapı: büyüdükçe gölgeler yumuşar."
+"Shadow Softness" = "Gölge Yumuşaklığı"
+"Bias" = "Sapma"
+"Pushes the shadow away from the surface (shadow-map texels)." = "Gölgeyi yüzeyden uzaklaştırır (gölge haritası tekselleri)."
+"Normal Bias" = "Normal Sapması"
+"Offsets the lookup along the surface normal (shadow-map texels)." = "Örneklemeyi yüzey normali boyunca kaydırır (gölge haritası tekselleri)."
+"Volumetric Multiplier" = "Hacimsel Çarpan"
+"Volumetric Shadow Dimmer" = "Hacimsel Gölge Kısıcı"
 [audio]
 "Output" = "Çıkış"
 "None (Audio Clip)" = "Yok (Ses Klibi)"

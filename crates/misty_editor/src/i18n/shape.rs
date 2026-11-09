@@ -1,16 +1,21 @@
 //! Arabic (and other right-to-left) text for egui.
 //!
-//! egui draws one glyph per character, left to right, without shaping. Arabic needs two things
-//! it doesn't do, both done here on the text before it reaches egui:
+//! egui lays text out left to right. It shapes each run of one font with harfrust, which lays
+//! a run in an Arabic script out right to left, but it has no bidirectional algorithm: a line
+//! mixing Arabic, numbers and Latin words comes out in the wrong order, and a run's direction
+//! is guessed from its first letter. So the text is prepared here before it reaches egui:
 //! 1. Joining: each letter takes its isolated, initial, medial or final form from its
-//!    neighbours (`ar-reshaper` maps letters to the Arabic Presentation Forms, which the editor
-//!    fonts have), lam + alef become one ligature.
+//!    neighbours (`ar-reshaper` maps letters to the Arabic Presentation Forms), lam + alef
+//!    become one ligature. The forms don't depend on what egui's shaper does with them.
 //! 2. Order: the Unicode Bidirectional Algorithm (`unicode-bidi`) turns the logical order into
 //!    the visual one, line by line: right-to-left runs are reversed, numbers and Latin words
 //!    inside them keep reading left to right, brackets are mirrored.
+//! 3. egui's runs: the built-in Arabic font is first in the editor's text fonts and has only
+//!    Arabic characters (`theme::load_fonts`), so egui's Arabic runs are exactly the maximal
+//!    stretches of Arabic characters; each is handed over in logical order for egui to lay out
+//!    right to left ([`egui_order`]).
 //!
-//! The result is plain text in visual order, so it must only be drawn, never edited (text
-//! fields keep the logical text).
+//! The result must only be drawn, never edited (text fields keep the logical text).
 
 use std::borrow::Cow;
 
@@ -84,6 +89,30 @@ fn visual_line(text: &str, base: Base) -> String {
             out.push_str(part);
         }
     }
+    egui_order(&out)
+}
+
+/// Is `c` drawn with the built-in Arabic font in the editor (the characters it has)?
+pub fn in_arabic_font(c: char) -> bool {
+    matches!(c as u32,
+        0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF | 0x200C..=0x200F | 0x25CC
+            | 0xFB50..=0xFBFF | 0xFDF2 | 0xFDFC | 0xFE70..=0xFEFF)
+}
+
+/// Text in visual order, as egui needs it: every maximal stretch of Arabic-font characters
+/// (one egui run, which egui lays out right to left) turned back to logical order.
+pub fn egui_order(visual: &str) -> String {
+    let mut out = String::with_capacity(visual.len());
+    let mut arabic: Vec<char> = Vec::new();
+    for c in visual.chars() {
+        if in_arabic_font(c) {
+            arabic.push(c);
+        } else {
+            out.extend(arabic.drain(..).rev());
+            out.push(c);
+        }
+    }
+    out.extend(arabic.drain(..).rev());
     out
 }
 
@@ -140,12 +169,12 @@ pub fn visual_wrapped_chars(text: &str, base: Base, max_chars: usize) -> String 
 mod tests {
     use super::*;
 
-    /// "مرحبا": meem initial, reh final, hah initial, beh medial, alef final; drawn right to
-    /// left, so the visual string starts with the alef.
+    /// "مرحبا": meem initial, reh final, hah initial, beh medial, alef final. A run of Arabic
+    /// alone is handed to egui in logical order (egui lays it out right to left).
     #[test]
-    fn arabic_word_is_joined_and_reversed() {
+    fn arabic_word_is_joined() {
         let v = visual("\u{645}\u{631}\u{62d}\u{628}\u{627}", Base::Rtl);
-        assert_eq!(v, "\u{FE8E}\u{FE92}\u{FEA3}\u{FEAE}\u{FEE3}");
+        assert_eq!(v, "\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E}");
         // Lam + alef is one ligature: "لا" → U+FEFB.
         assert_eq!(visual("\u{644}\u{627}", Base::Auto), "\u{FEFB}");
     }
@@ -155,7 +184,21 @@ mod tests {
         // "حفظ 3 Misty" (save 3 Misty) in an RTL paragraph: the Arabic word is on the right,
         // "Misty" and "3" read left to right on the left.
         let v = visual("\u{62d}\u{641}\u{638} 3 Misty", Base::Rtl);
-        assert_eq!(v, "Misty 3 \u{FEC6}\u{FED4}\u{FEA3}");
+        assert_eq!(v, "Misty 3 \u{FEA3}\u{FED4}\u{FEC6}");
+        // Two Arabic words: their order is swapped, each word stays one egui run.
+        let v = visual(
+            "\u{644}\u{648}\u{646} \u{62c}\u{62f}\u{64a}\u{62f}",
+            Base::Rtl,
+        );
+        let (first, second) = v.split_once(' ').unwrap();
+        assert!(
+            first.starts_with('\u{FE9F}'),
+            "jeem (second word) on the left: {v}"
+        );
+        assert!(
+            second.starts_with('\u{FEDF}'),
+            "lam (first word) on the right: {v}"
+        );
         // Version numbers stay whole.
         let v = visual(
             "\u{627}\u{644}\u{625}\u{635}\u{62f}\u{627}\u{631} 0.3.1",
@@ -164,7 +207,7 @@ mod tests {
         assert!(v.starts_with("0.3.1 "), "{v}");
         // A Latin paragraph with one Arabic word only reverses that word.
         let v = visual("Open \u{645}\u{631}\u{62d}\u{628}\u{627} now", Base::Auto);
-        assert_eq!(v, "Open \u{FE8E}\u{FE92}\u{FEA3}\u{FEAE}\u{FEE3} now");
+        assert_eq!(v, "Open \u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E} now");
     }
 
     #[test]
@@ -172,7 +215,7 @@ mod tests {
         // "(مرحبا)" in RTL: the visual string starts with "(" again (the closing bracket,
         // mirrored), so it still reads as a bracketed word.
         let v = visual("(\u{645}\u{631}\u{62d}\u{628}\u{627})", Base::Rtl);
-        assert_eq!(v, "(\u{FE8E}\u{FE92}\u{FEA3}\u{FEAE}\u{FEE3})");
+        assert_eq!(v, "(\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E})");
     }
 
     #[test]

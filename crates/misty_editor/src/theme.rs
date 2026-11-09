@@ -44,6 +44,9 @@ pub const AXIS_X: Color32 = Color32::from_rgb(219, 62, 29);
 pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);
 pub const AXIS_Z: Color32 = Color32::from_rgb(58, 122, 237);
 
+/// The built-in Arabic font's name in the font definitions.
+const ARABIC_FONT: &str = "arabic";
+
 /// Font family of bold titles (falls back to the regular font when no bold face was found).
 const BOLD_FAMILY: &str = "bold";
 
@@ -94,31 +97,40 @@ pub fn load_fonts(ctx: &egui::Context) {
             }
         }
     }
-    // Arabic: after the UI font (Segoe UI has Arabic, and its metrics set the row height), before
-    // the symbol fonts. Built in, so the Arabic UI works on any system; its presentation forms
-    // are what `i18n::shape` produces.
+    // Arabic: the built-in font comes first in the text families, so every Arabic character
+    // (and only those: it has no Latin, digits or spaces) is drawn with it on any system. egui
+    // shapes each run of one font and lays a run of Arabic out right to left by itself;
+    // `i18n::shape` relies on Arabic runs being exactly the runs of this font. Its line metrics
+    // are Segoe UI's (see assets/fonts/README.md), so rows keep their height. Code keeps its
+    // monospace font first.
     fonts.font_data.insert(
-        "arabic".to_owned(),
+        ARABIC_FONT.to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(
             misty_engine::ui::rich::fonts::ARABIC_FONT_DATA,
         )),
     );
-    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-        let list = fonts.families.entry(family.clone()).or_default();
-        // Never first: the first font of a family sets its row height.
-        let at = list.iter().position(|n| n == "ui").map_or(1, |i| i + 1);
-        list.insert(at.min(list.len()), "arabic".to_owned());
-    }
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, ARABIC_FONT.to_owned());
+    let mono = fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default();
+    mono.insert(1.min(mono.len()), ARABIC_FONT.to_owned());
     // Bold titles: the bold face first, then the regular fallbacks for symbols.
     if let Ok(bytes) = std::fs::read("C:/Windows/Fonts/segoeuib.ttf") {
         fonts.font_data.insert(
             "ui_bold".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
-        let mut list = vec!["ui_bold".to_owned()];
+        // Arabic first here too (regular weight: the built-in font has no bold face).
+        let mut list = vec![ARABIC_FONT.to_owned(), "ui_bold".to_owned()];
         list.extend(
             fonts.families[&egui::FontFamily::Proportional]
                 .iter()
+                .filter(|n| *n != ARABIC_FONT)
                 .cloned(),
         );
         fonts
