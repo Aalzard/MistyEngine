@@ -203,8 +203,9 @@ impl Renderer {
     pub(super) fn screen_space_wanted(&self, frame: &Frame) -> bool {
         let ao =
             frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
-        let contact =
-            frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
+        let contact = (frame.post.contact_shadows.active()
+            || frame.post.contact_shadows.far_active())
+            && frame.lights.iter().any(|l| l.contact_shadows);
         // SSGI, SSR and the soft-shadow mask trace through the same prepass, and decals
         // project from it (render/decals).
         // The Frame Debugger's Depth and Normals views show the prepass.
@@ -233,6 +234,11 @@ impl Renderer {
         // Quality ▸ Ambient Occlusion Off turns AO off whatever the volume says.
         let ao_on = ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact_on = contact.active() && frame.lights.iter().any(|l| l.contact_shadows);
+        let far_on = contact.far_active()
+            && frame
+                .lights
+                .iter()
+                .any(|l| l.contact_shadows && l.kind == crate::scene::LightType::Directional);
         if !self.screen_space_wanted(frame) {
             return None;
         }
@@ -284,7 +290,7 @@ impl Renderer {
                 if ao_on { 1.0 } else { 0.0 },
                 ao.direct_lighting_strength,
                 if ao_on && ao.debug { 1.0 } else { 0.0 },
-                0.0,
+                if far_on { contact.far } else { 0.0 },
             ],
             contact: [
                 if contact_on { 1.0 } else { 0.0 },

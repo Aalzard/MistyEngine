@@ -48,6 +48,16 @@ pub struct ContactShadowsOverride {
     pub opacity: f32,
     /// Steps along the ray (4..64).
     pub sample_count: u32,
+    /// 0..1: distant shadows: past the shadow maps' reach, sunlight is ray-marched through
+    /// the screen's depth over tens of metres, so far forests keep the shade between and
+    /// under their crowns and distant slopes their shadows (0 = off). Left out of the file
+    /// at 0.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub far_shadows: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Default for ContactShadowsOverride {
@@ -58,6 +68,7 @@ impl Default for ContactShadowsOverride {
             distance_fade: 50.0,
             opacity: 1.0,
             sample_count: 12,
+            far_shadows: 0.0,
         }
     }
 }

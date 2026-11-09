@@ -128,7 +128,10 @@ fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32,
         if (atten <= 0.0) {
             continue;
         }
-        let shadow = tree_shadow(i, li, world, n, l, shadow_radius);
+        var shadow = tree_shadow(i, li, world, n, l, shadow_radius);
+        if (kind == 0u && li.spot.z > 0.5) {
+            shadow *= far_sun_shadow(world, n, l);
+        }
         // Light through the leaves: forward scattering towards the eye against the light,
         // plus diffuse light through the back of the cluster. It passes several layers of
         // leaves, so the crown's own shadow only dims it.

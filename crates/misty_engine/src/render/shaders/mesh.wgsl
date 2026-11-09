@@ -611,6 +611,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         } else if (s.receive_shadows) {
             atten *= shadow_factor(i, li, world, n, l);
             atten *= contact_shadow(li, world, n, l);
+            if (kind == 0u && li.spot.z > 0.5) {
+                atten *= far_sun_shadow(world, n, l);
+            }
         }
         if (s.receive_shadows && kind == 0u) {
             atten *= grass_near_shadow(world, l);

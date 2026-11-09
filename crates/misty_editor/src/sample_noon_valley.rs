@@ -224,6 +224,7 @@ fn grass() -> details::DetailSettings {
         gust_strength: 0.55,
         gust_scale: 22.0,
         turbulence: 0.3,
+        depth_shading: 0.8,
     }
 }
 
@@ -878,6 +879,8 @@ fn volume() -> PostProcessVolume {
     cs.distance_fade = 16.0;
     cs.opacity = 0.3;
     cs.sample_count = 6;
+    // Past the shadow maps (150 m on High) the forests keep their shade.
+    cs.far_shadows = 0.85;
     // Fair-weather cumulus: big soft heaps with small ones scattered between.
     let c = &mut v.clouds;
     c.active = true;
@@ -943,7 +946,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.33, 0.37, 0.45];
+    rs.skybox.sky_tint = [0.34, 0.38, 0.43];
     rs.realtime_gi = true;
     rs.environment_lighting.intensity = 0.75;
 

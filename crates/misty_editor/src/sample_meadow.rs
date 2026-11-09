@@ -134,6 +134,7 @@ fn grass() -> details::DetailSettings {
         gust_strength: 0.55,
         gust_scale: 22.0,
         turbulence: 0.3,
+        depth_shading: 0.0,
     }
 }
 

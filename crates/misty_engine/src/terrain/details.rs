@@ -79,6 +79,15 @@ pub struct DetailSettings {
     pub gust_scale: f32,
     /// Fast flutter of single blades (0..1).
     pub turbulence: f32,
+    /// 0..1: deep shade in the turf under a high sun: the feet of the stems and the
+    /// undergrowth go much darker, the sunlit tips stand out (0 = the soft, shallow canopy
+    /// shade). Left out of the file at 0.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub depth_shading: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Default for DetailSettings {
@@ -122,6 +131,7 @@ impl Default for DetailSettings {
             gust_strength: 0.6,
             gust_scale: 30.0,
             turbulence: 0.5,
+            depth_shading: 0.0,
         }
     }
 }

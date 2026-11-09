@@ -995,6 +995,8 @@ pub(super) struct GrassParams {
     /// x = shortest and y = tallest blade height of the turf (m), z = height variation,
     /// w = the quality level's share of the blades (the rest grow wider).
     canopy: [f32; 4],
+    /// x = depth shading.
+    depth: [f32; 4],
 }
 
 /// The built-in grass atlas: four clumps of thin field-grass blades (`tools/grass_atlas.py`)
@@ -1553,6 +1555,7 @@ impl GrassParams {
                 s.height_variation.clamp(0.0, 1.0),
                 density.clamp(MIN_KEEP, 1.0),
             ],
+            depth: [s.depth_shading.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
         }
     }
 }
