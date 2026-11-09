@@ -162,8 +162,20 @@ fn list_folder(root: &Path, dir: &Path, out: &mut BTreeSet<String>) -> Result<()
 /// [`FOLDERS`], and the meta files of the folders all of these sit in (folders keep their
 /// GUIDs too). A reference to a file the sample doesn't have is an error.
 pub(super) fn files(src: &SampleFiles) -> Result<BTreeSet<String>, String> {
+    dependencies(src, &[SCENE], &FOLDERS)
+}
+
+/// The sample files `roots` use (themselves included, with their meta files), every file under
+/// `folders`, and the meta files of the folders all of these sit in. A reference to a file the
+/// sample doesn't have is an error.
+pub(super) fn dependencies(
+    src: &SampleFiles,
+    roots: &[&str],
+    folders: &[&str],
+) -> Result<BTreeSet<String>, String> {
     let assets = src.assets()?;
-    let deps = asset_deps::collect_in(src, &[SCENE.to_owned()], &src.guids(&assets));
+    let roots: Vec<String> = roots.iter().map(|r| (*r).to_owned()).collect();
+    let deps = asset_deps::collect_in(src, &roots, &src.guids(&assets));
     if let Some((rel, from)) = deps.missing.iter().next() {
         let by = if from.is_empty() {
             String::new()
@@ -176,10 +188,10 @@ pub(super) fn files(src: &SampleFiles) -> Result<BTreeSet<String>, String> {
     files.extend(
         assets
             .iter()
-            .filter(|a| FOLDERS.iter().any(|f| a.starts_with(f)))
+            .filter(|a| folders.iter().any(|f| a.starts_with(f)))
             .cloned(),
     );
-    let folders: BTreeSet<String> = files
+    let parents: BTreeSet<String> = files
         .iter()
         .flat_map(|f| {
             Path::new(f)
@@ -190,7 +202,7 @@ pub(super) fn files(src: &SampleFiles) -> Result<BTreeSet<String>, String> {
                 .collect::<Vec<_>>()
         })
         .collect();
-    for d in folders {
+    for d in parents {
         let m = format!("{d}.meta");
         if assets.contains(&m) {
             files.insert(m);
@@ -202,8 +214,19 @@ pub(super) fn files(src: &SampleFiles) -> Result<BTreeSet<String>, String> {
 /// Copy [`files`] into `root` (a file already there is kept: copying twice is a no-op) and
 /// take over the sample's project settings. Returns how many files were written.
 pub(super) fn copy(src: &SampleFiles, root: &Path) -> Result<usize, String> {
+    copy_files(src, root, files(src)?)
+}
+
+/// Copy `files` from the sample into `root` (keeping files already there) and take over the
+/// sample's project settings (input axes, tags and layers…). Returns how many files were
+/// written.
+pub(super) fn copy_files(
+    src: &SampleFiles,
+    root: &Path,
+    files: BTreeSet<String>,
+) -> Result<usize, String> {
     let mut copied = 0;
-    for rel in files(src)? {
+    for rel in files {
         let dest = root.join(&rel);
         if dest.exists() {
             continue;

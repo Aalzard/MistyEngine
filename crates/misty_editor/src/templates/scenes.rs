@@ -1,8 +1,9 @@
-//! Scenes of the Standard and PP Ready templates.
+//! The Floating Platform template's scene, and the pieces every generated template shares:
+//! the sky volume (bloom, tonemapping, volumetric clouds, sun shafts), the sun and the camera.
 
 use std::path::Path;
 
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use misty_engine::assets::Material;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::render_settings::SunDisk;
@@ -10,7 +11,6 @@ use misty_engine::scene::{
     Camera, CloudPreset, Light, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh, Scene,
     Shadows, TonemapLook, TonemapMode, Transform,
 };
-use misty_engine::water::{self, WaterKind};
 
 pub const PLATFORM_MAT: &str = "Assets/Materials/Platform.mat";
 pub const ACCENT_MAT: &str = "Assets/Materials/Accent.mat";
@@ -34,12 +34,27 @@ pub fn write_materials(root: &Path) -> Result<(), String> {
     accent.save(&root.join(ACCENT_MAT))
 }
 
-/// A global volume that is present but switched off, every override inactive.
-pub fn disabled_volume() -> PostProcessVolume {
-    PostProcessVolume {
-        enabled: false,
-        ..Default::default()
-    }
+/// The global volume every template starts with: AgX tonemapping (Punchy look), bloom for the
+/// glow of the sun and bright surfaces, volumetric clouds, screen-space sun shafts and a touch
+/// of vignette.
+pub fn sky_volume() -> PostProcessVolume {
+    let mut v = PostProcessVolume::default();
+    v.tonemapping.active = true;
+    v.tonemapping.mode = TonemapMode::Agx;
+    v.tonemapping.look = TonemapLook::Punchy;
+    v.bloom.active = true;
+    v.bloom.intensity = 0.4;
+    v.bloom.threshold = 1.0;
+    v.color_adjustments.active = true;
+    v.color_adjustments.post_exposure = 0.3;
+    v.vignette.active = true;
+    v.vignette.intensity = 0.2;
+    let c = &mut v.clouds;
+    c.active = true;
+    CloudPreset::Sparse.apply(c);
+    v.sun_shafts.active = true;
+    v.sun_shafts.intensity = 0.6;
+    v
 }
 
 pub fn add_volume(s: &mut Scene, volume: PostProcessVolume) {
@@ -55,8 +70,16 @@ pub fn place(s: &mut Scene, name: &str, position: Vec3, euler: Vec3) -> Option<E
     Some(e)
 }
 
-fn mesh(s: &mut Scene, name: &str, kind: PrimitiveMesh, t: Transform, material: &str) -> Entity {
-    let e = s.spawn(name, None);
+/// A primitive with a material (no collider) under `parent`.
+pub fn mesh_in(
+    s: &mut Scene,
+    name: &str,
+    parent: Option<Entity>,
+    kind: PrimitiveMesh,
+    t: Transform,
+    material: &str,
+) -> Entity {
+    let e = s.spawn(name, parent);
     s.set_transform(e, t);
     s.add(e, MeshFilter::primitive(kind));
     s.add(
@@ -69,19 +92,32 @@ fn mesh(s: &mut Scene, name: &str, kind: PrimitiveMesh, t: Transform, material: 
     e
 }
 
+fn mesh(s: &mut Scene, name: &str, kind: PrimitiveMesh, t: Transform, material: &str) -> Entity {
+    mesh_in(s, name, None, kind, t, material)
+}
+
+/// A transform at `position` with `scale` (no rotation).
+pub fn scaled(position: Vec3, scale: Vec3) -> Transform {
+    Transform {
+        position,
+        scale,
+        ..Default::default()
+    }
+}
+
 /// The slab (top face at `top`) with a 1 m cube in the middle for scale.
 fn platform(s: &mut Scene, top: f32) {
-    let slab = Transform {
-        position: Vec3::new(0.0, top - PLATFORM_SIZE.y * 0.5, 0.0),
-        scale: PLATFORM_SIZE,
-        ..Default::default()
-    };
+    let slab = scaled(
+        Vec3::new(0.0, top - PLATFORM_SIZE.y * 0.5, 0.0),
+        PLATFORM_SIZE,
+    );
     mesh(s, "Platform", PrimitiveMesh::Cube, slab, PLATFORM_MAT);
     let cube = Transform::from_position(Vec3::new(0.0, top + 0.5, 0.0));
     mesh(s, "Cube", PrimitiveMesh::Cube, cube, ACCENT_MAT);
 }
 
-fn sun(s: &mut Scene, euler: Vec3, color: [f32; 3], intensity: f32) {
+/// The scene's Directional Light turned to `euler` (degrees), with soft shadows.
+pub fn sun(s: &mut Scene, euler: Vec3, color: [f32; 3], intensity: f32) {
     if let Some(e) = place(s, "Directional Light", Vec3::new(0.0, 10.0, 0.0), euler) {
         let mut l = s.world.get::<&mut Light>(e).unwrap();
         l.color = color;
@@ -90,7 +126,8 @@ fn sun(s: &mut Scene, euler: Vec3, color: [f32; 3], intensity: f32) {
     }
 }
 
-fn camera(s: &mut Scene, position: Vec3, euler: Vec3, far: f32) {
+/// The scene's Main Camera at `position`, turned to `euler`, seeing `far` metres.
+pub fn camera(s: &mut Scene, position: Vec3, euler: Vec3, far: f32) {
     if let Some(e) = place(s, "Main Camera", position, euler)
         && let Ok(mut c) = s.world.get::<&mut Camera>(e)
     {
@@ -98,86 +135,22 @@ fn camera(s: &mut Scene, position: Vec3, euler: Vec3, far: f32) {
     }
 }
 
-/// A floating platform under a procedural sky, soft sun shadows; post-processing off.
-pub fn standard() -> Scene {
+/// Floating Platform: a platform in the sky under sparse volumetric clouds, the afternoon sun
+/// ahead and to the right of the camera (its glow and rays in view), soft shadows.
+pub fn floating_platform() -> Scene {
     let mut s = Scene::default_3d("Main");
     camera(
         &mut s,
-        Vec3::new(0.0, 8.0, -20.0),
-        Vec3::new(20.0, 0.0, 0.0),
-        1000.0,
+        Vec3::new(0.0, 7.0, -21.0),
+        Vec3::new(14.0, 0.0, 0.0),
+        2000.0,
     );
-    sun(&mut s, Vec3::new(42.0, -35.0, 0.0), [1.0, 0.96, 0.9], 1.3);
+    sun(&mut s, Vec3::new(22.0, 205.0, 0.0), [1.0, 0.9, 0.78], 1.5);
     let sky = &mut s.render_settings.skybox;
     sky.sun_disk = SunDisk::HighQuality;
     // A soft blue-grey below the horizon instead of brown earth: the platform floats.
     sky.ground = [0.42, 0.47, 0.54];
     platform(&mut s, 0.0);
-    add_volume(&mut s, disabled_volume());
-    s
-}
-
-/// Everything on, tuned for a warm sunset: clouds, light volumetric fog with sharp god rays,
-/// screen sun shafts, bloom, AgX (Punchy look), a touch of vignette.
-fn pp_ready_volume() -> PostProcessVolume {
-    let mut v = PostProcessVolume::default();
-    v.tonemapping.active = true;
-    // AgX Punchy keeps the contrast the sunset was tuned with under ACES, while the sun and
-    // bright clouds roll off to white instead of skewing hue (docs/pending/gfx-room.md).
-    v.tonemapping.mode = TonemapMode::Agx;
-    v.tonemapping.look = TonemapLook::Punchy;
-    v.bloom.active = true;
-    v.bloom.intensity = 0.5;
-    v.bloom.threshold = 1.0;
-    v.color_adjustments.active = true;
-    v.color_adjustments.post_exposure = 0.4;
-    v.vignette.active = true;
-    v.vignette.intensity = 0.25;
-    let c = &mut v.clouds;
-    c.active = true;
-    CloudPreset::Sparse.apply(c);
-    // Light haze: the sun's rays show through it without hiding the horizon.
-    let f = &mut v.fog;
-    f.active = true;
-    f.volumetric = true;
-    f.max_fog_distance = 4000.0;
-    f.attenuation_distance = 900.0;
-    f.base_height = 0.0;
-    f.maximum_height = 80.0;
-    f.anisotropy = 0.7;
-    f.volumetric_distance = 150.0;
-    v.sun_shafts.active = true;
-    v.sun_shafts.intensity = 0.8;
-    v
-}
-
-/// PP Ready: the Standard platform and cube above an endless ocean, a low sunset sun facing
-/// the camera, and a cinematic camera low at one corner of the platform.
-pub fn pp_ready() -> Scene {
-    let mut s = Scene::default_3d("Main");
-    let top = 1.5;
-    // From the south-west corner, looking across the cube towards the sun.
-    if let Some(e) = place(
-        &mut s,
-        "Main Camera",
-        Vec3::new(-14.0, top + 3.2, -14.0),
-        Vec3::new(8.0, 45.0, 0.0),
-    ) && let Ok(mut c) = s.world.get::<&mut Camera>(e)
-    {
-        c.far = 5000.0;
-        c.fov = 40.0;
-    }
-    // 8° above the horizon, a little right of the cube as seen from the camera.
-    sun(&mut s, Vec3::new(8.0, 235.0, 0.0), [1.0, 0.66, 0.4], 1.8);
-    let sky = &mut s.render_settings.skybox;
-    sky.sun_disk = SunDisk::HighQuality;
-    sky.sun_size = 0.05;
-    sky.atmosphere_thickness = 1.2;
-    platform(&mut s, top);
-    let sea = water::spawn_water(&mut s, "Ocean", WaterKind::Ocean, Vec3::ZERO, Vec2::ZERO);
-    if let Ok(mut w) = s.world.get::<&mut water::WaterSurface>(sea) {
-        w.settings.set_storminess(0.2);
-    }
-    add_volume(&mut s, pp_ready_volume());
+    add_volume(&mut s, sky_volume());
     s
 }

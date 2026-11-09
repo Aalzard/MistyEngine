@@ -705,38 +705,6 @@ fn cycles_room_demo_matches_its_generator() {
     }
 }
 
-/// The PP Ready template's sunset with each tonemapper (for the AgX-as-default decision):
-/// `docs/screenshots/gfx/template_pp_ready_<mode>.png`.
-#[test]
-#[ignore = "writes comparison renders into docs/screenshots/gfx; run on purpose"]
-fn render_template_tonemappers() {
-    use crate::sample_render::{HEIGHT, WIDTH};
-    use crate::templates::{SCENE as MAIN, Template, create};
-    let gpu = crate::sample_render::headless().expect("a GPU adapter");
-    let root = std::env::temp_dir().join(format!("misty_gfx_room_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    create(&root, Template::PpReady).unwrap();
-    misty_engine::assets::set_project_root(&root);
-    let (scene, _) = Scene::load(&root.join(MAIN)).unwrap();
-    let assets = misty_engine::assets::AssetCache::open(&root);
-    let mut view = GameView::new(&scene, &assets).unwrap();
-    for (name, mode, look) in [
-        ("aces", TonemapMode::Aces, TonemapLook::Base),
-        ("agx", TonemapMode::Agx, TonemapLook::Base),
-        ("agx_punchy", TonemapMode::Agx, TonemapLook::Punchy),
-        ("pbr_neutral", TonemapMode::PbrNeutral, TonemapLook::Base),
-    ] {
-        view.post.tonemap = mode;
-        view.post.tonemap_look = look;
-        let img = crate::sample_render::render(&gpu, &view.frame(), 12);
-        misty_engine::image::RgbaImage::from_raw(WIDTH, HEIGHT, img.pixels)
-            .unwrap()
-            .save(screenshots().join(format!("template_pp_ready_{name}.png")))
-            .unwrap();
-    }
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 /// Luminance banding of a flat region of a `SIZE`² RGBA8 image: RMS of the luminance
 /// band-passed by a difference of box means (5×5 minus 31×31), i.e. the energy at roughly
 /// 10–60 px wavelengths. Pixel noise averages out in the small box, the room's smooth

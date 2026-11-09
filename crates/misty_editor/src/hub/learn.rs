@@ -3,7 +3,7 @@
 //!
 //! Start asks which recent project to open the tutorial in (each tutorial starts in a new,
 //! untitled scene, so any project will do), or, with no recent project, makes or reuses the
-//! "Tutorial Playground" project (Standard template) in the projects folder. The editor then
+//! "Tutorial Playground" project (Floating Platform template) in the projects folder. The editor then
 //! starts the tutorial once the project has loaded (see `launcher`).
 
 use std::collections::BTreeSet;
@@ -33,11 +33,11 @@ pub fn load_done(config_path: Option<&Path>) -> BTreeSet<String> {
     }
 }
 
-/// `<projects folder>/Tutorial Playground`, created from the Standard template if needed.
+/// `<projects folder>/Tutorial Playground`, created from the Floating Platform template if needed.
 pub fn playground(projects_folder: &Path) -> Result<PathBuf, String> {
     let dir = projects_folder.join(PLAYGROUND);
     if !dir.join("Assets").is_dir() {
-        crate::templates::create(&dir, Template::Standard)?;
+        crate::templates::create(&dir, Template::FloatingPlatform)?;
     }
     Ok(dir)
 }
@@ -204,7 +204,7 @@ fn pick_project(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette) {
             let label = if playground.join("Assets").is_dir() {
                 format!("Open {PLAYGROUND}")
             } else {
-                format!("New {PLAYGROUND} (Standard template)")
+                format!("New {PLAYGROUND} (Floating Platform template)")
             };
             if ui.button(label).clicked() {
                 choice = Some(None);

@@ -144,7 +144,7 @@ fn harness(config: &Path) -> Harness<'static, Shown> {
 fn projects_page_lists_recent_and_missing_projects_and_opens_one() {
     let dir = temp("page");
     let real = dir.join("Real Game");
-    crate::templates::create(&real, crate::templates::Template::Standard).unwrap();
+    crate::templates::create(&real, crate::templates::Template::FloatingPlatform).unwrap();
     let mut c = HubConfig::default();
     c.touch(&dir.join("Gone Game"), config::now() - 7200);
     c.touch(&real, config::now() - 60);
@@ -213,7 +213,7 @@ fn new_project_page_creates_and_opens_the_project() {
     h.state_mut().hub.start_new_project();
     {
         let np = h.state_mut().hub.new_project.as_mut().unwrap();
-        np.template = crate::templates::Template::Standard;
+        np.template = crate::templates::Template::FloatingPlatform;
         np.name = "Quick".into();
     }
     h.run();
@@ -371,7 +371,7 @@ fn learn_starts_a_tutorial_in_the_playground() {
     assert_eq!(opened, dir.join("Projects").join(super::learn::PLAYGROUND));
     assert!(
         opened.join(crate::templates::SCENE).is_file(),
-        "Standard template"
+        "Floating Platform template"
     );
     assert_eq!(s.tutorial.as_deref(), Some(list[0].id));
     assert!(config::same_path(
@@ -406,7 +406,7 @@ fn learn_asks_which_recent_project() {
     h.get_all_by_label("Start").nth(2).unwrap().click();
     h.run();
     assert!(h.state().opened.is_none(), "asks first");
-    h.get_by_label("New Tutorial Playground (Standard template)");
+    h.get_by_label("New Tutorial Playground (Floating Platform template)");
     h.get_by_label("My Game").click();
     h.run();
     let s = h.state();
