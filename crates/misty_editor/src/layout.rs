@@ -72,7 +72,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 19] = [
+    pub const ON_DEMAND: [Tab; 20] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
