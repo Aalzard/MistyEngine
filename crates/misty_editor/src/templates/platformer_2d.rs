@@ -63,9 +63,16 @@ const PLAYER_LAYER: u8 = 5;
 const IGNORE_RAYCAST_LAYER: u8 = 2;
 /// Half the camera's view height (world units).
 pub const ORTHO_SIZE: f32 = 6.0;
+/// The level's left edge and the lowest point the camera shows (`CameraFollow2D.lua` keeps the
+/// view inside them).
+const LEVEL_LEFT: f32 = -14.0;
+const VIEW_BOTTOM: f32 = -2.5;
 /// Where the camera starts: the follow script's place for the player at a 16:9 aspect (the
-/// view's left edge on the level's left edge, its bottom on the level's bottom).
-pub const CAMERA_START: Vec2 = Vec2::new(-14.0 + ORTHO_SIZE * 16.0 / 9.0, -4.0 + ORTHO_SIZE);
+/// view's left edge on the level's left edge, its bottom at [`VIEW_BOTTOM`]).
+pub const CAMERA_START: Vec2 = Vec2::new(
+    LEVEL_LEFT + ORTHO_SIZE * 16.0 / 9.0,
+    VIEW_BOTTOM + ORTHO_SIZE,
+);
 
 /// The coins, along the way: three on the ground, the others on platforms and over the pit.
 pub const COINS: [Vec2; 10] = [
@@ -232,7 +239,7 @@ fn sky(s: &mut Scene, cam: Entity) {
         s,
         "Sun",
         Some(cam),
-        scaled(6.5, 3.4, 15.0, 2.2, 2.2),
+        scaled(4.5, 4.2, 15.0, 2.2, 2.2),
         [2.6, 2.3, 1.4, 1.0],
     );
     let clouds = s.spawn("Clouds", None);
@@ -259,9 +266,9 @@ fn sky(s: &mut Scene, cam: Entity) {
     for i in 0..5 {
         let x = -16.0 + i as f32 * 13.0;
         let far = s.spawn(&format!("Far Hill {}", i + 1), Some(hills));
-        s.set_transform(far, scaled(x, -3.0, 10.0, 16.0, 11.0));
+        s.set_transform(far, scaled(x, 0.0, 10.0, 16.0, 11.0));
         let near = s.spawn(&format!("Hill {}", i + 1), Some(hills));
-        s.set_transform(near, scaled(x + 6.5, -4.5, 9.0, 13.0, 9.0));
+        s.set_transform(near, scaled(x + 6.5, -1.0, 9.0, 13.0, 9.0));
         for (e, color, order) in [
             (far, [0.6, 0.82, 0.55, 1.0], -16),
             (near, [0.48, 0.72, 0.42, 1.0], -15),
@@ -317,8 +324,8 @@ fn coin(s: &mut Scene, parent: Entity, i: usize, p: Vec2) {
         c,
         SpriteRenderer {
             sprite: Some(art::COIN_PNG.into()),
-            // Brighter than white: the bloom makes the coins shine.
-            color: [1.35, 1.25, 1.0, 1.0],
+            // A little brighter than white: the bloom makes the coins shine.
+            color: [1.1, 1.06, 1.0, 1.0],
             order_in_layer: 1,
             ..Default::default()
         },
@@ -453,7 +460,9 @@ pub fn scene() -> Scene {
 
     let grid = s.spawn("Grid", None);
     s.add(grid, Grid::default());
-    tilemap(&mut s, grid, "Stone Wall", art::wall_map(), BACKGROUND, -10);
+    let wall = tilemap(&mut s, grid, "Stone Wall", art::wall_map(), BACKGROUND, -10);
+    // Lighter, warmer stone in daylight (the sample's night walls are dark blue).
+    s.world.get::<&mut Tilemap>(wall).unwrap().color = [1.7, 1.6, 1.45, 1.0];
     let ground = tilemap(&mut s, grid, "Ground", art::ground_map(), "Default", 0);
     s.add(ground, TilemapCollider2D::default());
     s.add(ground, ShadowCaster2D::default());

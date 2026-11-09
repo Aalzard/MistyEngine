@@ -1,13 +1,13 @@
 -- CameraFollow2D: eases the camera towards the target in X/Y, keeping its own depth.
--- The view stops at the level's edges (left, right, bottom in world units; set one to nil
--- for no limit on that side).
+-- The view stops at the level's edges (left, right in world units) and never shows below
+-- `bottom`; set one to nil for no limit on that side.
 local CameraFollow2D = {
     target = "Player",
     smoothing = 6,
     height = 1,
     left = -14,
     right = 37,
-    bottom = -4,
+    bottom = -2.5,
 }
 
 function CameraFollow2D:Start()
