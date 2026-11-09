@@ -11,8 +11,8 @@
   - Size (× the real 0.52°, default 3), Brightness, Earthshine, Texture (None = built-in),
     Moonlight intensity and colour, Stars.
 - **Phases from lighting**: the disc is a sphere lit from the sun's direction (Follow Sun and
-  Date and Time: the real sun; Manual: the bright limb towards the sun, turned so the lit
-  fraction matches the slider). Lommel–Seeliger/Lambert mix (the full moon is evenly bright),
+  Date and Time: the real sun; Manual: lit as the sky would for the slider's phase, from the
+  west while waxing and the east while waning). Lommel–Seeliger/Lambert mix (the full moon is evenly bright),
   soft terminator, crater relief from the built-in height map near the terminator, earthshine on
   the dark side (strongest at new moon). Mip level from texels per pixel; anti-aliased limb.
 - **In the sky** (sky.wgsl): drawn before the clouds and fog are blended over the sky, so clouds in

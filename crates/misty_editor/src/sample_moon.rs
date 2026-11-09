@@ -61,7 +61,7 @@ end
 
 function MoonCycle:Update()
     local phase = self.start + Time.time / self.period
-    RenderSettings.moonPhase = phase - Mathf.Floor(phase)
+    RenderSettings.moonPhase = phase - math.floor(phase)
 end
 
 return MoonCycle

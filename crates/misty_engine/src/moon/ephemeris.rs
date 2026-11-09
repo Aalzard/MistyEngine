@@ -384,14 +384,15 @@ mod tests {
     }
 
     /// The total solar eclipse of 2024 April 8, seen from Dallas at 18:42 UT: the moon covers
-    /// the sun (only with the parallax for the observer), about 67° up in the south.
+    /// the sun (only with the parallax for the observer), near noon, about 64.7° up
+    /// (90° − 32.8° latitude + 7.5° declination).
     #[test]
     fn the_moon_covers_the_sun_during_the_dallas_eclipse() {
         let s = sky(2024, 4, 8, 18.7, 0.0, 32.78, -96.80);
         let sep = s.sun.angle_between(s.moon).to_degrees();
         assert!(sep < 0.2, "separation {sep}°");
         let alt = s.sun.y.asin().to_degrees();
-        assert!((alt - 67.0).abs() < 2.0, "{alt}");
+        assert!((alt - 64.7).abs() < 1.0, "{alt}");
         assert!(s.illumination < 0.001);
         // Full moon of 2024 April 23, 23:49 UT.
         let full = sky(2024, 4, 23, 23.8, 0.0, 51.5, 0.0);

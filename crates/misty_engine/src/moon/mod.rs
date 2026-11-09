@@ -7,8 +7,8 @@
 //!   date, time, latitude and longitude ([`ephemeris`]).
 //! - **Phase**: the moon is a sphere lit by the sun's direction, so one texture shows every
 //!   phase with a correct terminator. Follow Sun and Date and Time light it from the real
-//!   sun; Manual keeps the bright limb towards the sun and turns the light so the lit
-//!   fraction matches the Phase slider.
+//!   sun; Manual lights it as the real sky would for that phase: from the west (where the
+//!   sun is) while waxing, from the east while waning, with the lit fraction of the slider.
 //! - **Moonlight** (render/moon.rs): while the sun is below the horizon the main Directional
 //!   Light (its shadows included) turns to the moon: cool, dim, scaled by the phase (Allen's
 //!   phase law: a quarter moon is about a tenth of a full one) and by the air mass towards the
@@ -184,7 +184,7 @@ pub fn air_mass(sin_alt: f32) -> f32 {
 /// high up; dimmer and redder low down). `thickness` = the sky's Atmosphere Thickness.
 pub fn transmittance(sin_alt: f32, thickness: f32) -> Vec3 {
     let tau = Vec3::new(0.10, 0.16, 0.30) * thickness.clamp(0.0, 5.0);
-    let x = air_mass(sin_alt) - 1.0;
+    let x = (air_mass(sin_alt) - 1.0).max(0.0);
     Vec3::new((-tau.x * x).exp(), (-tau.y * x).exp(), (-tau.z * x).exp())
 }
 
@@ -239,16 +239,17 @@ pub fn from_az_alt(azimuth: f32, altitude: f32) -> Vec3 {
     ephemeris::direction(altitude as f64, azimuth as f64)
 }
 
-/// A light direction that lights `moon` with lit fraction of `phase` (0..1 cycle, 0.5 = full),
-/// its bright limb turned towards `sun`.
-fn phase_light(moon: Vec3, sun: Option<Vec3>, phase: f32) -> Vec3 {
+/// A light direction that lights `moon` with the lit fraction of `phase` (0..1 cycle, 0.5 =
+/// full) the way the sky does: the sun is west of a waxing moon along its daily circle and
+/// east of a waning one (`lat` sets the sky's pole).
+fn phase_light(moon: Vec3, phase: f32, lat: f32) -> Vec3 {
     let psi = phase.rem_euclid(1.0) * std::f32::consts::TAU;
-    let towards = sun.unwrap_or(Vec3::Y) - moon * moon.dot(sun.unwrap_or(Vec3::Y));
-    let t = towards
+    // Westward along the moon's daily circle.
+    let west = pole(lat)
+        .cross(moon)
         .try_normalize()
-        .or_else(|| (Vec3::Y - moon * moon.y).try_normalize())
-        .unwrap_or(Vec3::X);
-    (moon * psi.cos() + t * psi.sin().abs()).normalize_or(moon)
+        .unwrap_or_else(|| Vec3::NEG_X);
+    (moon * psi.cos() + west * psi.sin()).normalize_or(moon)
 }
 
 /// Where the moon is and how it is lit, or None when it is off (or Follow Sun without a sun).
@@ -267,7 +268,7 @@ pub fn state(s: &MoonSettings, sun: Option<Vec3>) -> Option<MoonState> {
         }
         MoonMode::Manual => {
             let m = from_az_alt(s.azimuth, s.altitude);
-            (m, phase_light(m, sun, s.phase))
+            (m, phase_light(m, s.phase, s.latitude))
         }
         MoonMode::DateTime => {
             let sky = ephemeris::sky(
@@ -402,6 +403,18 @@ mod tests {
         )
         .unwrap();
         assert!((manual.illumination - 0.5).abs() < 1e-3);
+        // Waxing: lit from the west (-X); waning: from the east.
+        assert!(manual.light_dir.x < -0.5, "{:?}", manual.light_dir);
+        let waning = state(
+            &MoonSettings {
+                mode: MoonMode::Manual,
+                phase: 0.75,
+                ..s.clone()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(waning.light_dir.x > 0.5 && (waning.illumination - 0.5).abs() < 1e-3);
         assert!(state(&s, None).is_none(), "Follow Sun needs a sun");
         let off = MoonSettings {
             enabled: false,
@@ -449,7 +462,7 @@ mod tests {
             }
             assert!((0.0..=1.0).contains(&night(y)));
             last = Some((s, m));
-            y -= 0.001;
+            y -= 0.0005;
         }
         assert_eq!(sun_fade(0.0), 1.0, "daytime light unchanged");
         assert_eq!(night(-0.02), 0.0, "sunset sky unchanged");

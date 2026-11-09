@@ -226,7 +226,8 @@ mod tests {
         let mut settings = RenderSettings::default();
         settings.moon.phase = phase;
         let mut e = Environment::new(settings, &[]);
-        let d = Vec3::new(0.0, y, -(1.0 - y * y).max(0.0).sqrt());
+        // Below the northern horizon: at night the sun is north of the observer.
+        let d = Vec3::new(0.0, y, (1.0 - y * y).max(0.0).sqrt());
         e.sun = Some(Sun {
             direction: d,
             color: [1.0, 0.95, 0.9],
@@ -236,7 +237,7 @@ mod tests {
     }
 
     fn sun_light(y: f32) -> LightData {
-        let d = Vec3::new(0.0, y, -(1.0 - y * y).max(0.0).sqrt());
+        let d = Vec3::new(0.0, y, (1.0 - y * y).max(0.0).sqrt());
         LightData {
             kind: LightType::Directional,
             position: Vec3::ZERO,
