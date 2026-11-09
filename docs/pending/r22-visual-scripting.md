@@ -100,7 +100,14 @@ check. The machine was also running other builds, so numbers vary by ±30 %; the
 the pass stays under 4 ms because tests run side by side.
 
 ## Screenshots
-SCREENSHOTS_PLACEHOLDER
+In `docs/screenshots/r22/`:
+- `script-graph-window.png` — the Door graph with the Blackboard and Graph Inspector.
+- `script-graph-search.png`, `script-graph-search-text.png` — the node search by category and
+  filtered ("position": engine members from the Lua binding table).
+- `script-graph-play.png` — Play mode on Coin 1: the On Update exec wire glows.
+- `script-graph-breakpoint.png` — Play paused at a breakpoint on the Patrol's Set Target, with
+  Step / Continue.
+- `visual-scripting-demo.png` — the sample in the Game view.
 
 ## Not done yet
 - Graphs edited while playing apply on the next Play (no hot reload of running instances).
