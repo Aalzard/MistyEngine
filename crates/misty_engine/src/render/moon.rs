@@ -557,6 +557,18 @@ mod gpu_tests {
         n: &crate::moon::night_sky::NightSkySettings,
         time: f32,
     ) -> Vec<u8> {
+        night_towards(device, queue, renderer, n, time, 0.0)
+    }
+
+    /// [`night`] looking towards `yaw` degrees (0 = north).
+    fn night_towards(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer: &mut Renderer,
+        n: &crate::moon::night_sky::NightSkySettings,
+        time: f32,
+        yaw: f32,
+    ) -> Vec<u8> {
         let mut settings = RenderSettings::default();
         settings.moon.enabled = false;
         settings.night_sky = n.clone();
@@ -579,7 +591,7 @@ mod gpu_tests {
         environment.grass_time = Some(time);
         let camera = Camera {
             position: Vec3::ZERO,
-            rotation: crate::camera::euler_to_quat(Vec3::new(-25.0, 0.0, 0.0)),
+            rotation: crate::camera::euler_to_quat(Vec3::new(-25.0, yaw, 0.0)),
             projection: Projection::Perspective { fov_y: 70.0 },
             near: 0.1,
             far: 100.0,
@@ -652,13 +664,29 @@ mod gpu_tests {
             moved > (SIZE * SIZE / 50) as usize,
             "animated: {moved} pixels changed"
         );
+        // The summer Milky Way's core low in the south-south-west (Sky Time 20 h).
         let milky = NightSkySettings {
             milky_way: 3.0,
-            sky_time: 2.0,
+            sky_time: 20.0,
             ..dark.clone()
         };
-        let mw = mean(&night(&device, &queue, &mut renderer, &milky, 5.0));
-        assert!(mw[2] > base[2] + 0.5, "Milky Way: {mw:?} vs {base:?}");
+        let south = mean(&night_towards(
+            &device,
+            &queue,
+            &mut renderer,
+            &dark,
+            5.0,
+            200.0,
+        ));
+        let mw = mean(&night_towards(
+            &device,
+            &queue,
+            &mut renderer,
+            &milky,
+            5.0,
+            200.0,
+        ));
+        assert!(mw[0] > south[0] + 3.0, "Milky Way: {mw:?} vs {south:?}");
         let towns = NightSkySettings {
             light_pollution: 1.5,
             ..dark.clone()

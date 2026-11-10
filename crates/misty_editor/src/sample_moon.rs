@@ -390,8 +390,8 @@ fn night_sky_scene(d: &TerrainData) -> Scene {
     m.size = 3.0;
     let n = &mut s.render_settings.night_sky;
     n.darkness = 0.35;
-    n.star_brightness = 1.6;
-    n.star_density = 1.4;
+    n.star_brightness = 1.3;
+    n.star_density = 1.0;
     n.star_magnitude_spread = 0.85;
     n.star_glow = 1.5;
     n.star_color_variation = 0.85;
@@ -401,9 +401,9 @@ fn night_sky_scene(d: &TerrainData) -> Scene {
     n.milky_way_core = 1.3;
     n.milky_way_dust = 1.1;
     n.light_pollution = 0.12;
-    n.aurora = 1.4;
+    n.aurora = 0.8;
     n.aurora_azimuth = 5.0;
-    n.aurora_distance = 380.0;
+    n.aurora_distance = 520.0;
     n.aurora_curtains = 3;
     n.aurora_waviness = 1.2;
     n.aurora_pulse = 0.7;
@@ -709,7 +709,20 @@ fn render_moon_screenshots() {
         s.render_settings.night_sky.meteor_rate = 240.0;
         s.render_settings.night_sky.meteor_brightness = 2.0;
         aim(&mut s, 200.0, -38.0, 80.0);
-        save_jpeg("meteors", &shoot_at(&gpu, &assets, &s, full, 31.3));
+        let mut quiet = s.clone_scene();
+        quiet.render_settings.night_sky.meteor_rate = 0.0;
+        let still = shoot_at(&gpu, &assets, &quiet, full, 31.0);
+        // The moment (of a few) with the most meteor in view.
+        let best = (0..10)
+            .map(|k| shoot_at(&gpu, &assets, &s, full, 31.0 + k as f32 * 0.17))
+            .max_by_key(|img| {
+                img.pixels()
+                    .zip(still.pixels())
+                    .filter(|(a, b)| a[0].abs_diff(b[0]) > 40)
+                    .count()
+            })
+            .unwrap();
+        save_jpeg("meteors", &best);
     }
 }
 
