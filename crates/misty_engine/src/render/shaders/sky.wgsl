@@ -447,9 +447,10 @@ fn fs_main(in: FullscreenOut) -> SkyTargets {
         let stars = star_field(dir);
         let behind = (stars.rgb + milky_way(dir)) * wash * (1.0 - moon.a);
         // The aurora is bright: the sky dims it only a little. Meteors are in front of the moon.
-        // Per pixel and per frame (the TAA jitter changes every frame): TAA blends the steps.
-        let seed = in.pos.xy + view.motion.xy * vec2<f32>(4129.0, 2311.0);
-        let jitter = fract(52.9829189 * fract(dot(seed, vec2<f32>(0.06711056, 0.00583715))));
+        // White noise per pixel and per frame (the TAA jitter changes every frame), so TAA
+        // blends the ray-march steps without a pattern.
+        let frame_seed = u32(fract(view.motion.x * 977.0 + view.motion.y * 433.0) * 65535.0);
+        let jitter = star_hash(vec3<u32>(vec2<u32>(in.pos.xy), frame_seed + 77u)).x;
         let glow = aurora(dir, jitter) * mix(1.0, wash, 0.4) + meteors(dir);
         c += behind + glow;
         sun += stars.rgb * stars.a * wash + glow * 0.4;
