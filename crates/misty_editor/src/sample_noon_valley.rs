@@ -246,7 +246,7 @@ fn grass() -> details::DetailSettings {
         bend: 0.8,
         translucency: 0.6,
         tip_dryness: 0.4,
-        lod_distance: 6.5,
+        lod_distance: 5.8,
         patch_scale: 30.0,
         lush_color: [0.16, 0.3, 0.07],
         lush_amount: 0.65,
@@ -725,10 +725,10 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 && (noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.18 * near_wood
                     || r(24) < 0.5 * near_wood)
             {
-                for k in 0..2 + (r(25) * 2.5) as u32 {
+                for k in 0..3 + (r(25) * 3.5) as u32 {
                     let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0x9a95);
                     let fern = q(3) < 0.65;
-                    let s = (0.75 + 0.7 * q(4)) * if fern { SMALL_SCALE.0 } else { SMALL_SCALE.1 };
+                    let s = (0.9 + 0.8 * q(4)) * if fern { SMALL_SCALE.0 } else { SMALL_SCALE.1 };
                     out.push(TreeInstance {
                         position: (p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell) / size,
                         prototype: if fern { 7 } else { 8 },
@@ -782,7 +782,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             // (one to three per tree, more in the light of clearings and edges), and a bush
             // for every few trees.
             if dist < 700.0 {
-                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(at_edge);
+                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(at_edge || near_wood > 0.5);
                 for k in 0..plants {
                     let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0xfe12);
                     let at = p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell;
@@ -894,10 +894,11 @@ fn terrain_data() -> TerrainData {
             normal_map: Some(FOREST_FLOOR_NORMAL.into()),
             height_map: Some(FOREST_FLOOR_HEIGHT.into()),
             normal_scale: 1.2,
-            tile_size: [3.0, 3.0],
+            tile_size: [2.0, 2.0],
             smoothness: 0.1,
-            // Sky light reaching the floor (1 = open ground): a little less under the canopy.
-            occlusion: 0.9,
+            // Sky light reaching the floor (1 = open ground): less under the canopy, so the
+            // sun flecks stand out from the shade.
+            occlusion: 0.65,
             ..Default::default()
         },
     ];
@@ -1061,7 +1062,7 @@ fn volume() -> PostProcessVolume {
     // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
     // brighter: the shaded forest floor reads mid-brown, not black.
     ae.histogram_high = 80.0;
-    ae.compensation = 0.3;
+    ae.compensation = 0.15;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
