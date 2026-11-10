@@ -194,6 +194,18 @@ fn forest(x: f32, z: f32) -> f32 {
     f.max(behind)
 }
 
+/// How deep inside a wood (x, z) is, 0..1: the least [`forest`] cover at the point and on a
+/// 20 m ring round it. Within ~20 m of open ground it falls off, so the edge gets low crowns
+/// and bushes down to the grass, and the litter starts behind them.
+fn wood_depth(x: f32, z: f32) -> f32 {
+    let mut d = forest(x, z);
+    for k in 0..6 {
+        let a = k as f32 * std::f32::consts::TAU / 6.0;
+        d = d.min(forest(x + 20.0 * a.cos(), z + 20.0 * a.sin()));
+    }
+    d
+}
+
 fn rules(slope: [f32; 2], priority: i32) -> AutoPaintRules {
     AutoPaintRules {
         enabled: true,
@@ -260,8 +272,8 @@ fn flowers() -> FlowerSettings {
             // Small cream daisies, fewer buttercups: specks of cream and yellow just above
             // the tall turf (the grass reaches half a metre).
             let (amount, head) = match k.name.as_str() {
-                "Oxeye Daisy" => (1.4, 0.6),
-                "Buttercup" => (0.7, 0.75),
+                "Oxeye Daisy" => (1.0, 0.6),
+                "Buttercup" => (1.0, 0.75),
                 _ => return None,
             };
             k.amount = amount;
@@ -274,11 +286,11 @@ fn flowers() -> FlowerSettings {
         enabled: true,
         kinds,
         density: 130.0,
-        coverage: 0.28,
-        patch_scale: 16.0,
+        coverage: 0.22,
+        patch_scale: 12.0,
         scattered: 0.004,
         edges: 0.3,
-        lod_distance: 55.0,
+        lod_distance: 45.0,
         map: Vec::new(),
     }
 }
@@ -401,7 +413,7 @@ fn limestone() -> [RgbaImage; 3] {
             let streak = (tile_fbm(u, 0.0, 24, 2, 111) - 0.45).max(0.0) * 2.5 * (1.0 - bed * 0.6);
             let lichen = smooth(0.62, 0.72, tile_fbm(u, v, 10, 3, 113));
             let moss = smooth(0.7, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.9, bed);
-            let mut c = [0.34, 0.31, 0.26].map(|k| {
+            let mut c = [0.33, 0.32, 0.29].map(|k| {
                 k * (0.82 + 0.25 * bed_tone)
                     * (0.85 + 0.3 * blocks)
                     * (0.92 + 0.12 * grain)
@@ -514,8 +526,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 8,
                 leaf_density: 2.0,
                 leaf_size: 0.9,
-                leaf_color: [0.8, 0.86, 0.72],
-                crown_shading: 0.7,
+                leaf_color: [0.66, 0.72, 0.6],
+                crown_shading: 0.9,
                 clumping: 0.6,
                 ..TreeAsset::oak()
             },
@@ -622,10 +634,10 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 2.6,
                 leaf_size: 0.38,
                 // Matte, shaded leaves (not glowing cards): darker tint, little light through.
-                leaf_color: [0.72, 0.78, 0.66],
+                leaf_color: [0.6, 0.66, 0.54],
                 leaf_variation: 0.45,
                 translucency: 0.3,
-                crown_shading: 0.7,
+                crown_shading: 0.9,
                 wind: TreeWind {
                     trunk_bend: 0.1,
                     branch_sway: 1.0,
@@ -706,12 +718,12 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length())
                 * smooth(0.9, 1.0, f)
                 * smooth(-10.0, -40.0, hill_side(p.x, p.y));
-            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.14 * near_wood {
+            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.18 * near_wood {
                 continue;
             }
-            // There the trunks stand apart (a third fewer trees): sun reaches the floor in
+            // There the trunks stand apart (half the trees): sun reaches the floor in large
             // patches between the crowns.
-            if r(24) < 0.35 * near_wood {
+            if r(24) < 0.5 * near_wood {
                 continue;
             }
             // Far away fewer, bigger trees keep the canopy closed: the share kept falls from
@@ -726,8 +738,10 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             if slope > 47.0 {
                 continue;
             }
-            // The forest's edges: bushes and low crowns down to the ground.
-            let kind = if f < 0.92 {
+            // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
+            let depth = wood_depth(p.x, p.y);
+            let at_edge = depth < 0.6;
+            let kind = if at_edge {
                 if r(4) < 0.5 { 3 } else { 4 }
             } else {
                 match r(4) {
@@ -745,7 +759,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             // (one to three per tree, more in the light of clearings and edges), and a bush
             // for every few trees.
             if dist < 700.0 {
-                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(f < 0.9);
+                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(at_edge);
                 for k in 0..plants {
                     let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0xfe12);
                     let at = p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell;
@@ -762,7 +776,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 }
             }
             // (Fewer in the closed wood than at its edges.)
-            if dist < 700.0 && r(10) < if f < 0.95 { 0.3 } else { 0.12 } {
+            if dist < 700.0 && r(10) < if at_edge { 0.3 } else { 0.12 } {
                 let b = p + Vec2::new(r(11) - 0.5, r(12) - 0.5) * cell * 0.8;
                 out.push(TreeInstance {
                     position: b / size,
@@ -783,7 +797,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             });
             // A second low crown in each edge cell within 1.2 km: the edge is a wall of
             // foliage down to the grass, no gaps through to the litter.
-            if f < 0.92 && dist < 1200.0 {
+            if at_edge && dist < 1200.0 {
                 let e = p + Vec2::new(r(18) - 0.5, r(19) - 0.5) * cell * 0.9;
                 let h2 = (0.75 + 0.4 * r(20)) * grow.powf(0.45);
                 out.push(TreeInstance {
@@ -859,8 +873,8 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
-            // Under the canopy: less sky light reaches the ground.
-            occlusion: 0.4,
+            // Under the canopy: a little less sky light reaches the ground.
+            occlusion: 0.15,
             ..Default::default()
         },
     ];
@@ -880,8 +894,14 @@ fn terrain_data() -> TerrainData {
         // The distant ranges are forest and turf: their steep faces would show as pale
         // limestone patches like snow from the meadow.
         let far = smooth(1100.0, 1300.0, far_radius(rel(x, z)));
-        // Grass runs on under the edge's bushes and low crowns; litter only under the canopy.
-        let f = smooth(0.75, 0.98, forest(x, z));
+        // Grass runs on under the edge's bushes and low crowns; litter only under the canopy,
+        // and not on the slopes too steep for trees (there the turf and rock show, not bare
+        // brown earth).
+        let mut f = smooth(0.75, 0.98, forest(x, z));
+        if f > 0.0 {
+            let slope = misty_engine::terrain::trees::slope_at(&d, x, z);
+            f *= smooth(0.55, 0.95, wood_depth(x, z)) * smooth(50.0, 44.0, slope);
+        }
         if f <= 0.0 && far <= 0.0 {
             continue;
         }
@@ -1091,7 +1111,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.34, 0.38, 0.43];
+    rs.skybox.sky_tint = [0.3, 0.36, 0.46];
     rs.realtime_gi = true;
     rs.environment_lighting.intensity = 0.75;
 
