@@ -70,6 +70,10 @@ lib run was still going when this was written.
 | F1 C | fe857ccf | in Play, `begin_edit` snapshots the terrain into `PlaySession.terrains`, `end_frame` neither saves nor pushes undo, `play::stop` restores | `terrain_tools::tests::edits_during_play_are_reverted_on_stop_and_not_saved` |
 | T4 P | — | already fixed by r30: `terrain_previews::counts` caches per version and recounts at most every 300 ms (still on the UI thread while painting; fine) | — |
 | Seams W | 0288cf67 | `uv_centroid` (location 7, `perspective, centroid`) set in vs_main, terrain, vgeo mesh/resolve, custom wrap; `fs_unlit` samples it with `textureSampleGrad` using the centre-uv gradients × 2^bias | `render::sprite_seam_gpu_tests::tiles_sharing_an_atlas_edge_show_no_seam_with_msaa` (runtime texture 1024×16 red/blue, 4 tiles of 23 px at x = 10.25) |
+| F7 W | 055cb718 | `write` restores the old scene path/name when the save fails | `scene_files::tests::a_failed_save_as_keeps_the_old_path` |
+| W3 W | 992d69c3 | `emit`/`emit_at` loop at most the free slots | `particles::tests::emitting_a_huge_count_stops_at_max_particles` |
+| Mixer W | 5f294e24 | `sanitize` breaks parent loops (hang under Master) | `audio::mixer::tests::parent_loops_are_broken` |
+| Audio NaN | 5f294e24 | non-finite volume → 1.0 in `play_clip_at_point` (no test) | — |
 | M1 C | 968d8b70 | `read_line` reads through `take(MAX_LINE + 1 - len)` | `mcp::bridge::line_tests::overlong_lines_are_refused_at_the_limit` |
 
 ### Flaky tests (fixed in 6b3cc2f7 / 968d8b70, unbuilt)
@@ -88,8 +92,8 @@ lib run was still going when this was written.
 
 ### Still open
 
-T6, Tex (zero-size image: also `mip_chain` would loop forever on 0×0), F7, F9, F6, Build, W2,
-W3, Mixer, Audio NaN, B2-B6, MCP schemas, physics exit events, F10, W6, X items. Not covered:
+T6, Tex (zero-size image: also `mip_chain` would loop forever on 0×0), F9, F6, Build, W2,
+B2-B6, MCP schemas, physics exit events, F10, W6, X items. Not covered:
 live-editor MCP checks, player builds, golden check.
 
 ## Route to other branches
