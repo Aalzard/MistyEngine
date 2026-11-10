@@ -1538,11 +1538,11 @@ impl TerrainCache {
         self.entries.get(key)?.grass.chunk(chunk)
     }
 
-    /// Grass chunk `chunk` of terrain `key`: the edit count its blades were scattered with
-    /// and the edits so far (tests).
+    /// Grass of terrain `key` at terrain-local point `p`: the edit count of the blades drawn
+    /// there and the edits so far (tests).
     #[cfg(test)]
-    pub fn grass_stamps(&self, key: &str, chunk: (u32, u32)) -> Option<(u64, u64)> {
-        self.entries.get(key)?.grass.stamps(chunk)
+    pub fn grass_stamps_at(&self, key: &str, p: glam::Vec2) -> Option<(u64, u64)> {
+        self.entries.get(key)?.grass.stamps_at(p)
     }
 
     /// Every chunk of `chunks` holds the blades of the terrain's latest data (tests).

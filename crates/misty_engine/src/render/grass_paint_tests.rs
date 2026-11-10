@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use glam::{Quat, Vec2, Vec3};
 
-use super::{Asked, Chunk, Done, Grass, Job, Pool, Queue, Upload};
+use super::{Asked, Chunk, Done, Grass, Job, Pool, Queue, Upload, is_tile, tile_key, tiles_of};
 use crate::render::culling::Aabb;
 use crate::terrain::store::Region;
 
@@ -197,10 +197,19 @@ fn grass_paint_latency() {
     let mut worst_frame = 0.0f32;
     let mut hidden_frames = 0;
     let mut lag_frames: Vec<usize> = Vec::new();
-    // Per stroke frame: its time, the chunk under the brush and the edits made so far; the
-    // frame its blades first include those edits gives the brush's lag.
-    let mut edits: Vec<(Instant, (u32, u32), u64)> = Vec::new();
-    let mut seen: Vec<(Instant, (u32, u32), u64)> = Vec::new();
+    // Per dab: when it was painted, where, the edits made so far and how long until the
+    // blades drawn at its centre include it.
+    let mut dabs: Vec<(Instant, Vec2, u64, Option<f32>)> = Vec::new();
+    let shown = |r: &Renderer, dabs: &mut Vec<(Instant, Vec2, u64, Option<f32>)>| {
+        for (t, at, e, lag) in dabs.iter_mut().filter(|d| d.3.is_none()) {
+            if r.terrains
+                .grass_stamps_at(&key, *at)
+                .is_some_and(|(s, _)| s >= *e)
+            {
+                *lag = Some(t.elapsed().as_secs_f32() * 1000.0);
+            }
+        }
+    };
     let stroke_start = Instant::now();
     for pass in [true, false] {
         let mut pending_since: Option<usize> = None;
@@ -214,15 +223,10 @@ fn grass_paint_latency() {
             let painted = Instant::now();
             let ms = render(&mut r);
             worst_frame = worst_frame.max(ms);
-            let under = ((at.x / 16.0) as u32, (at.y / 16.0) as u32);
-            if let Some((_, total)) = r.terrains.grass_stamps(&key, under) {
-                edits.push((painted, under, total));
+            if let Some((_, total)) = r.terrains.grass_stamps_at(&key, at) {
+                dabs.push((painted, at, total, None));
             }
-            for c in brushed_chunks(at) {
-                if let Some((stamp, _)) = r.terrains.grass_stamps(&key, c) {
-                    seen.push((Instant::now(), c, stamp));
-                }
-            }
+            shown(&r, &mut dabs);
             // A chunk that had blades and has none now: the slice disappeared.
             let gone = before.iter().any(|(c, had)| {
                 had.is_some_and(|h| h.0 > 0) && r.terrains.grass_chunk(&key, *c).is_none()
@@ -248,6 +252,7 @@ fn grass_paint_latency() {
     let mut after = 0;
     loop {
         render(&mut r);
+        shown(&r, &mut dabs);
         after += 1;
         if r.stats().grass_pending == 0 {
             break;
@@ -260,24 +265,17 @@ fn grass_paint_latency() {
     let settle_ms = end.elapsed().as_secs_f32() * 1000.0;
     let lag_max = lag_frames.iter().copied().max().unwrap_or(0);
     // Brush lag: from painting a dab to the chunk under it drawing blades that include it.
-    let mut lags: Vec<f32> = (edits.iter())
-        .filter_map(|(t, c, e)| {
-            let shown = seen
-                .iter()
-                .find(|(st, sc, ss)| st >= t && sc == c && ss >= e)?;
-            Some(shown.0.duration_since(*t).as_secs_f32() * 1000.0)
-        })
-        .collect();
+    let mut lags: Vec<f32> = dabs.iter().filter_map(|d| d.3).collect();
     lags.sort_by(f32::total_cmp);
     if !lags.is_empty() {
         eprintln!(
-            "brush lag (dab to its blades drawn, chunk under the brush): median {:.0} ms, \
+            "brush lag (dab to its blades drawn at the brush centre): median {:.0} ms, \
              90% {:.0} ms, max {:.0} ms over {} of {} dabs",
             lags[lags.len() / 2],
             lags[lags.len() * 9 / 10],
             lags[lags.len() - 1],
             lags.len(),
-            edits.len()
+            dabs.len()
         );
     }
     eprintln!(
@@ -369,6 +367,7 @@ fn held(count: u32, stamp: u64) -> Chunk {
         bounds: Aabb::new(Vec3::ZERO, Vec3::ONE),
         arena: None,
         group: None,
+        hidden: false,
     }
 }
 
@@ -390,52 +389,27 @@ fn small() -> TerrainData {
     d
 }
 
-#[test]
-fn edits_keep_the_old_blades_drawing() {
-    let d = small();
-    let mut g = Grass::default();
-    for z in 0..4 {
-        for x in 0..4 {
-            g.chunks.insert((x, z), held(1000, 0));
-        }
-    }
-    // A brush square over chunk (1, 1) only.
-    let r = Region {
-        min: [20.0 / 64.0; 2],
-        max: [28.0 / 64.0; 2],
-    };
-    g.invalidate(&d, Some(r));
-    assert_eq!(g.chunks.len(), 16, "no chunk dropped by the edit");
-    assert_eq!(g.chunk((1, 1)), Some((1000, 0)), "old blades still drawn");
-    assert!(g.outdated((1, 1)).is_some());
-    assert!(g.outdated((3, 3)).is_none(), "far from the brush");
-    // Everything (an undo, Fill / Clear): still nothing dropped.
-    g.invalidate(&d, None);
-    assert_eq!(g.chunks.len(), 16);
-    assert!(g.outdated((3, 3)).is_some());
-    // The replacement swaps in once uploaded, and the chunk is up to date again.
-    let stamp = g.edits;
-    g.in_flight.insert((1, 1), Asked { level: 0, stamp });
-    let done = result(&g, (1, 1), stamp, 0);
-    g.accept(done, &[Vec3::new(24.0, 1.0, 24.0)], 80.0);
-    assert_eq!(g.ready.len(), 1);
-    let done = g.ready.pop_front().unwrap();
+/// Upload `done` at once (no GPU: the logic tests hold no blades).
+fn land(g: &mut Grass, done: Done) {
     g.finish_upload(Upload {
         done,
         store: None,
         arena: None,
         written: 0,
     });
-    assert_eq!(
-        g.chunk((1, 1)),
-        Some((0, 0)),
-        "erased: the new, empty scatter"
-    );
-    assert!(g.outdated((1, 1)).is_none());
+}
+
+/// A brush square over the middle of chunk (1, 1) of the small terrain: its tiles 5, 6, 9
+/// and 10 (the 8 m square in its centre).
+fn dab() -> Region {
+    Region {
+        min: [21.0 / 64.0; 2],
+        max: [27.0 / 64.0; 2],
+    }
 }
 
 #[test]
-fn repeated_edits_coalesce() {
+fn edits_keep_the_old_blades_drawing() {
     let d = small();
     let mut g = Grass::default();
     let camera = Vec3::new(24.0, 1.0, 24.0);
@@ -444,42 +418,106 @@ fn repeated_edits_coalesce() {
             g.chunks.insert((x, z), held(1000, 0));
         }
     }
-    let r = Region {
-        min: [20.0 / 64.0; 2],
-        max: [28.0 / 64.0; 2],
-    };
-    g.invalidate(&d, Some(r));
-    // The edited chunk goes first (before nearer camera work would).
+    g.invalidate(&d, Some(dab()));
+    assert_eq!(g.chunks.len(), 16, "no chunk dropped by the edit");
+    assert_eq!(g.chunk((1, 1)), Some((1000, 0)), "old blades still drawn");
+    assert!(
+        g.tiled.contains(&(1, 1)),
+        "the painted chunk switches to tiles"
+    );
+    assert!(!g.fresh((1, 1)));
+    assert!(g.fresh((3, 3)), "far from the brush");
+    let touched: Vec<u32> = (0..16)
+        .filter(|t| g.dirty.contains_key(&tile_key((1, 1), *t)))
+        .collect();
+    assert_eq!(touched, vec![5, 6, 9, 10], "only the tiles under the brush");
+    // All 16 tiles are scattered once (the touched ones first); until the last is up, the
+    // whole run draws and the tiles stay hidden.
     let todo = g.stale_chunks(&d, camera);
-    assert_eq!(todo.first(), Some(&((1, 1), true)), "{todo:?}");
+    let tiles: Vec<(u32, u32)> = todo.iter().filter(|(_, e)| *e).map(|(k, _)| *k).collect();
+    assert_eq!(tiles.len(), 16, "{todo:?}");
+    assert!(
+        [5, 6, 9, 10].contains(&(0..16).find(|t| tile_key((1, 1), *t) == tiles[0]).unwrap()),
+        "a tile under the brush first"
+    );
+    let stamp = g.edits;
+    for (i, t) in tiles.iter().enumerate() {
+        g.in_flight.insert(*t, Asked { level: 0, stamp });
+        let done = result(&g, *t, stamp, 10);
+        g.accept(done, &[camera], 80.0);
+        let done = g.ready.pop_front().expect("queued");
+        land(&mut g, done);
+        if i < 15 {
+            assert_eq!(
+                g.chunk((1, 1)),
+                Some((1000, 0)),
+                "whole run until all tiles are up"
+            );
+        }
+    }
+    assert_eq!(g.chunk((1, 1)), Some((160, 0)), "16 tiles of 10 blades now");
+    assert!(!g.chunks.contains_key(&(1, 1)), "the whole run went back");
+    assert!(g.fresh((1, 1)));
+    // The next dab re-scatters only its four tiles; the others keep drawing as they are.
+    g.invalidate(&d, Some(dab()));
+    let todo = g.stale_chunks(&d, camera);
+    assert_eq!(todo.len(), 4, "{todo:?}");
+    assert_eq!(g.chunk((1, 1)), Some((160, 0)), "old tiles still drawn");
+    // Everything (an undo, Fill / Clear): still nothing dropped.
+    g.invalidate(&d, None);
+    assert_eq!(g.chunk((1, 1)), Some((160, 0)));
+    assert!(!g.fresh((3, 3)));
+}
+
+#[test]
+fn repeated_edits_coalesce() {
+    let d = small();
+    let mut g = Grass::default();
+    let camera = Vec3::new(24.0, 1.0, 24.0);
+    g.tiled.insert((1, 1));
+    for t in tiles_of((1, 1)) {
+        g.chunks.insert(t, held(100, 0));
+    }
+    for z in 0..4 {
+        for x in 0..4 {
+            if (x, z) != (1, 1) {
+                g.chunks.insert((x, z), held(1000, 0));
+            }
+        }
+    }
+    let t5 = tile_key((1, 1), 5);
+    g.invalidate(&d, Some(dab()));
+    // The tile under the brush goes first (before nearer camera work would).
+    let todo = g.stale_chunks(&d, camera);
+    assert_eq!(todo.len(), 4);
+    assert!(todo.iter().all(|(k, e)| *e && is_tile(*k)));
     // Its job goes out; the stroke keeps editing it meanwhile.
     let first = Asked {
         level: 0,
         stamp: g.edits,
     };
-    g.in_flight.insert((1, 1), first);
+    g.in_flight.insert(t5, first);
     for _ in 0..10 {
-        g.invalidate(&d, Some(r));
+        g.invalidate(&d, Some(dab()));
         assert!(
-            !g.stale_chunks(&d, camera).iter().any(|(k, _)| *k == (1, 1)),
+            !g.stale_chunks(&d, camera).iter().any(|(k, _)| *k == t5),
             "no second job while one runs"
         );
     }
     // Its result (behind the latest edits) still shows: progress while painting.
-    let done = result(&g, (1, 1), first.stamp, 10);
+    let done = result(&g, t5, first.stamp, 10);
     g.accept(done, &[camera], 80.0);
     assert_eq!(g.ready.len(), 1);
     assert!(g.in_flight.is_empty());
     // Now one job with the latest edits goes out.
-    let todo = g.stale_chunks(&d, camera);
-    assert_eq!(todo, vec![((1, 1), true)]);
+    assert!(g.stale_chunks(&d, camera).contains(&(t5, true)));
     let latest = Asked {
         level: 0,
         stamp: g.edits,
     };
-    g.in_flight.insert((1, 1), latest);
+    g.in_flight.insert(t5, latest);
     // Its result replaces the older one still waiting for upload.
-    let done = result(&g, (1, 1), latest.stamp, 20);
+    let done = result(&g, t5, latest.stamp, 20);
     g.accept(done, &[camera], 80.0);
     assert_eq!(g.ready.len(), 1);
     assert_eq!(g.ready[0].stamp, latest.stamp);
@@ -487,6 +525,11 @@ fn repeated_edits_coalesce() {
     let stale = result(&g, (2, 2), 0, 5);
     g.accept(stale, &[camera], 80.0);
     assert_eq!(g.ready.len(), 1);
+    // A whole scatter of the tiled chunk older than its tiles' edits never replaces them.
+    g.in_flight.insert((1, 1), Asked { level: 0, stamp: 0 });
+    let old = result(&g, (1, 1), 0, 1000);
+    g.accept(old, &[camera], 80.0);
+    assert!(g.ready.iter().all(|r| r.key != (1, 1)));
 }
 
 #[test]

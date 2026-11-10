@@ -5,7 +5,7 @@
 //! small time budget per frame, so moving the camera never stalls a frame. A chunk that
 //! needs more blades keeps drawing its coarser blades until the finer scatter arrives.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
@@ -119,6 +119,9 @@ struct Chunk {
     /// path, or a buffer of its own): these blades and the list of drawn ones (with the
     /// generations of the list buffer and the pages it was made for).
     group: Option<((u64, u64), wgpu::BindGroup)>,
+    /// A tile of a chunk switching to tiles: not drawn until all its tiles are up (the whole
+    /// run draws meanwhile).
+    hidden: bool,
 }
 
 impl Chunk {
@@ -237,16 +240,21 @@ fn row_threads() -> Option<&'static rayon::ThreadPool> {
         .as_ref()
 }
 
-/// Scatter one job (on a worker thread).
+/// Scatter one job (on a worker thread, or a row thread for a tile).
 fn scatter_job(job: Job) {
     let started = Instant::now();
-    let lo = Vec2::new(job.key.0 as f32, job.key.1 as f32) * CHUNK;
+    let lo = Vec2::new(chunk_of(job.key).0 as f32, chunk_of(job.key).1 as f32) * CHUNK;
     let (data, level) = (&job.data, job.level);
-    let blades = match row_threads().filter(|_| job.edit) {
-        Some(threads) => {
-            threads.install(|| details::scatter_level_parallel(data, lo, lo + CHUNK, level))
+    let blades = if is_tile(job.key) {
+        let (t, _) = piece_rect(job.key);
+        details::scatter_tile(data, (lo, lo + CHUNK), t, t + TILE, level)
+    } else {
+        match row_threads().filter(|_| job.edit) {
+            Some(threads) => {
+                threads.install(|| details::scatter_level_parallel(data, lo, lo + CHUNK, level))
+            }
+            None => details::scatter_level(data, lo, lo + CHUNK, level),
         }
-        None => details::scatter_level(data, lo, lo + CHUNK, level),
     };
     let done = Done {
         key: job.key,
@@ -321,6 +329,9 @@ pub(super) struct Grass {
     /// Chunks changed since their blades were scattered, with the count of their last edit.
     /// They keep drawing their old blades until newer ones are uploaded.
     dirty: HashMap<(u32, u32), u64>,
+    /// Chunks held as 4 × 4 tiles (painted ones): their pieces are tiles, each with its own
+    /// run of blades, scattered and uploaded on its own.
+    tiled: HashSet<(u32, u32)>,
     /// Cameras of recent frames (terrain-local) and when they were last seen: chunks near
     /// any of them stay.
     cameras: Vec<(Vec3, Instant)>,
@@ -364,6 +375,7 @@ impl Default for Grass {
             in_flight: HashMap::new(),
             edits: 0,
             dirty: HashMap::new(),
+            tiled: HashSet::new(),
             cameras: Vec::new(),
             brush: Vec2::ZERO,
             results: {
@@ -452,18 +464,65 @@ fn wanted(x: u32, z: u32, camera: Vec3, lod: f32, density: f32) -> u32 {
     level_for(keep_at(dist, lod) * density)
 }
 
-/// Squared chunk distance from the camera's chunk (ordering key).
+/// Squared chunk distance from the camera's chunk (ordering key; a tile counts as its chunk).
 fn chunk_dist(k: &(u32, u32), camera: Vec3) -> i64 {
+    let k = chunk_of(*k);
     let (cx, cz) = ((camera.x / CHUNK) as i64, (camera.z / CHUNK) as i64);
     (k.0 as i64 - cx).pow(2) + (k.1 as i64 - cz).pow(2)
 }
 
+/// Tiles per chunk side: a chunk being painted is held as 4 × 4 tiles of 4 m, each its own run
+/// of blades, so a dab re-scatters and uploads only the tiles under the brush.
+const TILES: u32 = 4;
+/// Tile side in metres.
+const TILE: f32 = CHUNK / TILES as f32;
+/// Marks a tile's key among the pieces (chunk keys stay far below it).
+const TILE_BIT: u32 = 1 << 31;
+/// Tile jobs handed out at once per terrain (small: a few milliseconds each).
+const MAX_TILE_IN_FLIGHT: usize = 256;
+
+/// Key of tile `t` (0..16, row by row) of chunk `c`.
+fn tile_key(c: (u32, u32), t: u32) -> (u32, u32) {
+    (
+        TILE_BIT | (c.0 * TILES + t % TILES),
+        c.1 * TILES + t / TILES,
+    )
+}
+
+fn is_tile(k: (u32, u32)) -> bool {
+    k.0 & TILE_BIT != 0
+}
+
+/// The chunk a piece (a whole chunk or a tile) belongs to.
+fn chunk_of(k: (u32, u32)) -> (u32, u32) {
+    if is_tile(k) {
+        ((k.0 & !TILE_BIT) / TILES, k.1 / TILES)
+    } else {
+        k
+    }
+}
+
+/// Terrain-local corner and side of a piece.
+fn piece_rect(k: (u32, u32)) -> (Vec2, f32) {
+    if is_tile(k) {
+        (Vec2::new((k.0 & !TILE_BIT) as f32, k.1 as f32) * TILE, TILE)
+    } else {
+        (Vec2::new(k.0 as f32, k.1 as f32) * CHUNK, CHUNK)
+    }
+}
+
+/// The 16 tile keys of chunk `c`.
+fn tiles_of(c: (u32, u32)) -> impl Iterator<Item = (u32, u32)> {
+    (0..TILES * TILES).map(move |t| tile_key(c, t))
+}
+
 impl Grass {
-    /// Blades of a changed region (`None` = everything) are out of date: their chunks are
-    /// scattered again from the latest data, edited chunks before any other, and keep drawing
-    /// their old blades until the new ones are uploaded (painting never opens a hole). A
-    /// chunk edited again while its scatter runs waits for that one (it is shown, then the
-    /// latest state goes out): a stroke never restarts work, it only adds the next round.
+    /// Blades of a changed region (`None` = everything) are out of date and are scattered
+    /// again from the latest data, edits before any other work; the old blades keep drawing
+    /// until the new ones are uploaded (painting never opens a hole). A chunk under the brush
+    /// switches to tiles (all 16 are scattered once, its whole run drawing until they are
+    /// all up); from then on an edit re-scatters only the tiles it touches. A tile edited
+    /// again while its scatter runs waits for that one: a stroke never restarts work.
     pub fn invalidate(&mut self, d: &TerrainData, region: Option<Region>) {
         let Some(r) = region else {
             self.outdate_all();
@@ -478,6 +537,10 @@ impl Grass {
         let lo = Vec2::from(r.min) * size;
         let hi = Vec2::from(r.max) * size;
         self.brush = (lo + hi) * 0.5;
+        let touches = |c0: Vec2, side: f32| {
+            let c1 = c0 + side;
+            !(c1.x < lo.x || c1.y < lo.y || c0.x > hi.x || c0.y > hi.y)
+        };
         // Chunks touching the region (its edges included).
         let first = ((lo / CHUNK).floor() - 1.0).max(Vec2::ZERO);
         let last = (hi / CHUNK).floor().min(size / CHUNK);
@@ -486,16 +549,35 @@ impl Grass {
         }
         for z in first.y as u32..=last.y as u32 {
             for x in first.x as u32..=last.x as u32 {
-                let c0 = Vec2::new(x as f32, z as f32) * CHUNK;
-                let c1 = c0 + CHUNK;
-                if !(c1.x < lo.x || c1.y < lo.y || c0.x > hi.x || c0.y > hi.y) {
-                    self.dirty.insert((x, z), stamp);
+                let c = (x, z);
+                if !touches(Vec2::new(x as f32, z as f32) * CHUNK, CHUNK) {
+                    continue;
+                }
+                if !self.chunks.contains_key(&c) && !self.tiled.contains(&c) {
+                    // Not drawn yet: only a scatter on its way carries older data.
+                    if self.in_flight.contains_key(&c) {
+                        self.dirty.insert(c, stamp);
+                    }
+                    continue;
+                }
+                if self.tiled.insert(c) {
+                    // Whole scatters of it not up yet would undo the tiles' edits.
+                    self.dirty.remove(&c);
+                    self.ready.retain(|r| r.key != c);
+                    if let Some(up) = self.uploading.take_if(|u| u.done.key == c) {
+                        self.abort_upload(up);
+                    }
+                }
+                for t in tiles_of(c) {
+                    if touches(piece_rect(t).0, TILE) {
+                        self.dirty.insert(t, stamp);
+                    }
                 }
             }
         }
     }
 
-    /// Every chunk held or on its way is out of date (it keeps drawing until replaced).
+    /// Every piece held or on its way is out of date (it keeps drawing until replaced).
     fn outdate_all(&mut self) {
         self.edits += 1;
         let stamp = self.edits;
@@ -510,7 +592,7 @@ impl Grass {
         }
     }
 
-    /// Drop the chunks `keep` refuses (their blades and cull records go back to the pages
+    /// Drop the pieces `keep` refuses (their blades and cull records go back to the pages
     /// and the arena).
     fn keep_chunks(&mut self, mut keep: impl FnMut((u32, u32)) -> bool) {
         let (arena, pool) = (&mut self.arena, &mut self.pool);
@@ -528,6 +610,7 @@ impl Grass {
         self.generation += 1;
         self.in_flight.clear();
         self.dirty.clear();
+        self.tiled.clear();
         self.ready.clear();
         if let Some(up) = self.uploading.take() {
             self.abort_upload(up);
@@ -546,7 +629,7 @@ impl Grass {
         );
     }
 
-    /// The edit count chunk `k`'s blades are behind (None: up to date).
+    /// The edit count piece `k`'s blades are behind (None: up to date).
     fn outdated(&self, k: (u32, u32)) -> Option<u64> {
         let edit = *self.dirty.get(&k)?;
         self.chunks
@@ -555,9 +638,24 @@ impl Grass {
             .then_some(edit)
     }
 
-    /// Chunks within the draw distance that are missing, coarser than the camera needs or
-    /// behind an edit (and not already asked for): edited chunks first, then nearest first.
-    /// With each whether it is an edit.
+    /// Work for edits goes first: tiles (of chunks being painted) and edited pieces.
+    fn urgent(&self, k: (u32, u32)) -> bool {
+        is_tile(k) || self.dirty.contains_key(&k)
+    }
+
+    /// A result or job for piece `k` at least `level` fine with edits `edit` is on its way.
+    fn asked(&self, k: (u32, u32), want: u32, edit: Option<u64>) -> bool {
+        let covers = |level: u32, stamp: u64| level <= want && edit.is_none_or(|e| stamp >= e);
+        // (While edited, any job: its result shows before the next round goes out.)
+        (self.in_flight.get(&k)).is_some_and(|a| edit.is_some() || covers(a.level, a.stamp))
+            || (self.ready.iter()).any(|r| r.key == k && covers(r.level, r.stamp))
+            || (self.uploading.as_ref())
+                .is_some_and(|u| u.done.key == k && covers(u.done.level, u.done.stamp))
+    }
+
+    /// Pieces within the draw distance that are missing, coarser than the camera needs or
+    /// behind an edit (and not already asked for): edits first (nearest the brush first),
+    /// then the camera's (nearest first). With each whether it is an edit.
     fn stale_chunks(&self, d: &TerrainData, camera: Vec3) -> Vec<((u32, u32), bool)> {
         let range = d.details.draw_distance.max(1.0);
         let lod = d.details.lod_distance;
@@ -573,21 +671,31 @@ impl Grass {
                     continue;
                 }
                 let want = wanted(k.0, k.1, camera, lod, self.density);
-                let edit = self.outdated(k);
-                let stale = edit.is_some() || self.chunks.get(&k).is_none_or(|c| c.level > want);
-                if !stale {
+                if self.tiled.contains(&k) {
+                    // Tiles missing or behind an edit, at the level the camera wants then.
+                    let mut busy = false;
+                    for t in tiles_of(k) {
+                        let edit = self.outdated(t);
+                        if edit.is_none() && self.chunks.contains_key(&t) {
+                            continue;
+                        }
+                        busy = true;
+                        if !self.asked(t, u32::MAX, edit) {
+                            todo.push((t, true));
+                        }
+                    }
+                    // Settled but coarser than wanted (the camera came closer): one scatter
+                    // of the whole chunk replaces its tiles.
+                    let coarse =
+                        tiles_of(k).any(|t| self.chunks.get(&t).is_some_and(|c| c.level > want));
+                    if !busy && coarse && !self.asked(k, want, None) {
+                        todo.push((k, false));
+                    }
                     continue;
                 }
-                // Already on its way: a result at least this fine with these edits, or (while
-                // edited) any job, whose result shows before the next round goes out.
-                let covers =
-                    |level: u32, stamp: u64| level <= want && edit.is_none_or(|e| stamp >= e);
-                let asked = (self.in_flight.get(&k))
-                    .is_some_and(|a| edit.is_some() || covers(a.level, a.stamp))
-                    || (self.ready.iter()).any(|r| r.key == k && covers(r.level, r.stamp))
-                    || (self.uploading.as_ref())
-                        .is_some_and(|u| u.done.key == k && covers(u.done.level, u.done.stamp));
-                if !asked {
+                let edit = self.outdated(k);
+                let stale = edit.is_some() || self.chunks.get(&k).is_none_or(|c| c.level > want);
+                if stale && !self.asked(k, want, edit) {
                     todo.push((k, edit.is_some()));
                 }
             }
@@ -630,27 +738,33 @@ impl Grass {
             .retain(|(c, t)| now.duration_since(*t) < CAMERA_MEMORY && c.distance(camera) > 1.0);
         self.cameras.push((camera, now));
         let cameras: Vec<Vec3> = self.cameras.iter().map(|c| c.0).collect();
-        let near_any = |x: u32, z: u32, r: f32| cameras.iter().any(|c| near(x, z, *c, r));
+        let near_any = |k: (u32, u32), r: f32| {
+            let (x, z) = chunk_of(k);
+            cameras.iter().any(|c| near(x, z, *c, r))
+        };
         // Far chunks go, and edited ones past the draw distance (they show nothing there and
         // are scattered afresh when a camera comes back); chunks coarser than wanted stay
         // until their finer scatter lands.
         let edited_far: Vec<(u32, u32)> = (self.dirty.keys())
-            .filter(|k| !near_any(k.0, k.1, range) && self.outdated(**k).is_some())
-            .copied()
+            .filter(|k| !near_any(**k, range) && self.outdated(**k).is_some())
+            .map(|k| chunk_of(*k))
             .collect();
-        self.keep_chunks(|k| near_any(k.0, k.1, range * 1.5) && !edited_far.contains(&k));
-        self.in_flight
-            .retain(|(x, z), _| near_any(*x, *z, range * 1.5));
-        self.dirty.retain(|(x, z), _| near_any(*x, *z, range * 1.5));
+        let gone = |k: (u32, u32)| !near_any(k, range * 1.5) || edited_far.contains(&chunk_of(k));
+        self.keep_chunks(|k| !gone(k));
+        self.tiled.retain(|c| !gone(*c));
+        self.in_flight.retain(|k, _| near_any(*k, range * 1.5));
+        self.dirty.retain(|k, _| near_any(*k, range * 1.5));
 
         // Finished scatters: keep the ones still worth uploading, edits and nearest first.
         self.collect(camera, &cameras, range);
         self.upload(device, queue, grass_streaming());
 
-        // Hand out stale chunks, as many as the workers can take: edited ones first, on top of
-        // the camera's share.
+        // Hand out stale pieces, as many as the workers can take: edits first, on top of the
+        // camera's share (tiles on the row threads, a few milliseconds each).
         for (k, edit) in self.stale_chunks(d, camera) {
-            let cap = if edit {
+            let cap = if is_tile(k) {
+                MAX_IN_FLIGHT + MAX_TILE_IN_FLIGHT
+            } else if edit {
                 MAX_IN_FLIGHT + MAX_EDIT_IN_FLIGHT
             } else {
                 MAX_IN_FLIGHT
@@ -661,8 +775,9 @@ impl Grass {
                 }
                 break;
             }
+            let (x, z) = chunk_of(k);
             let asked = Asked {
-                level: wanted(k.0, k.1, camera, lod, self.density),
+                level: wanted(x, z, camera, lod, self.density),
                 stamp: self.edits,
             };
             let job = Job {
@@ -674,7 +789,10 @@ impl Grass {
                 edit,
                 reply: self.results.0.clone(),
             };
-            pool().send(job);
+            match row_threads().filter(|_| is_tile(k)) {
+                Some(threads) => threads.spawn(move || scatter_job(job)),
+                None => pool().send(job),
+            }
             self.in_flight.insert(k, asked);
             self.stats.scheduled += 1;
         }
@@ -703,14 +821,14 @@ impl Grass {
                 self.stats.upload_ms += stats.upload_ms;
             }
         }
-        // (Edited chunks not handed out yet only wait when the workers are full: then
+        // (Edited pieces not handed out yet only wait when the workers are full: then
         // `in_flight` counts.)
         self.stats.pending =
             (self.in_flight.len() + self.ready.len() + self.uploading.is_some() as usize) as u32;
     }
 
-    /// Take the workers' results: those of the current generation that still improve a chunk
-    /// within reach wait for upload, edits and nearest first.
+    /// Take the workers' results: those of the current generation that still improve a piece
+    /// within reach wait for upload, edits (nearest the brush) first, then nearest first.
     fn collect(&mut self, camera: Vec3, cameras: &[Vec3], range: f32) {
         let replies: Vec<Done> = {
             let rx = self.results.1.lock().unwrap_or_else(|e| e.into_inner());
@@ -722,27 +840,28 @@ impl Grass {
         if self.ready.len() > 1 {
             let mut ready = std::mem::take(&mut self.ready);
             ready.make_contiguous().sort_by_key(|d| {
-                let edit = self.dirty.contains_key(&d.key);
+                let edit = self.urgent(d.key);
                 (!edit, self.order(d.key, edit, camera))
             });
             self.ready = ready;
         }
     }
 
-    /// Ordering key of chunk `k` among its kind: edited chunks by their distance to the
-    /// brush (the chunk under it first), the camera's by their distance to the camera.
+    /// Ordering key of piece `k` among its kind: edits by their distance to the brush (the
+    /// piece under it first), the camera's by their chunk's distance to the camera.
     fn order(&self, k: (u32, u32), edit: bool, camera: Vec3) -> i64 {
         if edit {
-            let c = (Vec2::new(k.0 as f32, k.1 as f32) + 0.5) * CHUNK;
-            c.distance_squared(self.brush) as i64
+            let (lo, side) = piece_rect(k);
+            let c = lo + side * 0.5;
+            (c.distance_squared(self.brush) * 16.0) as i64
         } else {
             chunk_dist(&k, camera)
         }
     }
 
-    /// One worker result: queued for upload when it improves on what the chunk holds or has
+    /// One worker result: queued for upload when it improves on what the piece holds or has
     /// on its way (newer edits, or the same edits finer), replacing older results of the
-    /// chunk not uploaded yet.
+    /// piece not uploaded yet.
     fn accept(&mut self, done: Done, cameras: &[Vec3], range: f32) {
         if done.generation != self.generation {
             return;
@@ -751,8 +870,8 @@ impl Grass {
             level: done.level,
             stamp: done.stamp,
         };
-        // Only chunks still asked for (a job dropped when its chunk went out of reach may
-        // carry data edited since). A finer job for the same chunk may have been handed out
+        // Only pieces still asked for (a job dropped when its chunk went out of reach may
+        // carry data edited since). A finer job for the same piece may have been handed out
         // since: that one stays in flight.
         match self.in_flight.get(&done.key) {
             None => return,
@@ -761,22 +880,37 @@ impl Grass {
             }
             Some(_) => {}
         }
+        let c = chunk_of(done.key);
+        if is_tile(done.key) != self.tiled.contains(&c) {
+            if is_tile(done.key) {
+                // The chunk went back to a whole run meanwhile.
+                return;
+            }
+            // A whole scatter of a tiled chunk (a finer level) replaces the tiles only when
+            // it has all their edits.
+            let newer = tiles_of(c).any(|t| {
+                self.chunks.get(&t).is_some_and(|p| p.stamp > done.stamp)
+                    || self.dirty.get(&t).is_some_and(|e| *e > done.stamp)
+            });
+            if newer {
+                return;
+            }
+        }
         let better = |level: u32, stamp: u64| {
             done.stamp > stamp || (done.stamp == stamp && done.level < level)
         };
         let improves = self
             .chunks
             .get(&done.key)
-            .is_none_or(|c| better(c.level, c.stamp));
-        let (x, z) = done.key;
-        let near_any = |r: f32| cameras.iter().any(|c| near(x, z, *c, r));
-        // (An outdated chunk past the draw distance is dropped, not uploaded.)
+            .is_none_or(|p| better(p.level, p.stamp));
+        let near_any = |r: f32| cameras.iter().any(|cam| near(c.0, c.1, *cam, r));
+        // (An outdated piece past the draw distance is dropped, not uploaded.)
         let behind =
             (self.dirty.get(&done.key)).is_some_and(|e| done.stamp < *e) && !near_any(range);
         if !improves || behind || !near_any(range * 1.5) {
             return;
         }
-        // Results of the chunk still waiting: the better one stays.
+        // Results of the piece still waiting: the better one stays.
         if (self.ready.iter()).any(|r| r.key == done.key && !better(r.level, r.stamp)) {
             return;
         }
@@ -792,21 +926,21 @@ impl Grass {
         self.ready.push_back(done);
     }
 
-    /// Upload finished chunks piece by piece ([`UPLOAD_PIECE`] blades at a time): within
-    /// [`UPLOAD_BUDGET`] ([`EDIT_UPLOAD_BUDGET`] while edited chunks go up; always at least
-    /// one piece) when `budgeted`, else all of them. A chunk replaces its older version only
-    /// once all its blades are on the GPU.
+    /// Upload finished pieces part by part ([`UPLOAD_PIECE`] blades at a time): within
+    /// [`UPLOAD_BUDGET`] ([`EDIT_UPLOAD_BUDGET`] while edits go up; always at least one part)
+    /// when `budgeted`, else all of them. A piece replaces its older version only once all
+    /// its blades are on the GPU.
     fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, budgeted: bool) {
         let started = Instant::now();
         let mut first = true;
         loop {
             let piece_start = Instant::now();
             let spent = started.elapsed().as_secs_f32() * 1000.0;
-            // (While an edited chunk waits, the chunk going up ahead of it goes faster too.)
+            // (While an edit waits, the piece going up ahead of it goes faster too.)
             let edit = (self.uploading.as_ref().map(|u| u.done.key))
                 .into_iter()
                 .chain(self.ready.front().map(|d| d.key))
-                .any(|k| self.dirty.contains_key(&k));
+                .any(|k| self.urgent(k));
             let budget = if edit {
                 EDIT_UPLOAD_BUDGET
             } else {
@@ -844,19 +978,19 @@ impl Grass {
             }
             let piece_ms = piece_start.elapsed().as_secs_f32() * 1000.0;
             self.stats.upload_piece_ms = self.stats.upload_piece_ms.max(piece_ms);
-            // (A slow piece raises the estimate at once, fast ones lower it gently.)
+            // (A slow part raises the estimate at once, fast ones lower it gently.)
             self.piece_ms = piece_ms.max(self.piece_ms * 0.9 + piece_ms * 0.1);
             let elapsed = started.elapsed();
             if budgeted && elapsed >= budget {
                 break;
             }
-            // The next piece, if any, starts now: under the budget by construction.
+            // The next part, if any, starts now: under the budget by construction.
             self.stats.upload_last_start_ms = elapsed.as_secs_f32() * 1000.0;
         }
         self.stats.upload_ms += started.elapsed().as_secs_f32() * 1000.0;
     }
 
-    /// Room for a scattered chunk's blades (a run in the pages, else a buffer of its own,
+    /// Room for a scattered piece's blades (a run in the pages, else a buffer of its own,
     /// written whole) and its cull records.
     fn begin_upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, done: Done) -> Upload {
         let n = done.blades.len() as u32;
@@ -888,10 +1022,35 @@ impl Grass {
         }
     }
 
-    /// Swap a fully uploaded chunk in (its older version's blades go back).
+    /// Give a dropped piece's blades and cull records back.
+    fn free_piece(&mut self, p: Chunk) {
+        free_chunk(
+            &mut self.arena,
+            &mut self.pool,
+            p.store.as_ref(),
+            p.arena,
+            p.count,
+        );
+    }
+
+    /// Swap a fully uploaded piece in (its older version's blades go back). The tiles of a
+    /// chunk switching to tiles stay hidden behind its whole run until all 16 are up; a whole
+    /// run of a tiled chunk replaces its tiles.
     fn finish_upload(&mut self, up: Upload) {
         let done = up.done;
-        let lo = Vec2::new(done.key.0 as f32, done.key.1 as f32) * CHUNK;
+        let c = chunk_of(done.key);
+        if is_tile(done.key) && !self.tiled.contains(&c) {
+            let n = done.blades.len() as u32;
+            free_chunk(
+                &mut self.arena,
+                &mut self.pool,
+                up.store.as_ref(),
+                up.arena,
+                n,
+            );
+            return;
+        }
+        let (lo, side) = piece_rect(done.key);
         let blades = &done.blades;
         let top = blades
             .iter()
@@ -903,8 +1062,17 @@ impl Grass {
             .fold(f32::MAX, f32::min);
         let bounds = Aabb::new(
             Vec3::new(lo.x - 1.0, bottom - 1.0, lo.y - 1.0),
-            Vec3::new(lo.x + CHUNK + 1.0, top + 1.0, lo.y + CHUNK + 1.0),
+            Vec3::new(lo.x + side + 1.0, top + 1.0, lo.y + side + 1.0),
         );
+        let converting = is_tile(done.key) && self.chunks.contains_key(&c);
+        if !is_tile(done.key) && self.tiled.remove(&c) {
+            for t in tiles_of(c) {
+                if let Some(p) = self.chunks.remove(&t) {
+                    self.free_piece(p);
+                }
+                self.dirty.remove(&t);
+            }
+        }
         let old = self.chunks.insert(
             done.key,
             Chunk {
@@ -915,16 +1083,22 @@ impl Grass {
                 bounds,
                 arena: up.arena,
                 group: None,
+                hidden: converting,
             },
         );
         if let Some(old) = old {
-            free_chunk(
-                &mut self.arena,
-                &mut self.pool,
-                old.store.as_ref(),
-                old.arena,
-                old.count,
-            );
+            self.free_piece(old);
+        }
+        // All tiles up: they draw instead of the whole run.
+        if converting && tiles_of(c).all(|t| self.chunks.contains_key(&t)) {
+            for t in tiles_of(c) {
+                if let Some(p) = self.chunks.get_mut(&t) {
+                    p.hidden = false;
+                }
+            }
+            if let Some(whole) = self.chunks.remove(&c) {
+                self.free_piece(whole);
+            }
         }
         // Up to date with its edits: no longer dirty.
         if (self.dirty.get(&done.key)).is_some_and(|e| *e <= done.stamp) {
@@ -957,7 +1131,7 @@ impl Grass {
             .chunks
             .iter()
             .filter_map(|(k, c)| {
-                c.store.as_ref()?;
+                c.store.as_ref().filter(|_| !c.hidden)?;
                 let world = Aabb::new(c.bounds.min + origin, c.bounds.max + origin);
                 let dist = camera.clamp(world.min, world.max).distance(camera);
                 let near = limit.is_none_or(|l| dist < l.range);
@@ -1129,21 +1303,44 @@ impl Grass {
         (self.chunks.len(), blades)
     }
 
-    /// Blades and density level of chunk `k` (None: not held) (tests).
+    /// Blades and density level of chunk `k`: its whole run, else its tiles drawn (summed;
+    /// the coarsest level) (None: nothing held) (tests).
     #[cfg(test)]
     pub fn chunk(&self, k: (u32, u32)) -> Option<(u32, u32)> {
-        self.chunks.get(&k).map(|c| (c.count, c.level))
+        if let Some(c) = self.chunks.get(&k) {
+            return Some((c.count, c.level));
+        }
+        let tiles: Vec<&Chunk> = tiles_of(k)
+            .filter_map(|t| self.chunks.get(&t).filter(|c| !c.hidden))
+            .collect();
+        (!tiles.is_empty()).then(|| {
+            let n = tiles.iter().map(|c| c.count).sum();
+            (n, tiles.iter().map(|c| c.level).max().unwrap_or(0))
+        })
     }
 
-    /// Chunk `k`'s blades' edit count and the edits so far (None: not held) (tests).
+    /// The edit count of the blades drawn at terrain-local point `p` (the tile there, else
+    /// its chunk's whole run) and the edits so far (tests).
     #[cfg(test)]
-    pub fn stamps(&self, k: (u32, u32)) -> Option<(u64, u64)> {
-        self.chunks.get(&k).map(|c| (c.stamp, self.edits))
+    pub fn stamps_at(&self, p: Vec2) -> Option<(u64, u64)> {
+        let c = ((p.x / CHUNK) as u32, (p.y / CHUNK) as u32);
+        let t = tile_key(
+            c,
+            ((p.y - c.1 as f32 * CHUNK) / TILE) as u32 * TILES
+                + ((p.x - c.0 as f32 * CHUNK) / TILE) as u32,
+        );
+        let piece = (self.chunks.get(&t).filter(|t| !t.hidden)).or_else(|| self.chunks.get(&c))?;
+        Some((piece.stamp, self.edits))
     }
 
-    /// Chunk `k` holds blades of the latest data (tests).
+    /// Chunk `k` draws blades of the latest data everywhere (tests).
     #[cfg(test)]
     pub fn fresh(&self, k: (u32, u32)) -> bool {
+        if self.tiled.contains(&k) {
+            return tiles_of(k).all(|t| {
+                self.chunks.get(&t).is_some_and(|c| !c.hidden) && self.outdated(t).is_none()
+            });
+        }
         self.chunks.contains_key(&k) && self.outdated(k).is_none()
     }
 
