@@ -43,7 +43,7 @@ impl Command {
             Command::SelectAndFrame => "Select and frame",
             Command::Select => "Select",
             Command::CopyName => "Copy name",
-            Command::Ping => "Show in Project",
+            Command::Ping => "Show in Asset Files",
             Command::Open => "Open",
             Command::OpenAdditive => "Open Scene Additive",
             Command::ApplyPreset => "Apply to selection",

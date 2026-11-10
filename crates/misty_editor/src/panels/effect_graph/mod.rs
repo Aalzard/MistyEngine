@@ -15,6 +15,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
+use crate::i18n::tr;
 use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 
@@ -463,7 +464,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                 {
                     save(s);
                 }
-                if ui.button("Show In Project").clicked()
+                if ui.button(tr!("Show in Asset Files")).clicked()
                     && let Some(rel) = s.effect_graph.path.clone()
                 {
                     let abs = s.assets.absolute(&rel);
