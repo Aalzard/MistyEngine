@@ -57,6 +57,13 @@ Forked from `r26-noon-meadow` at 80e185bb.
   lighting 0.75 → 0.9; Forest Floor occlusion 0; groundcover translucency 0.15; clouds coverage
   0.34, shape 0.7, altitude 1500, thickness 1400.
 
+- r12 (c19a068e): meadow brighter and closer to the reference's greens, cumulus heaps overhead;
+  the forest floor's shade went pitch black. Cause: `TerrainLayer::occlusion` is the sky light
+  that *reaches* the layer (1 = open ground), so r11's 0.15 and r12's 0 removed it (r10's 0.4
+  was already dim). Fixed to 0.9 (eb272f96).
+- r13 generator: occlusion 0.9; ferns and broad-leaved plants (2–4 per cell, 65 % ferns) in the
+  treeline wood's dropped cells and canopy gaps; a quarter birches there.
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree
@@ -132,6 +139,7 @@ hero view), the lone oak's darkness, then the forest interior against `reference
 
 | round | hero GPU / CPU | inside GPU / CPU | notes |
 |---|---|---|---|
+| r12 | 20.4 / 3.5 ms | 14.2 / 3.4 ms | |
 | r11 | 20.4 / 4.0 ms | 14.3 / 3.6 ms | |
 | r10 | 20.4 / 3.9 ms | 14.6 / 3.7 ms | trees 3.5 (hero) / 2.3 (inside, half the wood's trees) |
 | r9 | 20.1 / 3.8 ms | 15.8 / 3.6 ms | hero: grass ≈ 8 ms (visibility 3.4, shading 2.3, near shadows 1.6, culling 0.5, composite 0.4), trees 3.1, sun shafts 0.9; inside: shadow maps 2.6, shadow mask 2.3, trees 3.3 |
