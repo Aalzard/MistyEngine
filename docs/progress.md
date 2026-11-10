@@ -3308,3 +3308,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - See the pending doc: GPU time on High at 1080p is above the 12 ms goal (grass and
   screen-space passes dominate the meadow view); look tuning continues on `r26-level`.
+
+## Round 26 (level) — NoonValley scene content against the references (branch r26-level)
+
+### Done (docs/pending/r26-level.md)
+- The forested hillside on the right is now a steep wall ~90 m out (foot 90 − 0.2·ahead, a
+  600 m hill rising ~40°), closed to the meadow: a 20 m edge band of low crowns and bushes
+  (`wood_depth`), a second edge tree per cell, no clearings, litter only behind the edge and
+  never on slopes too steep for trees; tree slope limit 47°, limestone only above 48° and not
+  on the far ranges (turf there), near-range terraces removed. Terrain height 700 → 1000 m.
+- Meadow: Tall Grass 35 → 12/m², greener (dryness 0.35); flowers in small cream and yellow
+  drifts (coverage 0.22, patch 12 m, LOD 45); deeper sky tint, higher and taller cumulus.
+- Forest interior (treeline wood): half the trees and more canopy gaps, ferns and
+  broad-leaved plants filling the light, a quarter birches; eye adaptation down to −4.5 EV
+  metered without the brightest fifth; Forest Floor sky light fixed (the field is the light
+  that reaches the layer, 1 = open). 2K fern and groundcover atlases. Fern and groundcover
+  recipes within the loader's limits (≥ 1 m, ≤ 2.0 crown width), scaled per instance.
+- Rounds r9–r14 rendered with the 9-view harness; shots in `docs/screenshots/r26/level_*.jpg`.
+
+### Not done yet
+- GPU time on High at 1080p: hero ~20 ms, inside ~14 ms (goal 12 ms); grass is ~8 ms of the
+  hero view (engine requests in the pending doc).
+- The cumulus field cannot be placed (no seed/offset), so the hero view's sky does not
+  match the reference's mid-elevation heaps.
