@@ -46,7 +46,7 @@ failed: `registry_url_page_in_project_settings` (still "Loading the registry ind
 200 frames: timeout), `opening_a_scene_lifts_a_view_left_under_the_terrain` (terrain not
 found: project root moved by a parallel test), `string_literal_lint` (caused by this
 branch's then-unfinished multi-line Lua literal in visual_script/tests.rs, fixed). The engine
-lib run was still going when this was written.
+lib: 1384 passed, 0 failed; misty_player and doc tests passed.
 
 ### Done this session (commits on r33-qa, unbuilt)
 
@@ -74,6 +74,7 @@ lib run was still going when this was written.
 | W3 W | 992d69c3 | `emit`/`emit_at` loop at most the free slots | `particles::tests::emitting_a_huge_count_stops_at_max_particles` |
 | Mixer W | 5f294e24 | `sanitize` breaks parent loops (hang under Master) | `audio::mixer::tests::parent_loops_are_broken` |
 | Audio NaN | 5f294e24 | non-finite volume → 1.0 in `play_clip_at_point` (no test) | — |
+| Build W | bdf9f7a3 | `package` fails when an enabled build scene file is missing | `build_pipeline::package::tests::a_missing_build_scene_fails_the_build` |
 | M1 C | 968d8b70 | `read_line` reads through `take(MAX_LINE + 1 - len)` | `mcp::bridge::line_tests::overlong_lines_are_refused_at_the_limit` |
 
 ### Flaky tests (fixed in 6b3cc2f7 / 968d8b70, unbuilt)
@@ -92,7 +93,7 @@ lib run was still going when this was written.
 
 ### Still open
 
-T6, Tex (zero-size image: also `mip_chain` would loop forever on 0×0), F9, F6, Build, W2,
+T6, Tex (zero-size image: also `mip_chain` would loop forever on 0×0), F9, F6, W2,
 B2-B6, MCP schemas, physics exit events, F10, W6, X items. Not covered:
 live-editor MCP checks, player builds, golden check.
 
