@@ -72,6 +72,29 @@ pub fn open_path(s: &EditorState) -> Option<String> {
     s.prefab_stages.last().map(|st| st.path.clone())
 }
 
+/// After an asset rename or move (`old` → `new`, project-relative): each stage's prefab path
+/// and what it stashed (the scene underneath, its undo history, the Inspector's asset) follow,
+/// like the open scene. Without this, saving a renamed prefab recreated the old file and
+/// leaving Prefab Mode brought back a scene pointing at the old paths.
+pub fn rename(s: &mut EditorState, old: &str, new: &str) {
+    use crate::asset_actions::rewrite_scene;
+    use crate::asset_ops::remap;
+    for st in &mut s.prefab_stages {
+        if let Some(p) = remap(&st.path, old, new) {
+            st.path = p;
+        }
+        rewrite_scene(&mut st.stash.scene, old, new);
+        for scene in st.stash.undo.scenes_mut() {
+            rewrite_scene(scene, old, new);
+        }
+        if let Some(a) = st.stash.inspector_asset.as_mut()
+            && let Some(p) = remap(a, old, new)
+        {
+            *a = p;
+        }
+    }
+}
+
 /// Scenes kept aside by Prefab Mode (they follow prefab changes too).
 pub fn stashed_scenes(s: &mut EditorState) -> impl Iterator<Item = &mut Scene> {
     s.prefab_stages.iter_mut().map(|st| &mut st.stash.scene)

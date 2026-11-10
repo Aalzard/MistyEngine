@@ -299,6 +299,7 @@ fn update_memory(s: &mut EditorState, old: &str, new: &str, from: &Path, to: &Pa
     for scene in s.undo.scenes_mut() {
         rewrite_scene(scene, old, new);
     }
+    crate::prefab_mode::rename(s, old, new);
     if let Some(session) = s.play_session.as_mut() {
         for scene in session.scenes_mut() {
             rewrite_scene(scene, old, new);

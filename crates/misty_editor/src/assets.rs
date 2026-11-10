@@ -69,6 +69,10 @@ pub struct AssetDatabase {
     pub presets: BTreeMap<String, misty_engine::preset::Preset>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
+    /// Prefabs that lost something while being read (an unknown component, a bad value…),
+    /// with why: they are not written back (Prefab Mode, Apply, updates from nested prefabs),
+    /// which would delete those parts from the file.
+    incomplete_prefabs: BTreeMap<String, Vec<String>>,
     /// Project-relative texture paths (`.png`, `.jpg`).
     pub textures: Vec<String>,
     /// Project-relative shader assets (`.shader`).
@@ -108,6 +112,7 @@ impl AssetDatabase {
             subgraphs: BTreeSet::new(),
             presets: BTreeMap::new(),
             prefabs: BTreeMap::new(),
+            incomplete_prefabs: BTreeMap::new(),
             textures: Vec::new(),
             shaders: Vec::new(),
             hdris: Vec::new(),
@@ -405,7 +410,21 @@ impl AssetDatabase {
         if models::is_model(rel) {
             return crate::model_import::model_prefab(self, rel);
         }
-        let p = Prefab::load(abs)?;
+        let (p, report) = Prefab::load_with_report(abs)?;
+        // Defaults filled in for a missing header lose nothing; anything else does.
+        let lost: Vec<String> = report
+            .warnings
+            .into_iter()
+            .filter(|w| !w.ends_with("added default"))
+            .collect();
+        for w in &lost {
+            self.messages.push(format!("{rel}: {w}"));
+        }
+        if lost.is_empty() {
+            self.incomplete_prefabs.remove(rel);
+        } else {
+            self.incomplete_prefabs.insert(rel.to_owned(), lost);
+        }
         let synced = p.sync_to_records(&mut |path| self.prefab(path).ok().map(|p| (*p).clone()));
         Ok(synced.unwrap_or(p))
     }
@@ -414,6 +433,12 @@ impl AssetDatabase {
     pub fn save_prefab(&mut self, rel: &str, prefab: &Prefab) -> Result<(), String> {
         if models::is_model(rel) {
             return Err(format!("{rel} is a model file (read-only)"));
+        }
+        if let Some(lost) = self.incomplete_prefabs.get(rel) {
+            return Err(format!(
+                "{rel} was not saved: writing it would remove what could not be read ({})",
+                lost.join("; ")
+            ));
         }
         let abs = self.absolute(rel);
         prefab.save(&abs)?;

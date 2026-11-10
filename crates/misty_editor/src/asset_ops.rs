@@ -70,10 +70,11 @@ pub fn valid_name(name: &str) -> Result<(), String> {
 /// Rename `from` to `new_stem` (keeping its extension). Returns the new path.
 pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
     valid_name(new_stem)?;
-    let mut to = from.with_file_name(new_stem);
-    if let Some(ext) = from.extension().filter(|_| from.is_file()) {
-        to.set_extension(ext);
-    }
+    // Appended, not `set_extension`: a name with a dot ("Red.v2") would lose its last part.
+    let to = match from.extension().filter(|_| from.is_file()) {
+        Some(ext) => from.with_file_name(format!("{new_stem}.{}", ext.to_string_lossy())),
+        None => from.with_file_name(new_stem),
+    };
     if to == from {
         return Ok(to);
     }
@@ -82,9 +83,22 @@ pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
     if to.exists() && !case_only {
         return Err(format!("'{}' already exists.", file_name(&to)));
     }
-    std::fs::rename(from, &to).map_err(|e| e.to_string())?;
-    move_meta(from, &to)?;
+    move_with_meta(from, &to)?;
     Ok(to)
+}
+
+/// Rename the file and its meta; if the meta can't follow, the file goes back (otherwise the
+/// asset would be moved on disk while the error left the database and references on the old
+/// path, and its GUID behind in a stray meta).
+fn move_with_meta(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::rename(from, to).map_err(|e| e.to_string())?;
+    if let Err(e) = move_meta(from, to) {
+        return Err(match std::fs::rename(to, from) {
+            Ok(()) => e,
+            Err(back) => format!("{e} (and it could not be moved back: {back})"),
+        });
+    }
+    Ok(())
 }
 
 /// Move `from` into `folder` (same name). Returns the new path.
@@ -99,8 +113,7 @@ pub fn move_into(from: &Path, folder: &Path) -> Result<PathBuf, String> {
     if to.exists() {
         return Err(format!("'{}' already exists there.", file_name(&to)));
     }
-    std::fs::rename(from, &to).map_err(|e| e.to_string())?;
-    move_meta(from, &to)?;
+    move_with_meta(from, &to)?;
     Ok(to)
 }
 
@@ -355,6 +368,43 @@ mod tests {
         assert!(rewrite_value(&mut v, old, new));
         assert_eq!(v["a"][0], "Assets/Materials/Red.mat");
         assert_eq!(v["b"], "Assets/Materials");
+    }
+
+    /// A new name with a dot keeps all of it and the extension ("Red.v2" → "Red.v2.mat"; it
+    /// used to become "Red.mat", a silent no-op).
+    #[test]
+    fn names_with_dots_keep_the_extension() {
+        let root = temp("dots");
+        let assets = root.join("Assets");
+        let mat = assets.join("Red.mat");
+        std::fs::write(&mat, "{}").unwrap();
+        let v2 = rename(&mat, "Red.v2").unwrap();
+        assert_eq!(v2, assets.join("Red.v2.mat"));
+        assert!(v2.is_file() && !mat.exists());
+        assert_eq!(rename(&v2, "Red.v2.x").unwrap(), assets.join("Red.v2.x.mat"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The meta can't follow (its new name is taken by a folder): the rename is rolled back,
+    /// so the asset stays where the database and the references say it is.
+    #[test]
+    fn a_failed_meta_move_rolls_the_rename_back() {
+        let root = temp("rollback");
+        let assets = root.join("Assets");
+        let mat = assets.join("Red.mat");
+        std::fs::write(&mat, "{}").unwrap();
+        std::fs::write(meta::meta_path(&mat), "{\"guid\": \"x\"}").unwrap();
+        std::fs::create_dir_all(assets.join("Crimson.mat.meta/inside")).unwrap();
+        assert!(rename(&mat, "Crimson").is_err());
+        assert!(mat.is_file(), "moved back");
+        assert!(meta::meta_path(&mat).is_file());
+        assert!(!assets.join("Crimson.mat").exists());
+        let folder = assets.join("Sub");
+        std::fs::create_dir_all(folder.join("Red.mat.meta/inside")).unwrap();
+        assert!(move_into(&mat, &folder).is_err());
+        assert!(mat.is_file(), "moved back");
+        assert!(!folder.join("Red.mat").exists());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
