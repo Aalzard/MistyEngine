@@ -13,10 +13,10 @@ Writes (all seamless unless noted, OpenGL normal maps, sRGB albedo):
 * ``BirchBark*`` 2048^2: white birch with dark lenticels and black patches, same five maps.
 * ``ForestFloor*`` 2048^2: brown leaf litter, twigs and small sticks over dark soil
   (``ForestFloor.png``, ``ForestFloorNormal.png``, ``ForestFloorHeight.png``); 3 m a tile.
-* ``Fern*`` 1024^2 2 x 2 leaf atlas (not tiled): a fern frond in each cell entering at the
+* ``Fern*`` 2048^2 2 x 2 leaf atlas (not tiled): a fern frond in each cell entering at the
   bottom centre, straight alpha (``Fern.png``), ``FernNormal.png``, ``FernRoughness.png``,
   ``FernTranslucency.png`` (the tree leaf-atlas layout, so a ``.tree`` recipe can use it).
-* ``Groundcover*`` 1024^2 2 x 2 leaf atlas of broad-leaved woodland plants (same maps).
+* ``Groundcover*`` 2048^2 2 x 2 leaf atlas of broad-leaved woodland plants (same maps).
 
 All imagery is synthesised from periodic noise and analytic shapes; no source imagery is used.
 """
@@ -33,7 +33,13 @@ from scipy.ndimage import gaussian_filter, distance_transform_edt, map_coordinat
 
 BARK = 2048
 FLOOR = 2048
-ATLAS = 1024
+ATLAS = 2048
+# Atlas pixels per pixel of the original 1024-pixel drawings (line widths, blurs).
+AK = ATLAS / 1024
+
+
+def lw(w):
+    return max(1, round(w * AK))
 
 
 def smooth(e0, e1, x):
@@ -333,8 +339,8 @@ def finish_atlas(out: Path, name: str, a, t, light, dark):
     srgb = (to_srgb(col) * 255 + 0.5).astype(np.uint8)
     rgba = np.dstack([srgb, (np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)])
     Image.fromarray(rgba, "RGBA").save(out / f"{name}.png")
-    h = gaussian_filter(a, 2.0) * 0.6 + t * 0.4
-    nm = normal_map(h, 6.0, wrap=False)
+    h = gaussian_filter(a, 2.0 * AK) * 0.6 + t * 0.4
+    nm = normal_map(h, 6.0 * AK, wrap=False)
     nm[~inside] = (0.5, 0.5, 1.0)
     save_normal(out / f"{name}Normal.png", nm)
     save_gray(out / f"{name}Roughness.png", np.where(inside, 0.55 + 0.2 * (1 - t), 1.0))
@@ -353,15 +359,15 @@ def fern(out: Path):
             x = size * 0.5 + math.sin(u * 1.6) * bend * size
             y = size * (0.98 - 0.94 * u)
             pts.append((x, y))
-        da.line(pts, fill=255, width=4)
-        dt.line(pts, fill=70, width=4)
+        da.line(pts, fill=255, width=lw(4))
+        dt.line(pts, fill=70, width=lw(4))
         for s in range(3, steps):
             u = s / steps
             x, y = pts[s]
             nx, ny = pts[s + 1]
             ang = math.atan2(ny - y, nx - x)
             length = size * 0.3 * math.sin(math.pi * min(1.0, 0.1 + u * 0.95)) * (1.05 - u * 0.5)
-            if length < 6:
+            if length < 6 * AK:
                 continue
             # Pinnae alternate along the rachis, leaving gaps between them.
             for side in ((-1,) if s % 2 else (1,)):
@@ -379,7 +385,7 @@ def fern(out: Path):
                 poly = upper + lower[::-1]
                 da.polygon(poly, fill=255)
                 dt.polygon(poly, fill=int(110 + 120 * u + rng.random() * 30))
-                dt.line([(x, y), (x + math.cos(a) * length, y + math.sin(a) * length)], fill=60, width=1)
+                dt.line([(x, y), (x + math.cos(a) * length, y + math.sin(a) * length)], fill=60, width=lw(1))
     a, t = atlas_maps(out, "Fern", cell)
     finish_atlas(out, "Fern", a, t, light=(0.26, 0.42, 0.09), dark=(0.06, 0.13, 0.025))
 
@@ -394,8 +400,8 @@ def groundcover(out: Path):
             length = size * (0.18 + rng.random() * 0.38)
             sx, sy = size * 0.5, size * 0.98
             ex, ey = sx + math.cos(a) * length, sy + math.sin(a) * length
-            da.line([(sx, sy), (ex, ey)], fill=255, width=3)
-            dt.line([(sx, sy), (ex, ey)], fill=80, width=3)
+            da.line([(sx, sy), (ex, ey)], fill=255, width=lw(3))
+            dt.line([(sx, sy), (ex, ey)], fill=80, width=lw(3))
             leaf_len = size * (0.15 + rng.random() * 0.14)
             la = a + (rng.random() - 0.5) * 0.8
             w = leaf_len * 0.42
@@ -412,7 +418,7 @@ def groundcover(out: Path):
                              ey + math.sin(la) * leaf_len * v - math.sin(la + math.pi / 2) * r))
             da.polygon(poly, fill=255)
             dt.polygon(poly, fill=int(120 + rng.random() * 110))
-            dt.line([(ex, ey), (ex + math.cos(la) * leaf_len, ey + math.sin(la) * leaf_len)], fill=90, width=2)
+            dt.line([(ex, ey), (ex + math.cos(la) * leaf_len, ey + math.sin(la) * leaf_len)], fill=90, width=lw(2))
             # Side veins.
             for k in range(1, 6):
                 v = k / 6.5
@@ -421,7 +427,7 @@ def groundcover(out: Path):
                 r = math.sin(math.pi * v) ** 0.8 * w * 0.8
                 for side in (-1, 1):
                     va = la + side * 0.9
-                    dt.line([(bx, by), (bx + math.cos(va) * r, by + math.sin(va) * r)], fill=100, width=1)
+                    dt.line([(bx, by), (bx + math.cos(va) * r, by + math.sin(va) * r)], fill=100, width=lw(1))
     a, t = atlas_maps(out, "Groundcover", cell)
     finish_atlas(out, "Groundcover", a, t, light=(0.22, 0.4, 0.1), dark=(0.05, 0.12, 0.03))
 

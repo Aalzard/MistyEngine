@@ -5,6 +5,25 @@ Scene content only (generator `crates/misty_editor/src/sample_noon_valley.rs`,
 Engine code stays on `r26-noon-meadow` (merge it in now and then: `git merge r26-noon-meadow`).
 Forked from `r26-noon-meadow` at 80e185bb.
 
+## Progress log (second agent, from 2026-11-10 06:00)
+
+- Merged `r26-noon-meadow` (3a254653 = the regeneration from 80e185bb's generator), so the
+  committed scene is r9's baseline; r9 rendered from it without regenerating.
+- r10 generator edits committed as WIP (not yet regenerated; `noon_valley_matches_its_generator`
+  fails until `write_noon_valley` runs): hill foot 90 − 0.2·p.y, hill 600·(1 − e^(−0.85·soft/600))
+  with ridge 1.0 + 0.2·fbm, SIZE.y 700 → 1000 (room for the taller hill), forest edge
+  smooth(−5, 12, u + 18·fbm), no clearings, forest to u 900, canopy gaps only where
+  hill_side < −10..−40, tree slope limit 47°, Hill Turf [22, 48], Limestone [48, 90], a second
+  Forest Edge tree per edge cell within 1.2 km, Forest Edge 16 m / crown 0.9, litter only where
+  forest > 0.75, limestone → turf beyond far_radius 1100–1300, near-range terraces removed,
+  Tall Grass 12/m² [0.4, 0.7] dryness 0.35 tint 0.15, flowers patch 16 / coverage 0.28 / LOD 55.
+- `tools/noon_valley_textures.py`: fern and groundcover atlases 1024 → 2048 (line widths and blur
+  scaled by `AK`); generated into `D:/MistyTargets/r26-level-scratch/tex2k/`, to be copied into
+  `Assets/NoonValley/Textures/` with r10 (after r9's render).
+- Build rule from the coordinator: every cargo run inside `source /d/MistyTargets/build-slot.sh;
+  take_slot r26-level; cargo ... -j 4; drop_slot`. `round.sh` now builds in a slot and runs the
+  test executables directly (`SKIP_BUILD=1` reuses `engine_build.log`'s executable).
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree

@@ -70,7 +70,7 @@ const GROUND_HEIGHT: &str = "Assets/Textures/Meadow/MeadowThatchHeight.png";
 const TURF: &str = "Assets/Textures/Terrain/Meadow.png";
 
 /// 4 km of valley (4 m between height samples, like MeadowDemo).
-const SIZE: Vec3 = Vec3::new(4096.0, 700.0, 4096.0);
+const SIZE: Vec3 = Vec3::new(4096.0, 1000.0, 4096.0);
 /// Where the camera stands (terrain-local x, z), looking along +Z: the world origin.
 const EYE: (f32, f32) = (1700.0, 1500.0);
 const CORNER: Vec3 = Vec3::new(-EYE.0, 0.0, -EYE.1);
@@ -90,10 +90,11 @@ fn rel(x: f32, z: f32) -> Vec2 {
 }
 
 /// Lateral distance past the foot of the forested hillside on the right (negative = in the
-/// meadow). The foot runs ahead on the right and swings left in the distance.
+/// meadow). The foot runs ahead on the right ~90 m out and swings left in the distance,
+/// meeting the treeline ahead.
 fn hill_side(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
-    let foot = 150.0 - 0.16 * p.y - 0.00006 * p.y.max(0.0).powi(2)
+    let foot = 90.0 - 0.2 * p.y - 0.00006 * p.y.max(0.0).powi(2)
         + 25.0 * noise::fbm(x, z, 260.0, 2, 41);
     p.x - foot
 }
@@ -126,11 +127,12 @@ fn height_m(x: f32, z: f32) -> f32 {
         + 2.2 * swells
         + 0.6 * dips
         + 10.0 * smooth(-200.0, -900.0, p.x);
-    // The hillside on the right: steep from its foot, rounding off towards a ridge 300 m up.
+    // The hillside on the right: a wall rising ~40° from its foot, rounding off towards a
+    // ridge 400–500 m up.
     let u = hill_side(x, z);
     let soft = 60.0 * (1.0 + (u / 60.0).exp()).ln();
-    let ridge = 0.85 + 0.3 * noise::fbm(x, z, 700.0, 2, 17);
-    let mut hill = 330.0 * ridge * (1.0 - (-soft / 330.0).exp());
+    let ridge = 1.0 + 0.2 * noise::fbm(x, z, 700.0, 2, 17);
+    let mut hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
     hill += 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u);
     // Limestone cliffs: ledges in patches on the slope.
     let cliffs = smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
@@ -154,8 +156,6 @@ fn height_m(x: f32, z: f32) -> f32 {
     let behind = 0.45 + 0.55 * smooth(-600.0, 300.0, p.y);
     let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
     let near = 110.0 * band(1500.0, 300.0) * lump(31) * open_left;
-    let rocky = smooth(0.4, 0.6, noise::fbm(x, z, 300.0, 2, 43)) * smooth(0.0, 300.0, p.y);
-    let near = near + (terrace(near, 22.0) - near) * rocky * 0.2;
     h += (near
         + 190.0 * band(2200.0, 380.0) * lump(37)
         + 300.0 * smooth(2350.0, 2950.0, r) * lump(47))
@@ -171,14 +171,12 @@ fn height_m(x: f32, z: f32) -> f32 {
 fn forest(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
     let u = hill_side(x, z);
-    // Ragged edge along the hill's foot; a few grassy clearings higher up.
-    let edge = u + 30.0 * noise::fbm(x, z, 70.0, 3, 51);
-    let clearings = smooth(0.35, 0.5, noise::fbm(x, z, 160.0, 3, 53));
-    let mut f = smooth(-10.0, 25.0, edge)
-        * smooth(800.0, 650.0, u)
+    // A closed wood from a ragged edge along the hill's foot, no clearings.
+    let edge = u + 18.0 * noise::fbm(x, z, 70.0, 3, 51);
+    let mut f = smooth(-5.0, 12.0, edge)
+        * smooth(900.0, 750.0, u)
         * smooth(-1100.0, -900.0, p.y)
-        * smooth(2600.0, 2300.0, p.y)
-        * (1.0 - clearings);
+        * smooth(2600.0, 2300.0, p.y);
     // The treeline ahead: a wood on the meadow's far edge, joining the hill's foot.
     let ahead = smooth(330.0, 380.0, p.y + 50.0 * noise::fbm(x, z, 90.0, 3, 55))
         * smooth(700.0, 640.0, p.y)
@@ -276,11 +274,11 @@ fn flowers() -> FlowerSettings {
         enabled: true,
         kinds,
         density: 130.0,
-        coverage: 0.2,
-        patch_scale: 9.0,
+        coverage: 0.28,
+        patch_scale: 16.0,
         scattered: 0.004,
         edges: 0.3,
-        lod_distance: 30.0,
+        lod_distance: 55.0,
         map: Vec::new(),
     }
 }
@@ -301,12 +299,12 @@ fn tall_grass(d: &TerrainData) -> DetailLayer {
         .collect();
     DetailLayer {
         name: "Tall Grass".into(),
-        density: 35.0,
-        height: [0.45, 0.85],
+        density: 12.0,
+        height: [0.4, 0.7],
         width: 0.035,
         bend: 0.55,
-        dryness: 0.6,
-        tint: 0.3,
+        dryness: 0.35,
+        tint: 0.15,
         seed_heads: 0.0,
         map,
         ..DetailLayer::grass("Tall Grass")
@@ -526,9 +524,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Forest Edge"),
             TreeAsset {
                 seed: 31,
-                height: 13.0,
+                height: 16.0,
                 crown_shape: CrownShape::Round,
-                crown_width: 0.85,
+                crown_width: 0.9,
                 crown_base: 0.07,
                 trunk_radius: 0.28,
                 leader: 0.4,
@@ -696,9 +694,12 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             if f <= 0.0 || r(3) > f * 0.97 {
                 continue;
             }
-            // Gaps in the canopy of the nearer wood (sun patches on its floor): small groups
-            // of missing trees, none at the edges or on the far hills.
-            let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length()) * smooth(0.9, 1.0, f);
+            // Gaps in the canopy of the treeline wood ahead (sun patches on its floor): small
+            // groups of missing trees, none at the edges, on the hillside (a closed wall of
+            // crowns from the meadow) or on the far hills.
+            let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length())
+                * smooth(0.9, 1.0, f)
+                * smooth(-10.0, -40.0, hill_side(p.x, p.y));
             if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.08 * near_wood {
                 continue;
             }
@@ -711,7 +712,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             }
             let grow = (1.0 / keep).sqrt().min(1.8);
             let slope = misty_engine::terrain::trees::slope_at(d, p.x, p.y);
-            if slope > 42.0 {
+            if slope > 47.0 {
                 continue;
             }
             // The forest's edges: bushes and low crowns down to the ground.
@@ -769,6 +770,20 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 width_scale: (0.85 + 0.35 * r(7)) * height.powf(0.4) * grow.powf(0.9),
                 color: r(8),
             });
+            // A second low crown in each edge cell within 1.2 km: the edge is a wall of
+            // foliage down to the grass, no gaps through to the litter.
+            if f < 0.92 && dist < 1200.0 {
+                let e = p + Vec2::new(r(18) - 0.5, r(19) - 0.5) * cell * 0.9;
+                let h2 = (0.75 + 0.4 * r(20)) * grow.powf(0.45);
+                out.push(TreeInstance {
+                    position: e / size,
+                    prototype: 4,
+                    rotation: r(21) * std::f32::consts::TAU,
+                    height_scale: h2,
+                    width_scale: (0.9 + 0.3 * r(22)) * h2.powf(0.4),
+                    color: r(23),
+                });
+            }
         }
     }
     for (k, &(right, ahead, kind, scale)) in LONE.iter().enumerate() {
@@ -811,7 +826,7 @@ fn terrain_data() -> TerrainData {
             name: "Hill Turf".into(),
             diffuse: Some(TURF.into()),
             tile_size: [6.0, 6.0],
-            rules: rules([22.0, 46.0], 1),
+            rules: rules([22.0, 48.0], 1),
             ..Default::default()
         },
         TerrainLayer {
@@ -822,7 +837,7 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [24.0, 24.0],
             smoothness: 0.15,
-            rules: rules([46.0, 90.0], 2),
+            rules: rules([48.0, 90.0], 2),
             ..Default::default()
         },
         TerrainLayer {
@@ -851,19 +866,27 @@ fn terrain_data() -> TerrainData {
             (t % n) as f32 * texel + texel * 0.5,
             (t / n) as f32 * texel + texel * 0.5,
         );
+        // The distant ranges are forest and turf: their steep faces would show as pale
+        // limestone patches like snow from the meadow.
+        let far = smooth(1100.0, 1300.0, far_radius(rel(x, z)));
         // Grass runs on under the edge's bushes and low crowns; litter only under the canopy.
-        let f = smooth(0.55, 0.95, forest(x, z));
-        if f <= 0.0 {
+        let f = smooth(0.75, 0.98, forest(x, z));
+        if f <= 0.0 && far <= 0.0 {
             continue;
         }
-        let w = d.layer_weights(t);
+        let mut w = d.layer_weights(t);
+        if far > 0.0 {
+            let moved = (w[2] as f32 * far).round() as u8;
+            w[2] -= moved;
+            w[1] = w[1].saturating_add(moved);
+        }
         let mut out = [0u8; MAX_LAYERS];
         let soft = |v: u8| (v as f32 * (1.0 - f)).round() as u8;
         // Cliff faces stay rock.
         out[2] = w[2];
         out[0] = soft(w[0]);
         out[1] = soft(w[1]);
-        out[3] = 255 - out[0] - out[1] - out[2];
+        out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         d.set_layer_weights(t, &out);
     }
     d.detail_layers = vec![tall_grass(&d)];
