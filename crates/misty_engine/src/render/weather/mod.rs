@@ -29,14 +29,6 @@ use crate::weather::frame::MAX_REGIONS;
 #[cfg(test)]
 mod gpu_tests;
 
-/// Shared declarations of the weather (view group bindings, region blending, occlusion).
-pub(super) const COMMON_SRC: &str = include_str!("shaders/weather_common.wgsl");
-/// The lit shaders' surface hook (after `COMMON_SRC`).
-pub(super) const SURFACE_SRC: &str = concat!(
-    include_str!("shaders/weather_common.wgsl"),
-    "\n",
-    include_str!("shaders/weather_surface.wgsl")
-);
 const PRECIP_SRC: &str = concat!(
     include_str!("shaders/weather_common.wgsl"),
     "\n",
@@ -366,6 +358,7 @@ impl WeatherGpu {
     }
 
     /// Drawing weather this render?
+    #[cfg(test)]
     pub fn active(&self) -> bool {
         self.now.is_some()
     }
@@ -973,11 +966,11 @@ fn make_occlusion(device: &wgpu::Device, texels: u32) -> Occlusion {
             module: &module,
             entry_point: Some("vs_main"),
             compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
+            buffers: &[Some(wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<super::mesh::Vertex>() as u64,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &attributes,
-            }],
+            })],
         },
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,

@@ -439,11 +439,6 @@ impl Audio {
         self.clips.retain(|c| *c != id);
     }
 
-    /// Is a voice from [`Audio::play_ambient`] still sounding?
-    pub fn voice_alive(&self, id: VoiceId) -> bool {
-        self.backend.as_ref().is_some_and(|b| b.is_alive(id))
-    }
-
     fn all_ids(&self) -> impl Iterator<Item = VoiceId> + '_ {
         let ids = self.sources.values().map(|v| v.id);
         ids.chain(self.one_shots.iter().map(|o| o.id))

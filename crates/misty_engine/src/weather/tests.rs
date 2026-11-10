@@ -302,10 +302,8 @@ fn surfaces_get_wet_dry_and_snow_builds_and_melts() {
     assert!(approx(s.snow_cover, 0.75, 0.01), "{}", s.snow_cover);
     assert!(s.wetness > 0.1);
     // Rain melts it three times as fast.
-    let mut r = VolumeState {
-        snow_cover: 1.0,
-        ..Default::default()
-    };
+    let mut r = VolumeState::default();
+    r.snow_cover = 1.0;
     accumulate(&mut r, &rain, &set, 1.0);
     assert!(approx(r.snow_cover, 1.0 - 3.0 / 20.0, 0.02), "{}", r.snow_cover);
     // Max snow caps it; turning surfaces off clears them.
@@ -495,10 +493,8 @@ fn generated_audio_loops_and_thunder_are_sane() {
     };
     assert!(early(&near) > early(&far) * 2.0);
     // Loop volumes follow the intensity.
-    let mut w = WeatherWorld {
-        live: true,
-        ..Default::default()
-    };
+    let mut w = WeatherWorld::default();
+    w.live = true;
     w.current = WeatherPreset::Drizzle.params();
     let (l1, h1, _) = audio::loop_volumes(&w);
     w.current = WeatherPreset::Downpour.params();

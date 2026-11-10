@@ -19,7 +19,7 @@ pub fn tick(s: &mut EditorState, dt: f32) -> bool {
         }
         return false;
     }
-    let eye = s.camera.position();
+    let eye = s.scene_view.camera.position();
     // Long gaps (the window was idle) count as one short step.
     misty_engine::weather::update_scene(&mut s.scene, dt.clamp(0.0, 0.1), eye);
     true
