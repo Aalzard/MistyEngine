@@ -282,13 +282,34 @@ pub fn register(lua: &Lua) -> Result<()> {
 
 const MAX_DEPTH: usize = 64;
 
+/// Most values one save writes: a table shared many times at each level would otherwise
+/// be written out exponentially often (`t.a = s; t.b = s` at every level).
+const MAX_VALUES: usize = 1_000_000;
+
 /// A Lua value as JSON: tables with keys 1..n become arrays, others objects; Vector3 becomes
-/// `{"$type":"Vector3","x":…}`; functions and other userdata are left out.
+/// `{"$type":"Vector3","x":…}`; functions and other userdata are left out. A table that
+/// contains itself is written as `null` where it loops back, and so is anything past
+/// [`MAX_VALUES`].
 pub fn to_json(v: &Value, depth: usize) -> serde_json::Value {
+    let mut walk = Walk {
+        path: Vec::new(),
+        left: MAX_VALUES,
+    };
+    json_of(v, depth, &mut walk)
+}
+
+/// The tables being written (outermost first) and how many values may still be written.
+struct Walk {
+    path: Vec<*const std::ffi::c_void>,
+    left: usize,
+}
+
+fn json_of(v: &Value, depth: usize, walk: &mut Walk) -> serde_json::Value {
     use serde_json::Value as J;
-    if depth > MAX_DEPTH {
+    if depth > MAX_DEPTH || walk.left == 0 {
         return J::Null;
     }
+    walk.left -= 1;
     match v {
         Value::Nil => J::Null,
         Value::Boolean(b) => J::Bool(*b),
@@ -300,13 +321,21 @@ pub fn to_json(v: &Value, depth: usize) -> serde_json::Value {
             Err(_) => J::Null,
         },
         Value::Table(t) => {
+            let id = t.to_pointer();
+            if walk.path.contains(&id) {
+                return J::Null;
+            }
+            walk.path.push(id);
             let len = t.raw_len();
             let pairs: Vec<(Value, Value)> = t.clone().pairs::<Value, Value>().flatten().collect();
             let is_array = len > 0 && pairs.len() == len;
-            if is_array {
+            let out = if is_array {
                 J::Array(
                     (1..=len)
-                        .map(|i| to_json(&t.raw_get::<Value>(i).unwrap_or(Value::Nil), depth + 1))
+                        .map(|i| {
+                            let item = t.raw_get::<Value>(i).unwrap_or(Value::Nil);
+                            json_of(&item, depth + 1, walk)
+                        })
                         .collect(),
                 )
             } else {
@@ -321,10 +350,12 @@ pub fn to_json(v: &Value, depth: usize) -> serde_json::Value {
                     if matches!(val, Value::Function(_)) {
                         continue;
                     }
-                    map.insert(key, to_json(&val, depth + 1));
+                    map.insert(key, json_of(&val, depth + 1, walk));
                 }
                 J::Object(map)
-            }
+            };
+            walk.path.pop();
+            out
         }
         _ => J::Null,
     }
@@ -367,4 +398,40 @@ pub fn to_lua(lua: &Lua, v: &serde_json::Value, depth: usize) -> Result<Value> {
             Value::Table(t)
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use mlua::{Lua, Value};
+
+    /// `OnSave` returning a table that holds itself, or one shared twice at every level,
+    /// saves in bounded time (the shared one cost 2^64 visits: the editor froze on Save).
+    #[test]
+    fn shared_and_self_holding_tables_save_in_bounded_time() {
+        let lua = Lua::new();
+        let t: Value = lua
+            .load("local t = { n = 1 } t.a = t t.b = t return t")
+            .eval()
+            .unwrap();
+        let j = super::to_json(&t, 0);
+        assert_eq!(j["n"], 1);
+        assert!(j["a"].is_null() && j["b"].is_null(), "{j}");
+        let wide: Value = lua
+            .load("local cur = { x = 1 } for _ = 1, 60 do cur = { a = cur, b = cur } end return cur")
+            .eval()
+            .unwrap();
+        let start = std::time::Instant::now();
+        let j = super::to_json(&wide, 0);
+        assert!(j.is_object());
+        assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
+        // Plain data is written whole.
+        let plain: Value = lua
+            .load("return { 1, 2, { x = 3, list = { 4, 5 } } }")
+            .eval()
+            .unwrap();
+        assert_eq!(
+            super::to_json(&plain, 0),
+            serde_json::json!([1, 2, { "x": 3, "list": [4, 5] }])
+        );
+    }
 }
