@@ -37,9 +37,18 @@ an idle machine), old blades never vanish, settings sliders never blank the fiel
   120 dabs shown); tiles (FIFO rayon) 1408 / 2580 ms median, all 120 shown; settle after
   release 10.1 s → 2.2–3.8 s.
 
+## Checks (status)
+- grass/terrain unit + GPU tests: pass (paint_tests, detail_layers, details).
+- `cargo fmt --all --check`: clean.
+- clippy: misty_engine clean (cached, no warnings); the workspace run keeps dying in rustc
+  with STATUS_ACCESS_VIOLATION on a different dependency each time (eframe, egui-winit,
+  webbrowser) — the machine (low virtual memory), not the code. Retry in a build slot.
+- full workspace tests and golden_shots: not run yet on the tile build (golden waits for
+  the GPU lock; binary `D:\MistyTargets29-scratch	iles3.exe` = commit 1fc66dc8 + the
+  stroke-speed knob).
+
 ## Next
-- Build (use `/d/MistyTargets/build-slot.sh`, `-j 4`), run the tests above, rerun
-  `grass_paint_latency` for tiles+queue vs `D:\MistyTargets\r29-scratch\r29.exe`.
-- fmt, clippy (0 warnings), full tests, golden_shots under the GPU lock (species colour
-  now from the table: check grass shots unchanged).
-- docs/progress.md Round 29 section: add tiles, queue, settings, numbers.
+- Retry clippy and full tests in a slot; run golden_shots (`tiles3.exe golden_shots
+  --ignored --nocapture --test-threads=1` from crates/misty_engine, under the GPU lock).
+- Optional: switch the chunks around the brush to tiles ahead of it (fast strokes into
+  unpainted chunks wait for a chunk's 16 tiles).
