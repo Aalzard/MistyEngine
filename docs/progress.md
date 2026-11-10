@@ -3389,3 +3389,61 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   in-place blade updates) is the next step.
 - The editor stroke itself was not scripted end to end (the harness drives the same store and
   renderer calls the Paint Details brush makes).
+
+## Round 34 — Weather: rain, snow, storms (branch r34-weather)
+
+### Done
+- **Weather component** (GameObject ▸ Rendering ▸ Weather; `misty_engine::weather`): a weather
+  volume, **Global** (everywhere: the precipitation is spawned round the camera) or an **Area**
+  box / sphere with a blend distance (a rainy valley, a storm cell). Volumes blend by priority
+  and weight like Post-process Volumes; an implicit clear layer lies under them all.
+- **Every value is free** (`WeatherParams`): rain intensity, drops/m³, drop size, fall speed,
+  streak length, opacity, refraction; snow intensity, flakes/m³, flake size, fall speed,
+  swirl, opacity; wind direction, speed, turbulence, gusts; splashes, mist, visibility;
+  lightning rate, distances, brightness; cloud cover and density, sun and sky dimming.
+  13 presets fill them: Clear, Drizzle, Light Rain, Rain, Heavy Rain, Downpour, Thunderstorm,
+  Sleet, Flurries, Light Snow, Snow, Heavy Snow, Blizzard.
+- **Timeline** per volume: Sequence (looping or not) or weighted Random states with min / max
+  holds and a blend time each; every value interpolates (wind along the short arc, visibility
+  by extinction, rain → snow passes through sleet). "Demo Cycle" = clear → light rain →
+  thunderstorm → snow → clear.
+- **Runtime** (`Scene.weather`, not saved): runs in Play and in Edit mode while a volume has
+  Preview in Edit Mode on. Wetness, puddles and snow cover build up and dry / melt per volume
+  (speeds in seconds; rain melts snow faster; meltwater keeps the ground wet).
+- **Renderer** (`render::weather`):
+  - A top-down **occlusion map** of the shadow casters within 48 m (after the shadow maps): rain
+    and snow stop at roofs and tree crowns, splashes land on roofs, floors under cover stay dry.
+  - **Rain**: procedural GPU streaks in two boxes round the camera (anchored to the world,
+    moved by the accumulated wind drift and fall; no CPU work per drop), refracting the opaque
+    scene copy, with a Fresnel sky rim, sun forward scattering and point / spot light glints
+    (rain shines in street lamps at night); thin far drops fade instead of aliasing; distant
+    rain sheets so density reads far away; curtains under far area volumes.
+  - **Snow**: flakes of three shapes (soft, star, clump) that tumble, swirl and drift; big soft
+    flakes near the lens (depth of field); streaks in blizzard wind.
+  - **Splashes** spawned on the GPU from the depth buffer where it rains, the surface faces up
+    and is open to the sky (crown droplets and a ring), plus ground mist in heavy rain.
+  - **Surfaces** (`weather_surface.wgsl` in `shade`, foliage in `shade_grass` / `shade_tree`):
+    porous materials darken, everything gets glossy, puddles on flat open ground with raindrop
+    ripples, snow on upward faces (patchy while thin, optional snow line), nothing under cover.
+  - **Lightning**: Poisson strikes with 1–4 return strokes; the flash lights every surface open
+    to the sky and the clouds; branching bolts drawn into the HDR and glow images (they
+    bloom); thunder after distance / 343 m/s.
+  - **Haze** lowers visibility (and thickens volumetric fog); **Drive Clouds** moves the
+    volumetric clouds towards the weather's cover (turning overcast clouds on) and dims the
+    sun / moon and sky light; optional **lens drops**.
+  - Quality ▸ Weather (Off / Low / Medium / High) scales particles, splash slots and the
+    occlusion map; Off keeps wet / snowy surfaces and lightning.
+- **Audio**: rain loops (light and heavy, crossfaded by intensity), a wind loop and near /
+  far thunder, generated once into `Library/Weather/` when the volume has no clips of its own;
+  they play through the volume's Audio Mixer group.
+- **Lua `Weather`**: SetState(name, seconds), ClearState, SetRain / SetSnow / SetIntensity /
+  SetWind / SetLightning, Strike, GetState / GetRain / GetSnow / GetWind / GetVisibility /
+  GetWetness / GetPuddles / GetSnowCover, SetWetness / SetSnowCover, IsScripted, `states`.
+  Events OnLightning(distance, position, intensity), OnThunder(distance, volume),
+  OnWeatherChanged(state, seconds) reach Lua scripts and Script Graphs (Custom Event nodes) as
+  broadcast custom events; the API table lists the members as graph nodes.
+- **Editor**: Inspector with Preview in Edit Mode, a live status line, Coverage, the preset
+  dropdown and sections (Rain, Snow, Wind, Ground, Lightning with Strike Now, Sky, Surfaces,
+  Effects, Timeline, Audio); Turkish and Arabic strings.
+- **WeatherDemo** sample (`sample_weather.rs`): asphalt square, shelter, trees, stone wall,
+  street lamp, the demo cycle; keys 1–8 switch states, L strikes, 0 returns to the timeline.
