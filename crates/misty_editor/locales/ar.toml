@@ -71,10 +71,12 @@
 "MeadowDemo" = "عرض المرج"
 "First Person" = "منظور الشخص الأول"
 "Racing" = "سباق"
+"2D Platformer" = "منصات ثنائية الأبعاد"
 "Floating Platform" = "المنصة العائمة"
 "A walkable meadow with a first-person player: thin grass, trees, Misty GI. Free assets for your game." = "مرج يمكن التجول فيه مع لاعب بمنظور الشخص الأول: عشب رفيع وأشجار وإضاءة Misty GI. أصول مجانية للعبتك."
 "A first-person player on an endless white plain, ready to press Play." = "لاعب بمنظور الشخص الأول على سهل أبيض لا نهاية له، جاهز للضغط على تشغيل."
 "An arcade racer: a circuit, three cars, boost, a lap timer and live settings, all in Lua." = "لعبة سباق سريعة: حلبة وثلاث سيارات وتسارع ومؤقت للفات وإعدادات مباشرة، وكلها بلغة Lua."
+"A 2D platformer: run and jump through a tilemap level, collect coins, 2D lights and glow. Paint more with the Tile Palette." = "لعبة منصات ثنائية الأبعاد: اركض واقفز عبر مرحلة من البلاطات، واجمع العملات، مع أضواء ثنائية الأبعاد وتوهج. ارسم المزيد بلوحة البلاطات."
 "A platform floating in the sky: camera, sun, clouds and glow. Start from scratch." = "منصة تطفو في السماء: كاميرا وشمس وسحب وتوهج. ابدأ من الصفر."
 
 [tutorials]

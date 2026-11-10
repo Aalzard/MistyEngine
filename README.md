@@ -51,10 +51,14 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
   - **Racing:** an arcade racer on a 1.2 km circuit: a car with three bodies to pick from, boost,
     reset to the track, a chase camera, a lap timer and live settings (gravity, mass, grip, top
     speed). The car, camera, timer and settings are Lua scripts you can edit.
+  - **2D Platformer:** a pixel-art player that runs and jumps (A/D or the arrows, Space) through a
+    tilemap level painted with a Rule Tile, coins to collect, a camera that follows the player,
+    torches with 2D lights and shadows, and a Tile Palette ready to paint more. The Scene view
+    starts in 2D.
   - **Floating Platform:** a platform floating in the sky, to start from scratch.
 
-  Every template starts with post-processing on: bloom, tonemapping, volumetric clouds and sun
-  shafts.
+  Every 3D template starts with post-processing on: bloom, tonemapping, volumetric clouds and sun
+  shafts; the 2D Platformer has bloom.
 
   You can also include all the sample scenes.
 - **Editor:**

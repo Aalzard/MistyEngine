@@ -1,6 +1,7 @@
 //! Template creation: every template makes a complete project whose scene loads with the
 //! promised objects, starts with post-processing (bloom, tonemapping, volumetric clouds, sun
-//! shafts), opens in the editor, plays without a script error and renders on a GPU.
+//! shafts; bloom for the 2D Platformer), opens in the editor, plays without a script error and
+//! renders on a GPU.
 //! `write_template_thumbnails` (ignored) renders the thumbnails shipped in `assets/templates/`.
 
 use std::path::{Path, PathBuf};
@@ -50,8 +51,22 @@ fn main_camera(scene: &Scene) -> misty_engine::hecs::Entity {
     cam
 }
 
-/// Create a generated template's project and check the files every project gets.
+/// Create a generated template's project and check the files every project gets, and what
+/// every 3D template's scene has (sun, camera, post-processing).
 fn create_checked(template: Template) -> (PathBuf, Scene) {
+    let (root, scene) = create_project_checked(template);
+    for name in ["Directional Light", VOLUME] {
+        assert!(scene.find_by_name(name).is_some(), "{name}");
+    }
+    main_camera(&scene);
+    assert_post_processing(template.name(), &scene);
+    (root, scene)
+}
+
+/// Create a generated template's project and check the files every project gets: settings with
+/// the product name, Build Settings listing the scene, the thumbnail, a scene that loads without
+/// a warning and every material it uses.
+fn create_project_checked(template: Template) -> (PathBuf, Scene) {
     let root = temp_project(template.name());
     let start = std::time::Instant::now();
     create(&root, template).unwrap();
@@ -74,11 +89,6 @@ fn create_checked(template: Template) -> (PathBuf, Scene) {
     assert_eq!(settings.player.unwrap().product_name, root_name(&root));
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    for name in ["Directional Light", VOLUME] {
-        assert!(scene.find_by_name(name).is_some(), "{name}");
-    }
-    main_camera(&scene);
-    assert_post_processing(template.name(), &scene);
     // Every material the scene uses was written, with the texture it names.
     for r in scene
         .world
@@ -216,7 +226,13 @@ fn create_refuses_a_folder_with_files() {
 fn template_names_round_trip() {
     assert_eq!(
         Template::ALL.map(Template::name),
-        ["MeadowDemo", "First Person", "Racing", "Floating Platform"]
+        [
+            "MeadowDemo",
+            "First Person",
+            "Racing",
+            "2D Platformer",
+            "Floating Platform"
+        ]
     );
     for t in Template::ALL {
         assert_eq!(Template::from_name(t.name()), Some(t));
@@ -233,6 +249,10 @@ fn template_names_round_trip() {
         ("Standard", Template::FloatingPlatform),
         ("meadow demo", Template::MeadowDemo),
         ("meadowdemo", Template::MeadowDemo),
+        ("2d platformer", Template::Platformer2D),
+        ("2D", Template::Platformer2D),
+        // The sample scene it comes from.
+        ("Platformer2D", Template::Platformer2D),
     ] {
         assert_eq!(Template::from_name(alias), Some(t), "{alias}");
     }
@@ -241,6 +261,10 @@ fn template_names_round_trip() {
     assert_eq!(Template::from_name("nope"), None);
     assert_eq!(Template::default(), Template::FloatingPlatform);
     assert!(Template::Racing.available() && Template::FloatingPlatform.available());
+    // Generated: every install can make it.
+    assert!(Template::Platformer2D.available());
+    let two_d: Vec<Template> = Template::ALL.into_iter().filter(|t| t.is_2d()).collect();
+    assert_eq!(two_d, [Template::Platformer2D]);
 }
 
 /// The editor opens a new project on its starting scene.
@@ -632,12 +656,316 @@ fn racing_settings_change_while_playing() {
     cleanup(&root);
 }
 
+// ---- 2D Platformer ----------------------------------------------------------------------------
+
+/// Use the project's own tile assets (Rule Tiles and the like) wherever a tilemap asks for them,
+/// whatever global project root other tests set.
+fn use_project_tiles(root: &Path) {
+    use misty_engine::tilemap::tile::{self, TileAsset};
+    let Ok(entries) = std::fs::read_dir(root.join("Assets/Tiles")) else {
+        return;
+    };
+    for path in entries.flatten().map(|e| e.path()) {
+        if path.extension().is_some_and(|e| e == "tile") {
+            let rel = path.strip_prefix(root).unwrap().to_string_lossy();
+            tile::register(&rel.replace('\\', "/"), TileAsset::load(&path).unwrap());
+        }
+    }
+}
+
+/// New Project ▸ 2D Platformer: the sprites, tiles, palette and scripts with their meta files
+/// (every reference resolving by path and GUID), Sorting Layers for 2D, and a scene with an
+/// orthographic camera following the player, the tilemap level (Rule Tile ground with its
+/// collider and shadows, water, walls), the player, ten coins, 2D lights, the coin counter and
+/// a bloom volume. No sun, no 3D meshes; the Scene view starts in 2D.
+#[test]
+fn platformer_2d_template_has_a_level_a_player_and_coins() {
+    use super::platformer_2d::{self as p2d, art};
+    use misty_engine::asset_db::meta;
+    use misty_engine::light2d::{Light2D, ShadowCaster2D};
+    use misty_engine::scene::{
+        BoxCollider2D, CircleCollider2D, Rigidbody2D, Scripts, SpriteRenderer, UiText,
+    };
+    use misty_engine::tilemap::palette::TilePalette;
+    use misty_engine::tilemap::tile::{TileAsset, TileKind};
+    use misty_engine::tilemap::{Grid, Tilemap, TilemapCollider2D, TilemapRenderer};
+
+    let (root, scene) = create_project_checked(Template::Platformer2D);
+    for (rel, source) in p2d::SCRIPTS {
+        let on_disk = std::fs::read_to_string(root.join(rel)).unwrap();
+        assert_eq!(on_disk, source, "{rel}");
+    }
+    let sprites = [
+        art::PLAYER_PNG,
+        art::COIN_PNG,
+        art::GROUND_PNG,
+        art::WATER_PNG,
+        art::PROPS_PNG,
+    ];
+    for rel in sprites {
+        let path = root.join(rel);
+        let img = misty_engine::image::open(&path).unwrap();
+        assert!(img.width() >= 16, "{rel}");
+        let importer = misty_engine::sprites::TextureImporter::try_load(&path).unwrap();
+        assert_eq!(importer.pixels_per_unit, art::PPU, "{rel}");
+        assert_eq!(
+            importer.filter_mode,
+            misty_engine::sprites::FilterMode::Nearest
+        );
+    }
+    let tiles = [art::GROUND_TILE, art::WATER_TILE, art::WALL_TILE];
+    for rel in sprites
+        .into_iter()
+        .chain(tiles)
+        .chain([p2d::PALETTE, p2d::CONTROLLER, p2d::FOLLOW])
+    {
+        assert!(
+            meta::read_guid(&root.join(rel)).is_some(),
+            "{rel} has no GUID"
+        );
+    }
+    let ground = TileAsset::load(&root.join(art::GROUND_TILE)).unwrap();
+    assert_eq!(ground.kind, TileKind::RuleTile);
+    assert!(ground.rules.len() > 10);
+    let water = TileAsset::load(&root.join(art::WATER_TILE)).unwrap();
+    assert_eq!(water.kind, TileKind::AnimatedTile);
+    assert_eq!(water.frames.len(), 4);
+    let palette = TilePalette::load(&root.join(p2d::PALETTE)).unwrap();
+    let mut in_palette: Vec<&str> = palette.tiles.iter().map(|t| t.tile.as_str()).collect();
+    in_palette.sort();
+    let mut expected = tiles.to_vec();
+    expected.sort();
+    assert_eq!(in_palette, expected, "the palette holds every tile");
+    let deps = misty_engine::asset_deps::collect(&root, &[SCENE.to_owned()]);
+    assert!(deps.missing.is_empty(), "{:?}", deps.missing);
+    for rel in [SCENE, art::GROUND_TILE, art::WATER_TILE, p2d::PALETTE] {
+        assert_refs_resolve(&root, rel);
+    }
+    // Only what the template uses: no materials, no sample scenes.
+    assert!(!root.join("Assets/Materials").exists());
+    assert!(!root.join("Assets/Scenes/Platformer2D.scene").exists());
+
+    let settings = misty_engine::settings::ProjectSettings::load(&root).unwrap();
+    assert_eq!(settings.sorting_layers, p2d::SORTING_LAYERS);
+    assert_eq!(settings.physics2d.gravity, glam::Vec2::new(0.0, -9.81));
+    assert_eq!(settings.tags_and_layers.name_to_layer("Player"), 5);
+    assert!(settings.input.axes.iter().any(|a| a.name == "Horizontal"));
+
+    // The camera: orthographic, following the player, starting inside the level.
+    let cam = main_camera(&scene);
+    {
+        let c = scene.world.get::<&Camera>(cam).unwrap();
+        assert!(c.orthographic);
+        assert_eq!(c.ortho_size, p2d::ORTHO_SIZE);
+    }
+    let scripts = |e| -> Vec<String> {
+        let s = scene.world.get::<&Scripts>(e).unwrap();
+        s.list.iter().map(|r| r.path.clone()).collect()
+    };
+    assert_eq!(scripts(cam), [p2d::FOLLOW]);
+    let eye = scene.world_position(cam);
+    assert!(eye.z < 0.0 && (eye.truncate() - p2d::CAMERA_START).length() < 1e-4);
+    assert_eq!(scene.active_with::<Camera>().len(), 1, "one camera");
+    // No 3D: no sun, no meshes.
+    assert!(scene.find_by_name("Directional Light").is_none());
+    let meshes = scene
+        .world
+        .query::<&misty_engine::scene::MeshRenderer>()
+        .iter()
+        .count();
+    assert_eq!(meshes, 0);
+
+    // The level.
+    let grid = scene.find_by_name("Grid").unwrap();
+    assert!(scene.world.get::<&Grid>(grid).is_ok());
+    let names: Vec<String> = scene
+        .children(grid)
+        .into_iter()
+        .map(|e| scene.game_object(e).name.clone())
+        .collect();
+    assert_eq!(names, ["Stone Wall", "Ground", "Water"]);
+    let ground = scene.find_by_name("Ground").unwrap();
+    assert!(scene.world.get::<&Tilemap>(ground).unwrap().len() > 150);
+    assert!(scene.world.get::<&TilemapCollider2D>(ground).is_ok());
+    assert!(scene.world.get::<&ShadowCaster2D>(ground).is_ok());
+    let layer = |name: &str| {
+        let e = scene.find_by_name(name).unwrap();
+        let r = scene.world.get::<&TilemapRenderer>(e).unwrap();
+        (r.sorting_layer.clone(), r.order_in_layer)
+    };
+    assert_eq!(layer("Stone Wall").0, "Background");
+    assert_eq!(layer("Ground").0, "Default");
+    assert_eq!(layer("Water").0, "Foreground");
+    // Drawn in the right order even before the project's Sorting Layers are installed.
+    assert!(layer("Stone Wall").1 < layer("Ground").1 && layer("Ground").1 < layer("Water").1);
+
+    // The player.
+    let player = scene.find_by_name("Player").unwrap();
+    assert_eq!(scene.game_object(player).layer, 5);
+    assert!(
+        scene
+            .world
+            .get::<&Rigidbody2D>(player)
+            .unwrap()
+            .freeze_rotation
+    );
+    assert!(scene.world.get::<&BoxCollider2D>(player).is_ok());
+    assert!(scene.world.get::<&SpriteRenderer>(player).is_ok());
+    assert_eq!(scripts(player), [p2d::CONTROLLER]);
+    let feet = scene.world_position(player);
+    assert!((feet.truncate() - p2d::PLAYER_START).length() < 1e-4);
+
+    // Coins: triggers on Ignore Raycast (the ground check never sees them).
+    let coins = scene.children(scene.find_by_name("Coins").unwrap());
+    assert_eq!(coins.len(), p2d::COINS.len());
+    for c in coins {
+        assert!(scene.game_object(c).name.starts_with("Coin "));
+        assert!(
+            scene
+                .world
+                .get::<&CircleCollider2D>(c)
+                .unwrap()
+                .common
+                .is_trigger
+        );
+        assert_eq!(scene.game_object(c).layer, 2);
+    }
+    let score = scene.find_by_name("Score Text").unwrap();
+    assert_eq!(scene.world.get::<&UiText>(score).unwrap().text, "Coins: 0");
+
+    // 2D lights: daylight and five shadowed torches.
+    let lights = misty_engine::light2d::collect(&scene);
+    assert_eq!(lights.items.len(), 6, "global + 5 torches");
+    let global = scene.find_by_name("Global Light 2D").unwrap();
+    assert!(scene.world.get::<&Light2D>(global).unwrap().intensity >= 1.0);
+    // Glow: bloom, no clouds or sun shafts (there is no sky to put them in).
+    let v = volume(&scene);
+    assert!(v.enabled && v.bloom.active && v.bloom.intensity > 0.0);
+    assert!(!v.clouds.active && !v.sun_shafts.active);
+
+    let editor = crate::scene_files::EditorSettings::load(&root);
+    assert_eq!(editor.recent_scenes, [SCENE]);
+    assert!(editor.scene_view.is_none());
+    let view = editor.scene_view_2d.expect("starts in 2D");
+    assert_eq!(view.center, p2d::CAMERA_START.to_array());
+    assert!(view.size > p2d::ORTHO_SIZE);
+    cleanup(&root);
+}
+
+/// The editor opens a 2D Platformer project on its scene with the Scene view in 2D mode (and
+/// remembers a moved 2D view). Play: the player lands on the tile collider; holding Space
+/// jumps high, tapping W hops, Up jumps too; running right with the arrow key collects the
+/// first three coins (the UI Text counts them) and the camera follows, without a script error.
+#[test]
+fn platformer_2d_opens_in_2d_and_plays() {
+    use super::platformer_2d as p2d;
+    let root = temp_project("Platformer2DPlays");
+    create(&root, Template::Platformer2D).unwrap();
+    let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+    crate::scene_files::open_initial(&mut s);
+    assert_eq!(
+        s.scene.scene_path(s.scene.active_scene()).as_deref(),
+        Some(SCENE)
+    );
+    assert!(s.scene.find_by_name("Player").is_some());
+    crate::scene_files::restore_scene_view(&mut s);
+    assert!(s.scene_view.is_2d && s.scene_view.camera.is_2d());
+    let (center, size) = s.scene_view.camera.view_2d();
+    assert!(
+        (center.truncate() - p2d::CAMERA_START).length() < 1e-4,
+        "{center}"
+    );
+    assert!((size - (p2d::ORTHO_SIZE + 0.5)).abs() < 1e-3, "{size}");
+    // Looking down +Z at the XY plane.
+    let forward = s.scene_view.camera.rotation() * glam::Vec3::Z;
+    assert!((forward - glam::Vec3::Z).length() < 1e-4, "{forward}");
+    // A moved 2D view is where the project reopens.
+    s.scene_view
+        .camera
+        .set_2d_view(glam::Vec3::new(12.0, 3.0, 0.0), 9.0);
+    crate::scene_files::remember_scene_view(&s);
+    drop(s);
+    let mut again =
+        crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+    crate::scene_files::open_initial(&mut again);
+    crate::scene_files::restore_scene_view(&mut again);
+    assert!(again.scene_view.is_2d);
+    let (center, size) = again.scene_view.camera.view_2d();
+    assert!((center - glam::Vec3::new(12.0, 3.0, 0.0)).length() < 1e-3);
+    assert!((size - 9.0).abs() < 1e-3);
+    // Turning 2D off goes back to a 3D view.
+    again.scene_view.is_2d = false;
+    again.scene_view.camera.set_2d(false);
+    assert!(!again.scene_view.camera.is_2d());
+    drop(again);
+
+    use_project_tiles(&root);
+    let mut play = Play::start(&root, SCENE);
+    play.frames(30, &[], &[]);
+    let ground_y = 0.475;
+    let stood = play.position("Player");
+    assert!(
+        (stood.y - ground_y).abs() < 0.05 && (stood.x - p2d::PLAYER_START.x).abs() < 0.1,
+        "stands on the tiles: {stood}"
+    );
+    // Highest point of the player's feet over `n` frames with `key` pressed on the first one
+    // (and held for `hold` frames).
+    let jump = |play: &mut Play, key: &str, hold: usize, n: usize| -> f32 {
+        let mut top = f32::MIN;
+        for i in 0..n {
+            let held: &[&str] = if i < hold { &[key] } else { &[] };
+            let pressed: &[&str] = if i == 0 { &[key] } else { &[] };
+            play.frames(1, held, pressed);
+            top = top.max(play.position("Player").y);
+        }
+        top - ground_y
+    };
+    let full = jump(&mut play, "space", 30, 90);
+    let landed = play.position("Player");
+    assert!(full > 2.8, "held Space: a full jump ({full} m)");
+    assert!((landed.y - ground_y).abs() < 0.05, "landed: {landed}");
+    let hop = jump(&mut play, "w", 1, 90);
+    assert!(hop > 0.5 && hop < full * 0.6, "tapped W: a hop ({hop} m)");
+    let up = jump(&mut play, "up", 30, 90);
+    assert!(up > 2.8, "held Up: a full jump ({up} m)");
+
+    // Run right along the ground: the three coins on the way are collected.
+    play.frames(156, &["right"], &[]);
+    let ran = play.position("Player");
+    assert!(
+        ran.x > 3.0 && ran.x < 6.6,
+        "ran right, short of the pit: {ran}"
+    );
+    assert!((ran.y - ground_y).abs() < 0.05, "on the ground: {ran}");
+    for i in 1..=3 {
+        assert!(
+            play.scene.find_by_name(&format!("Coin {i}")).is_none(),
+            "Coin {i} collected"
+        );
+    }
+    assert!(play.scene.find_by_name("Coin 4").is_some());
+    assert_eq!(play.text("Score Text"), "Coins: 3");
+    let cam = play.position("Main Camera");
+    assert!(
+        cam.x > p2d::CAMERA_START.x + 2.0,
+        "the camera follows: {cam}"
+    );
+    assert!(
+        cam.z == -10.0 && cam.y >= p2d::CAMERA_START.y - 1e-3,
+        "{cam}"
+    );
+    drop(play);
+    cleanup(&root);
+}
+
 // ---- Rendering --------------------------------------------------------------------------------
 
-/// Render the template's scene headlessly (terrain data made absolute, so the global project
-/// root other tests use is left alone; spline extrudes built first).
+/// Render the template's scene headlessly (terrain data made absolute and the project's tiles
+/// registered, so the global project root other tests use is left alone; spline extrudes
+/// built first).
 fn render(root: &Path, scene: &mut Scene) -> crate::sample_render::Image {
     let gpu = crate::sample_render::headless().unwrap();
+    use_project_tiles(root);
     for e in scene.active_with::<Terrain>() {
         let mut t = scene.world.get::<&mut Terrain>(e).unwrap();
         t.terrain_data = root.join(&t.terrain_data).to_string_lossy().into_owned();

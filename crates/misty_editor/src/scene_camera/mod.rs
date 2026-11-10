@@ -737,6 +737,38 @@ impl SceneCamera {
         }
     }
 
+    /// Jump straight into 2D mode looking at `center` with `half_height` world units above and
+    /// below it (restoring a saved 2D view). The current view is what turning 2D off returns to.
+    pub fn set_2d_view(&mut self, center: Vec3, half_height: f32) {
+        if !center.is_finite() || !half_height.is_finite() || half_height <= 0.0 {
+            return;
+        }
+        if let Some((_, to, _)) = self.anim.take() {
+            self.pose = to;
+        }
+        if !self.in_2d {
+            self.saved_3d = Some((self.pose, self.orthographic));
+        }
+        self.in_2d = true;
+        self.orthographic = true;
+        self.snapped = None;
+        self.pose = Pose {
+            pivot: center,
+            yaw: 0.0,
+            pitch: 0.0,
+            distance: half_height / (self.settings.fov.to_radians() * 0.5).tan().max(1e-3),
+        };
+    }
+
+    /// The 2D view's centre and half height (see [`Self::set_2d_view`]).
+    pub fn view_2d(&self) -> (Vec3, f32) {
+        let p = self.anim.map_or(self.pose, |(_, to, _)| to);
+        (
+            p.pivot,
+            p.distance * (self.settings.fov.to_radians() * 0.5).tan(),
+        )
+    }
+
     /// Rotating away from an axis view restores the previous projection.
     fn leave_snapped_view(&mut self) {
         if self.snapped.take().is_some() {

@@ -70,10 +70,12 @@
 "MeadowDemo" = "Çayır Demosu"
 "First Person" = "Birinci Şahıs"
 "Racing" = "Yarış"
+"2D Platformer" = "2D Platform"
 "Floating Platform" = "Yüzen Platform"
 "A walkable meadow with a first-person player: thin grass, trees, Misty GI. Free assets for your game." = "Birinci şahıs oyuncuyla gezilebilen bir çayır: ince çimenler, ağaçlar, Misty GI. Oyununuz için ücretsiz varlıklar."
 "A first-person player on an endless white plain, ready to press Play." = "Uçsuz bucaksız beyaz bir düzlükte birinci şahıs oyuncu; Oynat'a basmaya hazır."
 "An arcade racer: a circuit, three cars, boost, a lap timer and live settings, all in Lua." = "Bir arcade yarış oyunu: pist, üç araba, nitro, tur sayacı ve canlı ayarlar; hepsi Lua ile."
+"A 2D platformer: run and jump through a tilemap level, collect coins, 2D lights and glow. Paint more with the Tile Palette." = "Bir 2D platform oyunu: karo haritalı bir bölümde koşun ve zıplayın, altın toplayın; 2D ışıklar ve parıltı. Karo Paleti ile daha fazlasını boyayın."
 "A platform floating in the sky: camera, sun, clouds and glow. Start from scratch." = "Gökyüzünde yüzen bir platform: kamera, güneş, bulutlar ve parıltı. Sıfırdan başlayın."
 
 [tutorials]
