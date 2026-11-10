@@ -103,6 +103,49 @@ fn translations_keep_the_structure_and_the_code() {
     }
 }
 
+/// Heading levels in order, list lengths and table sizes (notes included): the outline.
+fn outline(blocks: &[Block], out: &mut Vec<String>) {
+    for b in blocks {
+        match b {
+            Block::Heading { level, .. } => out.push(format!("h{level}")),
+            Block::List { ordered, items } => out.push(format!("list {ordered} {}", items.len())),
+            Block::Table { header, rows } => {
+                out.push(format!("table {}x{}", header.len(), rows.len()))
+            }
+            Block::Code { .. } => out.push("code".into()),
+            Block::Image { .. } => out.push("image".into()),
+            Block::Note { kind, blocks } => {
+                out.push(format!("note {kind:?}"));
+                outline(blocks, out);
+                out.push("end note".into());
+            }
+            Block::Paragraph(_) => {}
+        }
+    }
+}
+
+/// Each Arabic chapter is a full translation of its English one: the same headings at the same
+/// levels in the same order, the same lists, tables, notes and pictures, and a comparable
+/// length (Arabic runs at about 70–90 % of the English word count; words counted as Unicode
+/// whitespace-separated runs, since `wc -w` in the C locale skips Arabic words).
+#[test]
+fn arabic_chapters_match_the_english_outline_and_length() {
+    for c in CHAPTERS {
+        let (mut en, mut ar) = (Vec::new(), Vec::new());
+        outline(&markdown::parse(c.en), &mut en);
+        outline(&markdown::parse(c.ar), &mut ar);
+        assert_eq!(en, ar, "{}: outline", c.id);
+        let words = |t: &str| t.split_whitespace().count() as f32;
+        let ratio = words(c.ar) / words(c.en);
+        assert!(
+            (0.7..=1.2).contains(&ratio),
+            "{}: Arabic is {:.0} % of the English length",
+            c.id,
+            ratio * 100.0
+        );
+    }
+}
+
 #[test]
 fn links_and_images_resolve() {
     let on_disk: BTreeSet<String> = std::fs::read_dir(docs().join("images"))
