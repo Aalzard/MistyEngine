@@ -10,7 +10,7 @@ an idle machine), old blades never vanish, settings sliders never blank the fiel
   `details::scatter_tile` (exactly the chunk's blades rooted in a tile), whole run hidden
   behind until all 16 tiles are up, then a dab re-scatters only its tiles.
 
-## In progress (committed as WIP, built but not yet verified at the time of writing)
+## In progress (committed; tests pass except as noted)
 - `TileQueue`: tile jobs on their own threads, newest round first, nearest the brush first;
   a tile's waiting job is replaced by a newer one (tiles may go out again while one runs).
 - Settings changes: `outdate_all(false)` = camera priority (`brushed` set marks brush/undo
@@ -22,7 +22,12 @@ an idle machine), old blades never vanish, settings sliders never blank the fiel
   `species_colour_edits_show_at_once`; `detail_layers::species_colour_is_looked_up_not_baked`;
   `details::tiles_hold_the_chunks_blades`.
 
-## Measurements so far (machine at 100% CPU from other agents)
+## Measurements so far (machine busy with other agents)
+- At 55% load: round 29 327 ms median (78 of 120 dabs ever shown); tiles + queue (2310 ms
+  stroke) 1020–1040 ms median, all shown; settle after release 0.4 s both. Suspected cause:
+  a chunk switching to tiles hides its tiles until all 16 are up, and those tiles lost to
+  newer rounds in the queue: 1fc66dc8 puts them first (`Job::first`). Not measured yet.
+- Earlier, at 100% load:
 - Dab to blades at the brush centre (harness): round 29 chunks 1796 ms median (only 11 of
   120 dabs shown); tiles (FIFO rayon) 1408 / 2580 ms median, all 120 shown; settle after
   release 10.1 s → 2.2–3.8 s.
