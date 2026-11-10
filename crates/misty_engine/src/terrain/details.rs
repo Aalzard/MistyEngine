@@ -13,6 +13,11 @@ use super::noise;
 
 /// Most blades per square metre.
 pub const MAX_DENSITY: f32 = 1500.0;
+/// Most blades (or flowers) one splat texel scatters. Big terrains with a coarse control
+/// map have texels of thousands of square metres; without a cap `density × area` reaches
+/// tens of millions of candidates per texel, every chunk over the texel walks them all, and
+/// `k * 97` overflows `u32` (a panic in debug builds, a stall in release).
+pub const MAX_PER_TEXEL: f32 = 262_144.0;
 /// Coarsest density level of far chunks (each level keeps half the blades of the one before).
 pub const MAX_LEVEL: u32 = 6;
 
@@ -428,12 +433,14 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
             // Worn spots keep a third of the blades.
             let fuller = (1.0 + dv * (0.8 * lush + 0.8 * area - 0.3 * dry - 0.65))
                 * (1.0 - 0.65 * worn(centre));
-            let want = per_texel * density as f32 / 255.0 * fuller.max(0.15);
+            let want = (per_texel * density as f32 / 255.0 * fuller.max(0.15)).min(MAX_PER_TEXEL);
             let (ix, iz) = (tx as i32, tz as i32);
             let count =
                 want.floor() as u32 + u32::from(noise::hash(ix, iz, seed ^ 0x51) < want.fract());
             for k in 0..count {
-                let r = |salt: u32| noise::hash(ix, iz, seed.wrapping_add(k * 97 + salt));
+                let r = |salt: u32| {
+                    noise::hash(ix, iz, seed.wrapping_add(k.wrapping_mul(97).wrapping_add(salt)))
+                };
                 let key = r(11);
                 if key >= keep {
                     continue;

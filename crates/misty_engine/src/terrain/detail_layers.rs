@@ -22,7 +22,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::TerrainData;
 use super::brush::Brush;
-use super::details::{self, Blade, MAX_DENSITY, canopy, canopy_slope, patches, swathe};
+use super::details::{
+    self, Blade, MAX_DENSITY, MAX_PER_TEXEL, canopy, canopy_slope, patches, swathe,
+};
 use super::noise;
 use crate::render::MeshDraw;
 use crate::render::lod::LodRange;
@@ -284,12 +286,14 @@ pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f3
                 if density == 0 {
                     continue;
                 }
-                let want = per_texel * density as f32 / 255.0;
+                let want = (per_texel * density as f32 / 255.0).min(MAX_PER_TEXEL);
                 let (ix, iz) = (tx as i32, tz as i32);
                 let count = want.floor() as u32
                     + u32::from(noise::hash(ix, iz, seed ^ 0x51) < want.fract());
                 for k in 0..count {
-                    let r = |salt: u32| noise::hash(ix, iz, seed.wrapping_add(k * 97 + salt));
+                    let r = |salt: u32| {
+                        noise::hash(ix, iz, seed.wrapping_add(k.wrapping_mul(97).wrapping_add(salt)))
+                    };
                     let key = r(11);
                     if key >= keep {
                         continue;

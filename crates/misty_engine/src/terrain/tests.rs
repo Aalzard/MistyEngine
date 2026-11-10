@@ -584,3 +584,45 @@ fn auto_paint_covers_layers_past_the_fourth() {
     // Layer 5 is manual now: its weight is kept.
     assert!(d.weights_at(16.0, 16.0)[5] > 0.95);
 }
+
+/// A big terrain with a coarse control map has texels of thousands of square metres: the
+/// blade count per texel is capped so a chunk's scatter stays bounded (the uncapped count
+/// overflowed `k * 97` and walked tens of millions of candidates per chunk).
+#[test]
+fn scatter_on_a_huge_texel_is_bounded() {
+    let mut d = TerrainData::new(33, Vec3::new(4000.0, 50.0, 4000.0), 16);
+    d.details.density = details::MAX_DENSITY;
+    d.detail_map = vec![255; 16 * 16];
+    d.detail_layers
+        .push(detail_layers::DetailLayer::grass("Tall"));
+    d.detail_layers[0].density = details::MAX_DENSITY;
+    d.detail_layers[0].map = vec![255; 16 * 16];
+    d.flowers.enabled = true;
+    d.flowers.density = flowers::MAX_DENSITY;
+    let start = std::time::Instant::now();
+    let blades = details::scatter(&d, Vec2::ZERO, Vec2::splat(16.0));
+    let petals = flowers::scatter(&d, Vec2::ZERO, Vec2::splat(16.0));
+    assert!(
+        start.elapsed().as_secs_f32() < 20.0,
+        "scatter took {:?}",
+        start.elapsed()
+    );
+    assert!(blades.len() as f32 <= 2.0 * details::MAX_PER_TEXEL, "{}", blades.len());
+    assert!(petals.len() as f32 <= details::MAX_PER_TEXEL, "{}", petals.len());
+}
+
+/// A file with a garbage resolution and hole bits loads (the holes are sized from the
+/// sanitised resolution, not the file's number).
+#[test]
+fn garbage_resolution_with_holes_loads() {
+    let mut d = sloped();
+    d.set_hole(3, 3, true);
+    let text = d.to_file_string().replace(
+        "\"heightmap_resolution\": 33",
+        "\"heightmap_resolution\": 4000000000",
+    );
+    assert!(text.contains("4000000000"), "{text}");
+    let back = TerrainData::from_file_str(&text).unwrap();
+    assert_eq!(back.heightmap_resolution, 4097);
+    assert!(back.holes.is_empty() || back.holes.len() == 4096 * 4096);
+}

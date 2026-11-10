@@ -354,6 +354,10 @@ fn splitting_a_terrain_keeps_its_shape_trees_and_paint() {
             ..Default::default()
         })
         .collect();
+    // Flowers painted on the right half only.
+    big.flowers.map = (0..64 * 64)
+        .map(|i| if i % 64 >= 32 { 255 } else { 0 })
+        .collect();
     let corner = Vec3::new(-64.0, 3.0, -64.0);
     let tiles = tiles::split(&big, corner, 2, 65);
     assert_eq!(tiles.len(), 4);
@@ -376,6 +380,10 @@ fn splitting_a_terrain_keeps_its_shape_trees_and_paint() {
     assert!(left.data.weights_at(20.0, 32.0)[0] > 0.9);
     let (h, angle) = tiles::seam_error(left, right);
     assert!(h < 1e-4 && angle < 0.01, "{h} m {angle}°");
+    // Each tile gets its own part of the flower mask, not a copy of the whole one.
+    assert_eq!(left.data.flowers.map.len(), 64 * 64);
+    assert!(left.data.flowers.map.iter().all(|m| *m == 0), "no flowers left");
+    assert!(right.data.flowers.map.iter().all(|m| *m == 255), "flowers right");
 }
 
 // ---- HLOD -------------------------------------------------------------------------------
