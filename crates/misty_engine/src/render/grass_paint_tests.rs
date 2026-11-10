@@ -556,6 +556,7 @@ fn tile_jobs_waiting_are_replaced() {
         edit: true,
         owner: 7,
         order,
+        first: x == 9,
         reply: tx.clone(),
     };
     q.send(job(1, 1, 0));
@@ -564,6 +565,9 @@ fn tile_jobs_waiting_are_replaced() {
     // Tile 1 edited again: its waiting job is replaced, not queued twice.
     q.send(job(1, 3, 4));
     assert_eq!(q.jobs.lock().unwrap().len(), 3);
+    // A tile of a chunk switching to tiles goes before them all.
+    q.send(job(9, 1, 50));
+    assert_eq!(q.take().key.0 & !TILE_BIT, 9);
     let order: Vec<(u32, u64)> = (0..3)
         .map(|_| {
             let j = q.take();
@@ -590,6 +594,7 @@ fn edited_chunks_jump_the_workers_queue() {
         edit,
         owner: 1,
         order: 0,
+        first: false,
         reply: tx.clone(),
     };
     pool.send(job(1, false));

@@ -175,11 +175,15 @@ struct Job {
     owner: u64,
     /// Ordering among a round's tiles (distance to the brush; smaller first).
     order: i64,
+    /// A tile of a chunk switching to tiles: its whole run draws until all 16 are up, so
+    /// these go before everything else.
+    first: bool,
     reply: mpsc::Sender<Done>,
 }
 
-/// Tiles waiting for a tile thread. The newest round goes first (the brush is there now),
-/// nearest the brush first within it; a tile's job still waiting is replaced by a newer one
+/// Tiles waiting for a tile thread. Tiles of chunks switching to tiles go first (the chunk
+/// shows its edits only once all 16 are up), then the newest round (the brush is there
+/// now), nearest the brush first within it; a tile's job still waiting is replaced by a newer one
 /// rather than queued behind it, so a stroke never waits on its own stale work.
 #[derive(Default)]
 struct TileQueue {
@@ -205,7 +209,7 @@ impl TileQueue {
         let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             let next = (jobs.iter().enumerate())
-                .min_by_key(|(_, j)| (std::cmp::Reverse(j.stamp), j.order))
+                .min_by_key(|(_, j)| (!j.first, std::cmp::Reverse(j.stamp), j.order))
                 .map(|(i, _)| i);
             if let Some(i) = next {
                 return jobs.swap_remove(i);
@@ -890,6 +894,9 @@ impl Grass {
                 edit,
                 owner: self.id,
                 order: self.order(k, edit, camera),
+                first: is_tile(k)
+                    && !self.chunks.contains_key(&k)
+                    && self.chunks.contains_key(&chunk_of(k)),
                 reply: self.results.0.clone(),
             };
             if is_tile(k) {
