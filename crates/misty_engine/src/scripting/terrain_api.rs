@@ -5,7 +5,7 @@
 use hecs::Entity;
 use mlua::{Lua, Result, UserData, UserDataFields, UserDataMethods, Value};
 
-use super::api::{LGameObject, LTransform, LVec3, with_world};
+use super::api::{LGameObject, LTransform, LVec3, alive, with_world};
 use crate::scene::Terrain;
 use crate::terrain;
 
@@ -57,7 +57,10 @@ impl UserData for LTerrain {
             })
         });
         m.add_method("GetPosition", |lua, t, ()| {
-            with_world(lua, |w| LVec3(w.scene.world_position(t.0)))
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                Ok(LVec3(w.scene.world_position(t.0)))
+            })?
         });
     }
 }
@@ -143,5 +146,69 @@ return T
         assert!(logs.iter().all(|(k, _)| *k != LogKind::Error), "{logs:?}");
         let texts: Vec<String> = logs.into_iter().map(|(_, t)| t).collect();
         assert_eq!(texts, ["8 32 33 true 1"], "{texts:?}");
+    }
+
+    /// A Terrain handle kept after `Destroy`: GetPosition raises a Lua error instead of
+    /// panicking.
+    #[test]
+    fn terrain_of_a_destroyed_object_errors_in_lua() {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("misty_terrain_dead_{n}"));
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        let src = r#"
+local K = { frames = 0 }
+function K:Start()
+    local go = GameObject.Find("Terrain")
+    self.t = go:GetComponent("Terrain")
+    Destroy(go)
+end
+function K:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local t = self.t
+        local ok, err = pcall(function() return t:GetPosition() end)
+        Debug.Log("GetPosition", ok, string.find(tostring(err), "destroyed", 1, true) ~= nil)
+    end
+end
+return K
+"#;
+        std::fs::write(root.join("Assets/Scripts/K.lua"), src).unwrap();
+        let data_path = root.join("K.terrain").to_string_lossy().into_owned();
+        store::insert(
+            &data_path,
+            TerrainData::new(33, Vec3::new(32.0, 40.0, 32.0), 32),
+        );
+        let mut scene = Scene::new("K");
+        let e = scene.spawn("Terrain", None);
+        scene.add(
+            e,
+            Terrain {
+                terrain_data: data_path,
+                ..Default::default()
+            },
+        );
+        let k = scene.spawn("Keeper", None);
+        scene.add(
+            k,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Scripts/K.lua".into(),
+                    ..Default::default()
+                }],
+            },
+        );
+        let physics = Physics::build(&scene, Vec3::ZERO);
+        let mut host = ScriptHost::start(&mut scene, physics, root.clone());
+        let mut time = Time::default();
+        for _ in 0..5 {
+            time.advance(1.0 / 60.0);
+            host.update(&mut scene, &time, Input::default());
+        }
+        let texts: Vec<String> = host.take_logs().into_iter().map(|(_, t)| t).collect();
+        assert!(texts.contains(&"GetPosition false true".to_owned()), "{texts:?}");
+        let _ = std::fs::remove_dir_all(root);
     }
 }

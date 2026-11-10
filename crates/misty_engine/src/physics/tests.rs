@@ -150,3 +150,36 @@ fn landing_reports_a_collision_and_triggers_are_flagged() {
     assert!(landing.started && !landing.trigger);
     assert!(hit(c, zone).expect("cube passes the trigger").trigger);
 }
+
+/// A body whose world scale is zero on one axis (a flattened cube): the poses stay finite
+/// and nothing writes NaN into the Transform (the matrix decomposition divided by zero).
+#[test]
+fn zero_scale_bodies_keep_finite_poses() {
+    let mut scene = Scene::new("t");
+    let c = cube(&mut scene, "Flat", Vec3::new(0.0, 3.0, 0.0), true);
+    let mut t = scene.transform(c);
+    t.scale = Vec3::new(1.0, 0.0, 1.0);
+    t.set_rotation(Quat::from_rotation_y(0.5));
+    scene.set_transform(c, t);
+    // Squashed flat along X and spun: the rotation comes from the local rotations.
+    let thin = cube(&mut scene, "Thin", Vec3::new(4.0, 3.0, 0.0), true);
+    let mut tt = scene.transform(thin);
+    tt.scale = Vec3::new(0.0, 1.0, 1.0);
+    scene.set_transform(thin, tt);
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    for _ in 0..30 {
+        physics.update(&mut scene, 1.0 / 60.0);
+    }
+    for e in [c, thin] {
+        let (p, r) = physics.body_pose(e).unwrap();
+        assert!(p.is_finite() && r.is_finite(), "{p} {r}");
+        let t = scene.transform(e);
+        assert!(
+            t.position.is_finite() && t.rotation.is_finite(),
+            "{:?}",
+            t
+        );
+    }
+    assert!(scene.world_position(c).y < 3.0, "still falls");
+    assert!((scene.world_rotation(c).to_euler(glam::EulerRot::YXZ).0 - 0.5).abs() < 1e-3);
+}

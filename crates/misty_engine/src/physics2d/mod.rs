@@ -75,9 +75,16 @@ pub struct Physics2D {
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
+/// Finite when a scale is zero (a 2D object with Z scale 0 made the angle NaN); X/Y scales
+/// are kept at least 1e-3 so shapes don't degenerate.
 fn world_pose(scene: &Scene, e: Entity) -> (Vec2, f32, Vec2, f32) {
-    let (scale, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
-    (pos.truncate(), z_angle(rot), scale.truncate().abs(), pos.z)
+    let (scale, rot, pos) = scene.world_parts(e);
+    (
+        pos.truncate(),
+        z_angle(rot),
+        scale.truncate().max(Vec2::splat(1e-3)),
+        pos.z,
+    )
 }
 
 impl Physics2D {

@@ -124,10 +124,13 @@ pub struct Physics {
     cloth: cloth::ClothSystem,
 }
 
-/// Rigid (unscaled) world pose and world scale of an object.
+/// Smallest world scale a collider is built with (a zero scale made degenerate shapes).
+const MIN_SCALE: f32 = 1e-3;
+
+/// Rigid (unscaled) world pose and world scale of an object (finite with a zero scale).
 fn world_pose(scene: &Scene, e: Entity) -> (Vec3, Quat, Vec3) {
-    let (scale, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
-    (pos, rot, scale.abs())
+    let (scale, rot, pos) = scene.world_parts(e);
+    (pos, rot, scale.max(Vec3::splat(MIN_SCALE)))
 }
 
 impl Physics {

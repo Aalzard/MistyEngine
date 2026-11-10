@@ -9,7 +9,7 @@ use hecs::Entity;
 use mlua::{Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
 use super::World;
-use super::api::{LGameObject, LTransform, LVec3, vec_args, with_world};
+use super::api::{LGameObject, LTransform, LVec3, alive, vec_args, with_world};
 use super::ui_api::{LColor, get, set};
 use crate::physics::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS};
 use crate::physics2d::{Contact2D, RaycastHit2D};
@@ -86,10 +86,13 @@ impl UserData for LRigidbody2D {
             with_world(lua, |w| w.physics2d.set_angular_velocity(r.0, deg))
         });
         f.add_field_method_get("position", |lua, r| {
-            with_world(lua, |w| match w.physics2d.body_pose(r.0) {
-                Some((p, _)) => v2(p),
-                None => v2(w.scene.world_position(r.0).truncate()),
-            })
+            with_world(lua, |w| {
+                alive(w, r.0)?;
+                Ok(match w.physics2d.body_pose(r.0) {
+                    Some((p, _)) => v2(p),
+                    None => v2(w.scene.world_position(r.0).truncate()),
+                })
+            })?
         });
         f.add_field_method_get("rotation", |lua, r| {
             with_world(lua, |w| w.physics2d.body_pose(r.0).map_or(0.0, |p| p.1))
@@ -225,7 +228,10 @@ impl UserData for LCollider2D {
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         m.add_method("CompareTag", |lua, c, tag: String| {
-            with_world(lua, |w| w.scene.game_object(c.0).tag == tag)
+            with_world(lua, |w| {
+                alive(w, c.0)?;
+                Ok(w.scene.game_object(c.0).tag == tag)
+            })?
         });
     }
 }
@@ -541,7 +547,10 @@ pub fn collision_table(lua: &Lua, me: Entity, c: &Contact2D) -> Result<Table> {
     t.set("contacts", list)?;
     t.set("contactCount", 1)?;
     let get_contact = lua.create_function(|_, (t, i): (Table, i64)| {
-        t.get::<Table>("contacts")?.get::<Value>(i + 1)
+        match i.checked_add(1) {
+            Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
+            None => Ok(Value::Nil),
+        }
     })?;
     t.set("GetContact", get_contact)?;
     Ok(t)
