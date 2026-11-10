@@ -700,7 +700,12 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length())
                 * smooth(0.9, 1.0, f)
                 * smooth(-10.0, -40.0, hill_side(p.x, p.y));
-            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.08 * near_wood {
+            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.14 * near_wood {
+                continue;
+            }
+            // There the trunks stand apart (a third fewer trees): sun reaches the floor in
+            // patches between the crowns.
+            if r(24) < 0.35 * near_wood {
                 continue;
             }
             // Far away fewer, bigger trees keep the canopy closed: the share kept falls from
@@ -849,7 +854,7 @@ fn terrain_data() -> TerrainData {
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
             // Under the canopy: less sky light reaches the ground.
-            occlusion: 0.6,
+            occlusion: 0.4,
             ..Default::default()
         },
     ];
@@ -1000,7 +1005,7 @@ fn volume() -> PostProcessVolume {
     // (never darker than the meadow's own exposure).
     let ae = &mut v.auto_exposure;
     ae.active = true;
-    ae.limit_min = -3.2;
+    ae.limit_min = -4.5;
     ae.limit_max = 0.0;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
@@ -1019,11 +1024,11 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.36;
+    c.coverage = 0.42;
     c.density = 0.6;
     c.shape = 0.65;
-    c.altitude = 1100.0;
-    c.thickness = 1300.0;
+    c.altitude = 1300.0;
+    c.thickness = 1000.0;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
