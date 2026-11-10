@@ -24,6 +24,15 @@ Forked from `r26-noon-meadow` at 80e185bb.
   take_slot r26-level; cargo ... -j 4; drop_slot`. `round.sh` now builds in a slot and runs the
   test executables directly (`SKIP_BUILD=1` reuses `engine_build.log`'s executable).
 
+- r9 (baseline, shots `scratchpad/r26/shots/r9/`): hero still the far, low hill; forest edge
+  of separate domes with litter showing; inside views now have trunks and a few sun flecks but
+  the floor is nearly black, the canopy closed (every 8 m cell a 13 m wide crown), bushes and
+  groundcover flat bright green. Clouds: one big heap overhead, none mid-sky in the hero.
+- r10 adds for the interior (treeline wood only, `near_wood`): a third of the trees dropped,
+  gap threshold 0.66 − 0.14·near_wood; Forest Floor occlusion 0.6 → 0.4; eye adaptation
+  limit_min −3.2 → −4.5 EV (inside2 was clamped dark). Clouds coverage 0.42, altitude 1300,
+  thickness 1000 (smaller heaps, more of them lower in the sky).
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree
@@ -95,9 +104,11 @@ first.
 After r10: sky (deeper `sky_tint`, cumulus coverage ~0.45 or a wind offset so clouds sit in the
 hero view), the lone oak's darkness, then the forest interior against `reference_forest.webp`.
 
-## Timings
+## Timings (High, 1920×1080, `noon_valley_times`; machine heavily loaded by other agents)
 
-(none recorded yet; r9's `times.txt` is the first)
+| round | hero GPU / CPU | inside GPU / CPU | notes |
+|---|---|---|---|
+| r9 | 20.1 / 3.8 ms | 15.8 / 3.6 ms | hero: grass ≈ 8 ms (visibility 3.4, shading 2.3, near shadows 1.6, culling 0.5, composite 0.4), trees 3.1, sun shafts 0.9; inside: shadow maps 2.6, shadow mask 2.3, trees 3.3 |
 
 ## Engine requests for the engine agent
 
