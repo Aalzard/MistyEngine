@@ -439,6 +439,12 @@ impl WeatherWorld {
         }
     }
 
+    /// Any weather at all: a Weather volume or a script's state (else the scene is left as
+    /// it is: no cloud or fog changes).
+    pub fn has_weather(&self) -> bool {
+        self.layers.len() > 1 || self.script.is_some()
+    }
+
     /// Is a script holding the weather?
     pub fn scripted(&self) -> bool {
         self.script.as_ref().is_some_and(|s| s.weight_target > 0.0)

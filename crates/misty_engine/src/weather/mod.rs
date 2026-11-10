@@ -375,8 +375,9 @@ impl Default for WeatherParams {
             lightning_min_distance: 400.0,
             lightning_max_distance: 6000.0,
             lightning_intensity: 1.0,
-            cloud_coverage: 0.3,
-            cloud_density: 0.5,
+            // Clear weather adds no clouds (Drive Clouds only ever thickens the scene's).
+            cloud_coverage: 0.0,
+            cloud_density: 0.0,
             sun_dimming: 0.0,
             ambient_dimming: 0.0,
         }

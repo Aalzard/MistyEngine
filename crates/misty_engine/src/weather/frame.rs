@@ -262,7 +262,7 @@ pub fn drive_clouds(clouds: &mut CloudsOverride, p: &WeatherParams) {
 /// thicker volumetric fog when visibility drops (Haze).
 pub fn adjust_post(post: &mut crate::render::PostSettings, scene: &Scene) {
     let w = &scene.weather;
-    if !w.live {
+    if !w.live || !w.has_weather() {
         return;
     }
     let p = &w.current;
