@@ -127,6 +127,23 @@ Stress, 250 000 trees (hero copied and jittered), High: GPU 22.8 ms, CPU render 
   engine settings for it: Tree ▸ Clumping, Terrain ▸ Tree Rendering ▸ Shadow Detail (already
   used by the generator at 80e185bb).
 
+## Checks so far
+
+- Parity `tree_gpu_cull_matches_the_cpu_lists`: mean difference 0.000 (close, behind).
+- Unit tests of trees, trees_cull, terrain trees (incl. `clumping_gathers_the_leaves_into_lit_lumps`,
+  `shader_validates`) pass.
+- Golden shots (engine b3d6e414+COPY_SRC fix, occlusion on): all ok but `meadow_low_close`
+  and `meadow_low_behind`; with occlusion off (now the default) all Low shots pass, and
+  Medium–Ultra passed with it on. Not yet re-run on the final binary.
+- Clippy: the engine is clean; `misty_editor` fails on `sample_noon_valley.rs` (scene file,
+  now on `r26-level`): `type_complexity` at the rocks' `groups` table and `approx_constant`
+  (`6.283` → `TAU`). `cargo fmt --check` likewise only flags `sample_noon_valley.rs`.
+- Full workspace tests and the API docs check: not run yet (the workspace test build kept
+  hitting the machine's rustc panics; corrupt dependency artifacts repaired again: cc,
+  extended, self_cell, syn, wide, generic-array).
+- Shots: `docs/screenshots/r26/noon_valley_*.jpg` (High, 1280 × 720, engine 5e8edfd0, scene
+  3a254653) and `sun_heights.jpg` (Intensity from Sun Height off / on at 6°, 15°, 35°, 72°).
+
 ## Not done / differences from the references
 
 - GPU time on High at 1080p is far above the 12 ms goal in the meadow view (grass ~8 ms,
