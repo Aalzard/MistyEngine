@@ -1,5 +1,18 @@
 # Round 27: the moon, moonlight and stars (branch r27-moon)
 
+## Status (resume here)
+- Moon part: done, committed, screenshots in docs/screenshots/r27/ (moon_*, moonlit_night_*,
+  twilight_moonrise). Full test run before the night sky: all moon tests passed; unrelated
+  failures seen under load: `scene_files::opening_a_scene_lifts_a_view_left_under_the_terrain`,
+  `asset_groups::remote_bundles_download_verify_and_cache` (timing). Clippy 0 warnings, fmt clean.
+- Night sky part: code committed, NOT yet built/verified: needs the build, `write_moon_demo`
+  (regenerates MoonDemo + NightSkyDemo), `misty --api-docs docs/api`, the focused tests, the
+  screenshots (`render_moon_screenshots`), then the golden shots and `moon_gpu_cost` under the
+  GPU lock (script idea: take `gpu-timing.lock`, run `golden_shots` then `moon_gpu_cost`).
+- Build inside the shared slot (`source /d/MistyTargets/build-slot.sh; take_slot r27-moon`,
+  `-j 4`), target `D:/MistyTargets/r27-moon`, TMP/TEMP `D:\MistyTargets	mp27-moon`. Run
+  clippy last (it once left check-only rmeta files that broke the next test build).
+
 ## Done
 - **Moon settings**: Lighting window ▸ Environment ▸ **Moon** (shown for the Procedural and HDRI
   skyboxes), stored in the scene under `lighting.moon`, left out of the file while default, so
