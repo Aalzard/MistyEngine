@@ -26,16 +26,21 @@ Status: work in progress (resumable). Target dir `D:/MistyTargets/r34-weather`; 
 - Editor: `weather_preview.rs` (edit-mode tick), `panels/inspector/weather_editors.rs` (Inspector).
 
 ## State
-- Engine + editor compile clean (`cargo check --release -p misty_engine -p misty_editor --tests`).
-- Editor wiring done (Inspector, preview tick, Create menu, MCP kind, Quality row, Lua API table,
-  tr/ar strings). WeatherDemo generator written (`sample_weather.rs`), scene not generated yet.
-- GPU tests written (`render/weather/gpu_tests.rs`), plus ignored `weather_gpu_timings` and
-  `weather_screenshots` (MISTY_WEATHER_SHOTS=name filters).
+- Engine + editor compile; weather tests (22 engine incl. GPU, 2 editor) pass; WeatherDemo
+  generated and committed; screenshots in `docs/screenshots/r34/`; golden shots 20/20 within
+  tolerance; GPU costs in docs/progress.md (Heavy Rain +0.75 ms, Downpour +1.3 ms, Thunderstorm
+  +0.95 ms, Blizzard + snow cover +0.75 ms at 1080p High on the RTX 4060).
 
 ## Left to do
-1. Run the tests: engine `weather` filter (CPU, naga validation, GPU, Lua), then editor
-   `write_weather_demo` (ignored, writes the scene/materials/script + metas) and `weather`.
-2. GPU timings at 1080p High and screenshots to `docs/screenshots/r34/` (under the
-   gpu-timing.lock), tune looks.
-3. Golden check under the lock, docs/api regeneration, fmt / clippy / full tests, progress notes
-   (timings, screenshots), final commit.
+- clippy 0 warnings and the full workspace test run (in progress at the time of writing).
+- Regenerate docs/api (build misty, `misty.exe --api-docs docs/api`).
+
+## Known limits / next steps
+- Terrain trees (the trees renderer) are not in the occlusion map: only mesh shadow casters
+  shelter (mesh trees do). Add the tree crowns' shadow pass to the map.
+- Area volumes beyond 4 near the camera are left out of per-pixel blending.
+- Wetness / snow cover is per volume, not painted per surface (no footprints or drip lines).
+- Thunder and rain use generated sounds unless clips are set; no reverb / occlusion of sound
+  under roofs. No snow puffs on landing, no under-shelter drips.
+- Lightning lights surfaces as an unshadowed sky flash (no shadows from the bolt).
+- The weather is skipped while the Frame Debugger captures.
