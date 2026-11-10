@@ -3361,6 +3361,10 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   layers and the tool bar; after: detail mesh settings, Place Objects, the brush cursor, Arabic,
   200 % UI scale and the light theme.
 
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, tests 2223 passed
+  with one failure that passes alone (`live_reload::tests::own_saves_and_touches_dont_reload`,
+  timing under a fully loaded machine), golden shots 20 / 20 unchanged.
+
 ### Notes for the grass painting round
 - Any change to a grass species (also look-only ones: Healthy ↔ Dry and Brightness are baked
   into each blade by the scatter) changes `terrain_grass::scatter_key`, which drops every grass
