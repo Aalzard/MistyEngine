@@ -263,7 +263,7 @@ fn noon_valley_cull_ab() {
     impl Drop for Restore {
         fn drop(&mut self) {
             crate::render::fast_paths::set("tree_gpu_cull", true);
-            crate::render::fast_paths::set("tree_occlusion", true);
+            crate::render::fast_paths::set("tree_occlusion", false);
         }
     }
     let _restore = Restore;

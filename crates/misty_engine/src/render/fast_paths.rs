@@ -1,7 +1,7 @@
 //! Switches for the look-preserving shortcuts of performance rounds 3 and 22
 //! (docs/pending/perf3.md, docs/pending/r22-perf.md).
-//! All on by default; the timing and look harnesses turn them off one at a time to measure
-//! what each saves and to check that the picture stays the same. `MISTY_FAST_OFF=a,b` (or
+//! All on by default but `tree_occlusion`; the timing and look harnesses turn them off one at
+//! a time to measure what each saves and to check that the picture stays the same. `MISTY_FAST_OFF=a,b` (or
 //! `all`) in the environment turns them off in any build (the editor and the player too).
 
 use std::sync::Once;
@@ -26,7 +26,8 @@ static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
-static TREE_OCCLUSION: AtomicBool = AtomicBool::new(true);
+// Off by default (see `tree_occlusion`).
+static TREE_OCCLUSION: AtomicBool = AtomicBool::new(false);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -46,6 +47,9 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
 fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
+        if std::env::var("MISTY_TREE_OCCLUSION").is_ok_and(|v| v == "1") {
+            TREE_OCCLUSION.store(true, Ordering::Relaxed);
+        }
         let names = std::env::var("MISTY_FAST_OFF").unwrap_or_default();
         for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
             for f in NAMES {
@@ -113,7 +117,10 @@ pub fn tree_gpu_cull() -> bool {
 }
 
 /// GPU-culled trees hidden behind last frame's depth (a Hi-Z pyramid) are left out of the
-/// camera's lists while the view has hardly moved (trees_cull.rs).
+/// camera's lists while the view has hardly moved (trees_cull.rs). The one shortcut that is
+/// off by default (`MISTY_TREE_OCCLUSION=1` turns it on): in NoonValley and MeadowDemo it
+/// saves about what its pyramid costs (0.2–0.4 ms against ~0.5 ms at 1080p), and on Low it
+/// drops trees that MeadowDemo's golden shots show (close and behind), not yet understood.
 pub fn tree_occlusion() -> bool {
     get(&TREE_OCCLUSION)
 }
