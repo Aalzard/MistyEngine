@@ -3302,3 +3302,44 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+
+## Round 29 — Painting grass shows at once (branch r29-grass-paint)
+
+### Done
+- Paint Details at 1000 blades/m²: the painted slice vanished and took minutes to come back.
+  Every stroke frame dropped the chunks under the brush and restarted every scatter of the
+  terrain, so nothing finished until the mouse was released; then each 256k-blade chunk was
+  scattered on one thread and uploaded 8k blades a frame, behind the camera's chunks.
+- Edits now mark chunks out of date instead of dropping them: the old blades draw until the
+  new scatter is on the GPU (paint, erase, Fill / Clear, undo, settings sliders). An edited
+  chunk has one job at a time; edits made meanwhile go out with its next job, and older
+  results still show, so a stroke updates continuously and never restarts work.
+- Edited chunks go first: their own job slots, the front of the workers' queue, the front of
+  the upload queue and a 6 ms upload budget. Their rows are scattered on a rayon pool (all
+  cores but two), with exactly the same blades in the same order; camera chunks keep one
+  thread each. Blades are sorted as 8-byte key/index words (the same order, quicker).
+- Chunks near any camera of the last 1.5 s stay: the Scene and Game views share the
+  renderer, and side by side each view's frame dropped the other's chunks.
+- `RenderStats::busy()`: the Scene and Game views keep redrawing while grass work is pending
+  and go idle when it is done.
+- Measured with the harness `grass_paint_latency` (200 m terrain, a 64 m square at 1000/m²,
+  a 120-frame erase-then-paint stroke across its edge; this machine was busy with other
+  builds, so absolute numbers vary run to run):
+  - before: painted chunks vanished during the stroke and none came back until it ended;
+    after release 3030 frames / 162 s until the grass was back; first load 56.6 s.
+  - after: no chunk ever hidden; the chunk under the brush shows each dab in 0.67 s median
+    (0.98 s at 90 %) while painting; after release 29 frames / 0.53 s; first load 3.5 s.
+  - one full chunk (256k blades): 188 ms on one thread, 61 ms on 8 row threads (busy machine).
+- Golden shots unchanged (the scatter gives the same blades in the same order).
+- Tests: edits keep the old blades, repeated edits coalesce, edited jobs jump the queue,
+  painted grass shows within frames through the renderer (and pending work is reported until
+  done), parallel scatter equals serial, `busy()`; timing benches `grass_scatter_cost`,
+  `grass_paint_latency` (ignored).
+
+### Not done yet
+- While painting, a dab shows in about two thirds of a second, not a frame or two: a painted
+  chunk is still scattered and uploaded whole (256k blades, 18 MB at 1000/m²) and a 25 m brush
+  keeps up to nine of them busy. Re-scattering only the brush's texels (sub-chunk regions or
+  in-place blade updates) is the next step.
+- The editor stroke itself was not scripted end to end (the harness drives the same store and
+  renderer calls the Paint Details brush makes).
