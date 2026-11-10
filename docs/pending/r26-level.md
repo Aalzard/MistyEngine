@@ -33,6 +33,20 @@ Forked from `r26-noon-meadow` at 80e185bb.
   limit_min −3.2 → −4.5 EV (inside2 was clamped dark). Clouds coverage 0.42, altitude 1300,
   thickness 1000 (smaller heaps, more of them lower in the sky).
 
+- r10 (regenerated, 116 372 trees; committed 41a5ea5e): hero has the steep forested wall on
+  the right; inside2 bright with trunks apart and sun patches (mean RGB ≈ the reference's);
+  inside still black in its lower half (shaded floor ~200× darker than sun, the reference ~10×),
+  groundcover rendered at twice its size (the loader clamps recipes to ≥ 1 m / 2 cm; fixed in
+  e763c372 by 1 m recipes scaled per instance). Coordinator: salmon bare patches on the hillside,
+  a grey-white frost-like flower patch mid-meadow, bare ground and trunks under the edge crowns,
+  pale flat sky.
+- r11 generator: `wood_depth` (least forest cover on a 20 m ring) decides the edge: low Forest
+  Edge crowns and bushes (plus the second edge tree) over the outer ~20 m, litter only behind it
+  (smooth(0.55, 0.95, depth)) and never on slopes > 44–50°; treeline wood keeps half its trees,
+  gap threshold 0.66 − 0.18·near_wood; Forest Floor occlusion 0.15; groundcover leaf colour
+  0.6/0.66/0.54 and bush 0.66/0.72/0.6 with crown shading 0.9; flowers coverage 0.22, patch 12,
+  LOD 45, daisy and buttercup 1:1; sky tint 0.30/0.36/0.46; limestone albedo greyer.
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree
@@ -108,8 +122,24 @@ hero view), the lone oak's darkness, then the forest interior against `reference
 
 | round | hero GPU / CPU | inside GPU / CPU | notes |
 |---|---|---|---|
+| r10 | 20.4 / 3.9 ms | 14.6 / 3.7 ms | trees 3.5 (hero) / 2.3 (inside, half the wood's trees) |
 | r9 | 20.1 / 3.8 ms | 15.8 / 3.6 ms | hero: grass ≈ 8 ms (visibility 3.4, shading 2.3, near shadows 1.6, culling 0.5, composite 0.4), trees 3.1, sun shafts 0.9; inside: shadow maps 2.6, shadow mask 2.3, trees 3.3 |
 
 ## Engine requests for the engine agent
 
-(none yet)
+1. `TreeAsset::sanitize` clamps height to ≥ 1 m and trunk radius to ≥ 2 cm, so a 0.5 m
+   groundcover or 0.9 m fern recipe silently loads at 1 m (worked around with per-instance
+   scale). Please allow ~0.2 m / 5 mm for small plants.
+2. Light under tree canopies: on High the shaded forest floor is ~200× darker than the sunlit
+   patches (reference ~10×), so `inside` is black below the horizon even with eye adaptation at
+   −4.5 EV and Forest Floor occlusion 0.15. Sky/ambient visibility under trees (GTAO + Misty GI +
+   crown shading) looks too strong; a floor of indirect light bounced from the canopy and the
+   sunlit floor would fix it.
+3. Grass cost: hero at High 1080p is ~20 ms GPU, grass ≈ 8 ms of it (visibility 3.5, shading 2.0,
+   near shadow maps 1.5, culling 0.5, composite 0.4), trees 3.5, sun shafts 0.9. The 12 ms target
+   needs cheaper grass passes; scene-side cuts (density 800 → 600, lod_distance 6.5 → 5.5) would
+   thin the meadow visibly.
+4. Harness: the `treeline` view (offset 40, 200) now stands at the hill's foot (foot ≈ 50 m there);
+   (−20, 180) would keep it in the meadow looking along the edge.
+5. Clouds: no seed or offset to slide the cumulus field, so the hero view's sky can't be composed
+   (the reference has 5–6 mid-elevation heaps in frame).
