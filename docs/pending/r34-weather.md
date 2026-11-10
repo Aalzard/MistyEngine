@@ -25,14 +25,17 @@ Status: work in progress (resumable). Target dir `D:/MistyTargets/r34-weather`; 
   scripts; audio driver after.
 - Editor: `weather_preview.rs` (edit-mode tick), `panels/inspector/weather_editors.rs` (Inspector).
 
+## State
+- Engine + editor compile clean (`cargo check --release -p misty_engine -p misty_editor --tests`).
+- Editor wiring done (Inspector, preview tick, Create menu, MCP kind, Quality row, Lua API table,
+  tr/ar strings). WeatherDemo generator written (`sample_weather.rs`), scene not generated yet.
+- GPU tests written (`render/weather/gpu_tests.rs`), plus ignored `weather_gpu_timings` and
+  `weather_screenshots` (MISTY_WEATHER_SHOTS=name filters).
+
 ## Left to do
-1. First compile of engine + editor (not yet built). Register the editor pieces: inspector
-   module in `panels/inspector/mod.rs` + `editors.rs` dispatch (icon/enabled/edit),
-   `weather_preview::tick` in `app.rs` next to `vfx_preview::tick`, Create menu entry
-   (actions.rs/commands.rs/menu_bar.rs), Quality settings row, code_editor/api.rs Lua table rows,
-   `[weather]` tables in locales tr.toml / ar.toml.
-2. Run tests: `weather::tests`, `render::weather::tests` (naga validation), `weather_api` tests.
-3. GPU render test (`render/weather/gpu_tests.rs`: rain/snow render, no rain under a roof).
-4. WeatherDemo generator (`misty_editor/src/sample_weather.rs`) + Lua key switching + test.
-5. GPU timings at 1080p High, screenshots to `docs/screenshots/r34/`, golden check under the
-   gpu-timing.lock, docs/progress.md section, docs/api regeneration, fmt/clippy/full tests.
+1. Run the tests: engine `weather` filter (CPU, naga validation, GPU, Lua), then editor
+   `write_weather_demo` (ignored, writes the scene/materials/script + metas) and `weather`.
+2. GPU timings at 1080p High and screenshots to `docs/screenshots/r34/` (under the
+   gpu-timing.lock), tune looks.
+3. Golden check under the lock, docs/api regeneration, fmt / clippy / full tests, progress notes
+   (timings, screenshots), final commit.
