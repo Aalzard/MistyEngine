@@ -23,7 +23,15 @@ scratch `D:\MistyTargets\r33-scratch\`.
 
 ## Status (2026-11-10, second agent) — RESUME HERE
 
-Everything below "Fixed" is committed but **NOT yet compiled or run** (the baseline test run
+**Update 07:15:** the engine and editor test binaries compile (0 errors); every new
+regression test passes (engine 20/21, editor 21/21 incl. the deflaked tests) except the
+seam GPU test, whose first texture was filtered anisotropically across the cell edge (test
+problem, not the fix; texture made isotropic in 8c784d20, rerun pending). fmt clean.
+Running EditorState on SampleProject (the terrain view test) extracts `Crate_Metal.mat`,
+`Crate_Metal_Normal.png`, `Crate_Wood.mat` into `SampleProject/Assets/Models/` (pre-existing
+test side effect; delete them after test runs).
+
+Everything below "Fixed" was committed before it was compiled (the baseline test run
 held the target; then usage limits). Next steps, in order:
 
 1. `source /d/MistyTargets/build-slot.sh; take_slot r33-qa` (max 3 builds machine-wide,
