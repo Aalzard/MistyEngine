@@ -896,8 +896,8 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
-            // (No extra occlusion: under the canopy the trees already shade the floor.)
-            occlusion: 0.0,
+            // Sky light reaching the floor (1 = open ground): a little less under the canopy.
+            occlusion: 0.9,
             ..Default::default()
         },
     ];
