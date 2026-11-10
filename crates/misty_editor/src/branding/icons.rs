@@ -27,10 +27,29 @@ pub enum Icon {
     SkyVolume,
     /// The Directional Light.
     SunLight,
+    // Terrain tools (Terrain Inspector tool bar) and palette / field actions.
+    TerrainRaise,
+    TerrainSetHeight,
+    TerrainSmooth,
+    TerrainPaint,
+    TerrainHoles,
+    TerrainGrass,
+    TerrainTree,
+    TerrainPlace,
+    TerrainSettings,
+    Brush,
+    Layers,
+    Add,
+    Duplicate,
+    Remove,
+    Reset,
+    Fill,
+    Clear,
+    Locate,
 }
 
 impl Icon {
-    pub const ALL: [Icon; 11] = [
+    pub const ALL: [Icon; 29] = [
         Icon::Hand,
         Icon::Move,
         Icon::Rotate,
@@ -42,6 +61,24 @@ impl Icon {
         Icon::CharacterController,
         Icon::SkyVolume,
         Icon::SunLight,
+        Icon::TerrainRaise,
+        Icon::TerrainSetHeight,
+        Icon::TerrainSmooth,
+        Icon::TerrainPaint,
+        Icon::TerrainHoles,
+        Icon::TerrainGrass,
+        Icon::TerrainTree,
+        Icon::TerrainPlace,
+        Icon::TerrainSettings,
+        Icon::Brush,
+        Icon::Layers,
+        Icon::Add,
+        Icon::Duplicate,
+        Icon::Remove,
+        Icon::Reset,
+        Icon::Fill,
+        Icon::Clear,
+        Icon::Locate,
     ];
 
     fn png(self) -> &'static [u8] {
@@ -59,6 +96,24 @@ impl Icon {
             }
             Icon::SkyVolume => include_bytes!("../../assets/icons/sky_volume.png"),
             Icon::SunLight => include_bytes!("../../assets/icons/sun_light.png"),
+            Icon::TerrainRaise => include_bytes!("../../assets/icons/terrain_raise.png"),
+            Icon::TerrainSetHeight => include_bytes!("../../assets/icons/terrain_set_height.png"),
+            Icon::TerrainSmooth => include_bytes!("../../assets/icons/terrain_smooth.png"),
+            Icon::TerrainPaint => include_bytes!("../../assets/icons/terrain_paint.png"),
+            Icon::TerrainHoles => include_bytes!("../../assets/icons/terrain_holes.png"),
+            Icon::TerrainGrass => include_bytes!("../../assets/icons/terrain_grass.png"),
+            Icon::TerrainTree => include_bytes!("../../assets/icons/terrain_tree.png"),
+            Icon::TerrainPlace => include_bytes!("../../assets/icons/terrain_place.png"),
+            Icon::TerrainSettings => include_bytes!("../../assets/icons/terrain_settings.png"),
+            Icon::Brush => include_bytes!("../../assets/icons/brush.png"),
+            Icon::Layers => include_bytes!("../../assets/icons/layers.png"),
+            Icon::Add => include_bytes!("../../assets/icons/add.png"),
+            Icon::Duplicate => include_bytes!("../../assets/icons/duplicate.png"),
+            Icon::Remove => include_bytes!("../../assets/icons/remove.png"),
+            Icon::Reset => include_bytes!("../../assets/icons/reset.png"),
+            Icon::Fill => include_bytes!("../../assets/icons/fill.png"),
+            Icon::Clear => include_bytes!("../../assets/icons/clear.png"),
+            Icon::Locate => include_bytes!("../../assets/icons/locate.png"),
         }
     }
 

@@ -1531,6 +1531,28 @@ impl TerrainCache {
         self.entries.values().map(|g| g.grass.resident()).collect()
     }
 
+    /// Blades and density level of grass chunk `chunk` of terrain `key` (None: no chunk held)
+    /// (tests).
+    #[cfg(test)]
+    pub fn grass_chunk(&self, key: &str, chunk: (u32, u32)) -> Option<(u32, u32)> {
+        self.entries.get(key)?.grass.chunk(chunk)
+    }
+
+    /// Grass chunk `chunk` of terrain `key`: the edit count its blades were scattered with
+    /// and the edits so far (tests).
+    #[cfg(test)]
+    pub fn grass_stamps(&self, key: &str, chunk: (u32, u32)) -> Option<(u64, u64)> {
+        self.entries.get(key)?.grass.stamps(chunk)
+    }
+
+    /// Every chunk of `chunks` holds the blades of the terrain's latest data (tests).
+    #[cfg(test)]
+    pub fn grass_fresh(&self, key: &str, chunks: &[(u32, u32)]) -> bool {
+        self.entries
+            .get(key)
+            .is_some_and(|g| chunks.iter().all(|c| g.grass.fresh(*c)))
+    }
+
     /// Per terrain: blades each grass pass drew after / before the GPU culling (tests).
     #[cfg(test)]
     pub fn read_grass_cull_counts(

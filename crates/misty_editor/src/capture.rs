@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -258,6 +258,17 @@ pub fn open_menu_from_env(ui: &egui::Ui, label: &str, button: &egui::Response) {
     }
 }
 
+/// `MISTY_TERRAIN_HOVER=<x>,<z>`: the terrain brush cursor shown at that terrain-local point
+/// (screenshots of the cursor without a mouse).
+pub fn terrain_hover() -> Option<[f32; 2]> {
+    static AT: OnceLock<Option<[f32; 2]>> = OnceLock::new();
+    *AT.get_or_init(|| {
+        let v = std::env::var("MISTY_TERRAIN_HOVER").ok()?;
+        let (x, z) = v.split_once(',')?;
+        Some([x.trim().parse().ok()?, z.trim().parse().ok()?])
+    })
+}
+
 /// `MISTY_INSPECTOR_SCROLL=<px>`: the object Inspector scrolled down that far (screenshots of
 /// long components).
 pub fn inspector_scroll() -> Option<f32> {
@@ -306,6 +317,18 @@ pub fn apply_env(
         && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
     {
         s.select(e);
+    }
+    // `MISTY_TERRAIN_TOOL=details` (raise, set_height, smooth, paint, holes, details, trees,
+    // place, settings) opens that Terrain Inspector tool; `MISTY_TERRAIN_ITEM=2` selects that
+    // palette item of it (texture layer, detail row, tree).
+    if let Some(tool) = std::env::var_os("MISTY_TERRAIN_TOOL") {
+        crate::terrain_tools::apply_env(
+            s,
+            &tool.to_string_lossy(),
+            std::env::var("MISTY_TERRAIN_ITEM")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+        );
     }
     // `MISTY_EDIT_LIGHT_PROBES=1` turns on Edit Light Probes for the selected group.
     if std::env::var_os("MISTY_EDIT_LIGHT_PROBES").is_some() {

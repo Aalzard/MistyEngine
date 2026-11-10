@@ -3348,3 +3348,126 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - No parallax or level end/goal; the Tile Palette window is not opened automatically.
 - The stone wall tilemap shows faint vertical seams between some tile columns (looks like a
   tilemap chunk rendering artefact; not investigated this round).
+
+## Round 29 — Painting grass shows at once (branch r29-grass-paint)
+
+### Done
+- Paint Details at 1000 blades/m²: the painted slice vanished and took minutes to come back.
+  Every stroke frame dropped the chunks under the brush and restarted every scatter of the
+  terrain, so nothing finished until the mouse was released; then each 256k-blade chunk was
+  scattered on one thread and uploaded 8k blades a frame, behind the camera's chunks.
+- Edits now mark chunks out of date instead of dropping them: the old blades draw until the
+  new scatter is on the GPU (paint, erase, Fill / Clear, undo, settings sliders). An edited
+  chunk has one job at a time; edits made meanwhile go out with its next job, and older
+  results still show, so a stroke updates continuously and never restarts work.
+- Edited chunks go first: their own job slots, the front of the workers' queue, the front of
+  the upload queue and a 6 ms upload budget. Their rows are scattered on a rayon pool (all
+  cores but two), with exactly the same blades in the same order; camera chunks keep one
+  thread each. Blades are sorted as 8-byte key/index words (the same order, quicker).
+- Chunks near any camera of the last 1.5 s stay: the Scene and Game views share the
+  renderer, and side by side each view's frame dropped the other's chunks.
+- `RenderStats::busy()`: the Scene and Game views keep redrawing while grass work is pending
+  and go idle when it is done.
+- Measured with the harness `grass_paint_latency` (200 m terrain, a 64 m square at 1000/m²,
+  a 120-frame erase-then-paint stroke across its edge; this machine was busy with other
+  builds, so absolute numbers vary run to run):
+  - before: painted chunks vanished during the stroke and none came back until it ended;
+    after release 3030 frames / 162 s until the grass was back; first load 56.6 s.
+  - after: no chunk ever hidden; the chunk under the brush shows each dab in 0.67 s median
+    (0.98 s at 90 %) while painting; after release 29 frames / 0.53 s; first load 3.5 s.
+  - one full chunk (256k blades): 188 ms on one thread, 61 ms on 8 row threads (busy machine).
+- Golden shots unchanged (the scatter gives the same blades in the same order).
+- Tests: edits keep the old blades, repeated edits coalesce, edited jobs jump the queue,
+  painted grass shows within frames through the renderer (and pending work is reported until
+  done), parallel scatter equals serial, `busy()`; timing benches `grass_scatter_cost`,
+  `grass_paint_latency` (ignored).
+
+### Not done yet
+- While painting, a dab shows in about two thirds of a second, not a frame or two: a painted
+  chunk is still scattered and uploaded whole (256k blades, 18 MB at 1000/m²) and a 25 m brush
+  keeps up to nine of them busy. Re-scattering only the brush's texels (sub-chunk regions or
+  in-place blade updates) is the next step.
+- The editor stroke itself was not scripted end to end (the harness drives the same store and
+  renderer calls the Paint Details brush makes).
+
+## Round 30 — Terrain Inspector redesign (branch r30-terrain-ui)
+
+### Done (screenshots `docs/screenshots/r30/*`)
+- **Tool bar**: the nine terrain tools as icon buttons in one bar (new icons in the editor's
+  icon set: raise / lower, set height, smooth, paint, holes, grass, tree, place, settings),
+  with a clear selected state and tooltips (name, what a click and Shift + click do). The
+  current tool's name, icon and help sit under it, with World Builder on the right.
+- **Brush section**: a shape picker of four thumbnails drawn from the brush's own falloff curve
+  (Hard, Firm, Soft, Feather), size (with `[` / `]`), opacity and falloff, each with a reset.
+  Set Height adds its target height and a confirmed Flatten All.
+- **Palettes of cards** for texture layers, grass and detail types, trees and Place Objects
+  prefabs: a thumbnail, the name, a selected outline, a badge (layer coverage %, blades or
+  meshes placed, trees planted, objects placed), hover actions (Duplicate, Remove, Select in
+  Project when the card stands for an asset), double-click to open the asset, drag a card onto
+  another to reorder (layer splat channels, tree instances and the grass's "grow on" layer
+  follow), a "+" card with an Add menu and empty states. Cards accept Project assets dropped on
+  the palette: textures become layers, models and prefabs (first renderer) become detail
+  meshes, `.tree` assets and prefabs are added to their palettes. Cards hold an optional asset
+  path, so the coming Grass Type asset can be a card without a layout change.
+- **Live previews** (`terrain_previews.rs`): grass tufts are built on the CPU from the
+  terrain's blade recipe and the grass shader's arc and colour model (heights, widths, bend,
+  seed-head panicles, healthy / dry mix, per-tuft hue and value jitter, dry tips), cached by a
+  settings hash and rebuilt the next frame after a change (at most four per frame). Trees use
+  their impostor (baked by the tree store's worker) lit on the CPU once per built version.
+  Detail meshes and prefabs are rendered offscreen by the engine renderer after the UI pass
+  (three per frame, keyed by mesh, material and file versions). Texture layers show their
+  albedo with a mean-colour swatch. Placeholders pulse while a preview is made.
+- **Settings of the selected item** in sections with icons (Shape, Colour, Density,
+  Placement, Rendering, Textures, Tiling, Surface…), aligned labels, units, two-handle range
+  sliders (heights, scales, slopes), gradient sliders that show the colour they pick (Healthy ↔
+  Dry, Brightness, Dry Tips), colour swatches with hex, a reset button on every changed field
+  and a tooltip on every control. The terrain grass card edits its look directly (healthy,
+  dry, seed colours, height, width, bend, density) with a link to its rules, wind and patches.
+- Fill / Clear with icons, the selected type's name in their tooltips, and a confirmation on
+  every destructive whole-terrain action (Clear details, Clear Trees, Clear All objects,
+  Fill All Holes, Flatten All).
+- **Scene view brush cursor**: coloured by tool (raise blue, Shift lower / erase orange-red,
+  paint violet, grass and trees green, smooth cyan, set height yellow), the falloff ring, the
+  brush's influence drawn as a dome (height = opacity, profile = falloff curve), Set Height's
+  target level and a centre mark.
+- New strings in Turkish and Arabic (`[terrain]` tables); cards mirror in right-to-left.
+- `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` capture options open a terrain tool and select a
+  palette item.
+- Tests: egui harness tests for the tool bar, selecting cards, adding and removing a grass type
+  with undo, previews requested and refreshed after a change, reset buttons, confirmed Clear,
+  `[` / `]`, and the Inspector's draw time; unit tests for tufts, counts, moving trees.
+
+- **Cost**: the Terrain Inspector on Paint Details with seven grass cards and the large preview
+  draws in about 1 ms a frame steady and 1.3 ms a frame while a setting is dragged (a card and
+  the large tuft rebuilt every frame), release build, egui harness
+  (`terrain_ui_tests::inspector_draw_time_with_previews`); the first frame that shows the
+  sections costs 30-40 ms once (icon textures rasterised per size). A tuft costs ~0.1 ms, a
+  tree thumbnail ~1 ms once per tree version, an offscreen mesh / prefab thumbnail one small
+  renderer pass.
+- Screenshots (`docs/screenshots/r30/`): before / after of Paint Details, Paint Trees, texture
+  layers and the tool bar; after: detail mesh settings, Place Objects, the brush cursor, Arabic,
+  200 % UI scale and the light theme.
+
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, tests 2223 passed
+  with one failure that passes alone (`live_reload::tests::own_saves_and_touches_dont_reload`,
+  timing under a fully loaded machine), golden shots 20 / 20 unchanged.
+
+### Notes for the grass painting round
+- Any change to a grass species (also look-only ones: Healthy ↔ Dry and Brightness are baked
+  into each blade by the scatter) changes `terrain_grass::scatter_key`, which drops every grass
+  chunk at once (`keep_chunks(|_| false)`): while a slider is dragged the whole field vanishes
+  and re-scatters. Same for the terrain grass's height, width, bend and seed heads (its colours
+  are uniforms and update at once). Keeping the old chunks until their replacements are
+  uploaded, and moving species dry mix / tint into a small per-species uniform table, would make
+  these edits instant in the Scene view.
+
+### Not done yet
+- At 200 % UI scale the Inspector panel of a 1920 px window is narrower than its content (all
+  components, not only the terrain); the tool bar wraps.
+- `scene_files::tests::opening_a_scene_lifts_a_view_left_under_the_terrain` can fail when run
+  alongside other tests that open their own project folder (the engine's project root is
+  global); it passes alone.
+- Brush shapes are falloff presets; custom brush masks (noise, stamps) need brush code
+  changes and were left out to keep the merge with the grass painting round easy.
+- Grass species colours come from the terrain grass's healthy / dry colours (a species tint
+  is not a separate colour yet); a Grass Type asset (`.grass`) is the next round.

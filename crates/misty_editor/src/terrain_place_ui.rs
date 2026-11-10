@@ -1,7 +1,10 @@
-//! The Terrain Inspector's Place Objects tab: a palette of prefabs (rocks, bushes, props) to
-//! scatter with the brush as scene objects under the terrain's "Placed Objects" child (left
-//! click places, Shift erases), with spacing, random scale and turn, align-to-normal and slope
-//! and height limits (`terrain::placement`). Each stroke is one undo step.
+//! The Terrain Inspector's Place Objects tab: a palette of prefabs (rocks, bushes, props) shown
+//! as rendered thumbnails, scattered with the brush as scene objects under the terrain's
+//! "Placed Objects" child (left click places, Shift erases), with spacing, random scale and
+//! turn, align-to-normal and slope and height limits (`terrain::placement`). Prefabs dragged
+//! from the Project window onto the palette are added to it. Each stroke is one undo step.
+
+use std::hash::{Hash, Hasher};
 
 use egui::Ui;
 use glam::Vec2;
@@ -9,18 +12,12 @@ use misty_engine::hecs::Entity;
 use misty_engine::terrain::placement::{self, ObjectPlacement};
 use misty_engine::terrain::{TerrainData, store};
 
+use crate::branding::icons::Icon;
+use crate::i18n::tr;
 use crate::state::EditorState;
-
-/// Icon of the tab and its list.
-pub const ICON: &str = "◆";
-
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui)) {
-    egui::Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, body);
-}
+use crate::terrain_kit::{self as kit, AddCard, Card, CardEvent, Thumb};
+use crate::terrain_previews::MeshJob;
+use crate::tutorials::targets;
 
 fn stem(p: &str) -> String {
     std::path::Path::new(p)
@@ -42,23 +39,40 @@ fn prefab_assets() -> Vec<String> {
     out
 }
 
-fn range(ui: &mut Ui, v: &mut [f32; 2], lo: f32, hi: f32, speed: f64, suffix: &str) {
-    ui.horizontal(|ui| {
-        let (a, b) = (v[0], v[1]);
-        ui.add(
-            egui::DragValue::new(&mut v[0])
-                .speed(speed)
-                .range(lo..=b)
-                .suffix(suffix),
-        );
-        ui.label("–");
-        ui.add(
-            egui::DragValue::new(&mut v[1])
-                .speed(speed)
-                .range(a..=hi)
-                .suffix(suffix),
-        );
-    });
+fn is_prefab(rel: &str) -> bool {
+    rel.ends_with(".prefab")
+}
+
+/// The prefab rendered offscreen (re-rendered when the file changes), an icon until then.
+pub(crate) fn prefab_thumb(state: &mut EditorState, rel: &str) -> Thumb {
+    let abs = state.assets.absolute(rel);
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ("prefab", rel).hash(&mut h);
+    std::fs::metadata(&abs)
+        .and_then(|m| m.modified())
+        .ok()
+        .hash(&mut h);
+    let key = h.finish();
+    let mut job = || {
+        let prefab = state.assets.prefab(rel).ok()?;
+        let (scene, _) = prefab.to_scene("Thumbnail");
+        let draws = misty_engine::render_scene::mesh_draws(&scene, &state.assets, |_| false);
+        MeshJob::new(draws)
+    };
+    // The job needs the asset cache, the cache the previews: make the job first if needed.
+    let tex = if state.project.thumbnails.terrain.has_mesh_thumb(key) {
+        state.project.thumbnails.terrain.mesh_thumb(key, || None)
+    } else {
+        let made = job();
+        state.project.thumbnails.terrain.mesh_thumb(key, || made)
+    };
+    match tex {
+        Some(id) => Thumb::Image(id, None),
+        None => Thumb::Icon {
+            icon: Icon::TerrainPlace,
+            pending: true,
+        },
+    }
 }
 
 pub fn place_tab(ui: &mut Ui, state: &mut EditorState, e: Entity, d: &TerrainData) {
@@ -74,126 +88,273 @@ pub fn place_tab(ui: &mut Ui, state: &mut EditorState, e: Entity, d: &TerrainDat
         found.dedup();
         state.terrain_tools.prefabs = found;
     }
-    let tools = &mut state.terrain_tools;
-    if tools.prefab >= tools.prefabs.len() {
-        tools.prefab = tools.prefabs.len().saturating_sub(1);
-    }
-    ui.add_space(4.0);
-    ui.label(crate::theme::bold(ui.ctx(), "Prefabs"));
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        if tools.prefabs.is_empty() {
-            ui.weak("No prefabs yet. Add a rock, bush or prop prefab to place it.");
+    {
+        let tools = &mut state.terrain_tools;
+        if tools.prefab >= tools.prefabs.len() {
+            tools.prefab = tools.prefabs.len().saturating_sub(1);
         }
-        for (i, p) in tools.prefabs.iter().enumerate() {
-            if ui
-                .selectable_label(
-                    i == tools.prefab,
-                    format!("{} {}", crate::state::PREFAB_ICON, stem(p)),
-                )
-                .on_hover_text(p)
-                .clicked()
-            {
-                tools.prefab = i;
+    }
+    let placed = placed_counts(&state.scene, e);
+    kit::section(
+        ui,
+        "place_palette",
+        Icon::TerrainPlace,
+        &tr!("Prefabs"),
+        |ui| {
+            let list = state.terrain_tools.prefabs.clone();
+            let cards: Vec<Card> = list
+                .iter()
+                .map(|p| {
+                    let count = placed.get(p).copied().unwrap_or(0);
+                    Card {
+                        name: stem(p),
+                        thumb: prefab_thumb(state, p),
+                        badge: Some(crate::terrain_details_ui::short_count(count)),
+                        tip: format!(
+                            "{p}\n{}",
+                            tr!(
+                                "{count} placed. Double-click to open the prefab, drag to reorder.",
+                                count = count
+                            )
+                        ),
+                        asset: Some(p.clone()),
+                        can_duplicate: false,
+                        can_remove: true,
+                        dimmed: false,
+                    }
+                })
+                .collect();
+            let selected = (!list.is_empty()).then_some(state.terrain_tools.prefab);
+            let out = kit::palette(
+                ui,
+                "prefabs",
+                &cards,
+                selected,
+                Some(AddCard {
+                    label: &tr!("Add Prefab"),
+                    tip: &tr!(
+                        "Add a prefab to place (or drop prefabs from the Project window here)"
+                    ),
+                    enabled: true,
+                    target: "+ Add Prefab",
+                }),
+                true,
+                &is_prefab,
+                &tr!("No prefabs yet: add a rock, bush or prop prefab to place it."),
+                targets::header,
+            );
+            if let Some(add) = &out.add {
+                egui::Popup::menu(add).show(|ui| {
+                    ui.set_min_width(180.0);
+                    let assets = prefab_assets();
+                    if assets.is_empty() {
+                        ui.weak(tr!("No prefabs in the project"));
+                    }
+                    for a in &assets {
+                        if ui
+                            .selectable_label(
+                                false,
+                                format!("{} {}", crate::state::PREFAB_ICON, stem(a)),
+                            )
+                            .on_hover_text(a)
+                            .clicked()
+                        {
+                            add_prefab(state, a.clone());
+                            ui.close();
+                        }
+                    }
+                });
+            }
+            let tools_len = state.terrain_tools.prefabs.len();
+            for ev in out.events {
+                let tools = &mut state.terrain_tools;
+                match ev {
+                    CardEvent::Select(i) => tools.prefab = i,
+                    CardEvent::Remove(i) if i < tools_len => {
+                        tools.prefabs.remove(i);
+                        if tools.prefab >= i {
+                            tools.prefab = tools.prefab.saturating_sub(1);
+                        }
+                    }
+                    CardEvent::Move { from, to } if from < tools_len && to < tools_len => {
+                        let p = tools.prefabs.remove(from);
+                        tools.prefabs.insert(to, p);
+                        tools.prefab = to;
+                    }
+                    CardEvent::Locate(i) => {
+                        if let Some(p) = list.get(i) {
+                            crate::terrain_details_ui::locate_asset(state, p);
+                        }
+                    }
+                    CardEvent::Open(i) => {
+                        if let Some(p) = list.get(i) {
+                            crate::prefabs::select_asset(state, p);
+                        }
+                    }
+                    CardEvent::Drop(rel) => add_prefab(state, rel),
+                    _ => {}
+                }
+            }
+        },
+    );
+
+    let max_h = d.size.y;
+    kit::section(ui, "place_brush", Icon::Brush, &tr!("Brush"), |ui| {
+        let tools = &mut state.terrain_tools;
+        kit::slider(
+            ui,
+            &tr!("Brush Size"),
+            &tr!("Brush diameter ([ and ] change it)"),
+            &mut tools.size,
+            1.0..=200.0,
+            25.0,
+            " m",
+            true,
+        );
+        let def = ObjectPlacement::default();
+        let p: &mut ObjectPlacement = &mut tools.object_placement;
+        kit::slider(
+            ui,
+            &tr!("Density"),
+            &tr!("Objects per 100 m² the brush fills up to"),
+            &mut p.density,
+            0.05..=50.0,
+            def.density,
+            "",
+            true,
+        );
+        kit::slider(
+            ui,
+            &tr!("Spacing"),
+            &tr!("Closest two objects stand, centre to centre"),
+            &mut p.spacing,
+            0.1..=40.0,
+            def.spacing,
+            " m",
+            false,
+        );
+        ui.weak(tr!(
+            "Left click places the selected prefab, Shift + click erases."
+        ));
+    });
+    kit::section(
+        ui,
+        "place_placement",
+        Icon::TerrainPlace,
+        &tr!("New Objects"),
+        |ui| {
+            let def = ObjectPlacement::default();
+            let p: &mut ObjectPlacement = &mut state.terrain_tools.object_placement;
+            kit::range(
+                ui,
+                &tr!("Scale"),
+                &tr!("Random uniform scale of new objects"),
+                &mut p.scale,
+                0.05..=10.0,
+                def.scale,
+                "×",
+                0.01,
+            );
+            kit::check(
+                ui,
+                &tr!("Random Rotation"),
+                &tr!("Turn every new object at random about its up axis"),
+                &mut p.random_rotation,
+                def.random_rotation,
+            );
+            kit::check(
+                ui,
+                &tr!("Align to Normal"),
+                &tr!("Tilt with the ground instead of standing upright"),
+                &mut p.align_to_normal,
+                def.align_to_normal,
+            );
+            kit::range(
+                ui,
+                &tr!("Slope"),
+                &tr!("Ground steepness objects go on"),
+                &mut p.slope,
+                0.0..=90.0,
+                def.slope,
+                "°",
+                0.5,
+            );
+            p.height[1] = p.height[1].min(max_h);
+            kit::range(
+                ui,
+                &tr!("Height"),
+                &tr!("Terrain heights objects go at (above the terrain's base)"),
+                &mut p.height,
+                0.0..=max_h,
+                [0.0, max_h],
+                " m",
+                0.1,
+            );
+        },
+    );
+    let count = placement::placed(&state.scene, e).len();
+    kit::section(ui, "place_erase", Icon::Clear, &tr!("Erase"), |ui| {
+        kit::check(
+            ui,
+            &tr!("Erase Selected Only"),
+            &tr!("Shift + click removes only instances of the selected prefab"),
+            &mut state.terrain_tools.erase_selected_only,
+            false,
+        );
+        ui.horizontal(|ui| {
+            if kit::confirm_button(
+                ui,
+                Icon::Clear,
+                &tr!("Clear All"),
+                &tr!("Delete every placed object of this terrain"),
+                &tr!(
+                    "Delete all {count} placed objects of this terrain?",
+                    count = count
+                ),
+                &tr!("Delete"),
+                count > 0,
+            ) {
+                state.record("Clear Placed Objects");
+                if let Some(h) = placement::holder(&mut state.scene, e, false) {
+                    state.scene.despawn(h);
+                }
+            }
+            ui.weak(tr!(
+                "{count} objects placed on this terrain.",
+                count = count
+            ));
+        });
+    });
+}
+
+/// Objects placed on terrain `e` per prefab.
+fn placed_counts(
+    scene: &misty_engine::scene::Scene,
+    e: Entity,
+) -> std::collections::HashMap<String, usize> {
+    let mut out = std::collections::HashMap::new();
+    for h in scene.children(e) {
+        if scene.name(h) != placement::HOLDER {
+            continue;
+        }
+        for c in scene.children(h) {
+            if let Some(p) = scene.prefab_link(c) {
+                *out.entry(p).or_insert(0) += 1;
             }
         }
-    });
-    ui.horizontal(|ui| {
-        let mut add = None;
-        egui::ComboBox::from_id_salt("terrain_add_prefab")
-            .selected_text("+ Add Prefab")
-            .show_ui(ui, |ui| {
-                let assets = prefab_assets();
-                if assets.is_empty() {
-                    ui.weak("No prefabs in the project");
-                }
-                for a in &assets {
-                    if ui
-                        .selectable_label(false, stem(a))
-                        .on_hover_text(a)
-                        .clicked()
-                    {
-                        add = Some(a.clone());
-                    }
-                }
-            });
-        let tools = &mut state.terrain_tools;
-        if let Some(a) = add
-            && !tools.prefabs.contains(&a)
-        {
-            tools.prefabs.push(a);
+    }
+    out
+}
+
+fn add_prefab(state: &mut EditorState, rel: String) {
+    let tools = &mut state.terrain_tools;
+    match tools.prefabs.iter().position(|p| *p == rel) {
+        Some(i) => tools.prefab = i,
+        None => {
+            tools.prefabs.push(rel);
             tools.prefab = tools.prefabs.len() - 1;
         }
-        if ui
-            .add_enabled(!tools.prefabs.is_empty(), egui::Button::new("− Remove"))
-            .on_hover_text("Take this prefab off the palette (placed objects stay)")
-            .clicked()
-        {
-            tools.prefabs.remove(tools.prefab);
-            tools.prefab = tools.prefab.saturating_sub(1);
-        }
-    });
-
-    ui.add_space(6.0);
-    let max_h = d.size.y;
-    let tools = &mut state.terrain_tools;
-    grid(ui, "terrain_place_brush", |ui| {
-        ui.label("Brush Size");
-        ui.add(
-            egui::Slider::new(&mut tools.size, 1.0..=200.0)
-                .logarithmic(true)
-                .suffix(" m"),
-        );
-        ui.end_row();
-        let p: &mut ObjectPlacement = &mut tools.object_placement;
-        ui.label("Density")
-            .on_hover_text("Objects per 100 m² the brush fills up to");
-        ui.add(egui::Slider::new(&mut p.density, 0.05..=50.0).logarithmic(true));
-        ui.end_row();
-        ui.label("Spacing")
-            .on_hover_text("Closest two objects stand, centre to centre");
-        ui.add(egui::Slider::new(&mut p.spacing, 0.1..=40.0).suffix(" m"));
-        ui.end_row();
-        ui.label("Scale")
-            .on_hover_text("Random uniform scale of new objects");
-        range(ui, &mut p.scale, 0.05, 10.0, 0.01, "");
-        ui.end_row();
-        ui.label("Random Rotation");
-        ui.checkbox(&mut p.random_rotation, "");
-        ui.end_row();
-        ui.label("Align to Normal")
-            .on_hover_text("Tilt with the ground instead of standing upright");
-        ui.checkbox(&mut p.align_to_normal, "");
-        ui.end_row();
-        ui.label("Slope")
-            .on_hover_text("Ground steepness objects go on");
-        range(ui, &mut p.slope, 0.0, 90.0, 0.5, "°");
-        ui.end_row();
-        ui.label("Height")
-            .on_hover_text("Terrain heights objects go at (above the terrain's base)");
-        p.height[1] = p.height[1].min(max_h);
-        range(ui, &mut p.height, 0.0, max_h, 0.1, " m");
-        ui.end_row();
-        ui.label("Erase Selected Only")
-            .on_hover_text("Shift + click removes only instances of the selected prefab");
-        ui.checkbox(&mut tools.erase_selected_only, "");
-        ui.end_row();
-    });
-
-    let count = placement::placed(&state.scene, e).len();
-    ui.horizontal(|ui| {
-        ui.weak(format!("{count} objects placed on this terrain."));
-        if ui
-            .add_enabled(count > 0, egui::Button::new("Clear All"))
-            .on_hover_text("Delete every placed object of this terrain")
-            .clicked()
-        {
-            state.record("Clear Placed Objects");
-            if let Some(h) = placement::holder(&mut state.scene, e, false) {
-                state.scene.despawn(h);
-            }
-        }
-    });
+    }
 }
 
 /// One brush step of Place Objects at terrain-local `at` (Shift = erase).

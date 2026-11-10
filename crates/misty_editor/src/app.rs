@@ -952,6 +952,11 @@ impl eframe::App for EditorApp {
             if previews.pending() {
                 ctx.request_repaint();
             }
+            let terrain = &mut self.state.project.thumbnails.terrain;
+            crate::terrain_previews::render(gpu, terrain);
+            if terrain.pending() {
+                ctx.request_repaint();
+            }
         }
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);

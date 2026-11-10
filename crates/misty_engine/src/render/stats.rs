@@ -62,6 +62,13 @@ impl RenderStats {
         self.triangles += instances as u64 * (indices / 3) as u64;
         self.vertices += instances as u64 * vertices as u64;
     }
+
+    /// Work is still landing over the next frames (grass chunks being scattered or uploaded,
+    /// painted grass included; textures, trees or distance fields being prepared): a view
+    /// that only redraws on input should keep drawing until this is false.
+    pub fn busy(&self) -> bool {
+        self.grass_pending > 0 || self.loading > 0
+    }
 }
 
 /// GPU resources the renderer holds (Profiler Memory module; sizes are estimates).
@@ -180,6 +187,19 @@ impl FrameHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The views redraw while grass (painted chunks included) or textures are still landing,
+    /// and go idle once nothing is.
+    #[test]
+    fn pending_work_keeps_the_views_drawing() {
+        let mut s = RenderStats::default();
+        assert!(!s.busy());
+        s.grass_pending = 1;
+        assert!(s.busy());
+        s.grass_pending = 0;
+        s.loading = 2;
+        assert!(s.busy());
+    }
 
     #[test]
     fn hitches_are_frames_over_twice_the_median() {

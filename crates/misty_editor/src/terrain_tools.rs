@@ -43,20 +43,6 @@ impl TerrainTool {
         TerrainTool::Settings,
     ];
 
-    pub fn icon(self) -> &'static str {
-        match self {
-            TerrainTool::RaiseLower => "⛰",
-            TerrainTool::SetHeight => "⊟",
-            TerrainTool::Smooth => "≈",
-            TerrainTool::Paint => "🖌",
-            TerrainTool::Holes => "◌",
-            TerrainTool::Details => "🌾",
-            TerrainTool::Trees => "🌳",
-            TerrainTool::Place => crate::terrain_place_ui::ICON,
-            TerrainTool::Settings => "⚙",
-        }
-    }
-
     pub fn label(self) -> &'static str {
         match self {
             TerrainTool::RaiseLower => "Raise or Lower Terrain",
@@ -166,6 +152,8 @@ pub struct TerrainTools {
     pub(crate) place_step: u32,
     /// Brush centre on the selected terrain under the mouse.
     pub hover: Option<(Entity, Vec3)>,
+    /// Shift is held over the Scene view (the brush cursor shows the erase / lower colour).
+    pub erasing: bool,
     pending: Option<PendingEdit>,
     /// A stroke is being painted with the left mouse button.
     painting: bool,
@@ -195,6 +183,7 @@ impl Default for TerrainTools {
             place_recorded: false,
             place_step: 0,
             hover: None,
+            erasing: false,
             pending: None,
             painting: false,
         }
@@ -276,6 +265,12 @@ pub fn scene_view(
             let (data, _) = store::get(&path)?;
             misty_engine::terrain::raycast_data(&data, origin - pos, dir).map(|p| p + pos)
         });
+    // Screenshots: `MISTY_TERRAIN_HOVER=x,z` shows the brush cursor there (terrain-local).
+    let hover = hover.or_else(|| {
+        let [x, z] = crate::capture::terrain_hover()?;
+        let (data, _) = store::get(&path)?;
+        Some(pos + Vec3::new(x, data.sample_height(x, z), z))
+    });
     state.terrain_tools.hover = hover.map(|p| (e, p));
 
     let (pressed, down, alt, shift, dt) = ui.input(|i| {
@@ -287,6 +282,7 @@ pub fn scene_view(
             i.stable_dt.min(0.1),
         )
     });
+    state.terrain_tools.erasing = shift;
     if pressed && response.hovered() && !alt && hover.is_some() {
         state.terrain_tools.painting = true;
         if state.terrain_tools.tool == TerrainTool::Place {
@@ -369,6 +365,34 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
     });
 }
 
+/// `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` (screenshots): open a tool by its short name
+/// and select an item of its palette.
+pub fn apply_env(state: &mut EditorState, tool: &str, item: Option<usize>) {
+    let t = match tool.trim().to_ascii_lowercase().as_str() {
+        "raise" | "raise_lower" => TerrainTool::RaiseLower,
+        "set_height" | "height" => TerrainTool::SetHeight,
+        "smooth" => TerrainTool::Smooth,
+        "paint" | "texture" => TerrainTool::Paint,
+        "holes" => TerrainTool::Holes,
+        "details" | "grass" => TerrainTool::Details,
+        "trees" => TerrainTool::Trees,
+        "place" => TerrainTool::Place,
+        "settings" => TerrainTool::Settings,
+        _ => return,
+    };
+    let tools = &mut state.terrain_tools;
+    tools.tool = t;
+    if let Some(i) = item {
+        match t {
+            TerrainTool::Paint => tools.layer = i,
+            TerrainTool::Details => tools.detail = i,
+            TerrainTool::Trees => tools.tree = i,
+            TerrainTool::Place => tools.prefab = i,
+            _ => {}
+        }
+    }
+}
+
 /// A short stroke of `tool` across the middle of the selected terrain, as one undo step
 /// (tutorial demos and tests).
 pub fn demo_stroke(state: &mut EditorState, tool: TerrainTool) {
@@ -388,7 +412,26 @@ pub fn demo_stroke(state: &mut EditorState, tool: TerrainTool) {
     end_frame(state, false);
 }
 
-/// Brush circle following the terrain under the mouse.
+/// Colour of the brush cursor: what the tool does (raise blue, lower / erase orange-red, paint
+/// violet, grass and trees green, Set Height yellow, Smooth cyan).
+pub fn brush_color(tool: TerrainTool, erasing: bool) -> [f32; 4] {
+    match (tool, erasing) {
+        (TerrainTool::RaiseLower, false) => [0.35, 0.65, 1.0, 1.0],
+        (TerrainTool::RaiseLower, true) => [1.0, 0.55, 0.25, 1.0],
+        (TerrainTool::SetHeight, _) => [0.98, 0.85, 0.3, 1.0],
+        (TerrainTool::Smooth, _) => [0.4, 0.9, 0.95, 1.0],
+        (TerrainTool::Paint, _) => [0.82, 0.55, 1.0, 1.0],
+        (TerrainTool::Holes, false) => [1.0, 0.45, 0.35, 1.0],
+        (TerrainTool::Holes, true) => [0.45, 0.9, 0.5, 1.0],
+        (_, true) => [1.0, 0.45, 0.35, 1.0],
+        _ => [0.45, 0.95, 0.4, 1.0],
+    }
+}
+
+/// Brush cursor following the terrain under the mouse: the rim, the ring where the falloff
+/// starts, and the brush's influence drawn as a dome (its height is the opacity, its profile
+/// the falloff curve), in the tool's colour (Shift shows the erase / lower colour). Set Height
+/// also shows the target height.
 pub fn brush_lines(lines: &mut Lines, state: &EditorState) {
     let Some((e, centre)) = state.terrain_tools.hover else {
         return;
@@ -397,26 +440,79 @@ pub fn brush_lines(lines: &mut Lines, state: &EditorState) {
         return;
     };
     let pos = state.scene.world_position(e);
-    let r = state.terrain_tools.size * 0.5;
-    let color = [0.35, 0.65, 1.0, 1.0];
-    let at = |a: f32, r: f32| {
-        let p = centre + Vec3::new(a.cos(), 0.0, a.sin()) * r;
+    let t = &state.terrain_tools;
+    let r = t.size * 0.5;
+    let color = brush_color(t.tool, t.erasing);
+    let faint = |a: f32| [color[0], color[1], color[2], a];
+    let ground = |p: Vec3| {
         let l = p - pos;
-        Vec3::new(p.x, pos.y + data.sample_height(l.x, l.z) + 0.05, p.z)
+        pos.y + data.sample_height(l.x, l.z) + 0.05
+    };
+    let at = |a: f32, radius: f32, lift: f32| {
+        let p = centre + Vec3::new(a.cos(), 0.0, a.sin()) * radius;
+        Vec3::new(p.x, ground(p) + lift, p.z)
     };
     const SEGMENTS: usize = 64;
-    // Rim, plus a fainter inner ring where the falloff starts.
-    let inner = r * (1.0 - state.terrain_tools.falloff.clamp(0.0, 1.0));
-    for (radius, c) in [(r, color), (inner, [color[0], color[1], color[2], 0.45])] {
+    let ring = |lines: &mut Lines, radius: f32, lift: f32, c: [f32; 4]| {
         if radius < 0.05 {
-            continue;
+            return;
         }
         for i in 0..SEGMENTS {
             let a0 = i as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
             let a1 = (i + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-            lines.line(at(a0, radius), at(a1, radius), c);
+            lines.line(at(a0, radius, lift), at(a1, radius, lift), c);
+        }
+    };
+    // Rim, plus a fainter inner ring where the falloff starts.
+    let inner = r * (1.0 - t.falloff.clamp(0.0, 1.0));
+    ring(lines, r, 0.0, color);
+    ring(lines, inner, 0.0, faint(0.45));
+    // The influence dome: four profiles of the falloff curve, raised by the opacity.
+    if t.tool != TerrainTool::Trees && t.tool != TerrainTool::Place {
+        let b = Brush {
+            center: glam::Vec2::ZERO,
+            size: t.size,
+            strength: t.strength,
+            falloff: t.falloff,
+        };
+        let height = r * 0.22 * t.strength.clamp(0.0, 1.0);
+        if height > 0.02 {
+            const STEPS: usize = 16;
+            for k in 0..4 {
+                let a = k as f32 * std::f32::consts::FRAC_PI_2 + std::f32::consts::FRAC_PI_4;
+                for s in 0..STEPS {
+                    let (u0, u1) = (s as f32 / STEPS as f32, (s + 1) as f32 / STEPS as f32);
+                    let w = |u: f32| b.weight(glam::Vec2::new(u * r * 0.999, 0.0));
+                    lines.line(
+                        at(a, u0 * r, w(u0) * height),
+                        at(a, u1 * r, w(u1) * height),
+                        faint(0.6),
+                    );
+                }
+            }
+            ring(lines, inner.max(r * 0.02), height, faint(0.35));
         }
     }
+    // Set Height: the target height as a level ring.
+    if t.tool == TerrainTool::SetHeight {
+        let y = pos.y + t.target_height;
+        for i in 0..SEGMENTS {
+            let a0 = i as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let a1 = (i + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let p0 = centre + Vec3::new(a0.cos(), 0.0, a0.sin()) * r;
+            let p1 = centre + Vec3::new(a1.cos(), 0.0, a1.sin()) * r;
+            lines.line(
+                Vec3::new(p0.x, y, p0.z),
+                Vec3::new(p1.x, y, p1.z),
+                faint(0.8),
+            );
+        }
+    }
+    // Centre mark.
+    let c = Vec3::new(centre.x, ground(centre), centre.z);
+    let tick = (r * 0.06).clamp(0.1, 1.5);
+    lines.line(c - Vec3::X * tick, c + Vec3::X * tick, color);
+    lines.line(c - Vec3::Z * tick, c + Vec3::Z * tick, color);
 }
 
 /// GameObject ▸ 3D Object ▸ Terrain: a new terrain data asset in `Assets` and an object

@@ -26,21 +26,21 @@
     },
     {
       "title": "Smooth it out",
-      "text": "Pick Smooth Height (≈) and paint over sharp bumps to soften them.",
+      "text": "Pick Smooth Height (the wave icon) and paint over sharp bumps to soften them.",
       "targets": ["inspector.Terrain/tool/Smooth Height", "inspector.Terrain"],
       "done_when": "undo:Smooth Terrain",
       "demo": "terrain:smooth"
     },
     {
       "title": "Make flat ground",
-      "text": "Pick Set Height (⊟), choose a Height and paint. The ground moves to that height, good for roads or a village.",
+      "text": "Pick Set Height (the plateau icon), choose a Height and paint. The ground moves to that height, good for roads or a village.",
       "targets": ["inspector.Terrain/tool/Set Height", "inspector.Terrain"],
       "done_when": "undo:Set Terrain Height",
       "demo": "terrain:set_height"
     },
     {
       "title": "Add a texture layer",
-      "text": "Pick Paint Texture (🖌) and click + Add Layer. Each layer is one kind of ground.",
+      "text": "Pick Paint Texture (the brush icon) and click the + Add Layer card. Each layer is one kind of ground.",
       "targets": ["inspector.Terrain/+ Add Layer", "inspector.Terrain/tool/Paint Texture", "inspector.Terrain"],
       "done_when": "terrain:layers1",
       "demo": "terrain:layers1"

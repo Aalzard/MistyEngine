@@ -347,6 +347,9 @@ fn run_end_to_end(name: &str, id: &str) {
                 && seen.iter().any(|t| t == parent)
             {
                 let header = parent.rsplit('/').next().unwrap();
+                // Scrolled into view first: long Inspectors put it below the window.
+                h.get_by_label(header).scroll_to_me();
+                h.run_steps(3);
                 h.get_by_label(header).click();
                 h.run_steps(3);
                 seen.extend(targets::recorded(&h.ctx));

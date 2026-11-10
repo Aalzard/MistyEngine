@@ -224,10 +224,14 @@ mod string_literal_lint;
 mod templates;
 mod terrain_details_ui;
 mod terrain_flowers_ui;
+mod terrain_kit;
 mod terrain_place_ui;
+mod terrain_previews;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;
+#[cfg(test)]
+mod terrain_ui_tests;
 #[cfg(test)]
 mod test_util;
 mod theme;
