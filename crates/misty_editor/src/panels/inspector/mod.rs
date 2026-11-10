@@ -65,6 +65,7 @@ mod vehicle_editors;
 mod video_editors;
 mod visual_effect;
 mod water;
+mod weather_editors;
 mod wind_editors;
 mod world_partition_editors;
 

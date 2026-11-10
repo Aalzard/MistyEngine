@@ -248,6 +248,7 @@ mod updater;
 mod vcam_tools;
 mod vcs;
 mod vfx_preview;
+mod weather_preview;
 mod vgeo_convert;
 mod viewport;
 mod widgets;

@@ -194,6 +194,7 @@ fn create_kind(kind: &str) -> Option<Create> {
         "sprite" => Create::Sprite(None),
         "decal_projector" => Create::DecalProjector,
         "fog_volume" => Create::FogVolume,
+        "weather" => Create::Weather,
         _ => return None,
     })
 }

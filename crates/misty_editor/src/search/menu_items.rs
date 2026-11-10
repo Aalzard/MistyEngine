@@ -364,6 +364,7 @@ fn gameobject(l: &mut List) {
     l.create(Create::AudioSource, "Audio/");
     l.create(Create::FogVolume, "Rendering/");
     l.create(Create::DecalProjector, "Rendering/");
+    l.create(Create::Weather, "Rendering/");
     for kind in misty_engine::water::WaterKind::ALL {
         l.create(Create::Water(kind), "Water/");
     }
