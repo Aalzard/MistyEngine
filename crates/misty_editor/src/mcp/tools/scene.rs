@@ -172,6 +172,7 @@ const KINDS: &[&str] = &[
     "sprite",
     "decal_projector",
     "fog_volume",
+    "weather",
 ];
 
 fn create_kind(kind: &str) -> Option<Create> {
