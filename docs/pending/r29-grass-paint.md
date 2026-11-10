@@ -44,8 +44,7 @@ an idle machine), old blades never vanish, settings sliders never blank the fiel
   with STATUS_ACCESS_VIOLATION on a different dependency each time (eframe, egui-winit,
   webbrowser) — the machine (low virtual memory), not the code. Retry in a build slot.
 - full workspace tests and golden_shots: not run yet on the tile build (golden waits for
-  the GPU lock; binary `D:\MistyTargets
-29-scratch	iles3.exe` = commit 1fc66dc8 + the
+  the GPU lock; binary `D:/MistyTargets/r29-scratch/tiles3.exe` = commit 1fc66dc8 + the
   stroke-speed knob).
 
 ## Next
