@@ -23,6 +23,12 @@ scratch `D:\MistyTargets\r33-scratch\`.
 
 ## Status (2026-11-10, second agent) — RESUME HERE
 
+**Update 08:20 (verified):** fmt clean; clippy `--workspace --all-targets --release` 0
+warnings; full `cargo test --workspace --release --no-fail-fast`: editor 840 passed / 0
+failed (baseline 811 / 3 failed), engine 1411 / 0, player 11 / 0, doc tests ok. Seam test
+red-checked: with centre-uv sampling it shows the 36 seam pixels (columns 33, 56, 79), with
+`uv_centroid` none. Golden check: running (see below). Crash tests (V1, V3-V7) not run red.
+
 **Update 07:15:** the engine and editor test binaries compile (0 errors); every new
 regression test passes (engine 20/21, editor 21/21 incl. the deflaked tests) except the
 seam GPU test, whose first texture was filtered anisotropically across the cell edge (test
