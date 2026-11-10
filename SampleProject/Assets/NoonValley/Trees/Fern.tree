@@ -1,10 +1,10 @@
 {
   "seed": 35,
-  "height": 0.9,
+  "height": 1.0,
   "crown_shape": "Spreading",
   "crown_width": 1.7,
   "crown_base": 0.0,
-  "trunk_radius": 0.012,
+  "trunk_radius": 0.02,
   "leader": 0.0,
   "trunk_bend": 0.0,
   "branches": 9,

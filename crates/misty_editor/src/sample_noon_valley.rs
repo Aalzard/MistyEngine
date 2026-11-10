@@ -622,7 +622,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 seed: 37,
                 height: 1.0,
                 crown_shape: CrownShape::Spreading,
-                crown_width: 2.2,
+                // (2.0 is the recipe maximum.)
+                crown_width: 2.0,
                 crown_base: 0.0,
                 trunk_radius: 0.02,
                 leader: 0.0,
@@ -636,7 +637,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 // Matte, shaded leaves (not glowing cards): darker tint, little light through.
                 leaf_color: [0.6, 0.66, 0.54],
                 leaf_variation: 0.45,
-                translucency: 0.3,
+                translucency: 0.15,
                 crown_shading: 0.9,
                 wind: TreeWind {
                     trunk_bend: 0.1,
@@ -873,8 +874,8 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
-            // Under the canopy: a little less sky light reaches the ground.
-            occlusion: 0.15,
+            // (No extra occlusion: under the canopy the trees already shade the floor.)
+            occlusion: 0.0,
             ..Default::default()
         },
     ];
@@ -1033,6 +1034,10 @@ fn volume() -> PostProcessVolume {
     ae.active = true;
     ae.limit_min = -4.5;
     ae.limit_max = 0.0;
+    // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
+    // brighter: the shaded forest floor reads mid-brown, not black.
+    ae.histogram_high = 80.0;
+    ae.compensation = 0.3;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
@@ -1050,11 +1055,11 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.42;
+    c.coverage = 0.34;
     c.density = 0.6;
-    c.shape = 0.65;
-    c.altitude = 1300.0;
-    c.thickness = 1000.0;
+    c.shape = 0.7;
+    c.altitude = 1500.0;
+    c.thickness = 1400.0;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
@@ -1113,7 +1118,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     // A deep blue overhead, paler and hazier towards the horizon.
     rs.skybox.sky_tint = [0.3, 0.36, 0.46];
     rs.realtime_gi = true;
-    rs.environment_lighting.intensity = 0.75;
+    rs.environment_lighting.intensity = 0.9;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));

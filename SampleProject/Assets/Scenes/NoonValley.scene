@@ -48,9 +48,9 @@
       ],
       "kind": "Procedural",
       "sky_tint": [
-        0.34,
-        0.38,
-        0.43
+        0.3,
+        0.36,
+        0.46
       ],
       "sun_disk": "HighQuality",
       "sun_size": 0.04

@@ -14,13 +14,13 @@
   "leaf_density": 2.0,
   "leaf_size": 0.9,
   "leaf_color": [
-    0.8,
-    0.86,
-    0.72
+    0.66,
+    0.72,
+    0.6
   ],
   "leaf_variation": 0.5,
   "translucency": 0.6,
-  "crown_shading": 0.7,
+  "crown_shading": 0.9,
   "clumping": 0.6,
   "bark_color": [
     1.0,
