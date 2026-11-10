@@ -10,7 +10,7 @@
   screenshots (`render_moon_screenshots`), then the golden shots and `moon_gpu_cost` under the
   GPU lock (script idea: take `gpu-timing.lock`, run `golden_shots` then `moon_gpu_cost`).
 - Build inside the shared slot (`source /d/MistyTargets/build-slot.sh; take_slot r27-moon`,
-  `-j 4`), target `D:/MistyTargets/r27-moon`, TMP/TEMP `D:\MistyTargets	mp27-moon`. Run
+  `-j 4`), target `D:/MistyTargets/r27-moon`, TMP/TEMP `D:/MistyTargets/tmp/r27-moon`. Run
   clippy last (it once left check-only rmeta files that broke the next test build).
 
 ## Done
