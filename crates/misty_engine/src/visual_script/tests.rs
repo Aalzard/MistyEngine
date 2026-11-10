@@ -1149,6 +1149,81 @@ fn compile_errors_point_at_their_nodes() {
     );
 }
 
+/// Constant nodes (and pass-through subgraphs) wired into each other: the compiler reports
+/// the loop instead of recursing until the stack overflows (the editor compiles on every
+/// wire, so this crashed it the moment the second wire was made).
+#[test]
+fn constant_and_tunnel_loops_are_reported() {
+    let mut g = G::new();
+    let a = g.n("Float");
+    let b = g.n("Float");
+    g.w(a, "Value", b, "Value");
+    g.w(b, "Value", a, "Value");
+    let start = g.n("OnStart");
+    let log = g.log();
+    g.w(start, "Out", log, "In");
+    g.w(a, "Value", log, "Message");
+    let errs = compile::check(&g.0, &NoFiles);
+    assert!(
+        errs.iter().any(|e| (e.node == Some(a) || e.node == Some(b))
+            && e.message.contains("loop back")),
+        "{errs:?}"
+    );
+    // The same through two uses of a macro that passes its input straight out.
+    let mut pass = G::new();
+    let input = pass.np("GraphInput", &[("pins", "X:float")]);
+    let output = pass.np("GraphOutput", &[("pins", "Y:float")]);
+    pass.w(input, "X", output, "Y");
+    let mut g = G::new();
+    g.0.macros.push(Macro {
+        name: "Pass".into(),
+        graph: pass.0,
+    });
+    let m1 = g.np("Subgraph", &[("macro", "Pass")]);
+    let m2 = g.np("Subgraph", &[("macro", "Pass")]);
+    g.w(m1, "Y", m2, "X");
+    g.w(m2, "Y", m1, "X");
+    let start = g.n("OnStart");
+    let log = g.log();
+    g.w(start, "Out", log, "In");
+    g.w(m1, "Y", log, "Message");
+    let errs = compile::check(&g.0, &NoFiles);
+    assert!(
+        errs.iter().any(|e| e.message.contains("loop back")),
+        "{errs:?}"
+    );
+}
+
+/// A Lua value holding itself (`t[1] = t`) or a table shared many times per level reaches a
+/// graph without recursing forever: the cycle (or what is past the item budget) stays an
+/// opaque Lua value.
+#[test]
+fn lua_tables_that_hold_themselves_convert_without_overflowing() {
+    let lua = mlua::Lua::new();
+    let t: mlua::Table = lua
+        .load("local t = {} t[1] = t t[2] = t return t")
+        .eval()
+        .unwrap();
+    match lua_bridge::from_lua(&lua, mlua::Value::Table(t)) {
+        Value::List(l) => {
+            assert_eq!(l.len(), 2);
+            assert!(matches!(l[0], Value::Lua(_)), "{:?}", l[0]);
+        }
+        other => panic!("{other:?}"),
+    }
+    // 4 references at each of 40 levels: 4^40 values if walked naively.
+    let wide: mlua::Table = lua
+        .load("local cur = {1, 2, 3} for _ = 1, 40 do cur = {cur, cur, cur, cur} end return cur")
+        .eval()
+        .unwrap();
+    let start = std::time::Instant::now();
+    assert!(matches!(
+        lua_bridge::from_lua(&lua, mlua::Value::Table(wide)),
+        Value::List(_) | Value::Lua(_)
+    ));
+    assert!(start.elapsed().as_secs() < 10, "{:?}", start.elapsed());
+}
+
 #[test]
 fn run_time_errors_are_logged_once_with_the_node() {
     let mut g = G::new();
