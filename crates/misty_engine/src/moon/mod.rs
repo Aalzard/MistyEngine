@@ -19,6 +19,7 @@
 //! The texture is the built-in one ([`texture`], made by [`texture_gen`]) or a project image.
 
 pub mod ephemeris;
+pub mod night_sky;
 pub mod texture;
 pub mod texture_gen;
 
@@ -94,8 +95,6 @@ pub struct MoonSettings {
     pub light_intensity: f32,
     /// sRGB tint of the moonlight.
     pub light_color: [f32; 3],
-    /// Star field brightness at night (0 = none).
-    pub stars: f32,
     /// Project image ("Assets/Textures/Moon.png"): 2:1 = equirectangular (near side at the
     /// centre), square = a photo of the near side filling the image. None = built-in.
     pub texture: Option<String>,
@@ -121,7 +120,6 @@ impl Default for MoonSettings {
             earthshine: 1.0,
             light_intensity: 0.35,
             light_color: [0.62, 0.72, 1.0],
-            stars: 1.0,
             texture: None,
         }
     }

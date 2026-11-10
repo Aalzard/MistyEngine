@@ -262,6 +262,10 @@ pub struct RenderSettings {
     /// [`crate::moon`]). Left out of the file while default.
     #[serde(skip_serializing_if = "crate::moon::MoonSettings::is_default")]
     pub moon: crate::moon::MoonSettings,
+    /// Lighting window ▸ Environment ▸ Night Sky: stars, Milky Way, light pollution, aurora,
+    /// meteors (see [`crate::moon::night_sky`]). Left out of the file while default.
+    #[serde(skip_serializing_if = "crate::moon::night_sky::NightSkySettings::is_default")]
+    pub night_sky: crate::moon::night_sky::NightSkySettings,
 }
 
 impl Default for RenderSettings {
@@ -276,6 +280,7 @@ impl Default for RenderSettings {
             occlusion: Default::default(),
             realtime_gi: false,
             moon: Default::default(),
+            night_sky: Default::default(),
         }
     }
 }

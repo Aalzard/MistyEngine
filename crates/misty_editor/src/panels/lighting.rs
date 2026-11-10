@@ -208,6 +208,10 @@ fn environment_page(ui: &mut Ui, state: &mut EditorState) {
     if s.skybox.kind != SkyboxKind::SolidColor {
         let cx = lighting_moon::MoonContext::new(state.assets.textures.clone(), &s.moon);
         ch |= lighting_moon::section(ui, &mut s.moon, &cx);
+        if s.skybox.kind == SkyboxKind::Procedural {
+            let date_time = s.moon.mode == misty_engine::moon::MoonMode::DateTime;
+            ch |= lighting_moon::night_section(ui, &mut s.night_sky, date_time);
+        }
     }
     if ch {
         let label = crate::undo_names::struct_change("", &state.scene.render_settings, &s);

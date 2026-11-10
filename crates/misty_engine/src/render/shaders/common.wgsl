@@ -115,6 +115,8 @@ struct SkyEnv {
     night_horizon: vec4<f32>,
     // rgb = night ground colour.
     night_ground: vec4<f32>,
+    // Stars, Milky Way, aurora, meteors (layout: render/moon.rs `night_params`).
+    night: array<vec4<f32>, 14>,
 };
 
 @group(0) @binding(4) var<uniform> sky_env: SkyEnv;

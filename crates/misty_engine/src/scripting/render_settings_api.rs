@@ -2,13 +2,15 @@
 //! fogStartDistance, fogEndDistance, ambientIntensity, reflectionIntensity, and the moon:
 //! moon, moonMode, moonPhase, moonAzimuth, moonAltitude, moonDate, moonTime, moonUtcOffset,
 //! moonLatitude, moonLongitude, moonSize, moonBrightness, moonEarthshine, moonLightIntensity,
-//! moonLightColor, stars, moonTexture, and read-only moonIllumination / moonDirection). Changes
-//! apply to the running scene immediately.
+//! moonLightColor, moonTexture, read-only moonIllumination / moonDirection, and the night sky:
+//! nightSky, nightSkyDarkness, stars*, skyTime, milkyWay*, lightPollution*, aurora*, meteor*).
+//! Changes apply to the running scene immediately.
 
 use mlua::{Lua, Result, UserData, UserDataFields};
 
 use super::api::{LVec3, with_world};
 use super::ui_api::LColor;
+use crate::moon::night_sky::NightSkySettings;
 use crate::moon::{MoonMode, MoonSettings};
 use crate::scene::render_settings::RenderSettings;
 
@@ -28,6 +30,14 @@ fn moon_get<R>(lua: &Lua, f: impl FnOnce(&MoonSettings) -> R) -> Result<R> {
 
 fn moon_set(lua: &Lua, f: impl FnOnce(&mut MoonSettings)) -> Result<()> {
     set(lua, |s| f(&mut s.moon))
+}
+
+fn night_get<R>(lua: &Lua, f: impl FnOnce(&NightSkySettings) -> R) -> Result<R> {
+    get(lua, |s| f(&s.night_sky))
+}
+
+fn night_set(lua: &Lua, f: impl FnOnce(&mut NightSkySettings)) -> Result<()> {
+    set(lua, |s| f(&mut s.night_sky))
 }
 
 /// The scene's moon as the sky draws it (None: off or no sun to follow).
@@ -179,10 +189,218 @@ impl UserData for LRenderSettings {
         f.add_field_method_set("moonLightColor", |lua, _, c: LColor| {
             moon_set(lua, |m| m.light_color = [c.0[0], c.0[1], c.0[2]])
         });
+        // Night sky on/off (dark blue sky, stars, Milky Way, aurora, meteors)
+        f.add_field_method_get("nightSky", |lua, _| night_get(lua, |n| n.enabled));
+        f.add_field_method_set("nightSky", |lua, _, v: bool| {
+            night_set(lua, |n| n.enabled = v)
+        });
+        // Night Sky Darkness: darkens the night sky colour, 0..1, stars stay
+        f.add_field_method_get("nightSkyDarkness", |lua, _| night_get(lua, |n| n.darkness));
+        f.add_field_method_set("nightSkyDarkness", |lua, _, v: f32| {
+            night_set(lua, |n| n.darkness = v.clamp(0.0, 1.0))
+        });
         // Star field brightness at night (0 = none)
-        f.add_field_method_get("stars", |lua, _| moon_get(lua, |m| m.stars));
+        f.add_field_method_get("stars", |lua, _| night_get(lua, |n| n.star_brightness));
         f.add_field_method_set("stars", |lua, _, v: f32| {
-            moon_set(lua, |m| m.stars = v.max(0.0))
+            night_set(lua, |n| n.star_brightness = v.max(0.0))
+        });
+        // How many stars, 1 = default, up to 3
+        f.add_field_method_get("starDensity", |lua, _| night_get(lua, |n| n.star_density));
+        f.add_field_method_set("starDensity", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_density = v.clamp(0.0, 3.0))
+        });
+        // 0 = stars about equally bright, 1 = a few very bright among many faint
+        f.add_field_method_get("starMagnitudeSpread", |lua, _| {
+            night_get(lua, |n| n.star_magnitude_spread)
+        });
+        f.add_field_method_set("starMagnitudeSpread", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_magnitude_spread = v.clamp(0.0, 1.0))
+        });
+        // Glow and bloom around the bright stars
+        f.add_field_method_get("starGlow", |lua, _| night_get(lua, |n| n.star_glow));
+        f.add_field_method_set("starGlow", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_glow = v.clamp(0.0, 4.0))
+        });
+        // Star colour temperature spread, bluish to orange
+        f.add_field_method_get("starColorVariation", |lua, _| {
+            night_get(lua, |n| n.star_color_variation)
+        });
+        f.add_field_method_set("starColorVariation", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_color_variation = v.clamp(0.0, 1.0))
+        });
+        // Twinkle strength (stronger near the horizon)
+        f.add_field_method_get("starTwinkle", |lua, _| night_get(lua, |n| n.star_twinkle));
+        f.add_field_method_set("starTwinkle", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_twinkle = v.clamp(0.0, 2.0))
+        });
+        // Twinkle speed
+        f.add_field_method_get("starTwinkleSpeed", |lua, _| {
+            night_get(lua, |n| n.star_twinkle_speed)
+        });
+        f.add_field_method_set("starTwinkleSpeed", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_twinkle_speed = v.max(0.0))
+        });
+        // How much a bright sky washes out stars and the Milky Way
+        f.add_field_method_get("starFade", |lua, _| night_get(lua, |n| n.star_fade));
+        f.add_field_method_set("starFade", |lua, _, v: f32| {
+            night_set(lua, |n| n.star_fade = v.clamp(0.0, 4.0))
+        });
+        // Local sidereal time in hours: turns the stars and the Milky Way (not in DateTime mode)
+        f.add_field_method_get("skyTime", |lua, _| night_get(lua, |n| n.sky_time));
+        f.add_field_method_set("skyTime", |lua, _, v: f32| {
+            night_set(lua, |n| n.sky_time = v.rem_euclid(24.0))
+        });
+        // Milky Way visibility (0 = none)
+        f.add_field_method_get("milkyWay", |lua, _| night_get(lua, |n| n.milky_way));
+        f.add_field_method_set("milkyWay", |lua, _, v: f32| {
+            night_set(lua, |n| n.milky_way = v.max(0.0))
+        });
+        // Milky Way core brightness
+        f.add_field_method_get("milkyWayCore", |lua, _| {
+            night_get(lua, |n| n.milky_way_core)
+        });
+        f.add_field_method_set("milkyWayCore", |lua, _, v: f32| {
+            night_set(lua, |n| n.milky_way_core = v.max(0.0))
+        });
+        // Milky Way dust lane strength
+        f.add_field_method_get("milkyWayDust", |lua, _| {
+            night_get(lua, |n| n.milky_way_dust)
+        });
+        f.add_field_method_set("milkyWayDust", |lua, _, v: f32| {
+            night_set(lua, |n| n.milky_way_dust = v.clamp(0.0, 2.0))
+        });
+        // Milky Way width multiplier
+        f.add_field_method_get("milkyWayWidth", |lua, _| {
+            night_get(lua, |n| n.milky_way_width)
+        });
+        f.add_field_method_set("milkyWayWidth", |lua, _, v: f32| {
+            night_set(lua, |n| n.milky_way_width = v.clamp(0.1, 4.0))
+        });
+        // Horizon glow of towns; washes out stars
+        f.add_field_method_get("lightPollution", |lua, _| {
+            night_get(lua, |n| n.light_pollution)
+        });
+        f.add_field_method_set("lightPollution", |lua, _, v: f32| {
+            night_set(lua, |n| n.light_pollution = v.max(0.0))
+        });
+        // Aurora visibility (0 = none)
+        f.add_field_method_get("aurora", |lua, _| night_get(lua, |n| n.aurora));
+        f.add_field_method_set("aurora", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora = v.max(0.0))
+        });
+        // Aurora lower edge in km
+        f.add_field_method_get("auroraHeight", |lua, _| night_get(lua, |n| n.aurora_height));
+        f.add_field_method_set("auroraHeight", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_height = v.clamp(10.0, 1000.0))
+        });
+        // Aurora thickness in km
+        f.add_field_method_get("auroraThickness", |lua, _| {
+            night_get(lua, |n| n.aurora_thickness)
+        });
+        f.add_field_method_set("auroraThickness", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_thickness = v.clamp(10.0, 1000.0))
+        });
+        // Aurora fold amplitude
+        f.add_field_method_get("auroraWaviness", |lua, _| {
+            night_get(lua, |n| n.aurora_waviness)
+        });
+        f.add_field_method_set("auroraWaviness", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_waviness = v.clamp(0.0, 3.0))
+        });
+        // Aurora vertical ray detail
+        f.add_field_method_get("auroraRays", |lua, _| night_get(lua, |n| n.aurora_rays));
+        f.add_field_method_set("auroraRays", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_rays = v.clamp(0.0, 3.0))
+        });
+        // Aurora direction in degrees from north towards east
+        f.add_field_method_get("auroraAzimuth", |lua, _| {
+            night_get(lua, |n| n.aurora_azimuth)
+        });
+        f.add_field_method_set("auroraAzimuth", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_azimuth = v.rem_euclid(360.0))
+        });
+        // Aurora distance over the ground in km (far = low on the sky)
+        f.add_field_method_get("auroraDistance", |lua, _| {
+            night_get(lua, |n| n.aurora_distance)
+        });
+        f.add_field_method_set("auroraDistance", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_distance = v.clamp(0.0, 3000.0))
+        });
+        // Aurora animation speed
+        f.add_field_method_get("auroraSpeed", |lua, _| night_get(lua, |n| n.aurora_speed));
+        f.add_field_method_set("auroraSpeed", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_speed = v.max(0.0))
+        });
+        // Aurora pulsing and flicker
+        f.add_field_method_get("auroraPulse", |lua, _| night_get(lua, |n| n.aurora_pulse));
+        f.add_field_method_set("auroraPulse", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_pulse = v.clamp(0.0, 2.0))
+        });
+        // How much the aurora tints the scene's sky light
+        f.add_field_method_get("auroraAmbient", |lua, _| {
+            night_get(lua, |n| n.aurora_ambient)
+        });
+        f.add_field_method_set("auroraAmbient", |lua, _, v: f32| {
+            night_set(lua, |n| n.aurora_ambient = v.max(0.0))
+        });
+        // Shooting stars per minute (0 = none)
+        f.add_field_method_get("meteorRate", |lua, _| night_get(lua, |n| n.meteor_rate));
+        f.add_field_method_set("meteorRate", |lua, _, v: f32| {
+            night_set(lua, |n| n.meteor_rate = v.clamp(0.0, 600.0))
+        });
+        // Shooting star brightness
+        f.add_field_method_get("meteorBrightness", |lua, _| {
+            night_get(lua, |n| n.meteor_brightness)
+        });
+        f.add_field_method_set("meteorBrightness", |lua, _, v: f32| {
+            night_set(lua, |n| n.meteor_brightness = v.max(0.0))
+        });
+        // Milky Way tint
+        f.add_field_method_get("milkyWayTint", |lua, _| {
+            night_get(lua, |n| {
+                let c = n.milky_way_tint;
+                LColor([c[0], c[1], c[2], 1.0])
+            })
+        });
+        f.add_field_method_set("milkyWayTint", |lua, _, c: LColor| {
+            night_set(lua, |n| n.milky_way_tint = [c.0[0], c.0[1], c.0[2]])
+        });
+        // Light pollution colour
+        f.add_field_method_get("lightPollutionColor", |lua, _| {
+            night_get(lua, |n| {
+                let c = n.light_pollution_color;
+                LColor([c[0], c[1], c[2], 1.0])
+            })
+        });
+        f.add_field_method_set("lightPollutionColor", |lua, _, c: LColor| {
+            night_set(lua, |n| n.light_pollution_color = [c.0[0], c.0[1], c.0[2]])
+        });
+        // Aurora colour low in the curtains
+        f.add_field_method_get("auroraColor", |lua, _| {
+            night_get(lua, |n| {
+                let c = n.aurora_color;
+                LColor([c[0], c[1], c[2], 1.0])
+            })
+        });
+        f.add_field_method_set("auroraColor", |lua, _, c: LColor| {
+            night_set(lua, |n| n.aurora_color = [c.0[0], c.0[1], c.0[2]])
+        });
+        // Aurora colour at the curtain tops
+        f.add_field_method_get("auroraTopColor", |lua, _| {
+            night_get(lua, |n| {
+                let c = n.aurora_top_color;
+                LColor([c[0], c[1], c[2], 1.0])
+            })
+        });
+        f.add_field_method_set("auroraTopColor", |lua, _, c: LColor| {
+            night_set(lua, |n| n.aurora_top_color = [c.0[0], c.0[1], c.0[2]])
+        });
+        // Number of aurora curtains, 1..6
+        f.add_field_method_get("auroraCurtains", |lua, _| {
+            night_get(lua, |n| n.aurora_curtains)
+        });
+        f.add_field_method_set("auroraCurtains", |lua, _, v: u32| {
+            night_set(lua, |n| n.aurora_curtains = v.clamp(1, 6))
         });
         // Project path of the moon texture, nil = built-in
         f.add_field_method_get("moonTexture", |lua, _| moon_get(lua, |m| m.texture.clone()));
@@ -279,6 +497,10 @@ function F:Start()
     RenderSettings.moonTime = 23.8
     RenderSettings.moonSize = 4
     RenderSettings.stars = 0.5
+    RenderSettings.aurora = 1.5
+    RenderSettings.auroraCurtains = 9
+    RenderSettings.milkyWay = 2
+    RenderSettings.auroraTopColor = Color.new(1, 0, 0.5)
     Debug.Log(RenderSettings.moonDate, string.format("%.2f", RenderSettings.moonIllumination))
     local ok = pcall(function() RenderSettings.moonMode = "Sideways" end)
     Debug.Log(tostring(ok), tostring(RenderSettings.moonDirection ~= nil))
@@ -312,5 +534,9 @@ return F
         assert_eq!((m.year, m.month, m.day), (2024, 4, 23));
         assert_eq!(m.phase, 0.25);
         assert_eq!(m.size, 4.0);
+        let n = &scene.render_settings.night_sky;
+        assert_eq!((n.star_brightness, n.aurora, n.milky_way), (0.5, 1.5, 2.0));
+        assert_eq!(n.aurora_curtains, 6);
+        assert_eq!(n.aurora_top_color, [1.0, 0.0, 0.5]);
     }
 }

@@ -3,6 +3,7 @@
 //! or a project image; see `misty_engine::moon`).
 
 use egui::{RichText, Ui};
+use misty_engine::moon::night_sky::NightSkySettings;
 use misty_engine::moon::{self, MoonMode, MoonSettings};
 
 use super::lighting::{color, row};
@@ -155,9 +156,141 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
             slider(ui, &mut m.light_intensity, 0.0..=2.0, "")
         });
         ch |= row(ui, "Moonlight Color", |ui| color(ui, &mut m.light_color));
-        ch |= row(ui, "Stars", |ui| slider(ui, &mut m.stars, 0.0..=4.0, ""));
         ch
     })
+}
+
+/// One collapsible group of Night Sky rows.
+fn group(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+    egui::CollapsingHeader::new(title)
+        .id_salt(("night_sky", title))
+        .show(ui, |ui| {
+            super::lighting::grid(ui, &format!("night_{title}"), body)
+        })
+        .body_returned
+        .unwrap_or(false)
+}
+
+/// The Night Sky section (stars, Milky Way, light pollution, aurora, meteors); `date_time` =
+/// the moon's Date and Time mode sets the sky's turn. True when something changed.
+pub(super) fn night_section(ui: &mut Ui, n: &mut NightSkySettings, date_time: bool) -> bool {
+    ui.add_space(4.0);
+    ui.label(RichText::new("Night Sky").strong());
+    let mut ch = super::lighting::grid(ui, "lighting_night", |ui| {
+        let mut ch = ui.checkbox(&mut n.enabled, "Night Sky").changed();
+        ui.end_row();
+        if n.enabled {
+            ch |= row(ui, "Night Sky Darkness", |ui| {
+                slider(ui, &mut n.darkness, 0.0..=1.0, "")
+            });
+            if !date_time {
+                ch |= row(ui, "Sky Time", |ui| {
+                    slider(ui, &mut n.sky_time, 0.0..=24.0, " h")
+                });
+            }
+        }
+        ch
+    });
+    if !n.enabled {
+        return ch;
+    }
+    ch |= group(ui, "Stars", |ui| {
+        let mut ch = row(ui, "Brightness", |ui| {
+            slider(ui, &mut n.star_brightness, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Density", |ui| {
+            slider(ui, &mut n.star_density, 0.0..=3.0, "")
+        });
+        ch |= row(ui, "Magnitude Spread", |ui| {
+            slider(ui, &mut n.star_magnitude_spread, 0.0..=1.0, "")
+        });
+        ch |= row(ui, "Glow", |ui| slider(ui, &mut n.star_glow, 0.0..=4.0, ""));
+        ch |= row(ui, "Color Variation", |ui| {
+            slider(ui, &mut n.star_color_variation, 0.0..=1.0, "")
+        });
+        ch |= row(ui, "Twinkle", |ui| {
+            slider(ui, &mut n.star_twinkle, 0.0..=2.0, "")
+        });
+        ch |= row(ui, "Twinkle Speed", |ui| {
+            slider(ui, &mut n.star_twinkle_speed, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Fade in Bright Sky", |ui| {
+            slider(ui, &mut n.star_fade, 0.0..=4.0, "")
+        });
+        ch
+    });
+    ch |= group(ui, "Milky Way", |ui| {
+        let mut ch = row(ui, "Visibility", |ui| {
+            slider(ui, &mut n.milky_way, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Core", |ui| {
+            slider(ui, &mut n.milky_way_core, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Dust Lanes", |ui| {
+            slider(ui, &mut n.milky_way_dust, 0.0..=2.0, "")
+        });
+        ch |= row(ui, "Width", |ui| {
+            slider(ui, &mut n.milky_way_width, 0.2..=3.0, "×")
+        });
+        ch |= row(ui, "Tint", |ui| color(ui, &mut n.milky_way_tint));
+        ch
+    });
+    ch |= group(ui, "Light Pollution", |ui| {
+        let mut ch = row(ui, "Amount", |ui| {
+            slider(ui, &mut n.light_pollution, 0.0..=2.0, "")
+        });
+        ch |= row(ui, "Color", |ui| color(ui, &mut n.light_pollution_color));
+        ch
+    });
+    ch |= group(ui, "Aurora", |ui| {
+        let mut ch = row(ui, "Visibility", |ui| {
+            slider(ui, &mut n.aurora, 0.0..=4.0, "")
+        });
+        ch |= row(ui, "Color", |ui| color(ui, &mut n.aurora_color));
+        ch |= row(ui, "Top Color", |ui| color(ui, &mut n.aurora_top_color));
+        ch |= row(ui, "Height", |ui| {
+            slider(ui, &mut n.aurora_height, 60.0..=300.0, " km")
+        });
+        ch |= row(ui, "Thickness", |ui| {
+            slider(ui, &mut n.aurora_thickness, 20.0..=500.0, " km")
+        });
+        ch |= row(ui, "Curtains", |ui| {
+            ui.add(egui::Slider::new(&mut n.aurora_curtains, 1..=6))
+                .changed()
+        });
+        ch |= row(ui, "Waviness", |ui| {
+            slider(ui, &mut n.aurora_waviness, 0.0..=3.0, "")
+        });
+        ch |= row(ui, "Ray Detail", |ui| {
+            slider(ui, &mut n.aurora_rays, 0.0..=3.0, "")
+        });
+        ch |= row(ui, "Direction", |ui| {
+            slider(ui, &mut n.aurora_azimuth, 0.0..=360.0, "°")
+        });
+        ch |= row(ui, "Distance", |ui| {
+            slider(ui, &mut n.aurora_distance, 0.0..=1500.0, " km")
+        });
+        ch |= row(ui, "Speed", |ui| {
+            slider(ui, &mut n.aurora_speed, 0.0..=5.0, "")
+        });
+        ch |= row(ui, "Pulse", |ui| {
+            slider(ui, &mut n.aurora_pulse, 0.0..=2.0, "")
+        });
+        ch |= row(ui, "Scene Light", |ui| {
+            slider(ui, &mut n.aurora_ambient, 0.0..=4.0, "")
+        });
+        ch
+    });
+    ch |= group(ui, "Meteors", |ui| {
+        let mut ch = row(ui, "Per Minute", |ui| {
+            slider(ui, &mut n.meteor_rate, 0.0..=60.0, "")
+        });
+        ch |= row(ui, "Brightness", |ui| {
+            slider(ui, &mut n.meteor_brightness, 0.0..=4.0, "")
+        });
+        ch
+    });
+    ch
 }
 
 #[cfg(test)]

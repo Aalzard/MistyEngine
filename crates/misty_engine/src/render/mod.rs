@@ -1553,7 +1553,16 @@ impl Renderer {
             );
         }
         // HDRI sky: cubes built when the file changes, the uniform every render.
-        if self.sky.prepare(device, queue, frame.environment) {
+        // (The night sky animates on the grass clock; Quality ▸ Volumetric Clouds Low / Off
+        // takes its cheaper path.)
+        let sky_detail = matches!(
+            self.quality.volumetric_clouds,
+            crate::quality::Tier::Medium | crate::quality::Tier::High
+        );
+        if self
+            .sky
+            .prepare(device, queue, frame.environment, grass_time, sky_detail)
+        {
             self.rebuild_view_group(device);
         }
         let scene_copy = self.needs_scene_copy(frame);

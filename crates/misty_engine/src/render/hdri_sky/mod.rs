@@ -34,9 +34,15 @@ pub(crate) struct SkyUniform {
 }
 
 impl SkyUniform {
-    /// `moon` = the moon texture bound (None: the placeholder, no disc).
-    pub fn of(env: &Environment, moon: Option<&crate::moon::texture::MoonImage>) -> Self {
-        let moon = super::moon::uniform(env, moon);
+    /// `moon` = the moon texture bound (None: the placeholder, no disc); `time` = the
+    /// renderer's clock (s) for the animated night sky; `high` = its full-detail path.
+    pub fn of(
+        env: &Environment,
+        moon: Option<&crate::moon::texture::MoonImage>,
+        time: f32,
+        high: bool,
+    ) -> Self {
+        let moon = super::moon::uniform(env, moon, time, high);
         if env.hdri_sky().is_none() {
             return Self {
                 moon,
@@ -296,15 +302,18 @@ impl SkyGpu {
     }
 
     /// Upload this frame's sky; builds the cubes when the HDRI changed. True when the view
-    /// group must be rebuilt (new texture views).
+    /// group must be rebuilt (new texture views). `time` (s) animates the night sky; `high` =
+    /// its full-detail path.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         env: &Environment,
+        time: f32,
+        high: bool,
     ) -> bool {
         let moon_changed = self.moon.prepare(device, queue, env);
-        let u = SkyUniform::of(env, self.moon.current.as_ref().map(|(_, m)| m));
+        let u = SkyUniform::of(env, self.moon.current.as_ref().map(|(_, m)| m), time, high);
         if self.written != Some(u) {
             queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
             self.written = Some(u);
@@ -352,6 +361,9 @@ mod tests {
 
     #[test]
     fn uniform_size_matches_wgsl() {
-        assert_eq!(std::mem::size_of::<SkyUniform>(), 16 * 19);
+        assert_eq!(
+            std::mem::size_of::<SkyUniform>(),
+            16 * (19 + super::super::moon::NIGHT_VEC4S)
+        );
     }
 }

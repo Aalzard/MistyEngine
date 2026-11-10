@@ -34,11 +34,16 @@ const BARK: &str = "Assets/Materials/Bark.mat";
 const WINDOW: &str = "Assets/Materials/Lantern Glow.mat";
 
 /// The files this generator writes and the GUIDs of their metas.
-const METAS: [(&str, &str); 3] = [
+const METAS: [(&str, &str); 4] = [
     (DATA, "6d6f6f6e64656d6f7465727261696e31"),
     (SCENE, "6d6f6f6e64656d6f7363656e65303031"),
     (SCRIPT, "6d6f6f6e6379636c656c756173637231"),
+    (NIGHT_SCENE, "6e69676874736b7964656d6f73636e31"),
 ];
+
+/// The same valley looking north under a dark, moonless sky: the Milky Way, glowing stars that
+/// twinkle, an animated aurora, meteors, a faint town glow.
+const NIGHT_SCENE: &str = "Assets/Scenes/NightSkyDemo.scene";
 
 const SIZE: Vec3 = Vec3::new(1600.0, 260.0, 1600.0);
 const CORNER: Vec3 = Vec3::new(-800.0, 0.0, -800.0);
@@ -323,7 +328,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
     m.phase = 0.12;
     m.size = 5.0;
     m.light_intensity = 0.45;
-    m.stars = 1.5;
+    let n = &mut s.render_settings.night_sky;
+    n.star_brightness = 1.5;
     s.render_settings.skybox.atmosphere_thickness = 0.9;
 
     let terrain = s.spawn("Terrain", None);
@@ -354,6 +360,58 @@ fn demo_scene(d: &TerrainData) -> Scene {
     s
 }
 
+/// NightSkyDemo: MoonDemo's valley looking north-north-east from the stones' knoll under a thin
+/// crescent setting in the west: a dark sky with the summer Milky Way (Sky Time 20 h) falling
+/// to the horizon, varied glowing stars that twinkle, a green and purple aurora over the
+/// northern ridges, shooting stars, and a faint town glow.
+fn night_sky_scene(d: &TerrainData) -> Scene {
+    let mut s = demo_scene(d);
+    s.name = "NightSkyDemo".into();
+    if let Some(cam) = s.find_by_name("Main Camera") {
+        let (x, z) = (40.0, -60.0);
+        let y = ground(d, x, z) + 2.0;
+        s.set_transform(
+            cam,
+            Transform::from_position(Vec3::new(x, y, z)).with_euler(Vec3::new(-14.0, 12.0, 0.0)),
+        );
+        s.world
+            .get::<&mut misty_engine::scene::Camera>(cam)
+            .unwrap()
+            .fov = 70.0;
+    }
+    // No phase cycling here.
+    if let Some(e) = s.find_by_name("Moon Cycle") {
+        s.despawn(e);
+    }
+    let m = &mut s.render_settings.moon;
+    m.azimuth = 255.0;
+    m.altitude = 9.0;
+    m.phase = 0.07;
+    m.size = 3.0;
+    let n = &mut s.render_settings.night_sky;
+    n.darkness = 0.35;
+    n.star_brightness = 1.6;
+    n.star_density = 1.4;
+    n.star_magnitude_spread = 0.85;
+    n.star_glow = 1.5;
+    n.star_color_variation = 0.85;
+    n.star_twinkle = 0.6;
+    n.sky_time = 20.0;
+    n.milky_way = 1.8;
+    n.milky_way_core = 1.3;
+    n.milky_way_dust = 1.1;
+    n.light_pollution = 0.12;
+    n.aurora = 1.4;
+    n.aurora_azimuth = 5.0;
+    n.aurora_distance = 380.0;
+    n.aurora_curtains = 3;
+    n.aurora_waviness = 1.2;
+    n.aurora_pulse = 0.7;
+    n.meteor_rate = 8.0;
+    n.meteor_brightness = 1.2;
+    s
+}
+
 #[test]
 #[ignore = "writes into SampleProject; run on purpose to regenerate"]
 fn write_moon_demo() {
@@ -362,6 +420,7 @@ fn write_moon_demo() {
     d.save(&root.join(DATA)).unwrap();
     std::fs::write(root.join(SCRIPT), CYCLE_LUA).unwrap();
     demo_scene(&d).save(&root.join(SCENE)).unwrap();
+    night_sky_scene(&d).save(&root.join(NIGHT_SCENE)).unwrap();
     // Metas for this generator's own files only.
     for (rel, guid) in METAS {
         let meta = root.join(format!("{rel}.meta"));
@@ -396,6 +455,15 @@ fn moon_demo_matches_its_generator() {
     for (rel, _) in METAS {
         assert!(root.join(format!("{rel}.meta")).exists(), "{rel}.meta");
     }
+    let (night, report) = Scene::load(&root.join(NIGHT_SCENE)).unwrap();
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    crate::test_util::assert_json_close(
+        &night.to_json(),
+        &night_sky_scene(&generated).to_json(),
+        "regenerate with write_moon_demo",
+    );
+    let n = &night.render_settings.night_sky;
+    assert!(n.milky_way > 1.0 && n.aurora > 1.0 && n.meteor_rate > 0.0);
     // Night: the sun is down, the moon up in front of the camera and lighting the scene.
     let lights = misty_engine::render_scene::lights(&scene);
     let env = misty_engine::render_scene::environment(&scene, &lights);
@@ -482,8 +550,20 @@ fn shoot(
     scene: &Scene,
     size: (u32, u32),
 ) -> misty_engine::image::RgbaImage {
+    shoot_at(gpu, assets, scene, size, 12.0)
+}
+
+/// [`shoot`] with the night sky's clock fixed at `time` seconds (aurora, twinkle, meteors).
+fn shoot_at(
+    gpu: &(misty_engine::wgpu::Device, misty_engine::wgpu::Queue),
+    assets: &misty_engine::assets::AssetCache,
+    scene: &Scene,
+    size: (u32, u32),
+    time: f32,
+) -> misty_engine::image::RgbaImage {
     let (device, queue) = gpu;
-    let view = misty_engine::render_scene::GameView::new(scene, assets).unwrap();
+    let mut view = misty_engine::render_scene::GameView::new(scene, assets).unwrap();
+    view.environment.grass_time = Some(time);
     let mut renderer = misty_engine::render::Renderer::new(device);
     renderer.set_quality(device, &misty_engine::quality::QualityLevel::high());
     let target = renderer.create_target(device, size.0, size.1);
@@ -567,5 +647,93 @@ fn render_moon_screenshots() {
         m.altitude = 7.0;
         m.phase = 0.47;
         save_jpeg("twilight_moonrise", &shoot(&gpu, &assets, &s, (1600, 900)));
+    }
+    if wants("night") {
+        let full = (1600, 900);
+        let base = night_sky_scene(&d);
+        save_jpeg(
+            "night_sky_demo",
+            &shoot_at(&gpu, &assets, &base, full, 40.0),
+        );
+        // The Milky Way alone (no aurora, no meteors), the camera up towards Cygnus.
+        let mut s = base.clone_scene();
+        s.render_settings.night_sky.aurora = 0.0;
+        s.render_settings.night_sky.meteor_rate = 0.0;
+        aim(&mut s, 200.0, -38.0, 80.0);
+        save_jpeg("milky_way", &shoot(&gpu, &assets, &s, full));
+        // Stars: flat and white versus spread, glow and colour.
+        let mut flat = base.clone_scene();
+        let n = &mut flat.render_settings.night_sky;
+        (n.milky_way, n.aurora, n.meteor_rate) = (0.0, 0.0, 0.0);
+        (n.star_magnitude_spread, n.star_glow, n.star_color_variation) = (0.0, 0.0, 0.0);
+        aim(&mut flat, 60.0, -40.0, 50.0);
+        let mut varied = flat.clone_scene();
+        let n = &mut varied.render_settings.night_sky;
+        (n.star_magnitude_spread, n.star_glow, n.star_color_variation) = (1.0, 2.5, 1.0);
+        let a = shoot(&gpu, &assets, &flat, (800, 900));
+        let b = shoot(&gpu, &assets, &varied, (800, 900));
+        let mut pair = misty_engine::image::RgbaImage::new(1600, 900);
+        misty_engine::image::imageops::replace(&mut pair, &a, 0, 0);
+        misty_engine::image::imageops::replace(&mut pair, &b, 800, 0);
+        save_jpeg("stars_flat_vs_varied", &pair);
+        // Aurora settings: the default green arcs, red-topped tall curtains, a quiet single arc.
+        let looks: [(
+            &str,
+            fn(&mut misty_engine::moon::night_sky::NightSkySettings),
+        ); 3] = [
+            ("aurora_green", |_| {}),
+            ("aurora_red_top_tall", |n| {
+                n.aurora_top_color = [1.0, 0.12, 0.2];
+                n.aurora_thickness = 320.0;
+                n.aurora_curtains = 5;
+                n.aurora_waviness = 2.0;
+                n.aurora = 2.2;
+            }),
+            ("aurora_single_arc", |n| {
+                n.aurora_curtains = 1;
+                n.aurora_waviness = 0.3;
+                n.aurora_rays = 2.5;
+                n.aurora_color = [0.4, 0.75, 1.0];
+                n.aurora_top_color = [0.6, 0.3, 1.0];
+            }),
+        ];
+        for (name, look) in looks {
+            let mut s = base.clone_scene();
+            s.render_settings.night_sky.meteor_rate = 0.0;
+            look(&mut s.render_settings.night_sky);
+            save_jpeg(name, &shoot_at(&gpu, &assets, &s, full, 25.0));
+        }
+        // Meteors: a shower (many per minute) over the Milky Way.
+        let mut s = base.clone_scene();
+        s.render_settings.night_sky.aurora = 0.0;
+        s.render_settings.night_sky.meteor_rate = 240.0;
+        s.render_settings.night_sky.meteor_brightness = 2.0;
+        aim(&mut s, 200.0, -38.0, 80.0);
+        save_jpeg("meteors", &shoot_at(&gpu, &assets, &s, full, 31.3));
+    }
+}
+
+/// Turn the scene's camera (degrees) and set its field of view.
+fn aim(s: &mut Scene, yaw: f32, pitch: f32, fov: f32) {
+    let cam = s.find_by_name("Main Camera").unwrap();
+    let pos = s.transform(cam).position;
+    s.set_transform(
+        cam,
+        Transform::from_position(pos).with_euler(Vec3::new(pitch, yaw, 0.0)),
+    );
+    s.world
+        .get::<&mut misty_engine::scene::Camera>(cam)
+        .unwrap()
+        .fov = fov;
+}
+
+trait CloneScene {
+    fn clone_scene(&self) -> Scene;
+}
+
+impl CloneScene for Scene {
+    /// A copy through the scene file (scenes do not implement Clone).
+    fn clone_scene(&self) -> Scene {
+        Scene::from_json(&self.name, &self.to_json()).unwrap().0
     }
 }
