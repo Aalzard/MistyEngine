@@ -94,8 +94,8 @@ fn rel(x: f32, z: f32) -> Vec2 {
 /// meeting the treeline ahead.
 fn hill_side(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
-    let foot = 90.0 - 0.2 * p.y - 0.00006 * p.y.max(0.0).powi(2)
-        + 25.0 * noise::fbm(x, z, 260.0, 2, 41);
+    let foot =
+        90.0 - 0.2 * p.y - 0.00006 * p.y.max(0.0).powi(2) + 25.0 * noise::fbm(x, z, 260.0, 2, 41);
     p.x - foot
 }
 
@@ -122,11 +122,8 @@ fn height_m(x: f32, z: f32) -> f32 {
     let rolling = noise::fbm(x, z, 220.0, 4, 3);
     let swells = noise::fbm(x, z, 60.0, 3, 8);
     let dips = noise::fbm(x, z, 24.0, 2, 13);
-    let mut h = 40.0
-        + 7.0 * rolling
-        + 2.2 * swells
-        + 0.6 * dips
-        + 10.0 * smooth(-200.0, -900.0, p.x);
+    let mut h =
+        40.0 + 7.0 * rolling + 2.2 * swells + 0.6 * dips + 10.0 * smooth(-200.0, -900.0, p.x);
     // The hillside on the right: a wall rising ~40° from its foot, rounding off towards a
     // ridge 400–500 m up.
     let u = hill_side(x, z);
@@ -428,8 +425,7 @@ fn limestone() -> [RgbaImage; 3] {
                 c[i] += (mc[i] - c[i]) * moss * 0.7;
             }
             color[y * n + x] = c;
-            height[y * n + x] = (0.55 + 0.3 * blocks + 0.05 * grain - 0.35 * crack
-                - 0.3 * parting
+            height[y * n + x] = (0.55 + 0.3 * blocks + 0.05 * grain - 0.35 * crack - 0.3 * parting
                 + 0.1 * (1.0 - bed))
                 .clamp(0.0, 1.0);
         }
@@ -989,7 +985,14 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
     let mut taken: Vec<Vec2> = Vec::new();
     let groups: &[RockGroup] = &[
         (-150.0, 140.0, 40.0, 4, &[ROCK_SMALL, ROUND], [0.7, 1.1]),
-        (-230.0, 220.0, 50.0, 5, &[ROCK_SMALL, SPLIT, ROCK_SMALL], [0.6, 1.0]),
+        (
+            -230.0,
+            220.0,
+            50.0,
+            5,
+            &[ROCK_SMALL, SPLIT, ROCK_SMALL],
+            [0.6, 1.0],
+        ),
         (-60.0, 70.0, 20.0, 2, &[ROCK_SMALL], [0.6, 0.9]),
         (20.0, -60.0, 25.0, 2, &[ROCK_SMALL, ROUND], [0.6, 0.9]),
         (110.0, 120.0, 30.0, 3, &[SPLIT, ROCK_SMALL], [0.9, 1.3]),
@@ -1023,8 +1026,8 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
             }
             let normal = crate::sample_rocks::terrain_normal(d, p.x, p.y);
             let up = Vec3::Y.lerp(normal, 0.6).normalize();
-            let rotation =
-                Quat::from_rotation_arc(Vec3::Y, up) * Quat::from_rotation_y(r(4) * std::f32::consts::TAU);
+            let rotation = Quat::from_rotation_arc(Vec3::Y, up)
+                * Quat::from_rotation_y(r(4) * std::f32::consts::TAU);
             // Sunk into the slope so no edge floats.
             let h = d.sample_height(p.x, p.y);
             let slope = Vec2::new(normal.x, normal.z).length() / normal.y.max(0.2);
