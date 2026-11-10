@@ -155,7 +155,7 @@ fn height_m(x: f32, z: f32) -> f32 {
     let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
     let near = 110.0 * band(1500.0, 300.0) * lump(31) * open_left;
     let rocky = smooth(0.4, 0.6, noise::fbm(x, z, 300.0, 2, 43)) * smooth(0.0, 300.0, p.y);
-    let near = near + (terrace(near, 22.0) - near) * rocky * 0.5;
+    let near = near + (terrace(near, 22.0) - near) * rocky * 0.2;
     h += (near
         + 190.0 * band(2200.0, 380.0) * lump(37)
         + 300.0 * smooth(2350.0, 2950.0, r) * lump(47))
@@ -230,7 +230,7 @@ fn grass() -> details::DetailSettings {
         dry_color: [0.66, 0.66, 0.36],
         wind_strength: 0.18,
         wind_speed: 0.9,
-        seed_heads: 0.005,
+        seed_heads: 0.001,
         seed_color: [0.82, 0.76, 0.55],
         clumping: 0.6,
         bend: 0.8,
@@ -258,20 +258,25 @@ fn grass() -> details::DetailSettings {
 fn flowers() -> FlowerSettings {
     let kinds = FlowerSettings::wildflowers(crate::terrain_flowers_ui::FLOWER_DIR)
         .into_iter()
-        .filter(|k| k.name == "Buttercup")
-        .map(|mut k| {
-            // Tiny heads: specks of cream and yellow in the turf.
-            k.head_size *= 0.55;
-            // Small heads close to the turf, as in a grazed meadow.
-            k.height = [k.height[0] * 0.85, k.height[1] * 0.85];
-            k
+        .filter_map(|mut k| {
+            // Small cream daisies, fewer buttercups: specks of cream and yellow just above
+            // the tall turf (the grass reaches half a metre).
+            let (amount, head) = match k.name.as_str() {
+                "Oxeye Daisy" => (1.4, 0.6),
+                "Buttercup" => (0.7, 0.75),
+                _ => return None,
+            };
+            k.amount = amount;
+            k.head_size *= head;
+            k.height = [0.3, 0.52];
+            Some(k)
         })
         .collect();
     FlowerSettings {
         enabled: true,
         kinds,
-        density: 90.0,
-        coverage: 0.16,
+        density: 130.0,
+        coverage: 0.2,
         patch_scale: 9.0,
         scattered: 0.004,
         edges: 0.3,
@@ -297,7 +302,7 @@ fn tall_grass(d: &TerrainData) -> DetailLayer {
     DetailLayer {
         name: "Tall Grass".into(),
         density: 35.0,
-        height: [0.32, 0.55],
+        height: [0.45, 0.85],
         width: 0.035,
         bend: 0.55,
         dryness: 0.6,
@@ -441,10 +446,10 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Forest Oak"),
             TreeAsset {
                 seed: 21,
-                height: 19.0,
+                height: 23.0,
                 crown_shape: CrownShape::Round,
-                crown_width: 0.66,
-                crown_base: 0.1,
+                crown_width: 0.6,
+                crown_base: 0.42,
                 trunk_radius: 0.36,
                 leader: 0.35,
                 branches: 11,
@@ -452,8 +457,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 12,
                 leaf_density: 2.1,
                 leaf_size: 1.6,
-                leaf_color: [0.78, 0.84, 0.72],
+                leaf_color: [0.88, 0.95, 0.72],
                 crown_shading: 0.85,
+                clumping: 0.75,
                 wind: forest_wind.clone(),
                 ..TreeAsset::oak()
             },
@@ -462,13 +468,14 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Forest Linden"),
             TreeAsset {
                 seed: 23,
-                height: 21.0,
-                crown_width: 0.6,
-                crown_base: 0.1,
+                height: 25.0,
+                crown_width: 0.55,
+                crown_base: 0.45,
                 leaf_density: 2.1,
                 leaf_size: 1.5,
-                leaf_color: [0.8, 0.88, 0.74],
+                leaf_color: [0.9, 0.98, 0.74],
                 crown_shading: 0.85,
+                clumping: 0.75,
                 wind: forest_wind.clone(),
                 ..TreeAsset::linden()
             },
@@ -477,18 +484,19 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Forest Beech"),
             TreeAsset {
                 seed: 25,
-                height: 17.0,
+                height: 21.0,
                 crown_shape: CrownShape::Oval,
-                crown_width: 0.7,
-                crown_base: 0.09,
+                crown_width: 0.62,
+                crown_base: 0.38,
                 trunk_radius: 0.3,
                 leader: 0.5,
                 branches: 12,
                 twigs: 11,
                 leaf_density: 2.2,
                 leaf_size: 1.5,
-                leaf_color: [0.7, 0.8, 0.62],
+                leaf_color: [0.8, 0.9, 0.62],
                 crown_shading: 0.85,
+                clumping: 0.75,
                 wind: forest_wind,
                 ..TreeAsset::oak()
             },
@@ -510,6 +518,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_size: 0.9,
                 leaf_color: [0.8, 0.86, 0.72],
                 crown_shading: 0.7,
+                clumping: 0.6,
                 ..TreeAsset::oak()
             },
         ),
@@ -528,8 +537,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 11,
                 leaf_density: 2.2,
                 leaf_size: 1.4,
-                leaf_color: [0.76, 0.84, 0.7],
+                leaf_color: [0.86, 0.94, 0.7],
                 crown_shading: 0.8,
+                clumping: 0.75,
                 ..TreeAsset::oak()
             },
         ),
@@ -548,6 +558,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_density: 1.9,
                 leaf_size: 1.5,
                 crown_shading: 0.7,
+                clumping: 0.7,
                 ..TreeAsset::oak()
             },
         ),
@@ -555,11 +566,12 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Forest Birch"),
             TreeAsset {
                 seed: 33,
-                height: 19.0,
-                crown_width: 0.38,
-                crown_base: 0.4,
+                height: 22.0,
+                crown_width: 0.36,
+                crown_base: 0.52,
                 leaf_density: 1.6,
                 crown_shading: 0.7,
+                clumping: 0.4,
                 ..TreeAsset::birch()
             },
         ),
@@ -609,10 +621,11 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 3,
                 leaf_density: 2.6,
                 leaf_size: 0.38,
-                leaf_color: [1.0, 1.0, 1.0],
-                leaf_variation: 0.4,
-                translucency: 0.7,
-                crown_shading: 0.3,
+                // Matte, shaded leaves (not glowing cards): darker tint, little light through.
+                leaf_color: [0.72, 0.78, 0.66],
+                leaf_variation: 0.45,
+                translucency: 0.3,
+                crown_shading: 0.7,
                 wind: TreeWind {
                     trunk_bend: 0.1,
                     branch_sway: 1.0,
@@ -683,6 +696,12 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             if f <= 0.0 || r(3) > f * 0.97 {
                 continue;
             }
+            // Gaps in the canopy of the nearer wood (sun patches on its floor): small groups
+            // of missing trees, none at the edges or on the far hills.
+            let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length()) * smooth(0.9, 1.0, f);
+            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.08 * near_wood {
+                continue;
+            }
             // Far away fewer, bigger trees keep the canopy closed: the share kept falls from
             // all of them within 600 m to a quarter at 2.4 km.
             let dist = rel(p.x, p.y).length();
@@ -730,7 +749,8 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                     });
                 }
             }
-            if dist < 700.0 && r(10) < 0.3 {
+            // (Fewer in the closed wood than at its edges.)
+            if dist < 700.0 && r(10) < if f < 0.95 { 0.3 } else { 0.12 } {
                 let b = p + Vec2::new(r(11) - 0.5, r(12) - 0.5) * cell * 0.8;
                 out.push(TreeInstance {
                     position: b / size,
@@ -813,8 +833,8 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [3.0, 3.0],
             smoothness: 0.1,
-            // Under the canopy: little sky light reaches the ground.
-            occlusion: 0.3,
+            // Under the canopy: less sky light reaches the ground.
+            occlusion: 0.6,
             ..Default::default()
         },
     ];
@@ -831,7 +851,8 @@ fn terrain_data() -> TerrainData {
             (t % n) as f32 * texel + texel * 0.5,
             (t / n) as f32 * texel + texel * 0.5,
         );
-        let f = smooth(0.2, 0.7, forest(x, z));
+        // Grass runs on under the edge's bushes and low crowns; litter only under the canopy.
+        let f = smooth(0.55, 0.95, forest(x, z));
         if f <= 0.0 {
             continue;
         }
@@ -852,6 +873,10 @@ fn terrain_data() -> TerrainData {
         .map(|(path, _)| TreePrototype { tree: path })
         .collect();
     d.trees.draw_distance = 4000.0;
+    // A dense forest: billboards a little sooner, and lighter trees in the shadow cascades
+    // (impostors in the far one), which keeps a walk inside the wood real-time.
+    d.trees.billboard_start = 80.0;
+    d.trees.shadow_detail = 0.34;
     // Placed on the heights as stored (16 bits), so the file and the generator agree.
     let stored = TerrainData {
         heights: d
@@ -952,7 +977,7 @@ fn volume() -> PostProcessVolume {
     // (never darker than the meadow's own exposure).
     let ae = &mut v.auto_exposure;
     ae.active = true;
-    ae.limit_min = -1.8;
+    ae.limit_min = -3.2;
     ae.limit_max = 0.0;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
@@ -971,7 +996,7 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.3;
+    c.coverage = 0.36;
     c.density = 0.6;
     c.shape = 0.65;
     c.altitude = 1100.0;

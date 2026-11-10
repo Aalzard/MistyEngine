@@ -103,6 +103,49 @@ fn leaf_normals_face_out_of_the_crown() {
     assert!(outward as f32 > total as f32 * 0.85, "{outward} of {total}");
 }
 
+#[test]
+fn clumping_gathers_the_leaves_into_lit_lumps() {
+    let even = TreeAsset::oak();
+    let lumpy = TreeAsset {
+        clumping: 0.8,
+        ..TreeAsset::oak()
+    };
+    // Off: no card belongs to a lump (the crown as before).
+    assert!(generate::skeleton(&even).cards.iter().all(|c| c.lump.is_none()));
+    let sk = generate::skeleton(&lumpy);
+    let cards = &sk.cards;
+    assert!(cards.iter().all(|c| c.lump.is_some()));
+    // Each card sits near its lump's ball.
+    let near = cards
+        .iter()
+        .filter(|c| {
+            let (centre, r) = c.lump.unwrap();
+            c.anchor.distance(centre) < r * 1.6
+        })
+        .count();
+    assert!(near as f32 > cards.len() as f32 * 0.9, "{near} of {}", cards.len());
+    // The lumps' undersides are darker than their tops: more contrast between up- and
+    // down-facing leaves than in the evenly spread crown (sunlit lumps, dark hollows).
+    let contrast = |t: &TreeAsset| {
+        let m = model(t);
+        let lod = &m.lods[0];
+        let (mut up, mut down) = ((0.0, 0), (0.0, 0));
+        for &i in &lod.indices[lod.leaves.start as usize..lod.leaves.end as usize] {
+            let v = lod.vertices[i as usize];
+            let ao = v.extra[0] as f32 / 255.0;
+            if v.normal[1] > 0.4 {
+                up = (up.0 + ao, up.1 + 1);
+            } else if v.normal[1] < -0.4 {
+                down = (down.0 + ao, down.1 + 1);
+            }
+        }
+        assert!(up.1 > 0 && down.1 > 0);
+        up.0 / up.1 as f32 - down.0 / down.1 as f32
+    };
+    let (a, b) = (contrast(&even), contrast(&lumpy));
+    assert!(b > a + 0.03, "contrast even {a}, clumped {b}");
+}
+
 /// The point of the polyline `points` nearest to `p`.
 fn nearest_on(points: &[Vec3], p: Vec3) -> Vec3 {
     let mut best = points[0];

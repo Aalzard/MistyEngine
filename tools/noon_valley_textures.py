@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
-from scipy.ndimage import gaussian_filter, distance_transform_edt
+from scipy.ndimage import gaussian_filter, distance_transform_edt, map_coordinates
 
 BARK = 2048
 FLOOR = 2048
@@ -121,41 +121,65 @@ def save_normal(path, n):
     Image.fromarray((np.clip(n, 0, 1) * 255 + 0.5).astype(np.uint8), "RGB").save(path)
 
 
+def warped(field, dx, dy):
+    """`field` sampled at (x + dx, y + dy) pixels, wrapping (tileable)."""
+    n = field.shape[0]
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
+    return map_coordinates(field, [yy + dy, xx + dx], order=1, mode="grid-wrap")
+
+
+def furrows(n, cx, cy, seed, dx, dy):
+    """Distance-like 0..1 to the meandering lines where a stretched noise crosses its middle
+    (lines run along the noise's long axis, join and part again)."""
+    f = warped(fbm(n, cx, cy, 4, seed), dx, dy)
+    # In standard deviations from the middle (fbm bunches up around 0.5).
+    return np.abs(f - f.mean()) / max(float(f.std()), 1e-6)
+
+
 def oak_bark(out: Path):
     n = BARK
-    wu = (fbm(n, 3, 4, 3, 11) - 0.5) * 1.4
-    wv = (fbm(n, 2, 3, 3, 12) - 0.5) * 0.5
-    # Plates: tall cells (14 across, 4 down), fissures where two plates meet.
-    f1, f2, idx = worley(n, 18, 3, 21, aspect=1.0, warp=(wu, wv))
-    edge = f2 - f1
-    plate = smooth(0.06, 0.4, edge)
-    # Cross cracks splitting some plates into blocks (only where a noise lets them).
-    g1, g2, _ = worley(n, 9, 10, 31, aspect=0.5, warp=(wu * 0.5, wv))
-    cross = smooth(0.0, 0.08, g2 - g1)
-    let_cross = smooth(0.45, 0.6, fbm(n, 5, 7, 3, 33))
-    plate = plate * (1.0 - let_cross * (1.0 - cross) * 0.8)
-    # Rough, flaky plate tops.
-    flakes = smooth(0.35, 0.75, fbm(n, 40, 20, 4, 35))
-    plate = plate * (0.82 + 0.18 * flakes)
-    fibre = value_noise(n, 96, 6, 41) * 0.6 + value_noise(n, 220, 14, 43) * 0.4
-    fine = fbm(n, 64, 64, 3, 47)
-    tone = np.random.default_rng(5).random(14 * 4)[idx].astype(np.float32)
-    height = 0.8 * plate + 0.1 * fibre * plate + 0.1 * fine * plate
+    # One tile is ~1.2 m of trunk: ~20 ridges across, each a few centimetres wide, split by
+    # deep vertical furrows that join and part again (an interlaced, elongated diamond
+    # network), and short horizontal cracks cutting the ridges into blocks.
+    dx = (fbm(n, 3, 5, 3, 11) - 0.5) * n * 0.06
+    dy = (fbm(n, 4, 3, 3, 12) - 0.5) * n * 0.02
+    width = 0.45 + 0.6 * fbm(n, 6, 4, 3, 13)
+    main = smooth(0.15, 1.0, furrows(n, 24, 2, 21, dx, dy) / width)
+    second = smooth(0.1, 1.0, furrows(n, 34, 3, 22, dx * 1.3, dy) / (width * 0.6))
+    ridge = main * (0.3 + 0.7 * second)
+    # Rounded ridge shoulders, a rough broken surface on top.
+    rough = fbm(n, 70, 24, 4, 23)
+    ridge = ridge * (0.7 + 0.5 * rough)
+    # Horizontal cracks, short: only where a fine noise lets them.
+    cr = furrows(n, 3, 40, 31, dx * 0.3, dy * 3.0)
+    crack = 1.0 - smooth(0.0, 0.25, cr)
+    let_crack = smooth(0.45, 0.62, fbm(n, 30, 40, 3, 33))
+    ridge = ridge * (1.0 - 0.8 * crack * let_crack)
+    # Fibrous, flaky ridge tops: vertical fibres and lifted scales.
+    fibre = value_noise(n, 200, 10, 41) * 0.55 + value_noise(n, 460, 24, 43) * 0.45
+    scales = smooth(0.4, 0.8, fbm(n, 70, 30, 3, 45))
+    fine = fbm(n, 96, 96, 3, 47)
+    tone = fbm(n, 10, 4, 3, 49)
+    height = ridge * (0.8 + 0.12 * fibre + 0.08 * scales) + 0.03 * fine
     height = gaussian_filter(height, 0.8, mode="wrap")
-    lichen = smooth(0.6, 0.75, fbm(n, 8, 8, 4, 51)) * plate
-    moss = smooth(0.62, 0.8, fbm(n, 6, 10, 4, 53)) * smooth(0.6, 0.2, plate)
-    base = np.array([0.215, 0.19, 0.16], np.float32)
-    plate_c = base[None, None, :] * (0.78 + 0.35 * tone[..., None]) * (0.85 + 0.3 * fine[..., None])
-    plate_c *= (0.9 + 0.2 * fibre[..., None])
-    deep = np.array([0.045, 0.035, 0.028], np.float32)
-    col = deep + (plate_c - deep) * smooth(0.0, 0.7, plate)[..., None]
-    col = col + (np.array([0.32, 0.33, 0.27]) - col) * (lichen * 0.45)[..., None]
-    col = col + (np.array([0.08, 0.12, 0.035]) - col) * (moss * 0.35)[..., None]
+    lit = smooth(0.3, 0.9, height)
+    # Grey weathered ridge faces, warm dark brown deep in the furrows, lichen crusts.
+    face = np.array([0.17, 0.15, 0.125], np.float32)
+    face = face[None, None, :] * (0.7 + 0.5 * tone[..., None]) * (0.85 + 0.3 * fine[..., None])
+    face = face * (0.85 + 0.3 * fibre[..., None]) * (0.55 + 0.7 * rough[..., None])
+    deep = np.array([0.03, 0.021, 0.014], np.float32)
+    wall = np.array([0.095, 0.067, 0.043], np.float32)
+    col = deep + (wall - deep) * smooth(0.0, 0.4, height)[..., None]
+    col = col + (face - col) * lit[..., None]
+    lichen = smooth(0.7, 0.8, fbm(n, 24, 16, 5, 51)) * lit
+    col = col + (np.array([0.30, 0.32, 0.26]) - col) * (lichen * 0.35)[..., None]
+    moss = smooth(0.66, 0.82, fbm(n, 6, 12, 5, 53)) * smooth(0.55, 0.2, height)
+    col = col + (np.array([0.05, 0.075, 0.02]) - col) * (moss * 0.45)[..., None]
     save_rgb(out / "OakBark.png", col)
-    save_normal(out / "OakBarkNormal.png", normal_map(height, 24.0))
+    save_normal(out / "OakBarkNormal.png", normal_map(height, 32.0))
     save_gray(out / "OakBarkHeight.png", height)
-    save_gray(out / "OakBarkAO.png", 0.25 + 0.75 * smooth(0.0, 0.6, height))
-    save_gray(out / "OakBarkRoughness.png", 0.82 + 0.15 * (1 - plate) - 0.1 * lichen)
+    save_gray(out / "OakBarkAO.png", 0.15 + 0.85 * smooth(0.0, 0.65, height))
+    save_gray(out / "OakBarkRoughness.png", 0.8 + 0.18 * (1 - lit) - 0.12 * lichen)
 
 
 def birch_bark(out: Path):
@@ -175,14 +199,14 @@ def birch_bark(out: Path):
     patch = smooth(0.66, 0.7, blot)
     img = Image.new("L", (n, n), 0)
     dr = ImageDraw.Draw(img)
-    for _ in range(14):
+    for _ in range(6):
         cx, cy = rng.random() * n, rng.random() * n
-        w, h = 60 + rng.random() * 160, 90 + rng.random() * 260
+        w, h = 50 + rng.random() * 110, 60 + rng.random() * 140
         for ox in (-n, 0, n):
             for oy in (-n, 0, n):
                 x, y = cx + ox, cy + oy
                 dr.polygon([(x, y - h / 2), (x + w / 2, y), (x, y + h / 2), (x - w / 2, y)], fill=255)
-    diamonds = gaussian_filter(np.asarray(img, np.float32) / 255.0, 3, mode="wrap")
+    diamonds = gaussian_filter(np.asarray(img, np.float32) / 255.0, 9, mode="wrap")
     rough = fbm(n, 64, 64, 2, 67)
     patch = np.maximum(patch, smooth(0.35, 0.6, diamonds + (rough - 0.5) * 0.5))
     dark = np.array([0.045, 0.04, 0.04], np.float32)
@@ -240,13 +264,15 @@ def forest_floor(out: Path):
     col[:] = np.array([0.065, 0.048, 0.032]) * (0.7 + 0.6 * soil_n[..., None])
     height = 0.2 * soil_n
     leaves = 26000
+    # Dry oak and beech litter: warm browns, pale tans and a few greyed, older leaves.
     browns = [(0.30, 0.17, 0.07), (0.24, 0.15, 0.07), (0.36, 0.22, 0.09), (0.18, 0.12, 0.06),
-              (0.28, 0.21, 0.11), (0.42, 0.27, 0.12), (0.15, 0.11, 0.06)]
+              (0.28, 0.21, 0.11), (0.42, 0.27, 0.12), (0.15, 0.11, 0.06), (0.46, 0.33, 0.18),
+              (0.40, 0.32, 0.22), (0.30, 0.26, 0.20)]
     for k in range(leaves):
         cx, cy = rng.random() * n, rng.random() * n
-        length = 10 + rng.random() * 18
+        length = 12 + rng.random() ** 1.5 * 30
         width = length * (0.35 + rng.random() * 0.25)
-        rgb = np.array(browns[rng.integers(len(browns))]) * (0.75 + rng.random() * 0.5) * 0.6
+        rgb = np.array(browns[rng.integers(len(browns))]) * (0.75 + rng.random() * 0.5) * 0.72
         rgb = rgb * np.array([1.08, 0.92, 0.85])
         top = 0.25 + 0.7 * k / leaves
         stamp_leaf(col, height, cx, cy, length, width, rng.random() * math.tau, rgb, top, n,
@@ -362,16 +388,17 @@ def groundcover(out: Path):
     def cell(da, dt, size, seed):
         rng = np.random.default_rng(seed)
         # Stems from the bottom centre ending in broad, pointed leaves.
-        for _ in range(9):
-            a = -math.pi / 2 + (rng.random() - 0.5) * 2.2
-            length = size * (0.25 + rng.random() * 0.4)
+        # Dense, overlapping broad leaves (dog's mercury, wood sorrel, young lime).
+        for _ in range(14):
+            a = -math.pi / 2 + (rng.random() - 0.5) * 2.4
+            length = size * (0.18 + rng.random() * 0.38)
             sx, sy = size * 0.5, size * 0.98
             ex, ey = sx + math.cos(a) * length, sy + math.sin(a) * length
             da.line([(sx, sy), (ex, ey)], fill=255, width=3)
             dt.line([(sx, sy), (ex, ey)], fill=80, width=3)
-            leaf_len = size * (0.12 + rng.random() * 0.1)
+            leaf_len = size * (0.15 + rng.random() * 0.14)
             la = a + (rng.random() - 0.5) * 0.8
-            w = leaf_len * 0.45
+            w = leaf_len * 0.42
             poly = []
             for k in range(17):
                 v = k / 16
@@ -386,6 +413,15 @@ def groundcover(out: Path):
             da.polygon(poly, fill=255)
             dt.polygon(poly, fill=int(120 + rng.random() * 110))
             dt.line([(ex, ey), (ex + math.cos(la) * leaf_len, ey + math.sin(la) * leaf_len)], fill=90, width=2)
+            # Side veins.
+            for k in range(1, 6):
+                v = k / 6.5
+                bx = ex + math.cos(la) * leaf_len * v
+                by = ey + math.sin(la) * leaf_len * v
+                r = math.sin(math.pi * v) ** 0.8 * w * 0.8
+                for side in (-1, 1):
+                    va = la + side * 0.9
+                    dt.line([(bx, by), (bx + math.cos(va) * r, by + math.sin(va) * r)], fill=100, width=1)
     a, t = atlas_maps(out, "Groundcover", cell)
     finish_atlas(out, "Groundcover", a, t, light=(0.22, 0.4, 0.1), dark=(0.05, 0.12, 0.03))
 

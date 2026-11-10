@@ -241,6 +241,9 @@ pub(super) struct Card {
     pub weight: f32,
     pub phase: f32,
     pub variation: f32,
+    /// Crown ▸ Clumping: the lump the card belongs to (centre, radius), whose ball shapes its
+    /// shading.
+    pub lump: Option<(Vec3, f32)>,
 }
 
 /// The tree's skeleton and leaf cards, before meshing.
@@ -462,8 +465,24 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
     let spacing = (total / wanted as f32).max(0.02);
     let mut cards = Vec::new();
     let mut carry = rng.f() * spacing;
+    let clumping = t.clumping.clamp(0.0, 1.0);
     for (b, from) in stems {
         let len = b.length() * (1.0 - from);
+        // Clumping: the stem's leaves gather into rounded lumps near its outer end (two along
+        // a long stem), leaving gaps between them: a cauliflower crown of many sunlit lumps.
+        let lumps: Vec<(Vec3, f32)> = if clumping > 0.0 {
+            let n = if len > crown.radius * 0.8 { 2 } else { 1 };
+            (0..n)
+                .map(|k| {
+                    let at = if n == 1 { 0.75 } else { 0.42 + 0.45 * k as f32 };
+                    let (p, _, _, _) = b.at(from + (1.0 - from) * at);
+                    let r = (len / n as f32 * 0.55).clamp(t.leaf_size * 0.9, crown.radius * 0.4);
+                    (p + crown.normal(p) * r * 0.3, r)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut d = carry;
         while d < len {
             let s = from + d / b.length();
@@ -490,6 +509,21 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 d += spacing * rng.range(0.6, 1.4);
                 continue;
             }
+            let (mut anchor, mut facing) = (anchor, facing);
+            let mut lump = None;
+            if let Some(&(c0, r)) = lumps
+                .iter()
+                .min_by(|a, b| a.0.distance(anchor).total_cmp(&b.0.distance(anchor)))
+            {
+                // On the lump's ball (biased outwards), facing away from its centre.
+                let dir = ((anchor - c0).normalize_or(out) + out * 0.5 + jitter * 0.3)
+                    .normalize_or(out);
+                let target = c0 + dir * r * (0.55 + 0.45 * rng.f());
+                anchor = anchor.lerp(target, clumping);
+                let away = (dir - up * dir.dot(up)).normalize_or(facing);
+                facing = facing.lerp(away, clumping).normalize_or(facing);
+                lump = Some((c0, r));
+            }
             cards.push(Card {
                 anchor,
                 up,
@@ -499,6 +533,7 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 weight: w,
                 phase: b.phase,
                 variation: rng.f(),
+                lump,
             });
             d += spacing * rng.range(0.6, 1.4) * scale * scale;
         }
@@ -703,8 +738,20 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 let curl = if rows > 2 { c.up * 0.3 * y } else { Vec3::ZERO };
                 let card_n = (c.facing + side * (0.5 - x) * 0.6 + curl).normalize();
                 let dome = sk.crown.normal(p);
-                let n = (card_n * 0.3 + dome * 0.7).normalize();
-                let ao = sk.crown.occlusion(p);
+                let mut ao = sk.crown.occlusion(p);
+                // A clumped card shades with its lump's ball: lit on the lump's sunward,
+                // outer side, dark underneath and in the gaps between lumps.
+                let shape = match c.lump {
+                    Some((c0, _)) => {
+                        let k = t.clumping.clamp(0.0, 1.0);
+                        let ln = (p - c0).normalize_or(dome);
+                        let lit = smoothstep(-0.7, 0.75, ln.dot((dome + Vec3::Y).normalize()));
+                        ao *= 1.0 - k * 0.65 * (1.0 - lit);
+                        (dome * (1.0 - k) + ln * k).normalize_or(dome)
+                    }
+                    None => dome,
+                };
+                let n = (card_n * 0.3 + shape * 0.7).normalize();
                 // Atlas: the twig enters at the bottom centre of the cell.
                 let uv = [cx + x * 0.5, cy + 0.5 - y * 0.5];
                 let flutter = (y * 0.85 + (x - 0.5).abs() * 0.3).min(1.0);

@@ -59,8 +59,8 @@ fn views() -> [View; 9] {
         view("down", 10.0, -38.0, Vec3::new(0.0, -0.7, 0.0)),
         view("treeline", 30.0, 3.0, Vec3::new(40.0, 0.0, 200.0)),
         // Inside the wood along the meadow's far edge: among the trunks, the canopy overhead.
-        view("inside", 70.0, 4.0, Vec3::new(-60.0, 0.0, 530.0)),
-        view("inside2", -25.0, 12.0, Vec3::new(-160.0, 0.0, 570.0)),
+        view("inside", 70.0, -10.0, Vec3::new(-60.0, 0.0, 530.0)),
+        view("inside2", -25.0, 2.0, Vec3::new(-160.0, 0.0, 570.0)),
     ]
 }
 
@@ -105,6 +105,9 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     if v.offset.x != 0.0 || v.offset.z != 0.0 {
         // Stand on the ground there (eye height as at the start).
         let start_ground = ground_at(&gv, gv.camera.position);
+        if name.starts_with("inside") {
+            eye = clear_spot(&gv, eye);
+        }
         let here = ground_at(&gv, eye);
         eye.y += here - start_ground;
     }
@@ -115,6 +118,43 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
         gv.post.auto_exposure.active = false;
     }
     Some(gv)
+}
+
+/// The spot within 12 m of `p` (XZ) farthest from any tree or bush (up to 4 m clear; nearer
+/// spots win ties): inside the wood the camera stands in the open between trunks, not in a
+/// bush.
+fn clear_spot(gv: &GameView, p: Vec3) -> Vec3 {
+    let t = &gv.terrains[0];
+    let d = &t.data;
+    let small: Vec<bool> = (d.trees.prototypes.iter())
+        .map(|p| p.tree.contains("Fern") || p.tree.contains("Groundcover"))
+        .collect();
+    let trunks: Vec<glam::Vec2> = (d.trees.instances.iter())
+        .filter(|i| !small.get(i.prototype as usize).copied().unwrap_or(false))
+        .map(|i| {
+            glam::Vec2::new(
+                t.position.x + i.position.x * d.size.x,
+                t.position.z + i.position.y * d.size.z,
+            )
+        })
+        .filter(|q| q.distance(glam::Vec2::new(p.x, p.z)) < 20.0)
+        .collect();
+    let mut best = (f32::MIN, p);
+    for iz in -12..=12 {
+        for ix in -12..=12 {
+            let o = glam::Vec2::new(ix as f32, iz as f32);
+            if o.length() > 12.0 {
+                continue;
+            }
+            let q = glam::Vec2::new(p.x, p.z) + o;
+            let clear = trunks.iter().map(|t| t.distance(q)).fold(4.0f32, f32::min);
+            let score = clear - 0.02 * o.length();
+            if score > best.0 {
+                best = (score, Vec3::new(q.x, p.y, q.y));
+            }
+        }
+    }
+    best.1
 }
 
 /// Terrain height under world `p` (the first terrain).
@@ -206,6 +246,77 @@ fn noon_valley_times() {
                 "noon {name} {level} {w}x{h} ({:.0} FPS)",
                 1000.0 / b.gpu
             ));
+        }
+    }
+}
+
+/// GPU tree culling on and off, interleaved round by round so the machine's load affects
+/// both alike (`MISTY_AB_ROUNDS`, default 3; `MISTY_NOON_VIEWS`, default `hero,inside`;
+/// `MISTY_QUALITY`, default `high`): median GPU frame, CPU render and the tree parts per
+/// mode. (Indirect tree draws are not in the triangle counter: the "off" rows show the trees'
+/// share.)
+#[test]
+#[ignore = "timing, prints only"]
+fn noon_valley_cull_ab() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            crate::render::fast_paths::set("tree_gpu_cull", true);
+        }
+    }
+    let _restore = Restore;
+    let (w, h) = size();
+    let rounds: usize = std::env::var("MISTY_AB_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+    let names = std::env::var("MISTY_NOON_VIEWS").unwrap_or_else(|_| "hero,inside".into());
+    const PARTS: [&str; 4] = [
+        "Tree culling",
+        "Shadow maps (cascades, local)",
+        "Screen-space prepass",
+        "Main: trees",
+    ];
+    if let Some(v) = noon_view("hero") {
+        breakdown(&device, &queue, &v, &QualityLevel::low(), (w, h));
+    }
+    let median = |mut v: Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v[v.len() / 2]
+    };
+    for name in names.split(',') {
+        let Some(view) = noon_view(name) else {
+            continue;
+        };
+        for (level, quality) in levels("high") {
+            // [mode][gpu, cpu, parts..., M triangles]
+            let mut runs: [Vec<Vec<f32>>; 2] = [Vec::new(), Vec::new()];
+            for _ in 0..rounds {
+                for (mode, gpu) in [(0, true), (1, false)] {
+                    crate::render::fast_paths::set("tree_gpu_cull", gpu);
+                    let b = breakdown(&device, &queue, &view, &quality, (w, h));
+                    let mut row = vec![b.gpu, b.cpu];
+                    row.extend(PARTS.iter().map(|p| b.part(p)));
+                    row.push(b.stats.triangles as f32 / 1e6);
+                    runs[mode].push(row);
+                }
+            }
+            for (mode, label) in [(0, "gpu cull on "), (1, "gpu cull off")] {
+                let col = |i: usize| median(runs[mode].iter().map(|r| r[i]).collect());
+                eprintln!(
+                    "== ab {name} {level} {w}x{h} {label}: GPU {:.2} ms, CPU render {:.2} ms, {:.1} M triangles (counted)",
+                    col(0),
+                    col(1),
+                    col(2 + PARTS.len())
+                );
+                for (i, p) in PARTS.iter().enumerate() {
+                    eprintln!("   {p:<32} {:6.2} ms", col(2 + i));
+                }
+            }
         }
     }
 }

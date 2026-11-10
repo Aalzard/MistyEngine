@@ -296,6 +296,9 @@ Double-click to edit the tree",
                 ui.label("Cast Shadows");
                 ch |= ui.checkbox(&mut s.cast_shadows, "").changed();
                 ui.end_row();
+                ui.label("Shadow Detail").on_hover_text("Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)");
+                ch |= ui.add(egui::Slider::new(&mut s.shadow_detail, 0.1..=1.0)).changed();
+                ui.end_row();
             });
         });
     if ch {
@@ -304,6 +307,7 @@ Double-click to edit the tree",
             d.trees.lod_distance = s.lod_distance;
             d.trees.billboard_start = s.billboard_start;
             d.trees.cast_shadows = s.cast_shadows;
+            d.trees.shadow_detail = s.shadow_detail;
         });
     }
     ui.weak(format!("{} trees placed.", d.trees.instances.len()));

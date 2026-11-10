@@ -85,6 +85,24 @@ const FADE: f32 = 0.0001;
 /// per map (cascade or virtual shadow map page), not from the camera's distance: a tree
 /// crossing its LOD distance used to switch its shadow in cascade 0 at once (no cross-fade),
 /// and the shadow jumped while the player walked.
+/// Plants smaller than this (bounding radius of the model, metres) are small plants: ferns,
+/// groundcover. Their level-of-detail and draw distances shrink with their size (they cover
+/// few pixels sooner), and they cast only into the cascades whose texels are fine enough for
+/// their shadow (`SMALL_TEXELS` texels across their radius).
+pub(super) const SMALL_PLANT: f32 = 2.0;
+pub(super) const SMALL_TEXELS: f32 = 16.0;
+
+/// Distance factor of a prototype of bounding radius `radius` (1 for trees and bushes).
+pub(super) fn size_factor(radius: f32) -> f32 {
+    (radius / SMALL_PLANT).clamp(0.25, 1.0)
+}
+
+/// Does a placed plant of model radius `model_radius` (scaled: `radius`) cast into a cascade
+/// of texel size `texel`?
+pub(super) fn casts_into(model_radius: f32, radius: f32, texel: f32) -> bool {
+    model_radius >= SMALL_PLANT || texel * SMALL_TEXELS <= radius
+}
+
 pub(super) fn shadow_lod(texel: f32) -> u8 {
     if texel <= 0.03 {
         0
@@ -1185,8 +1203,12 @@ impl TreeRenderer {
                 let m_bounds = (m.min, m.max);
                 let scale = p.height.max(p.width);
                 let center = p.foot + Vec3::Y * (m.max.y * 0.5 * p.height);
-                let radius = m.bounding_radius() * scale;
+                let model_radius = m.bounding_radius();
+                let radius = model_radius * scale;
                 let dist = center.distance(f.camera);
+                // Small plants: nearer levels of detail and draw distance.
+                let k = size_factor(model_radius);
+                let (lod_d, bb_d, draw_d) = (lod_d * k, bb_d * k, draw_d * k);
                 // Past the draw distance only the virtual shadow map's pages take the tree.
                 let beyond = dist > draw_d + radius;
                 if beyond && vsm_frusta.is_empty() {
@@ -1245,10 +1267,12 @@ impl TreeRenderer {
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
                 if s.cast_shadows && t.cast_shadows && !beyond && dist < shadow_reach + radius {
                     for (slot, cf) in cascade_frusta.iter().enumerate() {
-                        if !cf.intersects(&bounds) {
+                        if !cf.intersects(&bounds)
+                            || !casts_into(model_radius, radius, f.cascades[slot].texel)
+                        {
                             continue;
                         }
-                        let lod = shadow_lod(f.cascades[slot].texel) as usize;
+                        let lod = shadow_lod(f.cascades[slot].texel / s.shadow_detail) as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
@@ -1650,19 +1674,20 @@ impl TreeRenderer {
             .map(|p| match p {
                 Some((_, tree)) => {
                     let m = &self.trees[&self.frame_trees[*tree]].built.model;
+                    let r = m.bounding_radius();
                     ProtoGpu {
-                        bounds: [m.max.y * 0.5, m.bounding_radius(), 1.0, 0.0],
+                        bounds: [m.max.y * 0.5, r, 1.0, size_factor(r)],
                     }
                 }
                 None => ProtoGpu::default(),
             })
             .collect();
         let casts = s.cast_shadows && t.cast_shadows;
-        let cascades: Vec<(Mat4, u8)> = match casts {
+        let cascades: Vec<(Mat4, u8, f32)> = match casts {
             true => f
                 .cascades
                 .iter()
-                .map(|c| (c.view_proj, shadow_lod(c.texel)))
+                .map(|c| (c.view_proj, shadow_lod(c.texel / s.shadow_detail), c.texel))
                 .collect(),
             false => Vec::new(),
         };
@@ -1711,7 +1736,7 @@ impl TreeRenderer {
             }
         };
         batches(0, main, None);
-        for (slot, (_, lod)) in cascades.iter().enumerate() {
+        for (slot, (_, lod, _)) in cascades.iter().enumerate() {
             if let Some(out) = shadows.get_mut(slot) {
                 batches(slot + 1, out, Some(*lod));
             }

@@ -26,13 +26,14 @@ struct Tree {
 
 struct Proto {
     // x = height of the bounding sphere's centre (unscaled), y = its radius (unscaled),
-    // z = 1 when the prototype draws.
+    // z = 1 when the prototype draws, w = its distance factor (small plants < 1).
     bounds: vec4<f32>,
 };
 
 struct View {
     planes: array<vec4<f32>, 6>,
-    // x = level of detail of a cascade (0..2; the camera: -1 = by distance).
+    // x = level of detail of a cascade (0..2; the camera: -1 = by distance), y = a cascade's
+    // texel size (metres).
     misc: vec4<f32>,
 };
 
@@ -86,6 +87,9 @@ fn append(list: u32, t: Tree) {
 // Share of a level's distance past which the next level takes over (trees.rs `FADE`): the
 // CPU path switches at `edge × (1 + FADE)`.
 const FADE: f32 = 0.0001;
+// trees.rs `SMALL_PLANT`, `SMALL_TEXELS`.
+const SMALL_PLANT: f32 = 2.0;
+const SMALL_TEXELS: f32 = 16.0;
 
 @compute @workgroup_size(256)
 fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -106,7 +110,9 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     let center = t.foot.xyz + vec3<f32>(0.0, b.x * t.scale.x, 0.0);
     let radius = b.y * scale;
     let dist = distance(center, params.camera.xyz);
-    let draw = params.lod.z;
+    // Small plants: nearer levels and draw distance (trees.rs `size_factor`).
+    let k = b.w;
+    let draw = params.lod.z * k;
     if (dist > draw + radius) {
         return;
     }
@@ -114,9 +120,9 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     // The camera: level by distance.
     if (intersects(0u, center, radius)) {
         var lod = 3u;
-        if (dist < params.lod.x * (1.0 + FADE)) {
+        if (dist < params.lod.x * k * (1.0 + FADE)) {
             lod = 0u;
-        } else if (dist < params.lod.y * (1.0 + FADE)) {
+        } else if (dist < params.lod.y * k * (1.0 + FADE)) {
             lod = 1u;
         } else if (dist < draw * (1.0 - FADE) * (1.0 + FADE)) {
             lod = 2u;
@@ -128,7 +134,10 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     // The cascades: their own level, within their reach.
     if (dist < params.lod.w + radius) {
         for (var v = 1u; v < params.counts.x; v++) {
-            if (intersects(v, center, radius)) {
+            // A small plant casts only where the cascade's texels resolve it (trees.rs
+            // `casts_into`).
+            let small = b.y < SMALL_PLANT && views[v].misc.y * SMALL_TEXELS > radius;
+            if (!small && intersects(v, center, radius)) {
                 let lod = u32(views[v].misc.x);
                 append((v * protos_n + proto) * 3u + lod, t);
             }

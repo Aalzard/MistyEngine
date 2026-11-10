@@ -239,6 +239,14 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 0.0..=1.0,
                 "",
             );
+            slider(
+                ui,
+                "Clumping",
+                "Leaves gather into rounded lumps with gaps between (cauliflower crowns)",
+                &mut t.clumping,
+                0.0..=1.0,
+                "",
+            );
         });
     });
     section(ui, "Bark & Textures", false, |ui| {

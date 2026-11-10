@@ -46,7 +46,8 @@ pub(super) struct TreeGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
 pub(super) struct ProtoGpu {
-    /// x = bounding sphere centre height, y = radius (unscaled), z = 1 when it draws.
+    /// x = bounding sphere centre height, y = radius (unscaled), z = 1 when it draws, w = its
+    /// distance factor (trees.rs `size_factor`).
     pub bounds: [f32; 4],
 }
 
@@ -320,7 +321,7 @@ impl TerrainCull {
         camera: Vec3,
         view_proj: &Mat4,
         lod: [f32; 3],
-        cascades: &[(Mat4, u8)],
+        cascades: &[(Mat4, u8, f32)],
         reach: f32,
         protos: &[ProtoGpu],
         mesh_ranges: impl Fn(usize, usize) -> [std::ops::Range<u32>; 2],
@@ -332,16 +333,16 @@ impl TerrainCull {
             counts: [views_n as u32, self.protos as u32, self.lists.len() as u32, 0],
         };
         queue.write_buffer(&self.params, 0, bytemuck::bytes_of(&params));
-        let view = |m: &Mat4, lod: f32| ViewGpu {
+        let view = |m: &Mat4, lod: f32, texel: f32| ViewGpu {
             planes: Frustum::from_matrix(m).planes().map(|p| p.to_array()),
-            misc: [lod, 0.0, 0.0, 0.0],
+            misc: [lod, texel, 0.0, 0.0],
         };
-        let mut views = vec![view(view_proj, -1.0)];
+        let mut views = vec![view(view_proj, -1.0, 0.0)];
         views.extend(
             cascades
                 .iter()
                 .take(MAX_VIEWS - 1)
-                .map(|(m, l)| view(m, *l as f32)),
+                .map(|(m, l, texel)| view(m, *l as f32, *texel)),
         );
         queue.write_buffer(&self.views, 0, bytemuck::cast_slice(&views));
         let mut p = protos.to_vec();
