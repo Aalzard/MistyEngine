@@ -3277,3 +3277,34 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   the common ones, tutorials' steps) is still English; the Hierarchy and Project trees,
   submenus and panel toolbars are not mirrored; text fields edit Arabic in logical order
   without shaping.
+
+## Round 26 — NoonValley: a noon meadow valley, and trees at forest scale (branch r26-noon-meadow)
+
+### Done (docs/pending/r26-noon-meadow.md)
+- Sample scene **NoonValley** (generator `sample_noon_valley.rs`, `write_noon_valley`,
+  `noon_valley_matches_its_generator`, `noon_valley_plays`): a 4 km valley at noon after the
+  user's reference photo, ~107 000 placed trees and plants (oak, linden, beech, birch, edge
+  trees, bushes, ferns, groundcover), limestone ledges, three hazed ranges, cumulus, a forest
+  interior with leaf litter, ferns and broad groundcover. Original procedural 2K textures
+  (`tools/noon_valley_textures.py`).
+- **GPU-driven tree culling** (`render/trees_cull.rs`): every placed tree in a GPU buffer, one
+  compute dispatch per frame for the camera and the cascades (LOD by distance, per-cascade
+  LOD by texel), indirect draws; the CPU no longer loops over trees (fast path
+  `tree_gpu_cull`). **Hi-Z occlusion** of the camera's lists from last frame's depth while the
+  view holds still (`tree_occlusion`). Draw statistics read the lists' counts back.
+- **Small plants** (bounding radius under 2 m): LOD and draw distances scale with size; they
+  cast only into cascades fine enough for them. **Terrain ▸ Tree Rendering ▸ Shadow Detail**:
+  lighter trees and impostors sooner in the cascades (dense forests).
+- **Tree ▸ Clumping**: cauliflower crowns of sunlit lumps and dark hollows. Earlier on the
+  branch: Tree ▸ Crown Shading, Directional Light ▸ Intensity from Sun Height, Volumetric
+  Clouds ▸ Cumulus, Fog ▸ Sky Haze, Contact Shadows ▸ Distant Shadows, grass Depth Shading,
+  terrain layer Occlusion.
+- **Misty GI** tree proxies cached per terrain in 64 m cells; only cells near the clipmaps are
+  gathered each frame (was a loop over every tree, every frame).
+- Harness `render/noon_valley_tests.rs`: 9 views, timings, a 250 000-tree stress run, an
+  interleaved A/B of the culling modes, sun-height comparisons; parity test
+  `tree_gpu_cull_matches_the_cpu_lists`.
+
+### Not done yet
+- See the pending doc: GPU time on High at 1080p is above the 12 ms goal (grass and
+  screen-space passes dominate the meadow view); look tuning continues on `r26-level`.

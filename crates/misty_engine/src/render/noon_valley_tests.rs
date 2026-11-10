@@ -98,10 +98,8 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     let right = Vec3::Y.cross(fwd).normalize();
     let up = fwd.cross(right);
     let flat_right = Vec3::new(1.0, 0.0, 0.0);
-    let mut eye = gv.camera.position
-        + flat_right * v.offset.x
-        + Vec3::Y * v.offset.y
-        + Vec3::Z * v.offset.z;
+    let mut eye =
+        gv.camera.position + flat_right * v.offset.x + Vec3::Y * v.offset.y + Vec3::Z * v.offset.z;
     if v.offset.x != 0.0 || v.offset.z != 0.0 {
         // Stand on the ground there (eye height as at the start).
         let start_ground = ground_at(&gv, gv.camera.position);
@@ -250,11 +248,10 @@ fn noon_valley_times() {
     }
 }
 
-/// GPU tree culling on and off, interleaved round by round so the machine's load affects
-/// both alike (`MISTY_AB_ROUNDS`, default 3; `MISTY_NOON_VIEWS`, default `hero,inside`;
-/// `MISTY_QUALITY`, default `high`): median GPU frame, CPU render and the tree parts per
-/// mode. (Indirect tree draws are not in the triangle counter: the "off" rows show the trees'
-/// share.)
+/// GPU tree culling with and without its occlusion test, and off (CPU lists), interleaved
+/// round by round so the machine's load affects all alike (`MISTY_AB_ROUNDS`, default 3;
+/// `MISTY_NOON_VIEWS`, default `hero,inside`; `MISTY_QUALITY`, default `high`): median GPU
+/// frame, CPU render, triangles and the tree parts per mode.
 #[test]
 #[ignore = "timing, prints only"]
 fn noon_valley_cull_ab() {
@@ -266,6 +263,7 @@ fn noon_valley_cull_ab() {
     impl Drop for Restore {
         fn drop(&mut self) {
             crate::render::fast_paths::set("tree_gpu_cull", true);
+            crate::render::fast_paths::set("tree_occlusion", false);
         }
     }
     let _restore = Restore;
@@ -294,10 +292,12 @@ fn noon_valley_cull_ab() {
         };
         for (level, quality) in levels("high") {
             // [mode][gpu, cpu, parts..., M triangles]
-            let mut runs: [Vec<Vec<f32>>; 2] = [Vec::new(), Vec::new()];
+            let mut runs: [Vec<Vec<f32>>; 3] = [Vec::new(), Vec::new(), Vec::new()];
             for _ in 0..rounds {
-                for (mode, gpu) in [(0, true), (1, false)] {
+                for (mode, gpu, occlusion) in [(0, true, true), (1, true, false), (2, false, false)]
+                {
                     crate::render::fast_paths::set("tree_gpu_cull", gpu);
+                    crate::render::fast_paths::set("tree_occlusion", occlusion);
                     let b = breakdown(&device, &queue, &view, &quality, (w, h));
                     let mut row = vec![b.gpu, b.cpu];
                     row.extend(PARTS.iter().map(|p| b.part(p)));
@@ -305,7 +305,11 @@ fn noon_valley_cull_ab() {
                     runs[mode].push(row);
                 }
             }
-            for (mode, label) in [(0, "gpu cull on "), (1, "gpu cull off")] {
+            for (mode, label) in [
+                (0, "gpu cull + occlusion"),
+                (1, "gpu cull, no occlusion"),
+                (2, "cpu lists"),
+            ] {
                 let col = |i: usize| median(runs[mode].iter().map(|r| r[i]).collect());
                 eprintln!(
                     "== ab {name} {level} {w}x{h} {label}: GPU {:.2} ms, CPU render {:.2} ms, {:.1} M triangles (counted)",
@@ -397,7 +401,9 @@ fn noon_valley_stress() {
         let jz = crate::terrain::noise::hash(k as i32, 2, 0x57e5) - 0.5;
         let mut i = src;
         i.position += glam::Vec2::new(jx, jz) * (6.0 / d.size.x);
-        i.position = i.position.clamp(glam::Vec2::splat(0.0), glam::Vec2::splat(1.0));
+        i.position = i
+            .position
+            .clamp(glam::Vec2::splat(0.0), glam::Vec2::splat(1.0));
         d.trees.instances.push(i);
     }
     let n = d.trees.instances.len();
@@ -452,7 +458,15 @@ fn tree_gpu_cull_matches_the_cpu_lists() {
         }
         let mean = sum as f64 / a.len() as f64;
         let share = big as f64 / a.len() as f64;
-        eprintln!("{}: mean {mean:.3}, {:.3} % over 24 levels", shot.name(), share * 100.0);
-        assert!(mean < 1.0 && share < 0.01, "{}: mean {mean}, share {share}", shot.name());
+        eprintln!(
+            "{}: mean {mean:.3}, {:.3} % over 24 levels",
+            shot.name(),
+            share * 100.0
+        );
+        assert!(
+            mean < 1.0 && share < 0.01,
+            "{}: mean {mean}, share {share}",
+            shot.name()
+        );
     }
 }

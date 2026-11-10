@@ -397,8 +397,14 @@ impl TreeProxies {
             return;
         }
         let cell = |v: f32, n: usize| ((v / PROXY_CELL).floor().max(0.0) as usize).min(n - 1);
-        let (x0, x1) = (cell(l.x - self.reach, self.cols), cell(h.x + self.reach, self.cols));
-        let (z0, z1) = (cell(l.z - self.reach, self.rows), cell(h.z + self.reach, self.rows));
+        let (x0, x1) = (
+            cell(l.x - self.reach, self.cols),
+            cell(h.x + self.reach, self.cols),
+        );
+        let (z0, z1) = (
+            cell(l.z - self.reach, self.rows),
+            cell(h.z + self.reach, self.rows),
+        );
         for cz in z0..=z1 {
             for cx in x0..=x1 {
                 let (range, y0, y1) = &self.cells[cz * self.cols + cx];

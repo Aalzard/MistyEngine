@@ -111,7 +111,12 @@ fn clumping_gathers_the_leaves_into_lit_lumps() {
         ..TreeAsset::oak()
     };
     // Off: no card belongs to a lump (the crown as before).
-    assert!(generate::skeleton(&even).cards.iter().all(|c| c.lump.is_none()));
+    assert!(
+        generate::skeleton(&even)
+            .cards
+            .iter()
+            .all(|c| c.lump.is_none())
+    );
     let sk = generate::skeleton(&lumpy);
     let cards = &sk.cards;
     assert!(cards.iter().all(|c| c.lump.is_some()));
@@ -123,7 +128,11 @@ fn clumping_gathers_the_leaves_into_lit_lumps() {
             c.anchor.distance(centre) < r * 1.6
         })
         .count();
-    assert!(near as f32 > cards.len() as f32 * 0.9, "{near} of {}", cards.len());
+    assert!(
+        near as f32 > cards.len() as f32 * 0.9,
+        "{near} of {}",
+        cards.len()
+    );
     // The lumps' undersides are darker than their tops: more contrast between up- and
     // down-facing leaves than in the evenly spread crown (sunlit lumps, dark hollows).
     let contrast = |t: &TreeAsset| {

@@ -516,8 +516,8 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 .min_by(|a, b| a.0.distance(anchor).total_cmp(&b.0.distance(anchor)))
             {
                 // On the lump's ball (biased outwards), facing away from its centre.
-                let dir = ((anchor - c0).normalize_or(out) + out * 0.5 + jitter * 0.3)
-                    .normalize_or(out);
+                let dir =
+                    ((anchor - c0).normalize_or(out) + out * 0.5 + jitter * 0.3).normalize_or(out);
                 let target = c0 + dir * r * (0.55 + 0.45 * rng.f());
                 anchor = anchor.lerp(target, clumping);
                 let away = (dir - up * dir.dot(up)).normalize_or(facing);

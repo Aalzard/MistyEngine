@@ -772,6 +772,8 @@ pub(super) struct TreeFrame<'a> {
     /// The virtual shadow map's page rectangles this frame (render/vsm): view-projection and
     /// the level of detail for their texel. Their lists follow the cascades'.
     pub vsm_views: &'a [(Mat4, u8)],
+    /// Last frame's depth for the GPU culling's occlusion test (None = off).
+    pub occlusion: Option<&'a super::trees_cull::TreeOcclusion<'a>>,
     /// The virtual shadow map's near layer (view-projection, half side): trees close to the
     /// camera go into it (their swaying leaves and limbs) instead of the cached pages. Its
     /// list follows the virtual shadow map's.
@@ -908,13 +910,29 @@ impl TreeRenderer {
 
     /// The tree cull dispatches of this frame's GPU-culled terrains (before any pass draws
     /// trees).
-    pub fn encode_cull(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn encode_cull(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
         let Some(p) = &self.cull_pipelines else {
             return;
         };
         for key in &self.gpu_frame {
-            if let Some(t) = self.gpu_terrains.get(key) {
+            if let Some(t) = self.gpu_terrains.get_mut(key) {
                 t.encode(p, encoder);
+                // The lists' counts, read back for the statistics.
+                t.copy_counts(device, encoder);
+            }
+        }
+    }
+
+    /// Were trees culled on the GPU this frame (their occlusion test wants the depth)?
+    pub fn gpu_culled(&self) -> bool {
+        !self.gpu_frame.is_empty()
+    }
+
+    /// After the frame's submit: map the GPU-culled lists' counts it copied.
+    pub fn cull_submitted(&self) {
+        for key in &self.gpu_frame {
+            if let Some(t) = self.gpu_terrains.get(key) {
+                t.counts_submitted();
             }
         }
     }
@@ -1054,6 +1072,9 @@ impl TreeRenderer {
         self.shadows.clear();
         self.near_count = 0;
         self.near_candidates = 0;
+        for t in self.gpu_terrains.values_mut() {
+            t.collect_counts();
+        }
         self.gpu_frame.clear();
         let mut gpu_main: Vec<Batch> = Vec::new();
         let mut gpu_shadows: Vec<Vec<Batch>> = vec![Vec::new(); f.cascades.len()];
@@ -1487,10 +1508,12 @@ impl TreeRenderer {
                 let slice = t
                     .instances
                     .slice(info.base as u64 * size..(info.base + info.capacity) as u64 * size);
+                // (Instances: the latest counts read back, a frame or two old.)
+                let count = t.counts.get(l).copied().unwrap_or(0).min(info.capacity);
                 if b.part == Part::Impostor {
                     pass.set_vertex_buffer(0, slice);
                     pass.draw_indirect(&t.args, info.args_offset(false));
-                    stats.draw(0, 6, 6);
+                    stats.draw(count, 6, 6);
                     continue;
                 }
                 let mesh = &gpu.lods[b.lod.min(1)];
@@ -1507,7 +1530,7 @@ impl TreeRenderer {
                 pass.set_vertex_buffer(1, slice);
                 pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed_indirect(&t.args, info.args_offset(leaves));
-                stats.draw(0, range.len() as u32, mesh.vertex_count);
+                stats.draw(count, range.len() as u32, mesh.vertex_count);
                 continue;
             }
             let Some(instances) = instances else {
@@ -1691,9 +1714,12 @@ impl TreeRenderer {
                 .collect(),
             false => Vec::new(),
         };
-        let c = &self.gpu_terrains[&t.key];
+        let c = self.gpu_terrains.get_mut(&t.key).expect("made above");
         c.update(
+            device,
             queue,
+            pipelines,
+            f.occlusion,
             f.camera,
             f.view_proj,
             lod,
@@ -1773,7 +1799,14 @@ fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
             impostor::VIEWS as f32,
         ],
         light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
-        shade: [a.crown_shading, 0.0, 0.0, 0.0],
+        // y: a small plant (understory) passes no sunlight through its leaves where something
+        // else shades it (a tree's own crown only dims its transmitted light).
+        shade: [
+            a.crown_shading,
+            f32::from(m.bounding_radius() < SMALL_PLANT),
+            0.0,
+            0.0,
+        ],
     }
 }
 

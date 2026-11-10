@@ -9,6 +9,11 @@
 //!
 //! Used with cascaded shadows; the virtual shadow map's page views and near layer keep the CPU
 //! lists (trees.rs).
+//!
+//! Occlusion: the camera's lists also skip trees hidden behind last frame's depth (a Hi-Z
+//! pyramid of the target's depth after the main pass, `TreeHiz`), while the camera has
+//! hardly moved since: inside a forest most trees past the first rows are behind trunks and
+//! crowns. The cascades' lists are never occlusion culled.
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -33,6 +38,36 @@ struct Params {
     camera: [f32; 4],
     lod: [f32; 4],
     counts: [u32; 4],
+    /// x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels).
+    occlusion: [f32; 4],
+    /// The view-projection the Hi-Z pyramid's depth was drawn with.
+    hiz_view_proj: [[f32; 4]; 4],
+}
+
+/// Last frame's depth as a Hi-Z pyramid (per target), for the camera's occlusion test.
+pub(in crate::render) struct TreeHiz {
+    pub state: super::gpu_culling::TargetState,
+    pub view_proj: Mat4,
+    pub camera: Vec3,
+    pub forward: Vec3,
+}
+
+impl TreeHiz {
+    /// Is the pyramid usable for a frame seen from `camera` looking along `forward` at a
+    /// target of `size`? (Only while the view has hardly changed: trees it hid may show now.)
+    pub fn usable(&self, size: (u32, u32), camera: Vec3, forward: Vec3) -> bool {
+        self.state.fits(size)
+            && self.camera.distance(camera) < 1.0
+            && self.forward.dot(forward) > 0.998
+    }
+}
+
+/// The occlusion test's inputs for a frame.
+pub(in crate::render) struct TreeOcclusion<'a> {
+    pub pyramid: &'a wgpu::TextureView,
+    pub view_proj: Mat4,
+    pub mips: u32,
+    pub size: (u32, u32),
 }
 
 /// One placed tree (trees_cull.wgsl `Tree`).
@@ -90,6 +125,9 @@ pub(super) fn list_index(protos: usize, view: usize, proto: usize, lod: usize) -
 /// The compute pipelines (one per renderer).
 pub(super) struct CullPipelines {
     layout: wgpu::BindGroupLayout,
+    hiz_layout: wgpu::BindGroupLayout,
+    /// Bound as the pyramid when there is none (occlusion test off).
+    no_hiz: wgpu::TextureView,
     cull: wgpu::ComputePipeline,
     clamp: wgpu::ComputePipeline,
 }
@@ -126,13 +164,40 @@ impl CullPipelines {
                 entry(6, storage(false)),
             ],
         });
+        let hiz_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("misty tree cull hiz"),
+            entries: &[entry(
+                0,
+                wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+            )],
+        });
+        let no_hiz = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("misty tree cull no hiz"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty tree cull"),
             source: wgpu::ShaderSource::Wgsl(SRC.into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("misty tree cull"),
-            bind_group_layouts: &[Some(&layout)],
+            bind_group_layouts: &[Some(&layout), Some(&hiz_layout)],
             immediate_size: 0,
         });
         let pipeline = |entry: &str| {
@@ -150,17 +215,32 @@ impl CullPipelines {
             cull: pipeline("cull"),
             clamp: pipeline("clamp_counts"),
             layout,
+            hiz_layout,
+            no_hiz,
         }
     }
 }
 
-fn buffer(device: &wgpu::Device, label: &str, bytes: u64, usage: wgpu::BufferUsages) -> wgpu::Buffer {
+fn buffer(
+    device: &wgpu::Device,
+    label: &str,
+    bytes: u64,
+    usage: wgpu::BufferUsages,
+) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
         size: bytes.max(16),
         usage,
         mapped_at_creation: false,
     })
+}
+
+/// A staging copy of the draw arguments (the lists' instance counts, read back for the
+/// statistics a frame or two late, never waited for).
+struct Readback {
+    buffer: wgpu::Buffer,
+    /// 0 = free, 1 = copied this frame, 2 = mapping, 3 = mapped.
+    state: std::sync::Arc<std::sync::atomic::AtomicU8>,
 }
 
 /// One terrain's trees on the GPU: the placed trees, the frame's lists and their arguments.
@@ -177,6 +257,11 @@ pub(super) struct TerrainCull {
     pub instances: wgpu::Buffer,
     pub args: wgpu::Buffer,
     group: wgpu::BindGroup,
+    /// This frame's Hi-Z pyramid (or the stand-in when the test is off).
+    hiz_group: Option<wgpu::BindGroup>,
+    readback: Vec<Readback>,
+    /// The latest instance count of every list that has arrived (statistics).
+    pub counts: Vec<u32>,
 }
 
 impl TerrainCull {
@@ -269,7 +354,7 @@ impl TerrainCull {
             device,
             "misty tree cull args",
             (lists.len().max(1) as u32 * ARGS_PER_LIST) as u64 * 4,
-            U::STORAGE | U::INDIRECT | U::COPY_DST,
+            U::STORAGE | U::INDIRECT | U::COPY_DST | U::COPY_SRC,
         );
         fn bind(binding: u32, b: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
             wgpu::BindGroupEntry {
@@ -295,13 +380,79 @@ impl TerrainCull {
             position,
             count: trees.len() as u32,
             protos,
-            lists,
             params,
             proto_buf,
             views,
             instances,
             args,
             group,
+            hiz_group: None,
+            readback: Vec::new(),
+            counts: vec![0; lists.len()],
+            lists,
+        }
+    }
+
+    /// Copy this frame's arguments into a free staging buffer (after the cull dispatches).
+    pub fn copy_counts(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+        use std::sync::atomic::Ordering;
+        if self.count == 0 {
+            return;
+        }
+        let free = (self.readback.iter()).position(|r| r.state.load(Ordering::Acquire) == 0);
+        let i = match free {
+            Some(i) => i,
+            // Three in flight at most: skip a frame rather than wait.
+            None if self.readback.len() >= 3 => return,
+            None => {
+                self.readback.push(Readback {
+                    buffer: buffer(
+                        device,
+                        "misty tree cull counts readback",
+                        self.args.size(),
+                        wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    ),
+                    state: Default::default(),
+                });
+                self.readback.len() - 1
+            }
+        };
+        let r = &self.readback[i];
+        encoder.copy_buffer_to_buffer(&self.args, 0, &r.buffer, 0, self.args.size());
+        r.state.store(1, Ordering::Release);
+    }
+
+    /// After the frame's submit: start mapping what it copied.
+    pub fn counts_submitted(&self) {
+        use std::sync::atomic::Ordering;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) == 1 {
+                r.state.store(2, Ordering::Release);
+                let state = r.state.clone();
+                r.buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        state.store(if result.is_ok() { 3 } else { 0 }, Ordering::Release);
+                    });
+            }
+        }
+    }
+
+    /// Take the newest counts that have arrived into `counts`.
+    pub fn collect_counts(&mut self) {
+        use std::sync::atomic::Ordering;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) != 3 {
+                continue;
+            }
+            if let Ok(data) = r.buffer.slice(..).get_mapped_range() {
+                let args: &[u32] = bytemuck::cast_slice(&data[..]);
+                for (c, l) in self.counts.iter_mut().zip(&self.lists) {
+                    *c = args.get(l.args as usize + 1).copied().unwrap_or(0);
+                }
+            }
+            r.buffer.unmap();
+            r.state.store(0, Ordering::Release);
         }
     }
 
@@ -316,8 +467,11 @@ impl TerrainCull {
     /// instances (`mesh_ranges(proto, lod)` = bark and leaves index ranges of a mesh level).
     #[allow(clippy::too_many_arguments)]
     pub fn update(
-        &self,
+        &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
+        pipelines: &CullPipelines,
+        occlusion: Option<&TreeOcclusion>,
         camera: Vec3,
         view_proj: &Mat4,
         lod: [f32; 3],
@@ -330,9 +484,31 @@ impl TerrainCull {
         let params = Params {
             camera: camera.extend(self.count as f32).to_array(),
             lod: [lod[0], lod[1], lod[2], reach],
-            counts: [views_n as u32, self.protos as u32, self.lists.len() as u32, 0],
+            counts: [
+                views_n as u32,
+                self.protos as u32,
+                self.lists.len() as u32,
+                0,
+            ],
+            occlusion: match occlusion {
+                Some(o) => [o.mips as f32, o.size.0 as f32, o.size.1 as f32, 0.0],
+                None => [0.0; 4],
+            },
+            hiz_view_proj: occlusion
+                .map_or(Mat4::IDENTITY, |o| o.view_proj)
+                .to_cols_array_2d(),
         };
         queue.write_buffer(&self.params, 0, bytemuck::bytes_of(&params));
+        self.hiz_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty tree cull hiz"),
+            layout: &pipelines.hiz_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    occlusion.map_or(&pipelines.no_hiz, |o| o.pyramid),
+                ),
+            }],
+        }));
         let view = |m: &Mat4, lod: f32, texel: f32| ViewGpu {
             planes: Frustum::from_matrix(m).planes().map(|p| p.to_array()),
             misc: [lod, texel, 0.0, 0.0],
@@ -375,7 +551,11 @@ impl TerrainCull {
             label: Some("misty tree cull"),
             timestamp_writes: None,
         });
+        let Some(hiz) = &self.hiz_group else {
+            return;
+        };
         pass.set_bind_group(0, &self.group, &[]);
+        pass.set_bind_group(1, hiz, &[]);
         pass.set_pipeline(&pipelines.cull);
         let groups = self.count.div_ceil(GROUP);
         let (x, y) = (groups.min(65535), groups.div_ceil(65535));
