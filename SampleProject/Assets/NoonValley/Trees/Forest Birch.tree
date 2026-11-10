@@ -1,9 +1,9 @@
 {
   "seed": 33,
-  "height": 19.0,
+  "height": 22.0,
   "crown_shape": "Oval",
-  "crown_width": 0.38,
-  "crown_base": 0.4,
+  "crown_width": 0.36,
+  "crown_base": 0.52,
   "trunk_radius": 0.2,
   "leader": 1.0,
   "trunk_bend": 0.3,
@@ -21,6 +21,7 @@
   "leaf_variation": 0.5,
   "translucency": 0.8,
   "crown_shading": 0.7,
+  "clumping": 0.4,
   "bark_color": [
     1.0,
     1.0,

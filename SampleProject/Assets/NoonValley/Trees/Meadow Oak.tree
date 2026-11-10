@@ -21,6 +21,7 @@
   "leaf_variation": 0.5,
   "translucency": 0.6,
   "crown_shading": 0.7,
+  "clumping": 0.7,
   "bark_color": [
     1.0,
     1.0,
