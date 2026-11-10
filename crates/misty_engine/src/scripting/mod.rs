@@ -58,6 +58,7 @@ pub mod vehicle_api;
 pub mod vfx_api;
 pub mod video_api;
 pub mod water_api;
+pub mod weather_api;
 pub mod world_partition_api;
 
 use std::collections::{HashMap, HashSet};
@@ -1057,6 +1058,11 @@ impl ScriptHost {
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
+            // Weather events reach scripts and graphs like broadcast custom events
+            // (OnLightning, OnThunder, OnWeatherChanged; scripting/weather_api.rs).
+            for e in w.scene.weather.take_events() {
+                w.graph_events.push(weather_api::custom_event(&e));
+            }
             w.time = *time;
             w.save.mark_time(time.time);
             // Axis smoothing runs on real time, so it works while the game is paused.

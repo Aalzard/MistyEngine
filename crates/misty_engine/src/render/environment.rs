@@ -42,6 +42,8 @@ pub struct Environment {
     pub wind: Option<Wind>,
     /// Fixed clock for the grass wind in seconds (tests, recordings); None = the renderer's.
     pub grass_time: Option<f32>,
+    /// Rain, snow, wet surfaces and lightning to draw (render/weather; None = none).
+    pub weather: Option<std::sync::Arc<crate::weather::WeatherFrame>>,
 }
 
 /// A Wind Zone as the grass sees it: where it blows and its multipliers of the grass's own
@@ -105,6 +107,7 @@ impl Environment {
             occlusion: None,
             wind: None,
             grass_time: None,
+            weather: None,
         }
     }
 

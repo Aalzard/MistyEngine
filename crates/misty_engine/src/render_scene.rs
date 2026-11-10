@@ -128,6 +128,7 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
     env.lights_2d = crate::light2d::collect(scene);
     env.lightmaps = crate::lightmap::scene_lightmaps(scene);
     env.wind = crate::scene::wind_zone::scene_wind(scene);
+    env.weather = crate::weather::frame::scene_frame(scene);
     env
 }
 
@@ -230,6 +231,8 @@ pub fn post_settings(scene: &Scene) -> PostSettings {
     if scene.render_settings.realtime_gi && !post.misty_gi.enabled {
         post.misty_gi = crate::render::MistyGiSettings::scene_default();
     }
+    // Storms bring cloud cover and thicker fog (render/weather).
+    crate::weather::frame::adjust_post(&mut post, scene);
     post
 }
 

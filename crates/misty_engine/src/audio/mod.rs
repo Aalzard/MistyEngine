@@ -391,6 +391,59 @@ impl Audio {
         id.is_some()
     }
 
+    /// A 2D voice outside any Audio Source (ambience: weather loops, thunder) through the
+    /// mixer group `output` ("Assets/Audio/Main.mixer#SFX"; empty = straight to the output).
+    /// `clip` is project-relative or absolute.
+    pub fn play_ambient(
+        &mut self,
+        clip: &str,
+        output: &str,
+        volume: f32,
+        looping: bool,
+    ) -> Option<VoiceId> {
+        self.backend();
+        let group = if output.is_empty() {
+            None
+        } else {
+            self.resolve_output(output)
+        };
+        let track = group.and_then(|(m, g)| self.mixers.get(m)?.tracks.get(&g).copied());
+        let params = VoiceParams {
+            volume: if self.muted { 0.0 } else { volume.max(0.0) },
+            looping,
+            ..Default::default()
+        };
+        let id = self.start_voice(clip, params, track)?;
+        self.clips.push(id);
+        Some(id)
+    }
+
+    /// New volume of a voice from [`Audio::play_ambient`].
+    pub fn set_voice_volume(&mut self, id: VoiceId, volume: f32, looping: bool) {
+        let muted = self.muted;
+        if let Some(b) = self.backend.as_mut() {
+            let params = VoiceParams {
+                volume: if muted { 0.0 } else { volume.max(0.0) },
+                looping,
+                ..Default::default()
+            };
+            b.set(id, params);
+        }
+    }
+
+    /// Stop a voice from [`Audio::play_ambient`].
+    pub fn stop_voice(&mut self, id: VoiceId) {
+        if let Some(b) = self.backend.as_mut() {
+            b.stop(id);
+        }
+        self.clips.retain(|c| *c != id);
+    }
+
+    /// Is a voice from [`Audio::play_ambient`] still sounding?
+    pub fn voice_alive(&self, id: VoiceId) -> bool {
+        self.backend.as_ref().is_some_and(|b| b.is_alive(id))
+    }
+
     fn all_ids(&self) -> impl Iterator<Item = VoiceId> + '_ {
         let ids = self.sources.values().map(|v| v.id);
         ids.chain(self.one_shots.iter().map(|o| o.id))

@@ -68,6 +68,7 @@ mod vgeo;
 mod volumetrics;
 mod vsm;
 mod water;
+mod weather;
 mod wireframe;
 
 pub use crate::terrain::TerrainDraw;
@@ -597,6 +598,8 @@ pub struct Renderer {
     volumetrics: volumetrics::Volumetrics,
     /// Volumetric clouds (trace, temporal resolve, shadow map).
     clouds: clouds::Clouds,
+    /// Rain, snow, wet surfaces and lightning (render/weather).
+    weather: weather::WeatherGpu,
     /// The view group must be rebuilt (fog volume resized) before this render's passes.
     view_group_dirty: bool,
     /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
@@ -674,6 +677,7 @@ impl Renderer {
         let volumetrics = volumetrics::Volumetrics::new(device);
         let sky = hdri_sky::SkyGpu::new(device);
         let clouds = clouds::Clouds::new(device);
+        let weather = weather::WeatherGpu::new(device);
         let view_bind_group = volumetrics::view_group(
             device,
             &pipelines.view_layout,
@@ -681,6 +685,7 @@ impl Renderer {
             &volumetrics,
             &sky,
             &clouds,
+            &weather,
         );
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
@@ -784,6 +789,7 @@ impl Renderer {
             slots_scratch: Vec::new(),
             volumetrics,
             clouds,
+            weather,
             view_group_dirty: false,
             screen_space,
             screen_trace,
@@ -893,6 +899,7 @@ impl Renderer {
             &self.volumetrics,
             &self.sky,
             &self.clouds,
+            &self.weather,
         );
         self.view_group_dirty = false;
     }
@@ -1549,6 +1556,8 @@ impl Renderer {
         if self.sky.prepare(device, queue, frame.environment) {
             self.rebuild_view_group(device);
         }
+        // (Before the scene copy is planned: the weather passes read it.)
+        self.weather_begin(frame);
         let scene_copy = self.needs_scene_copy(frame);
         self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
         // (Before culling: decals in view turn the screen-space prepass on.)
@@ -1750,12 +1759,14 @@ impl Renderer {
 
         // Lights and their shadow maps (cascades first, then local layers).
         let soft = shadow_settings.soft != crate::quality::Tier::Off;
-        let lights = lights_uniform(frame, &plan, soft);
+        let lights = weather::dim_lights(lights_uniform(frame, &plan, soft), frame);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         light2d::upload(queue, &self.lights_2d, &frame.environment.lights_2d);
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
         self.prepare_glows(device, queue, target, frame);
+        // (Before the clouds: a new occlusion map rebuilds the view group there.)
+        self.prepare_weather(device, queue);
         self.prepare_clouds(device, queue, target, frame);
 
         // Overlay triangles follow the lines in the same buffer, which never grows past the
@@ -1834,6 +1845,8 @@ impl Renderer {
             self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         }
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
+        self.weather_occlusion_pass(device, &mut encoder, frame, &lists.prep);
+        self.mark(&mut encoder, "Weather occlusion");
         {
             crate::profile_scope!("Render.Encode.VirtualShadowMap");
             self.vsm_passes(&mut encoder, frame, &plan, &lists, &mut stats);
@@ -2057,6 +2070,8 @@ impl Renderer {
             (self.taa).stretch(device, &mut encoder, &self.view_bind_group, input, output);
         }
         self.mark(&mut encoder, "TAA");
+        self.weather_passes(device, queue, &mut encoder, target, frame);
+        self.mark(&mut encoder, "Weather");
         let composite = self.postfx_passes(device, &mut encoder, target);
         let composite = composite.as_ref().unwrap_or(&target.composite_group);
         self.bloom_passes(&mut encoder, target, composite, timing);
@@ -2514,7 +2529,7 @@ impl Renderer {
         if !frame.shaded || self.wire_only {
             return false;
         }
-        if !frame.water.is_empty() || self.effects.needs_scene() {
+        if !frame.water.is_empty() || self.effects.needs_scene() || self.weather.needs_scene() {
             return true;
         }
         let Some(custom) = self.custom.as_ref() else {

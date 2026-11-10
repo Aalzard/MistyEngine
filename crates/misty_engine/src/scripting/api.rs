@@ -787,6 +787,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::physics2d_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
+    super::weather_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;
