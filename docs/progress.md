@@ -3302,3 +3302,46 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+## Round 31 — Misty's own names (branch r31-rebrand)
+
+### Done
+- The editor uses its own names for what it shows (`crates/misty_editor/src/renames.rs`):
+  Inspector → **Properties**, Hierarchy → **Scene Tree**, Project → **Asset Files**, Scene →
+  **Editor Scene**, Game → **Scene Viewer**, the GameObject menu → **Object**, the Component
+  menu and Add Component → **Archetype** / **Add Archetype** (Remove / Copy / Paste / Move
+  Archetype, Revert Archetype Overrides), World Partition → **World Streaming**, Virtual
+  Geometry → **Misty Mesh** (menus, Quality, draw modes, Frame Debugger events, profiler rows),
+  the asset "Addressable" checkbox → **Load by Address**, the NavMesh Surface's "All Game
+  Objects" / "Current Object Hierarchy" → "All Objects" / "Current Object and Children".
+  Tooltips, empty states, status text, MCP tool descriptions and tutorials follow ("the Scene
+  view" → "the Editor Scene", "the Project window" → "Asset Files", …). Turkish and Arabic
+  translations updated (Özellikler / الخصائص, Sahne Ağacı / شجرة المشهد, Varlık Dosyaları /
+  ملفات الأصول, Düzenleyici Sahnesi / مشهد المحرر, Sahne Görüntüleyici / عارض المشهد, Arketip /
+  نمط, Nesne / كائن, Dünya Akışı / بث العالم) and the glossary in `docs/localization.md`.
+- Nothing stored changed: tab ids in saved layouts are the enum variants (a test loads one),
+  component names in scenes ("World Partition", "Hierarchy Folder" are shown as World Streaming
+  and Scene Tree Folder through `renames::shown_name`, translations keyed by the stored name),
+  Lua names (`GetComponent`, `AddComponent`, `CustomInspector`, `HideInInspector`, the
+  `GameObject` class and the default "GameObject" object name), MCP tool names
+  (`scene.add_component`, …) and tutorial target prefixes (`inspector.…`, `hierarchy.…`).
+- Old names keep working: `editor.run_menu_item` maps old paths (`GameObject/3D Object/Cube`,
+  `Component/…`, `Hierarchy/<scene>/…`, `Window/General/Inspector` and the other old window
+  titles, `… Virtual Geometry`) to the new ones; editor scripts' `MenuItem("GameObject/…")` /
+  `("Component/…")` land in the renamed menus; `MISTY_TAB=Game`, `MISTY_OPEN_MENU=GameObject`
+  and `MISTY_DRAW_MODE=Virtual Geometry Clusters` still work.
+- Tutorials target the new labels (`panel.Scene Tree`, `panel.Properties`, `panel.Editor Scene`,
+  `menu.Object/…`); the end-to-end tutorial tests check every target is drawn.
+- Guard test `renames::tests::ui_text_and_user_docs_use_mistys_own_names`: tab titles, menu
+  commands, tutorials, both translation files, every string literal of the editor's sources and
+  the user guides (README, `docs/*.md` except progress / decisions / unity-notes, the release
+  READMEs, `docs/api/lua-api.md`) never say Unity, Unreal, Nanite, Lumen or Blueprint.
+- User docs describe features on their own terms (no "Unity-like", "Lumen-like", "Nanite-like",
+  "in the spirit of Blueprints"); CHANGELOG has an Unreleased entry.
+- Screenshots: `docs/screenshots/r31/default_layout_en.jpg`, `default_layout_ar.jpg`.
+- Checks: fmt clean, clippy 0 warnings, editor tests 816 passed / 0 failed (clean target);
+  translation coverage 793/793 in both languages (792/792 before), 60/124 component names (same).
+
+### Not done yet
+- Kept on purpose: the default name of a new empty object ("GameObject", also the Lua class),
+  "Shader Graph", "Animator", "Tile Palette", "Prefab", "Play Mode" (generic words), the
+  sample scene name `AddressablesDemo` and sample Lua scripts' comments (generated files).
