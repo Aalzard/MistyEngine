@@ -79,6 +79,25 @@ grass (indirect tree draws counted 0 before b3d6e414; the CPU path's trees were 
 Inside the wood the shadow cascades cost 15–19 ms: High's cascades 0–2 have texels ≤ 3 cm,
 so they drew full-detail trees; Shadow Detail 0.34 and the small-plant rule address that.
 
+### After small plants, Shadow Detail, occlusion (engine 5e8edfd0, scene 3a254653)
+
+`noon_valley_cull_ab`, 3 interleaved rounds, medians, High 1920 × 1080, 107 089 trees:
+
+| view | mode | GPU ms | CPU render ms | triangles | shadow maps | main: trees |
+|---|---|---|---|---|---|---|
+| hero | GPU cull + occlusion | 20.0 | 4.0 | 45.6 M | 0.48 | 2.89 |
+| hero | GPU cull | 20.1 | 3.9 | 45.6 M | 0.48 | 3.10 |
+| hero | CPU lists | 19.7 | 14.4 | 45.6 M | 0.46 | 2.87 |
+| inside | GPU cull + occlusion | 15.6 | 3.9 | 11.5 M | 2.59 | 2.92 |
+| inside | GPU cull | 15.8 | 3.9 | 11.6 M | 2.55 | 3.28 |
+| inside | CPU lists | 15.7 | 14.6 | 11.6 M | 2.52 | 3.29 |
+
+The GPU path draws exactly what the CPU lists draw (same triangle counts; parity test mean
+difference 0.000) and costs the same on the GPU; it takes the CPU from ~14.5 ms to ~4 ms.
+Inside the wood the frame went from 34 ms to 15.6 ms (shadow cascades 15–19 → 2.6 ms).
+Occlusion saves 0.2–0.4 ms of tree drawing here (big conservative spheres; the canopy has
+gaps). The meadow view's 45 M triangles are the grass (all passes).
+
 ## Status / how to resume
 
 - Last build round: `scratchpad/r26/tools/t11.sh r9 …` (engine-only, `SKIP_REGEN=1`), steps
