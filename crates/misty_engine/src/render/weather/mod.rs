@@ -1242,7 +1242,7 @@ mod tests {
         let high = particle_counts(&f, Tier::High);
         let low = particle_counts(&f, Tier::Low);
         assert!(
-            high[0] > 100_000 && high[0] + high[1] < MAX_PARTICLES as u32 + 1,
+            high[0] > 100_000 && high[0] + high[1] < MAX_PARTICLES + 1,
             "{high:?}"
         );
         assert!(low[0] < high[0] / 2);

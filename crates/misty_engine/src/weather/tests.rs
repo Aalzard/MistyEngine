@@ -89,16 +89,18 @@ fn global(w: Weather) -> Vec<(hecs::Entity, Weather, Mat4)> {
 
 #[test]
 fn timeline_steps_through_its_entries_with_transitions() {
-    let mut w = Weather::default();
-    w.timeline = WeatherTimeline {
-        mode: TimelineMode::Sequence,
-        entries: vec![
-            TimelineEntry::new(WeatherPreset::Clear, 10.0, 0.0),
-            TimelineEntry::new(WeatherPreset::HeavyRain, 5.0, 4.0),
-            TimelineEntry::new(WeatherPreset::Snow, 5.0, 2.0),
-        ],
-        looping: true,
-        time_scale: 1.0,
+    let w = Weather {
+        timeline: WeatherTimeline {
+            mode: TimelineMode::Sequence,
+            entries: vec![
+                TimelineEntry::new(WeatherPreset::Clear, 10.0, 0.0),
+                TimelineEntry::new(WeatherPreset::HeavyRain, 5.0, 4.0),
+                TimelineEntry::new(WeatherPreset::Snow, 5.0, 2.0),
+            ],
+            looping: true,
+            time_scale: 1.0,
+        },
+        ..Default::default()
     };
     let vols = global(w.clone());
     let e = vols[0].0;
@@ -166,25 +168,27 @@ fn timeline_steps_through_its_entries_with_transitions() {
 
 #[test]
 fn random_timeline_follows_weights_and_never_repeats() {
-    let mut w = Weather::default();
-    w.timeline = WeatherTimeline {
-        mode: TimelineMode::Random,
-        entries: vec![
-            TimelineEntry {
-                weight: 1.0,
-                ..TimelineEntry::new(WeatherPreset::Clear, 1.0, 0.0)
-            },
-            TimelineEntry {
-                weight: 3.0,
-                ..TimelineEntry::new(WeatherPreset::Rain, 1.0, 0.0)
-            },
-            TimelineEntry {
-                weight: 0.0,
-                ..TimelineEntry::new(WeatherPreset::Blizzard, 1.0, 0.0)
-            },
-        ],
-        looping: true,
-        time_scale: 1.0,
+    let mut w = Weather {
+        timeline: WeatherTimeline {
+            mode: TimelineMode::Random,
+            entries: vec![
+                TimelineEntry {
+                    weight: 1.0,
+                    ..TimelineEntry::new(WeatherPreset::Clear, 1.0, 0.0)
+                },
+                TimelineEntry {
+                    weight: 3.0,
+                    ..TimelineEntry::new(WeatherPreset::Rain, 1.0, 0.0)
+                },
+                TimelineEntry {
+                    weight: 0.0,
+                    ..TimelineEntry::new(WeatherPreset::Blizzard, 1.0, 0.0)
+                },
+            ],
+            looping: true,
+            time_scale: 1.0,
+        },
+        ..Default::default()
     };
     for e in &mut w.timeline.entries {
         e.max_duration = 2.0;

@@ -59,7 +59,7 @@ fn text(ui: &mut Ui, label: &str, tip: &str, v: &mut String) -> bool {
 
 fn section(ui: &mut Ui, title: &str, open: bool, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     let mut ch = false;
-    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), &tr(title)))
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), tr(title)))
         .id_salt(("weather_section", title))
         .default_open(open)
         .show(ui, |ui| {
@@ -651,7 +651,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
 
 fn timeline(ui: &mut Ui, t: &mut WeatherTimeline) -> bool {
     let mut ch = false;
-    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), &tr("Timeline")))
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), tr("Timeline")))
         .id_salt("weather_timeline")
         .default_open(t.is_on())
         .show(ui, |ui| {
