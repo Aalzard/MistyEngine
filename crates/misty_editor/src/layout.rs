@@ -439,7 +439,13 @@ mod tests {
                 .unwrap();
         assert_eq!(
             old,
-            [Tab::Scene, Tab::Game, Tab::Hierarchy, Tab::Inspector, Tab::Project]
+            [
+                Tab::Scene,
+                Tab::Game,
+                Tab::Hierarchy,
+                Tab::Inspector,
+                Tab::Project
+            ]
         );
         assert_eq!(Tab::Inspector.title(), "Properties");
         assert_eq!(Tab::from_title("Inspector"), Some(Tab::Inspector));
