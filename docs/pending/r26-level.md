@@ -47,6 +47,16 @@ Forked from `r26-noon-meadow` at 80e185bb.
   0.6/0.66/0.54 and bush 0.66/0.72/0.6 with crown shading 0.9; flowers coverage 0.22, patch 12,
   LOD 45, daisy and buttercup 1:1; sky tint 0.30/0.36/0.46; limestone albedo greyer.
 
+- r11 (regenerated, 116 222 trees; c8588174; shots in `docs/screenshots/r26/level_r11_*.jpg`):
+  hero and forest views now have the steep wall of crowns with low crowns to the grass, no pink
+  litter, deeper sky; flowers in small drifts. Still off: cumulus overhead are flat sheets, not
+  separate heaps; inside/inside2 shade on the floor is black next to blown-out sun patches (the
+  thinner canopy shows more sky, so eye adaptation exposes for it). Recipe crown_width is also
+  clamped (≤ 2.0): Groundcover set to 2.0.
+- r12 generator: eye adaptation `histogram_high` 80, compensation +0.3 EV; environment
+  lighting 0.75 → 0.9; Forest Floor occlusion 0; groundcover translucency 0.15; clouds coverage
+  0.34, shape 0.7, altitude 1500, thickness 1400.
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree
@@ -122,6 +132,7 @@ hero view), the lone oak's darkness, then the forest interior against `reference
 
 | round | hero GPU / CPU | inside GPU / CPU | notes |
 |---|---|---|---|
+| r11 | 20.4 / 4.0 ms | 14.3 / 3.6 ms | |
 | r10 | 20.4 / 3.9 ms | 14.6 / 3.7 ms | trees 3.5 (hero) / 2.3 (inside, half the wood's trees) |
 | r9 | 20.1 / 3.8 ms | 15.8 / 3.6 ms | hero: grass ≈ 8 ms (visibility 3.4, shading 2.3, near shadows 1.6, culling 0.5, composite 0.4), trees 3.1, sun shafts 0.9; inside: shadow maps 2.6, shadow mask 2.3, trees 3.3 |
 
