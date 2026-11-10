@@ -798,7 +798,7 @@ fn species_colour_edits_show_at_once() {
     let noise = diff(&a, &a2);
     let changed = diff(&a, &b);
     assert!(
-        changed > noise + 0.5,
+        changed > noise * 10.0 + 0.05,
         "the grass took the new colour ({changed} vs {noise})"
     );
     store::unload(&key);
