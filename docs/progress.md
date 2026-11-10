@@ -3331,6 +3331,13 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Tests: phase fraction vs angle, phase law, Follow Sun placement, moonlight new vs full,
   smooth twilight, Meeus reference values and the 2024 Dallas eclipse, GPU disc phases.
 
+- Night Sky section: star density, magnitude spread, glow, colour variation, twinkle, fade in a
+  bright sky, Night Sky Darkness; a procedural Milky Way placed from the galactic pole and
+  centre (core, dust lanes, width, tint); light pollution; an animated ray-marched aurora
+  (colours, height, thickness, curtains, waviness, rays, direction, distance, speed, pulse,
+  scene light); meteors. Stars and Milky Way turn with sidereal time. Lua for all of it, sample
+  `Scenes/NightSkyDemo.scene`, GPU test.
+
 ### Not done yet
-- No moon shafts or flare; stars do not turn with sidereal time;
+- No moon shafts or flare; no star catalogue; aurora not in water reflections;
   the air-mass code should merge with r26's sun-height intensity once both land.

@@ -63,6 +63,43 @@
   generator and maria placement; settings round trip; Lua; GPU render of the disc at full,
   quarter, crescent and new; sample generator, play test.
 
+## Night sky (second part of the round, asked after the moon screenshots)
+- Lighting ▸ Environment ▸ **Night Sky** (Procedural sky; `lighting.night_sky`, left out while
+  default; every default reproduces the first part's night): Night Sky Darkness (darkens the
+  sky colour, the stars stay), Sky Time (sidereal hours; Date and Time mode uses the date), and
+  collapsible groups:
+  - **Stars**: Brightness, Density, Magnitude Spread (a few bright stars among many faint ones),
+    Glow (halo + bloom on the bright ones), Color Variation (orange to blue-white), Twinkle and
+    Twinkle Speed (stronger near the horizon), Fade in Bright Sky (moonlight, twilight and town
+    glow wash out the faint stars and the Milky Way).
+  - **Milky Way**: Visibility, Core, Dust Lanes, Width, Tint. Galactic band from the real
+    galactic pole and centre on the celestial sphere (turns with the latitude and sidereal time
+    like the stars): widening, warmer core towards Sagittarius, star clouds, the Great Rift.
+  - **Light Pollution**: Amount, Color (horizon glow; also lifts the sky light and washes stars).
+  - **Aurora**: Visibility, Color, Top Color, Height, Thickness (km), Curtains (1–6),
+    Waviness, Ray Detail, Direction, Distance (far = low on the sky), Speed, Pulse, Scene Light.
+    Ray-marched emissive slab ~100 km up (24 steps High, 10 Low, per-pixel jitter smoothed by
+    TAA): folded curtains that wave and drift, vertical rays, sharp lower edge, colour gradient to
+    the top, pulsing; it tints the sky light (ambient) a little.
+  - **Meteors**: Per Minute, Brightness: streaks with a bright head along great circles, bloom.
+- Animated on the renderer's clock (the grass clock, fixed by `Environment::grass_time` in
+  tests). Quality ▸ Volumetric Clouds Low / Off take the cheap path (fewer aurora steps and noise
+  octaves).
+- Lua: `RenderSettings.nightSky`, `nightSkyDarkness`, `stars`, `starDensity`,
+  `starMagnitudeSpread`, `starGlow`, `starColorVariation`, `starTwinkle`, `starTwinkleSpeed`,
+  `starFade`, `skyTime`, `milkyWay`, `milkyWayCore`, `milkyWayDust`, `milkyWayWidth`,
+  `milkyWayTint`, `lightPollution`, `lightPollutionColor`, `aurora`, `auroraColor`,
+  `auroraTopColor`, `auroraHeight`, `auroraThickness`, `auroraCurtains`, `auroraWaviness`,
+  `auroraRays`, `auroraAzimuth`, `auroraDistance`, `auroraSpeed`, `auroraPulse`,
+  `auroraAmbient`, `meteorRate`, `meteorBrightness`.
+- Sample `Scenes/NightSkyDemo.scene` (same generator as MoonDemo): the valley looking north under
+  a thin setting crescent, Milky Way, glowing twinkling stars, an animated aurora, meteors, a
+  faint town glow.
+- Tests: the sky frame (Polaris north at the latitude's height, westward turn, galactic centre
+  where Sagittarius is, Meeus sidereal time), settings round trip, the controls (darkness keeps
+  the stars, town glow on the horizon, aurora sky light), packed layout, and a GPU test (aurora
+  green in the north and moving, Milky Way and town glow brighten, a meteor streak).
+
 ## Screenshots (docs/screenshots/r27/)
 - `moon_phases.jpg` (strip) and `moon_waxing_crescent.jpg`, `moon_first_quarter.jpg`,
   `moon_waxing_gibbous.jpg`, `moon_full.jpg`, `moon_waning_gibbous.jpg`, `moon_last_quarter.jpg`
@@ -72,8 +109,11 @@
 
 ## Not done yet
 - No moon shafts (sun shafts only look for the sun) and no lens flare / halo for the moon.
-- Stars do not turn with the sidereal time in Date and Time mode, and there is no Milky Way or
-  real star catalogue.
+- No real star catalogue (procedural stars; the Milky Way is placed correctly, the stars are
+  not real constellations).
+- The aurora is not reflected by the water (water reflects the analytic sky colour, which only
+  carries the aurora's faint sky light); no aurora or meteor events for Lua / Script Graphs; no
+  moon halo / corona in thin cloud; twinkle does not look at the exposure.
 - When r26's "Intensity from Sun Height" lands, its air-mass transmittance and `moon::
   transmittance` / `moon::air_mass` should become one function.
 - Follow Sun keeps the moon on the sun's declination (plus 5°), not the ecliptic: a summer full

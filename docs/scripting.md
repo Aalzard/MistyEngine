@@ -463,6 +463,16 @@ next frame.
 | `moonTexture` | Project path of the moon image, `nil` = built-in. |
 | `moonIllumination` | Lit fraction of the disc, 0..1 (read-only). |
 | `moonDirection` | `Vector3` towards the moon, `nil` when it is off (read-only). |
+| `nightSky`, `nightSkyDarkness` | Night sky on/off; darkening of the sky colour (0..1, the stars stay). |
+| `stars`, `starDensity`, `starMagnitudeSpread`, `starGlow` | Star brightness, count (×), spread of magnitudes (0..1), glow of the bright ones. |
+| `starColorVariation`, `starTwinkle`, `starTwinkleSpeed`, `starFade` | Colour temperature spread, twinkle and its speed, fading in a bright sky. |
+| `skyTime` | Sidereal time in hours (turns the stars and the Milky Way; not in DateTime mode). |
+| `milkyWay`, `milkyWayCore`, `milkyWayDust`, `milkyWayWidth`, `milkyWayTint` | Milky Way visibility, core, dust lanes, width, tint (`Color`). |
+| `lightPollution`, `lightPollutionColor` | Town glow on the horizon and its colour. |
+| `aurora`, `auroraColor`, `auroraTopColor` | Aurora visibility and its lower / top colours. |
+| `auroraHeight`, `auroraThickness`, `auroraCurtains`, `auroraWaviness`, `auroraRays` | Curtain height and thickness (km), count (1–6), folds, ray detail. |
+| `auroraAzimuth`, `auroraDistance`, `auroraSpeed`, `auroraPulse`, `auroraAmbient` | Direction (°), distance (km), animation speed, pulsing, light on the scene. |
+| `meteorRate`, `meteorBrightness` | Shooting stars per minute and their brightness. |
 
 ```lua
 local Dusk = { speed = 0.02 }
