@@ -171,8 +171,75 @@ struct Job {
     /// The chunk is being edited: it goes before the camera's jobs, its rows scattered in
     /// parallel.
     edit: bool,
+    /// The terrain's [`Grass::id`] (a tile's queued job is replaced by a newer one).
+    owner: u64,
+    /// Ordering among a round's tiles (distance to the brush; smaller first).
+    order: i64,
     reply: mpsc::Sender<Done>,
 }
+
+/// Tiles waiting for a tile thread. The newest round goes first (the brush is there now),
+/// nearest the brush first within it; a tile's job still waiting is replaced by a newer one
+/// rather than queued behind it, so a stroke never waits on its own stale work.
+#[derive(Default)]
+struct TileQueue {
+    jobs: Mutex<Vec<Job>>,
+    wake: Condvar,
+}
+
+impl TileQueue {
+    fn send(&self, job: Job) {
+        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        match jobs
+            .iter_mut()
+            .find(|j| j.owner == job.owner && j.key == job.key)
+        {
+            Some(waiting) => *waiting = job,
+            None => jobs.push(job),
+        }
+        drop(jobs);
+        self.wake.notify_one();
+    }
+
+    fn take(&self) -> Job {
+        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            let next = (jobs.iter().enumerate())
+                .min_by_key(|(_, j)| (std::cmp::Reverse(j.stamp), j.order))
+                .map(|(i, _)| i);
+            if let Some(i) = next {
+                return jobs.swap_remove(i);
+            }
+            jobs = self.wake.wait(jobs).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+}
+
+/// The tile threads (every core but two, like the row threads) and their queue.
+fn tile_queue() -> &'static TileQueue {
+    static QUEUE: OnceLock<TileQueue> = OnceLock::new();
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    let shared = QUEUE.get_or_init(TileQueue::default);
+    STARTED.call_once(|| {
+        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+        for i in 0..cores.saturating_sub(2).max(1) {
+            let spawned = std::thread::Builder::new()
+                .name(format!("misty grass tiles {i}"))
+                .spawn(move || {
+                    loop {
+                        scatter_job(shared.take());
+                    }
+                });
+            if let Err(e) = spawned {
+                eprintln!("grass tile worker: {e}");
+            }
+        }
+    });
+    shared
+}
+
+/// Ids of [`Grass`] instances (their tile jobs share one queue).
+static NEXT_GRASS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// A scattered chunk, waiting to be uploaded.
 struct Done {
@@ -315,6 +382,8 @@ pub struct GrassStats {
 }
 
 pub(super) struct Grass {
+    /// This terrain's number among the grass of the process (its jobs in the tile queue).
+    id: u64,
     chunks: HashMap<(u32, u32), Chunk>,
     /// Settings the blades were scattered with (look-only fields cleared).
     key: Option<ScatterKey>,
@@ -332,6 +401,10 @@ pub(super) struct Grass {
     /// Chunks held as 4 × 4 tiles (painted ones): their pieces are tiles, each with its own
     /// run of blades, scattered and uploaded on its own.
     tiled: HashSet<(u32, u32)>,
+    /// Dirty pieces changed by a brush (or Fill / Clear): they go before the camera's work.
+    /// Pieces made dirty by a settings change (a slider being dragged) wait their turn by
+    /// distance, drawing their old blades meanwhile.
+    brushed: HashSet<(u32, u32)>,
     /// Cameras of recent frames (terrain-local) and when they were last seen: chunks near
     /// any of them stay.
     cameras: Vec<(Vec3, Instant)>,
@@ -369,6 +442,7 @@ pub(super) struct Grass {
 impl Default for Grass {
     fn default() -> Self {
         Self {
+            id: NEXT_GRASS.fetch_add(1, Ordering::Relaxed),
             chunks: HashMap::new(),
             key: None,
             generation: 0,
@@ -376,6 +450,7 @@ impl Default for Grass {
             edits: 0,
             dirty: HashMap::new(),
             tiled: HashSet::new(),
+            brushed: HashSet::new(),
             cameras: Vec::new(),
             brush: Vec2::ZERO,
             results: {
@@ -442,9 +517,14 @@ fn scatter_key(d: &TerrainData) -> ScatterKey {
         map: Vec::new(),
     };
     // Grass species (their maps are painted by region, like the terrain grass's).
+    // (Healthy↔Dry and Brightness are looked up at draw time: the species table.)
     let species = (d.detail_layers.iter())
         .filter(|l| l.kind == crate::terrain::detail_layers::DetailKind::Grass)
-        .map(|l| l.settings())
+        .map(|l| crate::terrain::detail_layers::DetailLayer {
+            dryness: 0.0,
+            tint: 0.0,
+            ..l.settings()
+        })
         .collect();
     (s, f, d.trees.instances.len(), d.rule_seed, species)
 }
@@ -525,7 +605,7 @@ impl Grass {
     /// again while its scatter runs waits for that one: a stroke never restarts work.
     pub fn invalidate(&mut self, d: &TerrainData, region: Option<Region>) {
         let Some(r) = region else {
-            self.outdate_all();
+            self.outdate_all(true);
             return;
         };
         if r.is_empty() {
@@ -557,6 +637,7 @@ impl Grass {
                     // Not drawn yet: only a scatter on its way carries older data.
                     if self.in_flight.contains_key(&c) {
                         self.dirty.insert(c, stamp);
+                        self.brushed.insert(c);
                     }
                     continue;
                 }
@@ -571,14 +652,17 @@ impl Grass {
                 for t in tiles_of(c) {
                     if touches(piece_rect(t).0, TILE) {
                         self.dirty.insert(t, stamp);
+                        self.brushed.insert(t);
                     }
                 }
             }
         }
     }
 
-    /// Every piece held or on its way is out of date (it keeps drawing until replaced).
-    fn outdate_all(&mut self) {
+    /// Every piece held or on its way is out of date (it keeps drawing until replaced);
+    /// `brushed`: an edit of the maps (undo, Fill / Clear) that goes before the camera's work,
+    /// else a settings change re-scattered by distance.
+    fn outdate_all(&mut self, brushed: bool) {
         self.edits += 1;
         let stamp = self.edits;
         let keys: Vec<(u32, u32)> = (self.chunks.keys())
@@ -589,6 +673,9 @@ impl Grass {
             .collect();
         for k in keys {
             self.dirty.insert(k, stamp);
+            if brushed {
+                self.brushed.insert(k);
+            }
         }
     }
 
@@ -610,6 +697,7 @@ impl Grass {
         self.generation += 1;
         self.in_flight.clear();
         self.dirty.clear();
+        self.brushed.clear();
         self.tiled.clear();
         self.ready.clear();
         if let Some(up) = self.uploading.take() {
@@ -640,7 +728,9 @@ impl Grass {
 
     /// Work for edits goes first: tiles (of chunks being painted) and edited pieces.
     fn urgent(&self, k: (u32, u32)) -> bool {
-        is_tile(k) || self.dirty.contains_key(&k)
+        // (A tile not up yet: a chunk switching to tiles, under the brush.)
+        (self.brushed.contains(&k) && self.dirty.contains_key(&k))
+            || (is_tile(k) && !self.chunks.contains_key(&k))
     }
 
     /// A result or job for piece `k` at least `level` fine with edits `edit` is on its way.
@@ -680,8 +770,17 @@ impl Grass {
                             continue;
                         }
                         busy = true;
-                        if !self.asked(t, u32::MAX, edit) {
-                            todo.push((t, true));
+                        // A tile goes out again when its job is behind an edit: the job still
+                        // waiting is replaced, one already running shows its result too.
+                        let flying = (self.in_flight.get(&t))
+                            .is_some_and(|a| edit.is_none_or(|e| a.stamp >= e));
+                        let landing = (self.ready.iter())
+                            .any(|r| r.key == t && edit.is_none_or(|e| r.stamp >= e))
+                            || (self.uploading.as_ref()).is_some_and(|u| {
+                                u.done.key == t && edit.is_none_or(|e| u.done.stamp >= e)
+                            });
+                        if !flying && !landing {
+                            todo.push((t, self.urgent(t)));
                         }
                     }
                     // Settled but coarser than wanted (the camera came closer): one scatter
@@ -696,7 +795,7 @@ impl Grass {
                 let edit = self.outdated(k);
                 let stale = edit.is_some() || self.chunks.get(&k).is_none_or(|c| c.level > want);
                 if stale && !self.asked(k, want, edit) {
-                    todo.push((k, edit.is_some()));
+                    todo.push((k, edit.is_some() && self.urgent(k)));
                 }
             }
         }
@@ -722,7 +821,7 @@ impl Grass {
         let key = scatter_key(d);
         if self.key.as_ref() != Some(&key) {
             if self.key.is_some() {
-                self.outdate_all();
+                self.outdate_all(false);
             }
             self.key = Some(key);
         }
@@ -754,6 +853,8 @@ impl Grass {
         self.tiled.retain(|c| !gone(*c));
         self.in_flight.retain(|k, _| near_any(*k, range * 1.5));
         self.dirty.retain(|k, _| near_any(*k, range * 1.5));
+        let dirty = &self.dirty;
+        self.brushed.retain(|k| dirty.contains_key(k));
 
         // Finished scatters: keep the ones still worth uploading, edits and nearest first.
         self.collect(camera, &cameras, range);
@@ -787,11 +888,14 @@ impl Grass {
                 generation: self.generation,
                 stamp: asked.stamp,
                 edit,
+                owner: self.id,
+                order: self.order(k, edit, camera),
                 reply: self.results.0.clone(),
             };
-            match row_threads().filter(|_| is_tile(k)) {
-                Some(threads) => threads.spawn(move || scatter_job(job)),
-                None => pool().send(job),
+            if is_tile(k) {
+                tile_queue().send(job);
+            } else {
+                pool().send(job);
             }
             self.in_flight.insert(k, asked);
             self.stats.scheduled += 1;
@@ -1463,6 +1567,9 @@ pub(super) struct GrassParams {
     /// x = shortest and y = tallest blade height of the turf (m), z = height variation,
     /// w = the quality level's share of the blades (the rest grow wider).
     canopy: [f32; 4],
+    /// The grass species' look, two per entry: (dryness, tint) of layer 2i in xy and of
+    /// layer 2i + 1 in zw (detail_layers.rs `species_table`).
+    species: [[f32; 4]; crate::terrain::detail_layers::MAX_DETAIL_LAYERS / 2],
 }
 
 /// The built-in grass atlas: four clumps of thin field-grass blades (`tools/grass_atlas.py`)
@@ -2021,7 +2128,14 @@ impl GrassParams {
                 s.height_variation.clamp(0.0, 1.0),
                 density.clamp(MIN_KEEP, 1.0),
             ],
+            species: Default::default(),
         }
+    }
+
+    /// The grass species' Healthy↔Dry and Brightness (looked up per blade at draw time).
+    pub fn with_species(mut self, layers: &[crate::terrain::detail_layers::DetailLayer]) -> Self {
+        self.species = crate::terrain::detail_layers::species_table(layers);
+        self
     }
 }
 

@@ -9,7 +9,10 @@ use std::time::Instant;
 
 use glam::{Quat, Vec2, Vec3};
 
-use super::{Asked, Chunk, Done, Grass, Job, Pool, Queue, Upload, is_tile, tile_key, tiles_of};
+use super::{
+    Asked, Chunk, Done, Grass, Job, Pool, Queue, TILE_BIT, TileQueue, Upload, is_tile, tile_key,
+    tiles_of,
+};
 use crate::render::culling::Aabb;
 use crate::terrain::store::Region;
 
@@ -497,25 +500,30 @@ fn repeated_edits_coalesce() {
         stamp: g.edits,
     };
     g.in_flight.insert(t5, first);
+    assert!(
+        !g.stale_chunks(&d, camera).iter().any(|(k, _)| *k == t5),
+        "no second job while one with the latest edits runs"
+    );
+    // Edited again: the tile goes out again (its waiting job is replaced in the queue, see
+    // `tile_jobs_waiting_are_replaced`).
     for _ in 0..10 {
         g.invalidate(&d, Some(dab()));
-        assert!(
-            !g.stale_chunks(&d, camera).iter().any(|(k, _)| *k == t5),
-            "no second job while one runs"
-        );
     }
-    // Its result (behind the latest edits) still shows: progress while painting.
-    let done = result(&g, t5, first.stamp, 10);
-    g.accept(done, &[camera], 80.0);
-    assert_eq!(g.ready.len(), 1);
-    assert!(g.in_flight.is_empty());
-    // Now one job with the latest edits goes out.
     assert!(g.stale_chunks(&d, camera).contains(&(t5, true)));
     let latest = Asked {
         level: 0,
         stamp: g.edits,
     };
     g.in_flight.insert(t5, latest);
+    // The older job's result (it was already running) still shows: progress while painting.
+    let done = result(&g, t5, first.stamp, 10);
+    g.accept(done, &[camera], 80.0);
+    assert_eq!(g.ready.len(), 1);
+    assert_eq!(
+        g.in_flight.get(&t5),
+        Some(&latest),
+        "the newer job stays asked for"
+    );
     // Its result replaces the older one still waiting for upload.
     let done = result(&g, t5, latest.stamp, 20);
     g.accept(done, &[camera], 80.0);
@@ -530,6 +538,39 @@ fn repeated_edits_coalesce() {
     let old = result(&g, (1, 1), 0, 1000);
     g.accept(old, &[camera], 80.0);
     assert!(g.ready.iter().all(|r| r.key != (1, 1)));
+}
+
+/// The tile queue: the newest round first, nearest the brush first; a tile's waiting job is
+/// replaced by a newer one (a stroke never queues behind its own stale work).
+#[test]
+fn tile_jobs_waiting_are_replaced() {
+    let q = TileQueue::default();
+    let data = Arc::new(small());
+    let (tx, _rx) = mpsc::channel();
+    let job = |x: u32, stamp: u64, order: i64| Job {
+        data: Arc::clone(&data),
+        key: (TILE_BIT | x, 0),
+        level: 0,
+        generation: 0,
+        stamp,
+        edit: true,
+        owner: 7,
+        order,
+        reply: tx.clone(),
+    };
+    q.send(job(1, 1, 0));
+    q.send(job(2, 1, 5));
+    q.send(job(3, 2, 9));
+    // Tile 1 edited again: its waiting job is replaced, not queued twice.
+    q.send(job(1, 3, 4));
+    assert_eq!(q.jobs.lock().unwrap().len(), 3);
+    let order: Vec<(u32, u64)> = (0..3)
+        .map(|_| {
+            let j = q.take();
+            (j.key.0 & !TILE_BIT, j.stamp)
+        })
+        .collect();
+    assert_eq!(order, vec![(1, 3), (3, 2), (2, 1)]);
 }
 
 #[test]
@@ -547,6 +588,8 @@ fn edited_chunks_jump_the_workers_queue() {
         generation: 0,
         stamp: 0,
         edit,
+        owner: 1,
+        order: 0,
         reply: tx.clone(),
     };
     pool.send(job(1, false));
@@ -637,5 +680,126 @@ fn painted_grass_shows_within_frames() {
     render(&mut r);
     assert_eq!(r.stats().grass_pending, 0);
     crate::render::set_grass_streaming(false);
+    store::unload(&key);
+}
+
+/// A settings change (a slider dragged in the Inspector) keeps every chunk drawing and
+/// re-scatters by distance to the camera; a brush meanwhile goes first.
+#[test]
+fn settings_changes_keep_blades_and_wait_their_turn() {
+    let d = small();
+    let mut g = Grass::default();
+    let camera = Vec3::new(8.0, 1.0, 8.0);
+    for z in 0..4 {
+        for x in 0..4 {
+            g.chunks.insert((x, z), held(1000, 0));
+        }
+    }
+    g.outdate_all(false);
+    assert_eq!(g.chunks.len(), 16, "nothing dropped");
+    let todo = g.stale_chunks(&d, camera);
+    assert_eq!(todo.len(), 16);
+    assert!(todo.iter().all(|(_, edit)| !edit), "camera priority");
+    assert_eq!(todo[0].0, (0, 0), "nearest the camera first");
+    // Dragging on: each chunk keeps one job at a time (coalesced).
+    g.in_flight.insert(
+        (0, 0),
+        Asked {
+            level: 0,
+            stamp: g.edits,
+        },
+    );
+    g.outdate_all(false);
+    assert!(!g.stale_chunks(&d, camera).iter().any(|(k, _)| *k == (0, 0)));
+    // A brush stroke meanwhile jumps ahead.
+    g.invalidate(&d, Some(dab()));
+    let todo = g.stale_chunks(&d, camera);
+    assert!(todo[0].1 && is_tile(todo[0].0), "{todo:?}");
+}
+
+/// Healthy↔Dry and Brightness of a species are looked up at draw time: they leave the
+/// scatter alone (no chunk is scattered again); its height does not.
+#[test]
+fn species_colour_leaves_the_scatter_alone() {
+    let mut d = small();
+    d.detail_layers = vec![dense_species()];
+    let key = super::scatter_key(&d);
+    d.detail_layers[0].dryness = 0.9;
+    d.detail_layers[0].tint = -0.6;
+    assert!(super::scatter_key(&d) == key, "colour only: same scatter");
+    d.detail_layers[0].height = [0.5, 0.9];
+    assert!(super::scatter_key(&d) != key, "height: scattered again");
+}
+
+/// Through the renderer: a species colour edit shows on the next frame without scattering
+/// anything.
+#[test]
+fn species_colour_edits_show_at_once() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let key = painted_terrain("colour", 24.0);
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(
+        &device,
+        &QualityLevel {
+            temporal_aa: false,
+            ..QualityLevel::default()
+        },
+    );
+    let target = r.create_target(&device, 320, 200);
+    let cam = camera();
+    let environment = Environment {
+        grass_time: Some(3.0),
+        ..Default::default()
+    };
+    let lights = [sun()];
+    let render = |r: &mut Renderer| {
+        let terrains = [draw_of(&key)];
+        let frame = Frame {
+            camera: &cam,
+            grid: None,
+            skybox: true,
+            background: [0.1; 3],
+            environment: &environment,
+            post: PostSettings::default(),
+            lines: &[],
+            overlay: &[],
+            meshes: &[],
+            particles: &[],
+            terrains: &terrains,
+            water: &[],
+            shaded: true,
+            lights: &lights,
+        };
+        r.render(&device, &queue, &target, &frame);
+        crate::render::gpu_tests::read_back(&device, &queue, &target)
+    };
+    render(&mut r);
+    let a = render(&mut r);
+    let a2 = render(&mut r);
+    store::modify_settings(&key, |d| {
+        d.detail_layers[0].dryness = 1.0;
+        d.detail_layers[0].tint = -1.0;
+    });
+    let b = render(&mut r);
+    assert_eq!(
+        r.terrains.grass_stats().scheduled,
+        0,
+        "nothing scattered again"
+    );
+    let diff = |x: &[u8], y: &[u8]| {
+        x.iter()
+            .zip(y)
+            .map(|(p, q)| p.abs_diff(*q) as f64)
+            .sum::<f64>()
+            / x.len() as f64
+    };
+    let noise = diff(&a, &a2);
+    let changed = diff(&a, &b);
+    assert!(
+        changed > noise + 0.5,
+        "the grass took the new colour ({changed} vs {noise})"
+    );
     store::unload(&key);
 }

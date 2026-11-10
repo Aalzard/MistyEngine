@@ -1152,6 +1152,7 @@ impl TerrainCache {
                 .with_ground_cover(self.ground_cover.is_some())
                 .with_vis_index(i as u32)
                 .with_flowers(d.flowers.lod_distance)
+                .with_species(&d.detail_layers)
             };
             // (Made once per terrain, rewritten every frame: no buffers or groups to create,
             // track and drop per frame; again when the atlas changes.)
