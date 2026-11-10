@@ -3302,3 +3302,49 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+## Round 28 — 2D Platformer template (branch r28-template2d)
+
+### Done
+- New Project ▸ **2D Platformer** (`--new "2D Platformer"`, also `2d` / `platformer2d`): built
+  from the Platformer2D and TilemapDemo samples and generated in code (like Racing), so every
+  install can make it, sample project or not. The pixel art, tiles and level layout now live in
+  `templates/platformer_2d/art.rs`, shared with the two sample generators (their
+  `matches_its_generator` tests still pass, so the committed samples are unchanged).
+- The project: a daytime tilemap level on a Grid (Rule Tile ground with Tilemap Collider 2D
+  and Shadow Caster 2D, animated water in a pit, ruined stone walls behind), the Platformer2D
+  player (Rigidbody 2D, Box Collider 2D), ten coins counted by a UI Text, a sun travelling with
+  the camera, clouds and hills, a Global Light 2D plus five torches with shadowed Point Light
+  2D lights, and a bloom volume (sun, flames and coins glow). A Tile Palette
+  (`Assets/Palettes/Level.palette`) holds the three tiles. Every asset gets a meta file with a
+  GUID and the scene, tiles and palette carry GUID tables from the new project.
+- Scripts in `Assets/Scripts`: `PlayerController2D.lua` (A/D or arrows run; Space, W or Up
+  jumps; jump buffer, coyote time, short hop on early release; coins) and `CameraFollow2D.lua`
+  (eases after the player, stops at the level's edges using the camera's size and the screen's
+  aspect).
+- Project settings for 2D: Sorting Layers Background / Default / Foreground (the sky, walls
+  and water use them, with orders that also draw right before the layers are installed);
+  2D gravity stays at the default (0, −9.81) with the player's Gravity Scale 3.
+- The Scene view starts in 2D mode: `Library/EditorSettings.json` gained `scene_view_2d`
+  (centre and half height), written by the template and remembered when a project closes in
+  2D (new `SceneCamera::set_2d_view` / `view_2d`; turning 2D off returns to the 3D view).
+- Hub card with a headless-rendered thumbnail (`assets/templates/platformer_2d.png`); Turkish
+  and Arabic names and descriptions.
+- Tests: the template's files, GUIDs, references, settings and scene objects; the editor
+  opens it in 2D and reopens a moved 2D view; Play lands the player on the tiles, a held
+  Space jumps high, a tapped W hops, Up jumps, running right with the arrow key collects three
+  coins and the camera follows, without a script error; the Hub creates it from its card;
+  the template names / aliases test and the GPU render test cover it.
+- Screenshots: `docs/screenshots/r28/hub_new_project.jpg` (the new card), `platformer_2d_editor.jpg`
+  (a new project: Scene view in 2D) and `platformer_2d_play.jpg` (Play mode).
+
+- Checks: fmt clean, clippy 0 warnings; full tests: editor 811 passed, 3 failed under load
+  (`mcp::tests::bridge_writes_and_removes_its_info_file`,
+  `panels::packages::tests::registry_url_page_in_project_settings`,
+  `scene_files::tests::opening_a_scene_lifts_a_view_left_under_the_terrain`; all three pass run
+  on their own), engine 1384 passed, player 11, dedicated server and MCP e2e pass; golden
+  shots 20/20.
+
+### Not done yet
+- No parallax or level end/goal; the Tile Palette window is not opened automatically.
+- The stone wall tilemap shows faint vertical seams between some tile columns (an existing
+  tilemap rendering artefact, also in TilemapDemo).
