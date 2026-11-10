@@ -584,9 +584,12 @@ mod tests {
                 .trim_start_matches('/')
         );
         h.state_mut().packages.set_registry(&root, &url);
-        for _ in 0..200 {
+        // The index is read on a thread: wait for it by the clock (under load 200 short
+        // frames ran out while it still showed "Loading the registry index…").
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
             h.run();
-            if matches!(h.state().packages.registry, RegistryState::Loaded(_)) {
+            if !matches!(h.state().packages.registry, RegistryState::Loading(_)) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(5));

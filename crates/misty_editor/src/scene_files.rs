@@ -699,13 +699,27 @@ mod tests {
     #[test]
     fn opening_a_scene_lifts_a_view_left_under_the_terrain() {
         let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-        let mut s = EditorState::new(ProjectBrowser::open(sample));
-        s.scene_view
-            .camera
-            .set_view(glam::Vec3::new(0.0, -50.0, 0.0), glam::Quat::IDENTITY);
-        assert!(load(&mut s, "Assets/Scenes/MeadowDemo.scene"));
-        let eye = s.scene_view.camera.position();
-        let ground = ground_under(&s.scene, eye).expect("the eye is over the meadow terrain");
+        let mut s = EditorState::new(ProjectBrowser::open(sample.clone()));
+        // The terrain is found through the process-wide project root, which tests running
+        // alongside move: try again (a few times) only when that happened meanwhile.
+        let mut tries = 0;
+        let (eye, ground) = loop {
+            tries += 1;
+            misty_engine::assets::set_project_root(&sample);
+            let generation = misty_engine::assets::root_generation();
+            s.scene_view
+                .camera
+                .set_view(glam::Vec3::new(0.0, -50.0, 0.0), glam::Quat::IDENTITY);
+            assert!(load(&mut s, "Assets/Scenes/MeadowDemo.scene"));
+            let eye = s.scene_view.camera.position();
+            let ground = ground_under(&s.scene, eye);
+            let moved = misty_engine::assets::root_generation() != generation;
+            let lifted = ground.is_some_and(|g| eye.y >= g + GROUND_CLEARANCE);
+            if !lifted && moved && tries < 20 {
+                continue;
+            }
+            break (eye, ground.expect("the eye is over the meadow terrain"));
+        };
         assert!(
             eye.y >= ground + GROUND_CLEARANCE,
             "eye {eye} ground {ground}"
