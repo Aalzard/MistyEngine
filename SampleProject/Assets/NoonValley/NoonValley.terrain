@@ -123,7 +123,7 @@
       "metallic": 0.0,
       "smoothness": 0.1,
       "height_map": "Assets/NoonValley/Textures/ForestFloorHeight.png",
-      "occlusion": 0.15,
+      "occlusion": 0.0,
       "rules": {
         "enabled": false,
         "slope": [

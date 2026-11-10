@@ -2,7 +2,7 @@
   "seed": 37,
   "height": 1.0,
   "crown_shape": "Spreading",
-  "crown_width": 2.2,
+  "crown_width": 2.0,
   "crown_base": 0.0,
   "trunk_radius": 0.02,
   "leader": 0.0,
@@ -19,7 +19,7 @@
     0.54
   ],
   "leaf_variation": 0.45,
-  "translucency": 0.3,
+  "translucency": 0.15,
   "crown_shading": 0.9,
   "bark_color": [
     1.0,

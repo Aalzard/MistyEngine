@@ -11,7 +11,7 @@
         0.043,
         0.035
       ],
-      "intensity": 0.75,
+      "intensity": 0.9,
       "sky_color": [
         0.212,
         0.227,
@@ -255,8 +255,8 @@
           "auto_exposure": {
             "active": true,
             "adaptation": "Progressive",
-            "compensation": 0.0,
-            "histogram_high": 90.0,
+            "compensation": 0.3,
+            "histogram_high": 80.0,
             "histogram_low": 40.0,
             "limit_max": 0.0,
             "limit_min": -4.5,
@@ -277,17 +277,17 @@
           },
           "clouds": {
             "active": true,
-            "altitude": 1300.0,
+            "altitude": 1500.0,
             "ambient": 1.0,
-            "coverage": 0.42,
+            "coverage": 0.34,
             "cumulus": 1.0,
             "density": 0.6,
             "enabled": true,
             "shadow_opacity": 0.7,
             "shadows": true,
-            "shape": 0.65,
+            "shape": 0.7,
             "silver_lining": 0.5,
-            "thickness": 1000.0,
+            "thickness": 1400.0,
             "wind_direction": 100.0,
             "wind_speed": 6.0
           },
