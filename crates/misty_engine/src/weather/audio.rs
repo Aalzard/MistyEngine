@@ -53,7 +53,10 @@ fn make_loop(mut v: Vec<(f32, f32)>, fade: f32) -> Vec<(f32, f32)> {
         let tail = v[len + i];
         let head = v[i];
         // Equal-power crossfade.
-        let (a, b) = ((t * std::f32::consts::FRAC_PI_2).sin(), (t * std::f32::consts::FRAC_PI_2).cos());
+        let (a, b) = (
+            (t * std::f32::consts::FRAC_PI_2).sin(),
+            (t * std::f32::consts::FRAC_PI_2).cos(),
+        );
         v[i] = (head.0 * a + tail.0 * b, head.1 * a + tail.1 * b);
     }
     v.truncate(len);
@@ -156,7 +159,13 @@ pub fn thunder(near: bool, seed: u64) -> Vec<(f32, f32)> {
     let mut crack = [LowPass::default(); 2];
     // Rumble bumps: echoes off the ground and the cloud channel.
     let bumps: Vec<(f32, f32, f32)> = (0..10)
-        .map(|_| (rng.range(0.2, seconds * 0.7), rng.range(0.3, 1.0), rng.range(0.4, 1.6)))
+        .map(|_| {
+            (
+                rng.range(0.2, seconds * 0.7),
+                rng.range(0.3, 1.0),
+                rng.range(0.4, 1.6),
+            )
+        })
         .collect();
     for i in 0..n {
         let t = i as f32 / RATE as f32;
@@ -164,10 +173,19 @@ pub fn thunder(near: bool, seed: u64) -> Vec<(f32, f32)> {
         for &(at, amp, width) in &bumps {
             let d = (t - at) / width;
             if d > -1.0 {
-                env += amp * if d < 0.0 { (d + 1.0).powi(2) } else { (-d * 2.0).exp() };
+                env += amp
+                    * if d < 0.0 {
+                        (d + 1.0).powi(2)
+                    } else {
+                        (-d * 2.0).exp()
+                    };
             }
         }
-        let attack = if near { (t / 0.01).min(1.0) } else { (t / 0.6).min(1.0) };
+        let attack = if near {
+            (t / 0.01).min(1.0)
+        } else {
+            (t / 0.6).min(1.0)
+        };
         let fade = (1.0 - t / seconds).max(0.0).powf(1.5);
         let mut ch = [0.0f32; 2];
         for (c, v) in ch.iter_mut().enumerate() {
@@ -299,9 +317,17 @@ impl Driver {
                 *slot = audio.play_ambient(&clip, &out, v, true);
             }
         };
-        drive(&mut self.light, pick(&settings.rain_clip, &clips.rain_light), light);
+        drive(
+            &mut self.light,
+            pick(&settings.rain_clip, &clips.rain_light),
+            light,
+        );
         // Your own rain clip plays alone (both loops use it).
-        drive(&mut self.heavy, pick(&settings.rain_clip, &clips.rain_heavy), heavy);
+        drive(
+            &mut self.heavy,
+            pick(&settings.rain_clip, &clips.rain_heavy),
+            heavy,
+        );
         drive(&mut self.wind, pick(&settings.wind_clip, &clips.wind), wind);
         for e in events {
             if let WeatherEvent::Thunder { distance, volume } = e {
@@ -317,7 +343,10 @@ impl Driver {
                     };
                     set[i].to_string_lossy().into_owned()
                 };
-                if audio.play_ambient(&clip, &out, volume * master, false).is_some() {
+                if audio
+                    .play_ambient(&clip, &out, volume * master, false)
+                    .is_some()
+                {
                     self.thunder_played += 1;
                 }
             }

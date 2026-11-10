@@ -140,7 +140,9 @@ pub fn register(lua: &Lua) -> Result<()> {
                 return Ok(false);
             };
             with_world(lua, |w| {
-                w.scene.weather.set_state(p.params(), seconds(secs), p.key());
+                w.scene
+                    .weather
+                    .set_state(p.params(), seconds(secs), p.key());
             })?;
             Ok(true)
         })?,
@@ -154,13 +156,17 @@ pub fn register(lua: &Lua) -> Result<()> {
     t.set(
         "SetRain",
         lua.create_function(|lua, (v, secs): (f32, Option<f32>)| {
-            with_world(lua, |w| w.scene.weather.modify(seconds(secs), |p| set_rain(p, v)))
+            with_world(lua, |w| {
+                w.scene.weather.modify(seconds(secs), |p| set_rain(p, v))
+            })
         })?,
     )?;
     t.set(
         "SetSnow",
         lua.create_function(|lua, (v, secs): (f32, Option<f32>)| {
-            with_world(lua, |w| w.scene.weather.modify(seconds(secs), |p| set_snow(p, v)))
+            with_world(lua, |w| {
+                w.scene.weather.modify(seconds(secs), |p| set_snow(p, v))
+            })
         })?,
     )?;
     t.set(
@@ -217,7 +223,9 @@ pub fn register(lua: &Lua) -> Result<()> {
     t.set(
         "GetState",
         lua.create_function(|lua, ()| {
-            with_world(lua, |w| w.scene.weather.current.nearest_preset().key().to_owned())
+            with_world(lua, |w| {
+                w.scene.weather.current.nearest_preset().key().to_owned()
+            })
         })?,
     )?;
     t.set(

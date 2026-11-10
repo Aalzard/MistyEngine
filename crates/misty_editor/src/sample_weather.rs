@@ -174,9 +174,18 @@ pub fn demo_scene() -> Scene {
         l.shadows = Shadows::Soft;
     }
     // Ground: 60 m of asphalt (wet, puddles, snow).
-    mesh(&mut s, "Ground", PrimitiveMesh::Plane, at(Vec3::ZERO, Vec3::new(6.0, 1.0, 6.0)), ASPHALT);
+    mesh(
+        &mut s,
+        "Ground",
+        PrimitiveMesh::Plane,
+        at(Vec3::ZERO, Vec3::new(6.0, 1.0, 6.0)),
+        ASPHALT,
+    );
     // A shelter: posts and a roof (dry under it).
-    for (i, (x, z)) in [(-3.0, 2.0), (3.0, 2.0), (-3.0, 6.0), (3.0, 6.0)].into_iter().enumerate() {
+    for (i, (x, z)) in [(-3.0, 2.0), (3.0, 2.0), (-3.0, 6.0), (3.0, 6.0)]
+        .into_iter()
+        .enumerate()
+    {
         mesh(
             &mut s,
             &format!("Shelter Post {}", i + 1),
@@ -185,10 +194,25 @@ pub fn demo_scene() -> Scene {
             WOOD,
         );
     }
-    mesh(&mut s, "Shelter Roof", PrimitiveMesh::Cube, at(Vec3::new(0.0, 2.9, 4.0), Vec3::new(7.2, 0.2, 5.2)), WOOD);
-    mesh(&mut s, "Bench", PrimitiveMesh::Cube, at(Vec3::new(0.0, 0.25, 5.0), Vec3::new(3.0, 0.5, 0.6)), WOOD);
+    mesh(
+        &mut s,
+        "Shelter Roof",
+        PrimitiveMesh::Cube,
+        at(Vec3::new(0.0, 2.9, 4.0), Vec3::new(7.2, 0.2, 5.2)),
+        WOOD,
+    );
+    mesh(
+        &mut s,
+        "Bench",
+        PrimitiveMesh::Cube,
+        at(Vec3::new(0.0, 0.25, 5.0), Vec3::new(3.0, 0.5, 0.6)),
+        WOOD,
+    );
     // Trees.
-    for (i, (x, z, h)) in [(-9.0, 7.0, 1.0), (8.5, 9.0, 1.2), (-6.0, 15.0, 1.1)].into_iter().enumerate() {
+    for (i, (x, z, h)) in [(-9.0, 7.0, 1.0), (8.5, 9.0, 1.2), (-6.0, 15.0, 1.1)]
+        .into_iter()
+        .enumerate()
+    {
         mesh(
             &mut s,
             &format!("Tree {} Trunk", i + 1),
@@ -205,11 +229,35 @@ pub fn demo_scene() -> Scene {
         );
     }
     // A low stone wall and a boulder (snow settles on their tops).
-    mesh(&mut s, "Stone Wall", PrimitiveMesh::Cube, at(Vec3::new(6.0, 0.5, 2.0), Vec3::new(0.8, 1.0, 7.0)), STONE);
-    mesh(&mut s, "Boulder", PrimitiveMesh::Sphere, at(Vec3::new(-5.0, 0.3, 0.5), Vec3::new(1.8, 1.2, 1.5)), STONE);
+    mesh(
+        &mut s,
+        "Stone Wall",
+        PrimitiveMesh::Cube,
+        at(Vec3::new(6.0, 0.5, 2.0), Vec3::new(0.8, 1.0, 7.0)),
+        STONE,
+    );
+    mesh(
+        &mut s,
+        "Boulder",
+        PrimitiveMesh::Sphere,
+        at(Vec3::new(-5.0, 0.3, 0.5), Vec3::new(1.8, 1.2, 1.5)),
+        STONE,
+    );
     // A street lamp: rain sparkles in its light at night.
-    mesh(&mut s, "Lamp Post", PrimitiveMesh::Cylinder, at(Vec3::new(-3.5, 2.0, -2.0), Vec3::new(0.12, 2.0, 0.12)), IRON);
-    mesh(&mut s, "Lamp Globe", PrimitiveMesh::Sphere, at(Vec3::new(-3.5, 4.1, -2.0), Vec3::splat(0.4)), LAMP);
+    mesh(
+        &mut s,
+        "Lamp Post",
+        PrimitiveMesh::Cylinder,
+        at(Vec3::new(-3.5, 2.0, -2.0), Vec3::new(0.12, 2.0, 0.12)),
+        IRON,
+    );
+    mesh(
+        &mut s,
+        "Lamp Globe",
+        PrimitiveMesh::Sphere,
+        at(Vec3::new(-3.5, 4.1, -2.0), Vec3::splat(0.4)),
+        LAMP,
+    );
     let lamp = s.spawn("Lamp Light", None);
     s.set_transform(lamp, Transform::from_position(Vec3::new(-3.5, 3.8, -2.0)));
     s.add(
@@ -270,12 +318,22 @@ fn weather_demo_matches_its_generator() {
     let lua = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(lua.replace("\r\n", "\n"), LUA, "{SCRIPT}");
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    crate::test_util::assert_json_close(&text, &demo_scene().to_json(), "regenerate with write_weather_demo");
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_weather_demo",
+    );
     let (scene, report) = Scene::from_json("WeatherDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let vols = misty_engine::weather::volumes(&scene);
     assert_eq!(vols.len(), 1);
-    let names: Vec<_> = vols[0].1.timeline.entries.iter().map(|e| e.preset).collect();
+    let names: Vec<_> = vols[0]
+        .1
+        .timeline
+        .entries
+        .iter()
+        .map(|e| e.preset)
+        .collect();
     assert_eq!(
         names,
         [
@@ -322,12 +380,18 @@ fn weather_demo_plays_and_keys_switch_the_weather() {
     for _ in 0..150 {
         step(&mut scene, &mut host, None);
     }
-    assert_eq!(scene.weather.current.nearest_preset(), WeatherPreset::Downpour);
+    assert_eq!(
+        scene.weather.current.nearest_preset(),
+        WeatherPreset::Downpour
+    );
     step(&mut scene, &mut host, Some("7"));
     for _ in 0..150 {
         step(&mut scene, &mut host, None);
     }
-    assert_eq!(scene.weather.current.nearest_preset(), WeatherPreset::Blizzard);
+    assert_eq!(
+        scene.weather.current.nearest_preset(),
+        WeatherPreset::Blizzard
+    );
     step(&mut scene, &mut host, Some("0"));
     for _ in 0..150 {
         step(&mut scene, &mut host, None);

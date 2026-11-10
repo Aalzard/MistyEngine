@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
 
+use super::WeatherParams;
 use super::component::{Coverage, SurfaceSettings, WeatherEffects};
 use super::lightning::Bolt;
 use super::state::{Layer, WeatherWorld};
-use super::WeatherParams;
 use crate::scene::{CloudsOverride, Scene};
 
 /// Area volumes the renderer blends per pixel (the ones with the most weight near the

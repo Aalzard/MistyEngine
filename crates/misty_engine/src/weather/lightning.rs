@@ -93,8 +93,8 @@ impl Bolt {
             if remaining < length * 0.05 {
                 continue;
             }
-            let side = Vec3::new(rng.range(-1.0, 1.0), 0.0, rng.range(-1.0, 1.0))
-                .normalize_or(Vec3::X);
+            let side =
+                Vec3::new(rng.range(-1.0, 1.0), 0.0, rng.range(-1.0, 1.0)).normalize_or(Vec3::X);
             let reach = remaining * rng.range(0.2, 0.55);
             let end = start + side * reach * 0.7 - Vec3::Y * reach;
             let path = channel(&mut rng, start, end, 5, 0.22);
@@ -266,7 +266,8 @@ impl Lightning {
                 let d = min + (max - min).max(0.0) * r.sqrt();
                 let a = self.rng.range(0.0, std::f32::consts::TAU);
                 let pos = camera + Vec3::new(a.sin() * d, 0.0, a.cos() * d);
-                ev.strikes.push(self.strike_at(pos, d, intensity, bolts, camera));
+                ev.strikes
+                    .push(self.strike_at(pos, d, intensity, bolts, camera));
             }
         }
         ev

@@ -203,9 +203,9 @@ mod sample_visual_scripting;
 #[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
-mod sample_weather;
-#[cfg(test)]
 mod sample_water;
+#[cfg(test)]
+mod sample_weather;
 #[cfg(test)]
 mod sample_world_builder;
 mod saveloc;
@@ -250,9 +250,9 @@ mod updater;
 mod vcam_tools;
 mod vcs;
 mod vfx_preview;
-mod weather_preview;
 mod vgeo_convert;
 mod viewport;
+mod weather_preview;
 mod widgets;
 
 use std::path::{Path, PathBuf};

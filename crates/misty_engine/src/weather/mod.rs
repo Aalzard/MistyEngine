@@ -124,11 +124,7 @@ impl WeatherPreset {
             "none" | "sunny" => Some(Self::Clear),
             _ => None,
         };
-        alias.or_else(|| {
-            Self::ALL
-                .into_iter()
-                .find(|p| p.key().to_lowercase() == k)
-        })
+        alias.or_else(|| Self::ALL.into_iter().find(|p| p.key().to_lowercase() == k))
     }
 
     /// The values of this state.
@@ -468,7 +464,13 @@ impl WeatherParams {
     pub fn sanitized(&self) -> Self {
         let p = *self;
         let pos = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
-        let unit = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+        let unit = |v: f32| {
+            if v.is_finite() {
+                v.clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        };
         Self {
             rain_intensity: unit(p.rain_intensity),
             rain_density: pos(p.rain_density).min(400.0),

@@ -49,7 +49,13 @@ fn shelter_scene(camera: Vec3, euler: Vec3) -> Scene {
     s.world.get::<&mut CameraComponent>(cam).unwrap().far = 400.0;
     let sun = s.find_by_name("Directional Light").unwrap();
     s.world.get::<&mut Light>(sun).unwrap().intensity = 1.2;
-    block(&mut s, "Ground", PrimitiveMesh::Plane, Vec3::ZERO, Vec3::new(10.0, 1.0, 10.0));
+    block(
+        &mut s,
+        "Ground",
+        PrimitiveMesh::Plane,
+        Vec3::ZERO,
+        Vec3::new(10.0, 1.0, 10.0),
+    );
     block(
         &mut s,
         "Roof",
@@ -60,7 +66,15 @@ fn shelter_scene(camera: Vec3, euler: Vec3) -> Scene {
     s
 }
 
-fn render(device: &wgpu::Device, queue: &wgpu::Queue, scene: &mut Scene, frames: usize, size: (u32, u32), quality: &QualityLevel, weather: bool) -> (Vec<u8>, Renderer) {
+fn render(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    scene: &mut Scene,
+    frames: usize,
+    size: (u32, u32),
+    quality: &QualityLevel,
+    weather: bool,
+) -> (Vec<u8>, Renderer) {
     let mut r = Renderer::with_queue(device, queue);
     r.set_quality(device, quality);
     let target = r.create_target(device, size.0, size.1);
@@ -122,7 +136,11 @@ fn rain_and_snow_passes_draw_and_off_changes_nothing() {
         },
     );
     let (off_img, _) = render(&device, &queue, &mut off, 3, size, &q, true);
-    assert_eq!(mean_diff(&clear, &off_img), 0.0, "a disabled Weather volume draws nothing");
+    assert_eq!(
+        mean_diff(&clear, &off_img),
+        0.0,
+        "a disabled Weather volume draws nothing"
+    );
     // Rain.
     let mut rain = make();
     let e = rain.spawn("Weather", None);
@@ -164,7 +182,10 @@ fn no_snow_settles_under_a_roof() {
     let (img, _) = render(&device, &queue, &mut s, 4, size, &q, false);
     let under = brightness(&img, size.0, (120, 200), (165, 178));
     let open = brightness(&img, size.0, (120, 200), (85, 100));
-    assert!(open > under + 40.0, "open ground white ({open}), sheltered floor not ({under})");
+    assert!(
+        open > under + 40.0,
+        "open ground white ({open}), sheltered floor not ({under})"
+    );
     // Without the occlusion map the sheltered floor is white too.
     let mut s2 = shelter_scene(Vec3::new(-4.0, 1.6, 0.0), Vec3::new(18.0, 90.0, 0.0));
     let e = s2.spawn("Weather", None);
@@ -248,10 +269,20 @@ fn weather_gpu_timings() {
     };
     let cases = [
         ("clear (no weather)", None, 0.0, 0.0),
-        ("heavy rain + splashes + wetness", Some(WeatherPreset::HeavyRain), 1.0, 0.0),
+        (
+            "heavy rain + splashes + wetness",
+            Some(WeatherPreset::HeavyRain),
+            1.0,
+            0.0,
+        ),
         ("downpour", Some(WeatherPreset::Downpour), 1.0, 0.0),
         ("thunderstorm", Some(WeatherPreset::Thunderstorm), 1.0, 0.0),
-        ("blizzard + snow cover", Some(WeatherPreset::Blizzard), 0.0, 1.0),
+        (
+            "blizzard + snow cover",
+            Some(WeatherPreset::Blizzard),
+            0.0,
+            1.0,
+        ),
     ];
     for (name, preset, wet, snow) in cases {
         let mut scene = base.clone();
@@ -313,18 +344,41 @@ fn weather_screenshots() {
         eprintln!("WeatherDemo missing: skipped");
         return;
     };
-    let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r34");
+    let out =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r34");
     std::fs::create_dir_all(&out).unwrap();
     let only = std::env::var("MISTY_WEATHER_SHOTS").unwrap_or_default();
     type Setup = fn(&mut Scene);
     let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 7] = [
         ("light_rain", WeatherPreset::LightRain, 0.5, 0.0, None),
-        ("downpour_mist_splashes", WeatherPreset::Downpour, 1.0, 0.0, None),
-        ("thunderstorm_night", WeatherPreset::Thunderstorm, 1.0, 0.0, Some(night)),
-        ("wet_street_puddles", WeatherPreset::Clear, 1.0, 0.0, Some(|s: &mut Scene| {
-            let cam = s.find_by_name("Main Camera").unwrap();
-            s.set_transform(cam, Transform::from_position(Vec3::new(-2.0, 1.2, -6.0)).with_euler(Vec3::new(12.0, 20.0, 0.0)));
-        })),
+        (
+            "downpour_mist_splashes",
+            WeatherPreset::Downpour,
+            1.0,
+            0.0,
+            None,
+        ),
+        (
+            "thunderstorm_night",
+            WeatherPreset::Thunderstorm,
+            1.0,
+            0.0,
+            Some(night),
+        ),
+        (
+            "wet_street_puddles",
+            WeatherPreset::Clear,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                let cam = s.find_by_name("Main Camera").unwrap();
+                s.set_transform(
+                    cam,
+                    Transform::from_position(Vec3::new(-2.0, 1.2, -6.0))
+                        .with_euler(Vec3::new(12.0, 20.0, 0.0)),
+                );
+            }),
+        ),
         ("snow_falling", WeatherPreset::Snow, 0.0, 0.35, None),
         ("blizzard", WeatherPreset::Blizzard, 0.0, 0.7, None),
         ("snow_covered", WeatherPreset::Clear, 0.0, 1.0, None),
@@ -352,14 +406,17 @@ fn weather_screenshots() {
             // A strike in view, caught at its first flash.
             let cam = crate::render_scene::game_camera(&scene).unwrap().0;
             let at = cam.position + cam.forward() * 900.0 + cam.right() * 250.0;
-            scene.weather.strike(Vec3::new(at.x, cam.position.y, at.z), 1.0);
+            scene
+                .weather
+                .strike(Vec3::new(at.x, cam.position.y, at.z), 1.0);
             img = render_demo(&device, &queue, &mut r, &target, &mut scene, 2, 0.005);
         }
         let rgba = image::RgbaImage::from_raw(1600, 900, img).unwrap();
         let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
         let path = out.join(format!("{name}.jpg"));
         let file = std::fs::File::create(&path).unwrap();
-        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), 88);
+        let mut enc =
+            image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), 88);
         enc.encode_image(&rgb).unwrap();
         eprintln!("wrote {}", path.display());
     }

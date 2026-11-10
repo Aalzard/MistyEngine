@@ -205,7 +205,12 @@ pub fn occlusion_matrix(centre: Vec3, half: f32) -> Mat4 {
         glam::Vec4::new(1.0 / half, 0.0, 0.0, 0.0),
         glam::Vec4::new(0.0, 0.0, -1.0 / OCCLUSION_RANGE, 0.0),
         glam::Vec4::new(0.0, 1.0 / half, 0.0, 0.0),
-        glam::Vec4::new(-centre.x / half, -centre.z / half, top / OCCLUSION_RANGE, 1.0),
+        glam::Vec4::new(
+            -centre.x / half,
+            -centre.z / half,
+            top / OCCLUSION_RANGE,
+            1.0,
+        ),
     )
 }
 
@@ -466,7 +471,13 @@ impl Renderer {
             return;
         };
         let texels = occlusion_texels(tier);
-        if now.occlusion && self.weather.occlusion.as_ref().is_none_or(|o| o.texels != texels) {
+        if now.occlusion
+            && self
+                .weather
+                .occlusion
+                .as_ref()
+                .is_none_or(|o| o.texels != texels)
+        {
             self.weather.occlusion = Some(make_occlusion(device, texels));
             self.view_group_dirty = true;
         }
@@ -538,7 +549,12 @@ impl Renderer {
                 ],
                 blend: [r.blend, r.weight, 0.0, 0.0],
                 precip: [r.amounts.rain, r.amounts.snow, r.amounts.splashes, 0.0],
-                surface: [r.amounts.wetness, r.amounts.puddles, r.amounts.snow_cover, 0.0],
+                surface: [
+                    r.amounts.wetness,
+                    r.amounts.puddles,
+                    r.amounts.snow_cover,
+                    0.0,
+                ],
             };
         }
         queue.write_buffer(&self.weather.globals, 0, bytemuck::bytes_of(&g));
@@ -640,7 +656,11 @@ impl Renderer {
             let (Some(Some(b)), Some(Some(_))) = (prep.bounds.get(i), prep.shadow.get(i)) else {
                 continue;
             };
-            if b.max.x < lo.x || b.min.x > hi.x || b.max.z < lo.z || b.min.z > hi.z || b.min.y > hi.y
+            if b.max.x < lo.x
+                || b.min.x > hi.x
+                || b.max.z < lo.z
+                || b.min.z > hi.z
+                || b.min.y > hi.y
             {
                 continue;
             }
@@ -678,7 +698,10 @@ impl Renderer {
         let internal = target.size();
         let aspect = out.0 as f32 / out.1.max(1) as f32;
         let view_proj = cam.view_projection(aspect);
-        let ortho = matches!(cam.projection, crate::camera::Projection::Orthographic { .. });
+        let ortho = matches!(
+            cam.projection,
+            crate::camera::Projection::Orthographic { .. }
+        );
         let tan_half = match cam.projection {
             crate::camera::Projection::Perspective { fov_y } => (fov_y.to_radians() * 0.5).tan(),
             crate::camera::Projection::Orthographic { size } => size,
@@ -697,7 +720,12 @@ impl Renderer {
             right: cam.right().extend(tan_half).to_array(),
             up: cam.up().extend(if ortho { 1.0 } else { 0.0 }).to_array(),
             forward: cam.forward().extend(cam.near).to_array(),
-            sizes: [out.0 as f32, out.1 as f32, internal.0 as f32, internal.1 as f32],
+            sizes: [
+                out.0 as f32,
+                out.1 as f32,
+                internal.0 as f32,
+                internal.1 as f32,
+            ],
             rain: [
                 now.counts[0] as f32,
                 now.counts[1] as f32,
@@ -756,18 +784,32 @@ impl Renderer {
         // Splash spawning.
         let spawn = now.splash_spawn;
         if let (true, Some((splashes, slots))) = (spawn > 0, self.weather.splashes.as_ref()) {
-            self.weather.frame_seed = self.weather.frame_seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            self.weather.frame_seed = self
+                .weather
+                .frame_seed
+                .wrapping_mul(1_103_515_245)
+                .wrapping_add(12345);
             let sim = SplashSimGpu {
                 inv_view_proj: view_proj.inverse().to_cols_array_2d(),
                 camera: cam.position.extend(w.time).to_array(),
-                sizes: [internal.0 as f32, internal.1 as f32, *slots as f32, spawn as f32],
+                sizes: [
+                    internal.0 as f32,
+                    internal.1 as f32,
+                    *slots as f32,
+                    spawn as f32,
+                ],
                 params: [
                     w.max_rain.max(1e-3),
                     45.0,
                     (self.weather.frame_seed >> 8) as f32,
                     if w.effects.mist { p.mist * 0.08 } else { 0.0 },
                 ],
-                ring: [self.weather.ring as f32, 0.01 + p.drop_size * 0.004, 0.0, 0.0],
+                ring: [
+                    self.weather.ring as f32,
+                    0.01 + p.drop_size * 0.004,
+                    0.0,
+                    0.0,
+                ],
             };
             queue.write_buffer(&self.weather.sim_uniform, 0, bytemuck::bytes_of(&sim));
             let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1033,7 +1075,11 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
             entry(0, vf, uniform),
             entry(1, S::FRAGMENT, tex(true)),
             entry(2, vf, tex(false)),
-            entry(3, S::FRAGMENT, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+            entry(
+                3,
+                S::FRAGMENT,
+                wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            ),
             entry(4, vf, uniform),
             entry(5, S::VERTEX, read),
             entry(6, S::VERTEX, read),
@@ -1109,7 +1155,12 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
         cache: None,
     });
     Passes {
-        screen: build("weather screen", "vs_fullscreen", "fs_screen", premultiplied),
+        screen: build(
+            "weather screen",
+            "vs_fullscreen",
+            "fs_screen",
+            premultiplied,
+        ),
         rain: build("weather rain", "vs_rain", "fs_rain", premultiplied),
         snow: build("weather snow", "vs_snow", "fs_snow", premultiplied),
         splash: build("weather splashes", "vs_splash", "fs_splash", premultiplied),
@@ -1153,7 +1204,10 @@ mod tests {
     #[test]
     fn uniforms_match_wgsl() {
         // WeatherGlobals: 9 vec4s + 4 regions of a matrix and 4 vec4s.
-        assert_eq!(std::mem::size_of::<GlobalsGpu>(), 9 * 16 + 4 * (64 + 4 * 16));
+        assert_eq!(
+            std::mem::size_of::<GlobalsGpu>(),
+            9 * 16 + 4 * (64 + 4 * 16)
+        );
         // Precip: 2 matrices + 14 vec4s.
         assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 14 * 16);
         assert_eq!(std::mem::size_of::<SplashSimGpu>(), 64 + 4 * 16);
@@ -1170,7 +1224,10 @@ mod tests {
         // Snapped to whole texels.
         let c = occlusion_centre(Vec3::new(0.04, 1.0, 0.13), 1024);
         let texel = OCCLUSION_SIZE / 1024.0;
-        assert!((c.x / texel).fract().abs() < 1e-4 && (c.z / texel - (c.z / texel).round()).abs() < 1e-4);
+        assert!(
+            (c.x / texel).fract().abs() < 1e-4
+                && (c.z / texel - (c.z / texel).round()).abs() < 1e-4
+        );
     }
 
     #[test]
@@ -1184,7 +1241,10 @@ mod tests {
         let f = crate::weather::frame::build(&world).unwrap();
         let high = particle_counts(&f, Tier::High);
         let low = particle_counts(&f, Tier::Low);
-        assert!(high[0] > 100_000 && high[0] + high[1] < MAX_PARTICLES as u32 + 1, "{high:?}");
+        assert!(
+            high[0] > 100_000 && high[0] + high[1] < MAX_PARTICLES as u32 + 1,
+            "{high:?}"
+        );
         assert!(low[0] < high[0] / 2);
         assert_eq!(particle_counts(&f, Tier::Off), [0; 4]);
         assert_eq!(high[2], 0);

@@ -17,8 +17,14 @@ fn presets_parse_label_and_round_trip() {
         assert_eq!(WeatherPreset::parse(p.label()), Some(p), "{p:?}");
         assert_eq!(WeatherPreset::matching(&p.params()), Some(p), "{p:?}");
     }
-    assert_eq!(WeatherPreset::parse("heavy_rain"), Some(WeatherPreset::HeavyRain));
-    assert_eq!(WeatherPreset::parse("Storm"), Some(WeatherPreset::Thunderstorm));
+    assert_eq!(
+        WeatherPreset::parse("heavy_rain"),
+        Some(WeatherPreset::HeavyRain)
+    );
+    assert_eq!(
+        WeatherPreset::parse("Storm"),
+        Some(WeatherPreset::Thunderstorm)
+    );
     assert_eq!(WeatherPreset::parse("nope"), None);
     // Presets keep the wind direction.
     let mut p = WeatherPreset::Rain.params();
@@ -57,9 +63,14 @@ fn transitions_interpolate_every_value() {
     let mut w2 = a;
     w1.wind_direction = 350.0;
     w2.wind_direction = 10.0;
-    assert!(approx(w1.lerp(&w2, 0.5).wind_direction, 0.0, 1e-3) || approx(w1.lerp(&w2, 0.5).wind_direction, 360.0, 1e-3));
+    assert!(
+        approx(w1.lerp(&w2, 0.5).wind_direction, 0.0, 1e-3)
+            || approx(w1.lerp(&w2, 0.5).wind_direction, 360.0, 1e-3)
+    );
     // Rain → snow passes through sleet: both falling halfway.
-    let s = WeatherPreset::Rain.params().lerp(&WeatherPreset::Snow.params(), 0.5);
+    let s = WeatherPreset::Rain
+        .params()
+        .lerp(&WeatherPreset::Snow.params(), 0.5);
     assert!(s.rain_density > 0.0 && s.snow_density > 0.0);
     // Monotonic along the way.
     let mut last = -1.0;
@@ -93,7 +104,10 @@ fn timeline_steps_through_its_entries_with_transitions() {
     let e = vols[0].0;
     let mut world = WeatherWorld::default();
     world.update(&vols, 0.0, Vec3::ZERO);
-    assert_eq!(world.volume(e).unwrap().params, WeatherPreset::Clear.params());
+    assert_eq!(
+        world.volume(e).unwrap().params,
+        WeatherPreset::Clear.params()
+    );
     // Hold Clear for 10 s.
     for _ in 0..99 {
         world.update(&vols, 0.1, Vec3::ZERO);
@@ -116,7 +130,11 @@ fn timeline_steps_through_its_entries_with_transitions() {
     }
     let p = world.volume(e).unwrap().params;
     let heavy = WeatherPreset::HeavyRain.params();
-    assert!(approx(p.rain_density, heavy.rain_density * 0.5, 0.5), "{}", p.rain_density);
+    assert!(
+        approx(p.rain_density, heavy.rain_density * 0.5, 0.5),
+        "{}",
+        p.rain_density
+    );
     // Blend done, then the 5 s hold, then Snow, then back to Clear (looping).
     for _ in 0..20 {
         world.update(&vols, 0.1, Vec3::ZERO);
@@ -140,7 +158,10 @@ fn timeline_steps_through_its_entries_with_transitions() {
     }
     let e2 = vols2[0].0;
     assert_eq!(world2.volume(e2).unwrap().timeline.index, 2);
-    assert_eq!(world2.volume(e2).unwrap().params, WeatherPreset::Snow.params());
+    assert_eq!(
+        world2.volume(e2).unwrap().params,
+        WeatherPreset::Snow.params()
+    );
 }
 
 #[test]
@@ -193,21 +214,88 @@ fn area_volumes_fade_at_their_edges_and_blend_by_priority() {
     let m = Mat4::from_translation(Vec3::new(100.0, 0.0, 0.0));
     let size = [20.0, 10.0, 20.0];
     // Box: inside, inside the blend band, outside.
-    assert_eq!(area_weight(Coverage::Box, &m, size, 0.0, 4.0, Vec3::new(100.0, 0.0, 0.0)), 1.0);
-    let edge = area_weight(Coverage::Box, &m, size, 0.0, 4.0, Vec3::new(108.0, 0.0, 0.0));
+    assert_eq!(
+        area_weight(
+            Coverage::Box,
+            &m,
+            size,
+            0.0,
+            4.0,
+            Vec3::new(100.0, 0.0, 0.0)
+        ),
+        1.0
+    );
+    let edge = area_weight(
+        Coverage::Box,
+        &m,
+        size,
+        0.0,
+        4.0,
+        Vec3::new(108.0, 0.0, 0.0),
+    );
     assert!(edge > 0.0 && edge < 1.0, "{edge}");
-    assert_eq!(area_weight(Coverage::Box, &m, size, 0.0, 4.0, Vec3::new(111.0, 0.0, 0.0)), 0.0);
+    assert_eq!(
+        area_weight(
+            Coverage::Box,
+            &m,
+            size,
+            0.0,
+            4.0,
+            Vec3::new(111.0, 0.0, 0.0)
+        ),
+        0.0
+    );
     // Scale and rotation count.
     let scaled = Mat4::from_scale_rotation_translation(
         Vec3::splat(2.0),
         glam::Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
         Vec3::ZERO,
     );
-    assert_eq!(area_weight(Coverage::Box, &scaled, [10.0, 2.0, 2.0], 0.0, 0.0, Vec3::new(0.0, 0.0, 9.0)), 1.0);
-    assert_eq!(area_weight(Coverage::Box, &scaled, [10.0, 2.0, 2.0], 0.0, 0.0, Vec3::new(9.0, 0.0, 0.0)), 0.0);
+    assert_eq!(
+        area_weight(
+            Coverage::Box,
+            &scaled,
+            [10.0, 2.0, 2.0],
+            0.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 9.0)
+        ),
+        1.0
+    );
+    assert_eq!(
+        area_weight(
+            Coverage::Box,
+            &scaled,
+            [10.0, 2.0, 2.0],
+            0.0,
+            0.0,
+            Vec3::new(9.0, 0.0, 0.0)
+        ),
+        0.0
+    );
     // Sphere.
-    assert_eq!(area_weight(Coverage::Sphere, &m, size, 10.0, 2.0, Vec3::new(100.0, 5.0, 0.0)), 1.0);
-    assert_eq!(area_weight(Coverage::Sphere, &m, size, 10.0, 2.0, Vec3::new(100.0, 11.0, 0.0)), 0.0);
+    assert_eq!(
+        area_weight(
+            Coverage::Sphere,
+            &m,
+            size,
+            10.0,
+            2.0,
+            Vec3::new(100.0, 5.0, 0.0)
+        ),
+        1.0
+    );
+    assert_eq!(
+        area_weight(
+            Coverage::Sphere,
+            &m,
+            size,
+            10.0,
+            2.0,
+            Vec3::new(100.0, 11.0, 0.0)
+        ),
+        0.0
+    );
 
     // A global drizzle with a storm cell (higher priority) over x = 100.
     let mut world_e = hecs::World::new();
@@ -223,9 +311,17 @@ fn area_volumes_fade_at_their_edges_and_blend_by_priority() {
     let vols = vec![(g, drizzle, Mat4::IDENTITY), (a, storm, m)];
     let mut world = WeatherWorld::default();
     world.update(&vols, 0.1, Vec3::ZERO);
-    assert!(approx(world.current.rain_density, WeatherPreset::Drizzle.params().rain_density, 1e-3));
+    assert!(approx(
+        world.current.rain_density,
+        WeatherPreset::Drizzle.params().rain_density,
+        1e-3
+    ));
     world.update(&vols, 0.1, Vec3::new(100.0, 0.0, 0.0));
-    assert!(approx(world.current.rain_density, WeatherPreset::Downpour.params().rain_density, 1e-3));
+    assert!(approx(
+        world.current.rain_density,
+        WeatherPreset::Downpour.params().rain_density,
+        1e-3
+    ));
     assert_eq!(world.dominant, Some(a));
     world.update(&vols, 0.1, Vec3::new(108.0, 0.0, 0.0));
     let r = world.current.rain_density;
@@ -233,9 +329,21 @@ fn area_volumes_fade_at_their_edges_and_blend_by_priority() {
     // The renderer gets the storm as a region and the drizzle as the global amount.
     let f = frame::build(&world).unwrap();
     assert_eq!(f.regions.len(), 1);
-    assert!(approx(f.global.rain, WeatherPreset::Drizzle.params().rain_density, 1e-3));
-    assert!(approx(f.amounts_at(Vec3::new(100.0, 0.0, 0.0)).rain, 50.0, 1e-3));
-    assert!(approx(f.amounts_at(Vec3::new(-50.0, 0.0, 0.0)).rain, f.global.rain, 1e-3));
+    assert!(approx(
+        f.global.rain,
+        WeatherPreset::Drizzle.params().rain_density,
+        1e-3
+    ));
+    assert!(approx(
+        f.amounts_at(Vec3::new(100.0, 0.0, 0.0)).rain,
+        50.0,
+        1e-3
+    ));
+    assert!(approx(
+        f.amounts_at(Vec3::new(-50.0, 0.0, 0.0)).rain,
+        f.global.rain,
+        1e-3
+    ));
     assert_eq!(f.max_rain, 50.0);
     // Lower priority than the global: the global wins inside the area too.
     let mut low = vols.clone();
@@ -243,7 +351,11 @@ fn area_volumes_fade_at_their_edges_and_blend_by_priority() {
     low.sort_by(|a, b| a.1.priority.total_cmp(&b.1.priority));
     let mut w2 = WeatherWorld::default();
     w2.update(&low, 0.1, Vec3::new(100.0, 0.0, 0.0));
-    assert!(approx(w2.current.rain_density, WeatherPreset::Drizzle.params().rain_density, 1e-3));
+    assert!(approx(
+        w2.current.rain_density,
+        WeatherPreset::Drizzle.params().rain_density,
+        1e-3
+    ));
 }
 
 #[test]
@@ -266,14 +378,21 @@ fn surfaces_get_wet_dry_and_snow_builds_and_melts() {
     }
     assert_eq!(s.wetness, 1.0);
     let puddles = s.puddles;
-    assert!(puddles > 0.3 && puddles < 1.0, "puddles fill slower: {puddles}");
+    assert!(
+        puddles > 0.3 && puddles < 1.0,
+        "puddles fill slower: {puddles}"
+    );
     // Dries after the rain: 20 s from fully wet; puddles linger.
     let clear = WeatherPreset::Clear.params();
     for _ in 0..100 {
         accumulate(&mut s, &clear, &set, 0.1);
     }
     assert!(approx(s.wetness, 0.5, 0.01), "{}", s.wetness);
-    assert!(s.puddles > 0.0 && puddles - s.puddles < 0.45, "puddles dry slower: {}", s.puddles);
+    assert!(
+        s.puddles > 0.0 && puddles - s.puddles < 0.45,
+        "puddles dry slower: {}",
+        s.puddles
+    );
     for _ in 0..400 {
         accumulate(&mut s, &clear, &set, 0.1);
     }
@@ -305,7 +424,11 @@ fn surfaces_get_wet_dry_and_snow_builds_and_melts() {
     let mut r = VolumeState::default();
     r.snow_cover = 1.0;
     accumulate(&mut r, &rain, &set, 1.0);
-    assert!(approx(r.snow_cover, 1.0 - 3.0 / 20.0, 0.02), "{}", r.snow_cover);
+    assert!(
+        approx(r.snow_cover, 1.0 - 3.0 / 20.0, 0.02),
+        "{}",
+        r.snow_cover
+    );
     // Max snow caps it; turning surfaces off clears them.
     let capped = SurfaceSettings {
         max_snow: 0.4,
@@ -382,7 +505,10 @@ fn script_layer_overrides_and_releases() {
     let vols = global(Weather::with_preset(WeatherPreset::Snow));
     let mut world = WeatherWorld::default();
     world.update(&vols, 0.1, Vec3::ZERO);
-    assert_eq!(world.current.snow_density, WeatherPreset::Snow.params().snow_density);
+    assert_eq!(
+        world.current.snow_density,
+        WeatherPreset::Snow.params().snow_density
+    );
     world.set_state(WeatherPreset::HeavyRain.params(), 2.0, "HeavyRain");
     assert!(world.scripted());
     for _ in 0..10 {
@@ -390,11 +516,18 @@ fn script_layer_overrides_and_releases() {
     }
     // Halfway (1 s of 2).
     let r = world.current.rain_density;
-    assert!(approx(r, WeatherPreset::HeavyRain.params().rain_density * 0.5, 0.5), "{r}");
+    assert!(
+        approx(r, WeatherPreset::HeavyRain.params().rain_density * 0.5, 0.5),
+        "{r}"
+    );
     for _ in 0..20 {
         world.update(&vols, 0.1, Vec3::ZERO);
     }
-    assert!(approx(world.current.rain_density, WeatherPreset::HeavyRain.params().rain_density, 1e-3));
+    assert!(approx(
+        world.current.rain_density,
+        WeatherPreset::HeavyRain.params().rain_density,
+        1e-3
+    ));
     assert!(approx(world.current.snow_density, 0.0, 1e-4));
     // Changing one value keeps the rest.
     world.modify(0.0, |p| p.wind_speed = 20.0);
@@ -407,12 +540,18 @@ fn script_layer_overrides_and_releases() {
         world.update(&vols, 0.1, Vec3::ZERO);
     }
     assert!(!world.scripted());
-    assert_eq!(world.current.snow_density, WeatherPreset::Snow.params().snow_density);
+    assert_eq!(
+        world.current.snow_density,
+        WeatherPreset::Snow.params().snow_density
+    );
     // Without any volume, scripts still make weather (the implicit clear base).
     let mut bare = WeatherWorld::default();
     bare.set_state(WeatherPreset::Rain.params(), 0.0, "Rain");
     bare.update(&[], 0.1, Vec3::ZERO);
-    assert_eq!(bare.current.rain_density, WeatherPreset::Rain.params().rain_density);
+    assert_eq!(
+        bare.current.rain_density,
+        WeatherPreset::Rain.params().rain_density
+    );
     assert!(frame::build(&bare).is_some());
     let ev = bare.take_events();
     assert!(matches!(&ev[0], WeatherEvent::Changed { state, .. } if state == "Rain"));
@@ -465,7 +604,8 @@ fn scene_update_uses_volumes_and_the_frame_follows() {
     assert_eq!(s.weather.current.snow_density, 0.0);
     // Drive Clouds turns overcast clouds on in a scene without them.
     let mut post = crate::render::PostSettings::default();
-    s.weather.set_state(WeatherPreset::Thunderstorm.params(), 0.0, "Thunderstorm");
+    s.weather
+        .set_state(WeatherPreset::Thunderstorm.params(), 0.0, "Thunderstorm");
     update_scene(&mut s, 0.1, Vec3::ZERO);
     frame::adjust_post(&mut post, &s);
     assert!(post.clouds.is_on() && post.clouds.coverage > 0.8);
@@ -477,7 +617,9 @@ fn scene_update_uses_volumes_and_the_frame_follows() {
 fn generated_audio_loops_and_thunder_are_sane() {
     let r = audio::rain(2.0, true, 1);
     assert!(r.len() > (audio::RATE as f32 * 1.2) as usize);
-    let peak = r.iter().fold(0.0f32, |m, (a, b)| m.max(a.abs()).max(b.abs()));
+    let peak = r
+        .iter()
+        .fold(0.0f32, |m, (a, b)| m.max(a.abs()).max(b.abs()));
     assert!(peak > 0.5 && peak <= 0.71, "{peak}");
     // The loop point is seamless: the first and last samples are close.
     let (a, b) = (r[0], r[r.len() - 1]);

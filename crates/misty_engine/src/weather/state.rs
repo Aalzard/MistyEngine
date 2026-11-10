@@ -205,8 +205,7 @@ pub fn volumes(scene: &Scene) -> Vec<(Entity, Weather, Mat4)> {
         .into_iter()
         .filter_map(|e| {
             let w = scene.world.get::<&Weather>(e).ok()?;
-            w.enabled
-                .then(|| (e, (*w).clone(), scene.world_matrix(e)))
+            w.enabled.then(|| (e, (*w).clone(), scene.world_matrix(e)))
         })
         .collect();
     // Stable: equal priorities keep Hierarchy order.
@@ -229,7 +228,11 @@ impl WeatherWorld {
         camera: Vec3,
         wind_zone: Option<(Vec3, f32)>,
     ) {
-        let dt = if dt.is_finite() { dt.clamp(0.0, 1.0) } else { 0.0 };
+        let dt = if dt.is_finite() {
+            dt.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         self.live = true;
         self.clock += f64::from(dt);
         self.camera = camera;
@@ -435,7 +438,11 @@ impl WeatherWorld {
     pub fn release(&mut self, seconds: f32) {
         if let Some(s) = self.script.as_mut() {
             s.weight_target = 0.0;
-            s.weight_speed = if seconds > 0.0 { 1.0 / seconds } else { f32::MAX };
+            s.weight_speed = if seconds > 0.0 {
+                1.0 / seconds
+            } else {
+                f32::MAX
+            };
         }
     }
 
@@ -581,9 +588,16 @@ fn advance_timeline(s: &mut VolumeState, w: &Weather, dt: f32) -> Option<(String
         s.params = w.state.sanitized();
         return None;
     }
-    let rng = s.rng.get_or_insert_with(|| Rng::new(u64::from(w.seed) ^ 0x7155));
+    let rng = s
+        .rng
+        .get_or_insert_with(|| Rng::new(u64::from(w.seed) ^ 0x7155));
     let n = tl.entries.len();
-    let dt = dt * if tl.time_scale > 0.0 { tl.time_scale } else { 1.0 };
+    let dt = dt
+        * if tl.time_scale > 0.0 {
+            tl.time_scale
+        } else {
+            1.0
+        };
     let t = &mut s.timeline;
     let hold = |e: &super::TimelineEntry, rng: &mut Rng, random: bool| {
         let lo = e.duration.max(0.0);
