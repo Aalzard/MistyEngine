@@ -389,14 +389,28 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
 /// Like [`scatter`] but only the blades kept at density `level` (see [`level_keep`]),
 /// sorted by drop-out key so any prefix of the result is an even thinning.
 pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
-    scatter_level_in(d, lo, hi, level, false)
+    scatter_level_in(d, (lo, hi), (lo, hi), level, false)
 }
 
 /// [`scatter_level`] with the rows of texels spread over the current rayon pool's threads
 /// (the same blades in the same order): a chunk being painted at a few hundred blades per
 /// square metre holds a quarter of a million of them.
 pub fn scatter_level_parallel(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
-    scatter_level_in(d, lo, hi, level, true)
+    scatter_level_in(d, (lo, hi), (lo, hi), level, true)
+}
+
+/// The blades of [`scatter_level`] over the chunk `[chunk, chunk + size)` whose roots lie in
+/// the tile `[lo, hi)` inside it: the same blades (positions, shapes, keys) the chunk's
+/// scatter gives there, sorted by drop-out key. A painted chunk is scattered tile by tile, so
+/// a dab re-scatters only the tiles under the brush.
+pub fn scatter_tile(
+    d: &TerrainData,
+    chunk: (Vec2, Vec2),
+    lo: Vec2,
+    hi: Vec2,
+    level: u32,
+) -> Vec<Blade> {
+    scatter_level_in(d, (lo, hi), chunk, level, false)
 }
 
 /// What `row(r)` makes for every row of `rows`, in order: the rows in parallel (on the
@@ -413,7 +427,16 @@ pub(super) fn rows_of<T: Send>(
     }
 }
 
-fn scatter_level_in(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32, parallel: bool) -> Vec<Blade> {
+/// Blades rooted in `[lo, hi)` (`roots`); tufts pull blades only within `chunk` (the
+/// rectangle a chunk's scatter covers, so tiles of a chunk add up to the chunk's blades).
+fn scatter_level_in(
+    d: &TerrainData,
+    roots: (Vec2, Vec2),
+    chunk: (Vec2, Vec2),
+    level: u32,
+    parallel: bool,
+) -> Vec<Blade> {
+    let (lo, hi) = roots;
     let s = &d.details;
     let n = d.alphamap_resolution;
     if !super::detail_layers::draws_grass(d) {
@@ -476,7 +499,7 @@ fn scatter_level_in(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32, parallel: b
                 let under = r(17) < 0.68;
                 let pull = if under { 0.08 } else { 0.45 };
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
-                let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
+                let inside = pulled.cmpge(chunk.0).all() && pulled.cmplt(chunk.1).all();
                 let p = if inside { pulled } else { root };
                 // Nothing grows over a hole.
                 if holes && d.hole_at(p.x, p.y) {
@@ -663,6 +686,31 @@ mod tests {
         generate(&mut d);
         assert_eq!(d.detail_map[5 * n + 10], 0, "layer 1 here");
         assert_eq!(d.detail_map[5 * n + 40], 255);
+    }
+
+    #[test]
+    fn tiles_hold_the_chunks_blades() {
+        let mut d = cliff();
+        d.details.density = 60.0;
+        d.details.clumping = 1.0;
+        generate(&mut d);
+        let (lo, hi) = (Vec2::new(48.0, 16.0), Vec2::new(64.0, 32.0));
+        let whole = scatter_level(&d, lo, hi, 1);
+        let mut tiles = Vec::new();
+        for tz in 0..4 {
+            for tx in 0..4 {
+                let t = lo + Vec2::new(tx as f32, tz as f32) * 4.0;
+                tiles.extend(scatter_tile(&d, (lo, hi), t, t + 4.0, 1));
+            }
+        }
+        assert!(whole.len() > 1000, "{}", whole.len());
+        assert_eq!(tiles.len(), whole.len());
+        let key = |b: &Blade| (b.key().to_bits(), b.position.map(f32::to_bits));
+        let mut a: Vec<_> = whole.iter().map(key).collect();
+        let mut b: Vec<_> = tiles.iter().map(key).collect();
+        a.sort_unstable();
+        b.sort_unstable();
+        assert!(a == b, "the very same blades");
     }
 
     #[test]

@@ -40,6 +40,8 @@ struct GrassParams {
     // x = shortest and y = tallest blade of the turf (m), z = height variation, w = the
     // quality level's share of the blades (the rest grow wider).
     canopy: vec4<f32>,
+    // The grass species' (dryness, tint): layer 2i in xy, layer 2i + 1 in zw.
+    species: array<vec4<f32>, 8>,
 };
 
 @group(2) @binding(0) var<uniform> grass: GrassParams;
@@ -89,6 +91,33 @@ struct BladeIn {
 // One of a wildflower's cards (shape.z = 2 + kind x 3 + card).
 fn grass_is_flower(b: BladeIn) -> bool {
     return b.shape.z >= 1.5;
+}
+
+// A grass species blade keeps -1 - 2 x layer - jitter in shape.z (detail_layers.rs
+// `species_mark`): its layer's (dryness, tint) from the table and the jitter.
+fn grass_species(b: BladeIn) -> vec3<f32> {
+    let s = -b.shape.z - 1.0;
+    let li = floor(s * 0.5);
+    let e = grass.species[u32(li) / 2u];
+    let look = select(e.xy, e.zw, (u32(li) & 1u) == 1u);
+    return vec3<f32>(look, s - 2.0 * li);
+}
+
+// The blade's dry mix 0..1 (the terrain grass's is baked; a species' from its table).
+fn grass_dry_mix(b: BladeIn) -> f32 {
+    if b.shape.z >= 0.0 {
+        return b.shape.z;
+    }
+    let sp = grass_species(b);
+    return clamp(sp.x + (sp.z - 0.5) * 0.25, 0.0, 1.0);
+}
+
+// The blade's tuft tint -1..1 (a species' adds its layer's Brightness).
+fn grass_tint(b: BladeIn) -> f32 {
+    if b.shape.z >= 0.0 {
+        return b.extra.w;
+    }
+    return clamp(grass_species(b).y + b.extra.w, -1.0, 1.0);
 }
 
 // Share of the flowers drawn at `dist`: all up to the flowers' LOD distance, then fewer (each

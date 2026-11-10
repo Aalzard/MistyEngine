@@ -3382,11 +3382,32 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   done), parallel scatter equals serial, `busy()`; timing benches `grass_scatter_cost`,
   `grass_paint_latency` (ignored).
 
+### Done, part 2: tiles under the brush
+- A chunk touched by the brush switches to 4 × 4 m tiles, each its own run of blades in the
+  pages; a dab re-scatters and uploads only the tiles it touches. The tiles hold exactly the
+  chunk's blades (`details::scatter_tile`); while all 16 come up the whole run keeps drawing.
+- Tiles run on their own threads from a queue: tiles of a chunk switching to tiles first,
+  then the newest dab, nearest the brush first; a tile's waiting job is replaced by a newer
+  one, so a stroke never waits on its own stale work.
+- Settings changes (sliders dragged in the Inspector) keep every blade drawing and
+  re-scatter by distance to the camera, one job per chunk at a time; the brush still goes
+  first. A grass species' Healthy↔Dry and Brightness come from a table in the grass uniform
+  (`species_mark` in the blade, `grass_dry_mix` / `grass_tint` in the shader): colour edits
+  show on the next frame with nothing scattered again.
+- Measured (`grass_paint_latency`, CPU at ~74 % from other builds), dab to the blades drawn
+  at the brush centre, median / 90 %:
+  - brush 0.25 m per frame (about 15 m/s at 60 fps): 76 / 228 ms; before (whole chunks)
+    865 / 1082 ms with only half the dabs ever shown during the stroke.
+  - brush 1 m per frame (60 m/s): 377 / 1756 ms, mostly chunks switching to tiles; before
+    666 / 906 ms with half the dabs shown.
+  - grass back after release: 0.3–0.55 s.
+
 ### Not done yet
-- While painting, a dab shows in about two thirds of a second, not a frame or two: a painted
-  chunk is still scattered and uploaded whole (256k blades, 18 MB at 1000/m²) and a 25 m brush
-  keeps up to nine of them busy. Re-scattering only the brush's texels (sub-chunk regions or
-  in-place blade updates) is the next step.
+- A fast brush entering an unpainted chunk waits for all 16 of its tiles (one chunk's
+  scatter) before its dabs show; switching the chunks around the brush ahead of it would
+  hide that.
+- The 50 ms goal could not be checked on an idle machine (other agents' builds kept the CPU
+  at 55–100 %).
 - The editor stroke itself was not scripted end to end (the harness drives the same store and
   renderer calls the Paint Details brush makes).
 
