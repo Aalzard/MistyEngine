@@ -88,7 +88,10 @@ mod tests {
         assert!(i < 3.0 && i > 0.5, "{i}");
         assert!(c[0] >= c[1] && c[1] > c[2], "{c:?}");
         let (c, i) = apply([1.0, 0.9, 0.8], 2.0, Vec3::NEG_Y);
-        assert!((i - 2.0).abs() < 1e-3 && (c[1] - 0.9).abs() < 2e-3, "{c:?} {i}");
+        assert!(
+            (i - 2.0).abs() < 1e-3 && (c[1] - 0.9).abs() < 2e-3,
+            "{c:?} {i}"
+        );
         assert!(sky_scale(90.0) > 0.999 && sky_scale(10.0) < sky_scale(45.0));
         assert!(sky_scale(-5.0) > 0.1);
     }

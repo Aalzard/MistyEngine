@@ -56,7 +56,9 @@ impl TreeHiz {
     /// Is the pyramid usable for a frame seen from `camera` looking along `forward` at a
     /// target of `size`? (Only while the view has hardly changed: trees it hid may show now.)
     pub fn usable(&self, size: (u32, u32), camera: Vec3, forward: Vec3) -> bool {
-        self.state.fits(size) && self.camera.distance(camera) < 1.0 && self.forward.dot(forward) > 0.998
+        self.state.fits(size)
+            && self.camera.distance(camera) < 1.0
+            && self.forward.dot(forward) > 0.998
     }
 }
 
@@ -219,7 +221,12 @@ impl CullPipelines {
     }
 }
 
-fn buffer(device: &wgpu::Device, label: &str, bytes: u64, usage: wgpu::BufferUsages) -> wgpu::Buffer {
+fn buffer(
+    device: &wgpu::Device,
+    label: &str,
+    bytes: u64,
+    usage: wgpu::BufferUsages,
+) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
         size: bytes.max(16),
@@ -422,9 +429,11 @@ impl TerrainCull {
             if r.state.load(Ordering::Acquire) == 1 {
                 r.state.store(2, Ordering::Release);
                 let state = r.state.clone();
-                r.buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-                    state.store(if result.is_ok() { 3 } else { 0 }, Ordering::Release);
-                });
+                r.buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        state.store(if result.is_ok() { 3 } else { 0 }, Ordering::Release);
+                    });
             }
         }
     }
@@ -475,12 +484,19 @@ impl TerrainCull {
         let params = Params {
             camera: camera.extend(self.count as f32).to_array(),
             lod: [lod[0], lod[1], lod[2], reach],
-            counts: [views_n as u32, self.protos as u32, self.lists.len() as u32, 0],
+            counts: [
+                views_n as u32,
+                self.protos as u32,
+                self.lists.len() as u32,
+                0,
+            ],
             occlusion: match occlusion {
                 Some(o) => [o.mips as f32, o.size.0 as f32, o.size.1 as f32, 0.0],
                 None => [0.0; 4],
             },
-            hiz_view_proj: occlusion.map_or(Mat4::IDENTITY, |o| o.view_proj).to_cols_array_2d(),
+            hiz_view_proj: occlusion
+                .map_or(Mat4::IDENTITY, |o| o.view_proj)
+                .to_cols_array_2d(),
         };
         queue.write_buffer(&self.params, 0, bytemuck::bytes_of(&params));
         self.hiz_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {

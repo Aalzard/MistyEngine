@@ -98,10 +98,8 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     let right = Vec3::Y.cross(fwd).normalize();
     let up = fwd.cross(right);
     let flat_right = Vec3::new(1.0, 0.0, 0.0);
-    let mut eye = gv.camera.position
-        + flat_right * v.offset.x
-        + Vec3::Y * v.offset.y
-        + Vec3::Z * v.offset.z;
+    let mut eye =
+        gv.camera.position + flat_right * v.offset.x + Vec3::Y * v.offset.y + Vec3::Z * v.offset.z;
     if v.offset.x != 0.0 || v.offset.z != 0.0 {
         // Stand on the ground there (eye height as at the start).
         let start_ground = ground_at(&gv, gv.camera.position);
@@ -296,7 +294,8 @@ fn noon_valley_cull_ab() {
             // [mode][gpu, cpu, parts..., M triangles]
             let mut runs: [Vec<Vec<f32>>; 3] = [Vec::new(), Vec::new(), Vec::new()];
             for _ in 0..rounds {
-                for (mode, gpu, occlusion) in [(0, true, true), (1, true, false), (2, false, false)] {
+                for (mode, gpu, occlusion) in [(0, true, true), (1, true, false), (2, false, false)]
+                {
                     crate::render::fast_paths::set("tree_gpu_cull", gpu);
                     crate::render::fast_paths::set("tree_occlusion", occlusion);
                     let b = breakdown(&device, &queue, &view, &quality, (w, h));
@@ -402,7 +401,9 @@ fn noon_valley_stress() {
         let jz = crate::terrain::noise::hash(k as i32, 2, 0x57e5) - 0.5;
         let mut i = src;
         i.position += glam::Vec2::new(jx, jz) * (6.0 / d.size.x);
-        i.position = i.position.clamp(glam::Vec2::splat(0.0), glam::Vec2::splat(1.0));
+        i.position = i
+            .position
+            .clamp(glam::Vec2::splat(0.0), glam::Vec2::splat(1.0));
         d.trees.instances.push(i);
     }
     let n = d.trees.instances.len();
@@ -457,7 +458,15 @@ fn tree_gpu_cull_matches_the_cpu_lists() {
         }
         let mean = sum as f64 / a.len() as f64;
         let share = big as f64 / a.len() as f64;
-        eprintln!("{}: mean {mean:.3}, {:.3} % over 24 levels", shot.name(), share * 100.0);
-        assert!(mean < 1.0 && share < 0.01, "{}: mean {mean}, share {share}", shot.name());
+        eprintln!(
+            "{}: mean {mean:.3}, {:.3} % over 24 levels",
+            shot.name(),
+            share * 100.0
+        );
+        assert!(
+            mean < 1.0 && share < 0.01,
+            "{}: mean {mean}, share {share}",
+            shot.name()
+        );
     }
 }
