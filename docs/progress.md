@@ -3346,5 +3346,5 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 
 ### Not done yet
 - No parallax or level end/goal; the Tile Palette window is not opened automatically.
-- The stone wall tilemap shows faint vertical seams between some tile columns (an existing
-  tilemap rendering artefact, also in TilemapDemo).
+- The stone wall tilemap shows faint vertical seams between some tile columns (looks like a
+  tilemap chunk rendering artefact; not investigated this round).
