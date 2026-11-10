@@ -206,7 +206,16 @@ pub fn brush_active(state: &EditorState) -> bool {
 }
 
 /// Start an undoable edit of `path` (no-op while one is already open).
+///
+/// In Play mode the edit is reverted on Stop like the scene: the data from before is kept in
+/// the play session, and the edit is neither saved nor an undo step (Stop puts back the
+/// Edit-mode undo history, which used to drop the step while the file kept the edit).
 pub fn begin_edit(state: &mut EditorState, path: &str, label: &str) {
+    if state.play.in_play_mode()
+        && let Some(session) = state.play_session.as_mut()
+    {
+        session.remember_terrain(path);
+    }
     if state.terrain_tools.pending.is_some() {
         return;
     }
@@ -230,6 +239,9 @@ pub fn end_frame(state: &mut EditorState, interacting: bool) {
     let Some(edit) = state.terrain_tools.pending.take() else {
         return;
     };
+    if state.play.in_play_mode() {
+        return;
+    }
     let path = edit.before.path.clone();
     let changed = store::get(&path).is_some_and(|(d, _)| *d != edit.before.data);
     if !changed {
@@ -618,6 +630,37 @@ mod tests {
         s.redo_step();
         assert_eq!(store::get(&path).unwrap().0.size.x, 13.0);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Terrain Inspector edits during Play (Flatten, Fill Holes, settings…) are reverted on
+    /// Stop like every other Play-mode change: nothing reaches the file, and the Edit-mode
+    /// undo history is the one from before Play (the edit used to be saved and its undo step
+    /// dropped on Stop).
+    #[test]
+    fn edits_during_play_are_reverted_on_stop_and_not_saved() {
+        let dir = std::env::temp_dir().join(format!("misty_terrain_play_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("P.terrain").to_string_lossy().into_owned();
+        let data = TerrainData::new(33, Vec3::splat(10.0), 32);
+        data.save(std::path::Path::new(&path)).unwrap();
+        store::insert(&path, data);
+        let mut s = state("play_edit");
+        crate::play::start(&mut s);
+        assert!(s.play.in_play_mode());
+        begin_edit(&mut s, &path, "Flatten Terrain");
+        store::modify(&path, |d| d.heights.fill(0.5));
+        end_frame(&mut s, false);
+        let on_disk = TerrainData::load(std::path::Path::new(&path)).unwrap();
+        assert!(on_disk.heights.iter().all(|h| *h == 0.0), "not saved");
+        assert_eq!(store::get(&path).unwrap().0.heights[0], 0.5, "seen while playing");
+        crate::play::stop(&mut s);
+        assert!(
+            store::get(&path).unwrap().0.heights.iter().all(|h| *h == 0.0),
+            "reverted on Stop"
+        );
+        assert_eq!(s.undo.undo_label(), None);
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(&s.project.root);
     }
 
     /// The new brush tools: Paint Holes, Paint Details and Place Objects, each stroke one undo
