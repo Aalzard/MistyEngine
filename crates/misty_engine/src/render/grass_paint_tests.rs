@@ -271,7 +271,8 @@ fn grass_paint_latency() {
     lags.sort_by(f32::total_cmp);
     if !lags.is_empty() {
         eprintln!(
-            "brush lag (dab to its blades drawn, chunk under the brush): median {:.0} ms,              90% {:.0} ms, max {:.0} ms over {} of {} dabs",
+            "brush lag (dab to its blades drawn, chunk under the brush): median {:.0} ms, \
+             90% {:.0} ms, max {:.0} ms over {} of {} dabs",
             lags[lags.len() / 2],
             lags[lags.len() * 9 / 10],
             lags[lags.len() - 1],
