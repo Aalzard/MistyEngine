@@ -13,6 +13,7 @@ fn vs_terrain(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance:
     out.world = world.xyz;
     out.normal = n;
     out.uv = vec2<f32>(f32(c.x), f32(c.y)) / (terrain.grid.x - 1.0);
+    out.uv_centroid = out.uv;
     out.draw = draw_index;
     // Tangent along +x, lying in the surface (layer normal maps on the top projection).
     out.tangent = vec4<f32>(normalize(vec3<f32>(1.0, 0.0, 0.0) - n * n.x), 1.0);
