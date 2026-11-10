@@ -305,7 +305,11 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
                 want.floor() as u32 + u32::from(noise::hash(ix, iz, seed ^ 0x3b) < want.fract());
             for c in 0..count {
                 let r = |salt: u32| {
-                    noise::hash(ix, iz, seed.wrapping_add(c.wrapping_mul(131).wrapping_add(salt)))
+                    noise::hash(
+                        ix,
+                        iz,
+                        seed.wrapping_add(c.wrapping_mul(131).wrapping_add(salt)),
+                    )
                 };
                 let p = Vec2::new(tx as f32 + r(1), tz as f32 + r(2)) * texel;
                 if p.x < lo.x || p.y < lo.y || p.x >= hi.x || p.y >= hi.y || d.hole_at(p.x, p.y) {

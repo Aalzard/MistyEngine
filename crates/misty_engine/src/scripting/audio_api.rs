@@ -347,7 +347,9 @@ impl UserData for LSnapshot {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("name", |lua, s| {
             // Nil once the snapshot is gone (deleted in the Audio Mixer window during Play).
-            mixer(lua, s.0, |m| m.asset.snapshots.get(s.1).map(|x| x.name.clone()))
+            mixer(lua, s.0, |m| {
+                m.asset.snapshots.get(s.1).map(|x| x.name.clone())
+            })
         });
         f.add_field_method_get("audioMixer", |_, s| Ok(LMixer(s.0)));
     }

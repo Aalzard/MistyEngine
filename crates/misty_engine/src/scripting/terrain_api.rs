@@ -208,7 +208,10 @@ return K
             host.update(&mut scene, &time, Input::default());
         }
         let texts: Vec<String> = host.take_logs().into_iter().map(|(_, t)| t).collect();
-        assert!(texts.contains(&"GetPosition false true".to_owned()), "{texts:?}");
+        assert!(
+            texts.contains(&"GetPosition false true".to_owned()),
+            "{texts:?}"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }

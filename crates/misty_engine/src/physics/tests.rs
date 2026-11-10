@@ -174,11 +174,7 @@ fn zero_scale_bodies_keep_finite_poses() {
         let (p, r) = physics.body_pose(e).unwrap();
         assert!(p.is_finite() && r.is_finite(), "{p} {r}");
         let t = scene.transform(e);
-        assert!(
-            t.position.is_finite() && t.rotation.is_finite(),
-            "{:?}",
-            t
-        );
+        assert!(t.position.is_finite() && t.rotation.is_finite(), "{:?}", t);
     }
     assert!(scene.world_position(c).y < 3.0, "still falls");
     assert!((scene.world_rotation(c).to_euler(glam::EulerRot::YXZ).0 - 0.5).abs() < 1e-3);

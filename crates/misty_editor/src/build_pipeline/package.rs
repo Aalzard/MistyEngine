@@ -181,7 +181,10 @@ pub fn package(
     }
     // A missing build scene was only a warning: the build "succeeded" and the player failed
     // when it loaded the scene.
-    if let Some(gone) = roots.iter().find(|r| !req.project.join(r.as_str()).is_file()) {
+    if let Some(gone) = roots
+        .iter()
+        .find(|r| !req.project.join(r.as_str()).is_file())
+    {
         return Err(format!(
             "the build scene {gone} is missing: restore it or remove it from Build Settings"
         ));
@@ -865,7 +868,9 @@ mod tests {
         req.out = root.with_extension("missing");
         req.build.create_zip = false;
         req.build.steam_app_id.clear();
-        req.build.scenes.push(BuildScene::new("Assets/Scenes/Gone.scene"));
+        req.build
+            .scenes
+            .push(BuildScene::new("Assets/Scenes/Gone.scene"));
         let player = root.join("player.bin");
         std::fs::write(&player, "exe").unwrap();
         let err = package(&req, &player, &mut |_| {}).unwrap_err();

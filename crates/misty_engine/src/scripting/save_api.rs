@@ -417,7 +417,9 @@ mod tests {
         assert_eq!(j["n"], 1);
         assert!(j["a"].is_null() && j["b"].is_null(), "{j}");
         let wide: Value = lua
-            .load("local cur = { x = 1 } for _ = 1, 60 do cur = { a = cur, b = cur } end return cur")
+            .load(
+                "local cur = { x = 1 } for _ = 1, 60 do cur = { a = cur, b = cur } end return cur",
+            )
             .eval()
             .unwrap();
         let start = std::time::Instant::now();

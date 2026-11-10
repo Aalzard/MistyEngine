@@ -190,7 +190,11 @@ impl AudioMixer {
                     break;
                 }
                 seen.push(p);
-                cur = self.groups.iter().find(|g| g.id == p).and_then(|g| g.parent);
+                cur = self
+                    .groups
+                    .iter()
+                    .find(|g| g.id == p)
+                    .and_then(|g| g.parent);
             }
         }
         if self.snapshots.is_empty() {
@@ -756,5 +760,4 @@ mod tests {
         assert!(ids.contains(&a) && ids.contains(&b), "{ids:?}");
         assert!(m.path(b).starts_with(&m.path(MASTER)));
     }
-
 }

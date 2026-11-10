@@ -499,7 +499,12 @@ fn polygon_with_nan_or_repeated_points_builds() {
     scene.add(
         c,
         PolygonCollider2D {
-            points: vec![Vec2::ZERO, Vec2::X, Vec2::new(2.0, 0.0), Vec2::new(3.0, 0.0)],
+            points: vec![
+                Vec2::ZERO,
+                Vec2::X,
+                Vec2::new(2.0, 0.0),
+                Vec2::new(3.0, 0.0),
+            ],
             ..Default::default()
         },
     );

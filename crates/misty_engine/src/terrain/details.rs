@@ -466,7 +466,11 @@ fn scatter_level_in(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32, parallel: b
                 want.floor() as u32 + u32::from(noise::hash(ix, iz, seed ^ 0x51) < want.fract());
             for k in 0..count {
                 let r = |salt: u32| {
-                    noise::hash(ix, iz, seed.wrapping_add(k.wrapping_mul(97).wrapping_add(salt)))
+                    noise::hash(
+                        ix,
+                        iz,
+                        seed.wrapping_add(k.wrapping_mul(97).wrapping_add(salt)),
+                    )
                 };
                 let key = r(11);
                 if key >= keep {

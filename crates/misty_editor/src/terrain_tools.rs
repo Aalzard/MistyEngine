@@ -652,10 +652,19 @@ mod tests {
         end_frame(&mut s, false);
         let on_disk = TerrainData::load(std::path::Path::new(&path)).unwrap();
         assert!(on_disk.heights.iter().all(|h| *h == 0.0), "not saved");
-        assert_eq!(store::get(&path).unwrap().0.heights[0], 0.5, "seen while playing");
+        assert_eq!(
+            store::get(&path).unwrap().0.heights[0],
+            0.5,
+            "seen while playing"
+        );
         crate::play::stop(&mut s);
         assert!(
-            store::get(&path).unwrap().0.heights.iter().all(|h| *h == 0.0),
+            store::get(&path)
+                .unwrap()
+                .0
+                .heights
+                .iter()
+                .all(|h| *h == 0.0),
             "reverted on Stop"
         );
         assert_eq!(s.undo.undo_label(), None);

@@ -202,7 +202,10 @@ mod tests {
             data: before,
         });
         // Replaced on disk and reloaded at 65 samples with a 32 splat map.
-        store::insert(&path, TerrainData::new(65, Vec3::new(100.0, 20.0, 100.0), 32));
+        store::insert(
+            &path,
+            TerrainData::new(65, Vec3::new(100.0, 20.0, 100.0), 32),
+        );
         let redo = step.restore();
         let d = store::get(&path).unwrap().0;
         let r = d.heightmap_resolution;
@@ -215,7 +218,10 @@ mod tests {
         let _ = misty_engine::terrain::mesh::build(&d);
         redo.restore();
         let d = store::get(&path).unwrap().0;
-        assert_eq!(d.heights.len(), d.heightmap_resolution * d.heightmap_resolution);
+        assert_eq!(
+            d.heights.len(),
+            d.heightmap_resolution * d.heightmap_resolution
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -230,7 +236,9 @@ mod tests {
         let mut before = TerrainData::new(33, Vec3::new(100.0, 20.0, 100.0), 256);
         before
             .detail_layers
-            .push(misty_engine::terrain::detail_layers::DetailLayer::grass("Tall"));
+            .push(misty_engine::terrain::detail_layers::DetailLayer::grass(
+                "Tall",
+            ));
         before.detail_layers[0].map = vec![0; 256 * 256];
         store::insert(&path, before.clone());
         store::modify(&path, |d| d.detail_layers[0].map[0] = 9);

@@ -4028,9 +4028,9 @@ mod meadow_perf_tests;
 #[cfg(test)]
 mod rocks_gpu_tests;
 #[cfg(test)]
-mod sprite_seam_gpu_tests;
-#[cfg(test)]
 mod shadow_stutter_tests;
+#[cfg(test)]
+mod sprite_seam_gpu_tests;
 #[cfg(test)]
 mod streaming_tests;
 #[cfg(test)]

@@ -381,7 +381,10 @@ mod tests {
         let v2 = rename(&mat, "Red.v2").unwrap();
         assert_eq!(v2, assets.join("Red.v2.mat"));
         assert!(v2.is_file() && !mat.exists());
-        assert_eq!(rename(&v2, "Red.v2.x").unwrap(), assets.join("Red.v2.x.mat"));
+        assert_eq!(
+            rename(&v2, "Red.v2.x").unwrap(),
+            assets.join("Red.v2.x.mat")
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

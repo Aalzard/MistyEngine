@@ -525,7 +525,10 @@ fn renaming_the_prefab_in_prefab_mode_follows_the_stage_and_the_stashed_scene() 
     apply(&mut s, Action::ClosePrefab { levels: usize::MAX });
     assert!(!crate::prefab_mode::active(&s));
     assert_eq!(s.scene.prefab_link(e).as_deref(), Some(new_rel.as_str()));
-    assert!(s.scene.world.get::<&Light>(e).is_ok(), "the instance followed");
+    assert!(
+        s.scene.world.get::<&Light>(e).is_ok(),
+        "the instance followed"
+    );
 }
 
 /// A prefab with a component this version doesn't know (a newer file, a removed package):
@@ -557,7 +560,9 @@ fn prefabs_with_unknown_components_are_not_written_back() {
     s.scene.add(root, Light::default());
     assert!(!crate::prefab_mode::save(&mut s), "refused");
     assert!(
-        std::fs::read_to_string(&abs).unwrap().contains("Teleporter"),
+        std::fs::read_to_string(&abs)
+            .unwrap()
+            .contains("Teleporter"),
         "the file keeps the component"
     );
 }

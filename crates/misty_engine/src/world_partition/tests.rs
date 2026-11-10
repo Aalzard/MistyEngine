@@ -382,8 +382,14 @@ fn splitting_a_terrain_keeps_its_shape_trees_and_paint() {
     assert!(h < 1e-4 && angle < 0.01, "{h} m {angle}°");
     // Each tile gets its own part of the flower mask, not a copy of the whole one.
     assert_eq!(left.data.flowers.map.len(), 64 * 64);
-    assert!(left.data.flowers.map.iter().all(|m| *m == 0), "no flowers left");
-    assert!(right.data.flowers.map.iter().all(|m| *m == 255), "flowers right");
+    assert!(
+        left.data.flowers.map.iter().all(|m| *m == 0),
+        "no flowers left"
+    );
+    assert!(
+        right.data.flowers.map.iter().all(|m| *m == 255),
+        "flowers right"
+    );
 }
 
 // ---- HLOD -------------------------------------------------------------------------------

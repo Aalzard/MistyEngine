@@ -196,7 +196,11 @@ impl Pak {
             };
             // Entries live between the header and the index: a corrupt index (or a hostile
             // file) would otherwise size an allocation straight from these numbers.
-            if entry.offset < 16 || entry.offset.checked_add(entry.stored).is_none_or(|end| end > at)
+            if entry.offset < 16
+                || entry
+                    .offset
+                    .checked_add(entry.stored)
+                    .is_none_or(|end| end > at)
             {
                 return Err(bad("pak entry out of range"));
             }

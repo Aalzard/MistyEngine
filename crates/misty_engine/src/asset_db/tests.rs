@@ -271,7 +271,11 @@ fn atomic_writes_replace_whole_files_and_keep_the_old_one_on_failure() {
     // The scene, prefab and terrain savers use it too.
     let scene = crate::scene::Scene::new("Level");
     scene.save(&path).unwrap();
-    assert!(std::fs::read_to_string(&path).unwrap().contains("\"objects\""));
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("\"objects\"")
+    );
     assert_eq!(names(&dir.join("Assets")), ["Level.scene"]);
     // A save that fails (here: the folder is gone) reports it and leaves nothing behind.
     assert!(write_atomic(&dir.join("Missing/X.scene"), "x").is_err());

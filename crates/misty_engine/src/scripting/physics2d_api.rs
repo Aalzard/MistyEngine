@@ -546,11 +546,9 @@ pub fn collision_table(lua: &Lua, me: Entity, c: &Contact2D) -> Result<Table> {
     list.set(1, contact)?;
     t.set("contacts", list)?;
     t.set("contactCount", 1)?;
-    let get_contact = lua.create_function(|_, (t, i): (Table, i64)| {
-        match i.checked_add(1) {
-            Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
-            None => Ok(Value::Nil),
-        }
+    let get_contact = lua.create_function(|_, (t, i): (Table, i64)| match i.checked_add(1) {
+        Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
+        None => Ok(Value::Nil),
     })?;
     t.set("GetContact", get_contact)?;
     Ok(t)

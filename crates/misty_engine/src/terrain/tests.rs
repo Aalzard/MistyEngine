@@ -607,8 +607,16 @@ fn scatter_on_a_huge_texel_is_bounded() {
         "scatter took {:?}",
         start.elapsed()
     );
-    assert!(blades.len() as f32 <= 2.0 * details::MAX_PER_TEXEL, "{}", blades.len());
-    assert!(petals.len() as f32 <= details::MAX_PER_TEXEL, "{}", petals.len());
+    assert!(
+        blades.len() as f32 <= 2.0 * details::MAX_PER_TEXEL,
+        "{}",
+        blades.len()
+    );
+    assert!(
+        petals.len() as f32 <= details::MAX_PER_TEXEL,
+        "{}",
+        petals.len()
+    );
 }
 
 /// A file with a garbage resolution and hole bits loads (the holes are sized from the

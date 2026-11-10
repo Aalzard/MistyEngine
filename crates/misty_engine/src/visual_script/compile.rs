@@ -695,7 +695,12 @@ impl<'a> Compiler<'a> {
                     self.error(src, "data wires loop back into this node");
                     return self.alloc(Value::Nil);
                 }
-                let pin = if s.node.kind == "Tunnel" { out } else { "Value" }.to_owned();
+                let pin = if s.node.kind == "Tunnel" {
+                    out
+                } else {
+                    "Value"
+                }
+                .to_owned();
                 let slot = self.pull(src, &pin);
                 self.visiting.remove(&src);
                 return slot;

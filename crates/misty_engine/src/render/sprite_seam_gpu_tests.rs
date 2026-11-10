@@ -54,10 +54,13 @@ fn tiles_sharing_an_atlas_edge_show_no_seam_with_msaa() {
     let Some((device, queue)) = headless() else {
         return;
     };
-    // A two-cell atlas: red cell, blue cell (fine texels: the overshoot of a centre sample
-    // lands several texels into the blue cell, the centroid stays inside the red one).
+    // A two-cell atlas: red cell, blue cell. Fine texels (about 22 per pixel): a centre
+    // sample's overshoot lands ~5 texels into the blue cell, the centroid ~3 texels inside
+    // the red one, both beyond the reach of bilinear filtering. As many texels per pixel
+    // down as across (356 rows over the 16 px tall tiles), so the default anisotropic
+    // sampler filters isotropically (an anisotropic footprint reaches across the edge).
     let texture = "runtime://sprite-seam-atlas";
-    let image = image::RgbaImage::from_fn(1024, 16, |x, _| {
+    let image = image::RgbaImage::from_fn(1024, 356, |x, _| {
         if x < 512 {
             image::Rgba([255, 0, 0, 255])
         } else {

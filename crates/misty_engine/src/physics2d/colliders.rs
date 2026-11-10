@@ -194,7 +194,10 @@ impl Physics2D {
 fn polygon(pts: &[rp::Vector]) -> Option<rp::ColliderBuilder> {
     let mut clean: Vec<rp::Vector> = Vec::with_capacity(pts.len());
     for p in pts.iter().filter(|p| p.is_finite()) {
-        if clean.last().is_none_or(|q| (*p - *q).length_squared() > 1e-12) {
+        if clean
+            .last()
+            .is_none_or(|q| (*p - *q).length_squared() > 1e-12)
+        {
             clean.push(*p);
         }
     }

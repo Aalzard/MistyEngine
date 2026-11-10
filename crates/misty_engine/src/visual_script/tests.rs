@@ -1165,8 +1165,8 @@ fn constant_and_tunnel_loops_are_reported() {
     g.w(a, "Value", log, "Message");
     let errs = compile::check(&g.0, &NoFiles);
     assert!(
-        errs.iter().any(|e| (e.node == Some(a) || e.node == Some(b))
-            && e.message.contains("loop back")),
+        errs.iter()
+            .any(|e| (e.node == Some(a) || e.node == Some(b)) && e.message.contains("loop back")),
         "{errs:?}"
     );
     // The same through two uses of a macro that passes its input straight out.

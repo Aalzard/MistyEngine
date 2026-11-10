@@ -452,7 +452,10 @@ mod line_tests {
         // Normal lines still read, the last one without a newline too.
         let mut r = Cursor::new(b"{\"a\": 1}\r\nlast".to_vec());
         let mut buf = Vec::new();
-        assert_eq!(read_line(&mut r, &mut buf, &stop).unwrap().unwrap(), "{\"a\": 1}");
+        assert_eq!(
+            read_line(&mut r, &mut buf, &stop).unwrap().unwrap(),
+            "{\"a\": 1}"
+        );
         assert_eq!(read_line(&mut r, &mut buf, &stop).unwrap().unwrap(), "last");
         assert_eq!(read_line(&mut r, &mut buf, &stop).unwrap(), None);
     }
