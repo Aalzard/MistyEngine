@@ -719,12 +719,25 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length())
                 * smooth(0.9, 1.0, f)
                 * smooth(-10.0, -40.0, hill_side(p.x, p.y));
-            if near_wood > 0.0 && noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.18 * near_wood {
-                continue;
-            }
-            // There the trunks stand apart (half the trees): sun reaches the floor in large
-            // patches between the crowns.
-            if r(24) < 0.5 * near_wood {
+            // There the trunks also stand apart (half the trees): sun reaches the floor in large
+            // patches between the crowns, and ferns and broad-leaved plants fill the light.
+            if near_wood > 0.0
+                && (noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.18 * near_wood
+                    || r(24) < 0.5 * near_wood)
+            {
+                for k in 0..2 + (r(25) * 2.5) as u32 {
+                    let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0x9a95);
+                    let fern = q(3) < 0.65;
+                    let s = (0.75 + 0.7 * q(4)) * if fern { SMALL_SCALE.0 } else { SMALL_SCALE.1 };
+                    out.push(TreeInstance {
+                        position: (p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell) / size,
+                        prototype: if fern { 7 } else { 8 },
+                        rotation: q(5) * std::f32::consts::TAU,
+                        height_scale: s,
+                        width_scale: s * (0.85 + 0.3 * q(6)),
+                        color: q(7),
+                    });
+                }
                 continue;
             }
             // Far away fewer, bigger trees keep the canopy closed: the share kept falls from
@@ -744,6 +757,15 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             let at_edge = depth < 0.6;
             let kind = if at_edge {
                 if r(4) < 0.5 { 3 } else { 4 }
+            } else if near_wood > 0.5 {
+                // The treeline wood: a quarter birches among the oaks, limes and beeches.
+                match r(4) {
+                    k if k < 0.3 => 0,
+                    k if k < 0.52 => 1,
+                    k if k < 0.7 => 2,
+                    k if k < 0.95 => 6,
+                    _ => 3,
+                }
             } else {
                 match r(4) {
                     k if k < 0.38 => 0,
