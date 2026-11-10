@@ -19,6 +19,7 @@ pub(crate) use inspector::slots::mesh_choices;
 pub(crate) use inspector::slots::texture_slot;
 pub mod effect_graph;
 pub mod frame_debugger;
+pub mod guide;
 pub mod input_actions;
 mod lighting;
 mod lighting_hdri;
@@ -93,6 +94,9 @@ impl TabViewer for PanelViewer<'_> {
         if crate::tutorials::targets::enabled() {
             let id = format!("panel.{}", tab.title());
             crate::tutorials::targets::mark(ui, &id, ui.max_rect());
+            // The stable id: the same in every language and after a rename.
+            let key = format!("tab.{}", tab.key());
+            crate::tutorials::targets::mark(ui, &key, ui.max_rect());
         }
         match tab {
             Tab::Scene => {
@@ -131,6 +135,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::AssetGroups => asset_groups::show(ui, self.state),
             Tab::PackageManager => packages::show(ui, self.state),
             Tab::InputActions => input_actions::show(ui, self.state),
+            Tab::Guide => guide::show(ui, self.state),
             Tab::Tool(id) => crate::editor_scripts::windows::show(ui, self.state, *id),
         }
     }

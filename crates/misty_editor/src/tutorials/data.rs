@@ -7,14 +7,17 @@
 //!   "steps": [ { "title": "…", "text": "…", "targets": ["hierarchy.Main Camera"],
 //!                "done_when": "selected:Main Camera", "demo": "select:Main Camera" } ] }
 //! ```
-//! `scene` names a starting scene in `scenes.rs`; `targets` are UI IDs (see `targets.rs`),
+//! `scene` names a starting scene in `scenes.rs` (or `"keep_scene": true` keeps the open scene,
+//! for tours of the editor itself); `targets` are UI IDs (see `targets.rs`),
 //! the first one drawn is highlighted; `done_when` (see `conditions.rs`) auto-advances the
-//! step; `demo` (see `demos.rs`) does the step for screenshots and tests.
+//! step; `demo` (see `demos.rs`) does the step for screenshots and tests; `focus` brings a tab
+//! forward (by its stable `Tab::key`) when the step starts.
 
 use serde::Deserialize;
 
 /// The built-in tutorials, in the order the Tutorials window lists them.
-const FILES: [&str; 4] = [
+const FILES: [&str; 5] = [
+    include_str!("../../assets/tutorials/layout_tour.json"),
     include_str!("../../assets/tutorials/post_processing.json"),
     include_str!("../../assets/tutorials/god_rays.json"),
     include_str!("../../assets/tutorials/terrain.json"),
@@ -31,6 +34,9 @@ pub struct Tutorial {
     /// Starting scene (see `scenes::setup`).
     #[serde(default)]
     pub scene: String,
+    /// Keep the scene that is open instead of starting a new one (tours of the editor).
+    #[serde(default)]
+    pub keep_scene: bool,
     pub steps: Vec<Step>,
 }
 
@@ -46,6 +52,8 @@ pub struct Step {
     pub done_when: Option<String>,
     /// What the step asks for, done in code (screenshots, tests).
     pub demo: Option<String>,
+    /// The tab to bring forward when the step starts (`Tab::key`, e.g. `game`).
+    pub focus: Option<String>,
 }
 
 /// Parse every built-in tutorial (panics on a broken file: they are part of the build and

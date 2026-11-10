@@ -412,6 +412,8 @@ pub struct EditorState {
     pub search: crate::search::SearchPalette,
     /// Help ▸ Tutorials: the running tutorial and finished ones.
     pub tutorials: crate::tutorials::Tutorials,
+    /// Help ▸ User Guide: the reader's chapter, search and pictures.
+    pub guide: crate::panels::guide::GuideView,
     /// Scenes and assets reloading when their files change; dev-build restarts.
     pub live: crate::live_reload::LiveReload,
     /// Editor scripts (`Editor` folders): menu items, tool windows, Inspectors, gizmos.
@@ -545,6 +547,7 @@ impl EditorState {
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),
+            guide: Default::default(),
             live: Default::default(),
             editor_scripts: crate::editor_scripts::EditorScripts::new(&root),
             prefab_stages: Vec::new(),

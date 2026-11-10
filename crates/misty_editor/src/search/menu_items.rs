@@ -30,6 +30,8 @@ pub enum MenuRun {
     About,
     /// Help ▸ Tutorials.
     Tutorials,
+    /// Help ▸ Layout Tour.
+    LayoutTour,
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +107,13 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
         let path = crate::renames::menu_path(&m.path);
         l.action(title, &path, shortcut, Action::EditorMenu(m.path.clone()));
     }
+    l.action(
+        "User Guide",
+        "Help/User Guide",
+        "",
+        Action::FocusTab(Tab::Guide),
+    );
+    l.add("Layout Tour", "Help/Layout Tour", MenuRun::LayoutTour);
     l.add("Tutorials", "Help/Tutorials...", MenuRun::Tutorials);
     l.add(
         "About Misty Engine",
@@ -408,8 +417,8 @@ fn tools(l: &mut List) {
 }
 
 fn window(l: &mut List, s: &EditorState) {
-    // Undo History lives in the Edit menu (listed by `edit`).
-    for tab in Tab::every().filter(|t| *t != Tab::UndoHistory) {
+    // Undo History is in the Edit menu, the User Guide in Help.
+    for tab in Tab::every().filter(|t| !matches!(t, Tab::UndoHistory | Tab::Guide)) {
         let menu = match tab {
             Tab::Animation | Tab::Animator => "Animation",
             Tab::AudioMixer => "Audio",
@@ -463,6 +472,9 @@ pub fn run(s: &mut EditorState, run: &MenuRun) {
         MenuRun::CreateFirstPersonPlayer => crate::fps_player::create(s, None),
         MenuRun::GenerateProbes => crate::probe_tools::generate(s),
         MenuRun::Tutorials => s.tutorials.window_open = true,
+        MenuRun::LayoutTour => {
+            crate::tutorials::start(s, crate::tutorials::LAYOUT_TOUR);
+        }
         MenuRun::About => s
             .console
             .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION"))),

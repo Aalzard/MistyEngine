@@ -1,0 +1,880 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        250.0,
+        0.0
+      ],
+      "params": {
+        "member": "lockState",
+        "mode": "set",
+        "owner": "Cursor"
+      },
+      "values": {
+        "Value": {
+          "String": "Locked"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        220.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        220.0
+      ],
+      "params": {
+        "count": "5"
+      }
+    },
+    {
+      "id": 5,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        440.0
+      ],
+      "params": {
+        "name": "Mouse Sensitivity"
+      }
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        500.0,
+        396.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Mouse X"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "MultiplyFloat",
+      "position": [
+        750.0,
+        396.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "MakeVector3",
+      "position": [
+        1000.0,
+        396.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        1250.0,
+        220.0
+      ],
+      "params": {
+        "member": "Rotate",
+        "mode": "call",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        500.0,
+        616.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Mouse Y"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "MultiplyFloat",
+      "position": [
+        750.0,
+        616.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        748.0
+      ],
+      "params": {
+        "name": "Pitch"
+      }
+    },
+    {
+      "id": 13,
+      "type": "SubtractFloat",
+      "position": [
+        1000.0,
+        660.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "ClampFloat",
+      "position": [
+        1250.0,
+        660.0
+      ],
+      "values": {
+        "Max": {
+          "Float": 85.0
+        },
+        "Min": {
+          "Float": -85.0
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "SetVariable",
+      "position": [
+        1500.0,
+        506.0
+      ],
+      "params": {
+        "name": "Pitch"
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        1500.0,
+        792.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      },
+      "values": {
+        "Name": {
+          "String": "Main Camera"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "GetVariable",
+      "position": [
+        1500.0,
+        682.0
+      ],
+      "params": {
+        "name": "Pitch"
+      }
+    },
+    {
+      "id": 18,
+      "type": "MakeVector3",
+      "position": [
+        1750.0,
+        682.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Api",
+      "position": [
+        2000.0,
+        506.0
+      ],
+      "params": {
+        "member": "localEulerAngles",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 20,
+      "type": "Api",
+      "position": [
+        500.0,
+        990.0
+      ],
+      "params": {
+        "member": "isGrounded",
+        "mode": "get",
+        "owner": "#CharacterController"
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        500.0,
+        1100.0
+      ],
+      "params": {
+        "member": "GetKeyDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "space"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "And",
+      "position": [
+        750.0,
+        1034.0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Branch",
+      "position": [
+        1000.0,
+        923.99994
+      ]
+    },
+    {
+      "id": 24,
+      "type": "GetVariable",
+      "position": [
+        1000.0,
+        1100.0
+      ],
+      "params": {
+        "name": "Jump Speed"
+      }
+    },
+    {
+      "id": 25,
+      "type": "SetVariable",
+      "position": [
+        1250.0,
+        923.99994
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 26,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        1320.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 27,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        1430.0
+      ],
+      "params": {
+        "name": "Gravity"
+      }
+    },
+    {
+      "id": 28,
+      "type": "MultiplyFloat",
+      "position": [
+        750.0,
+        1430.0
+      ]
+    },
+    {
+      "id": 29,
+      "type": "AddFloat",
+      "position": [
+        1000.0,
+        1364.0
+      ]
+    },
+    {
+      "id": 30,
+      "type": "MaxFloat",
+      "position": [
+        1250.0,
+        1320.0
+      ],
+      "values": {
+        "B": {
+          "Float": -1.0
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "Select",
+      "position": [
+        1500.0,
+        1276.0
+      ]
+    },
+    {
+      "id": 32,
+      "type": "SetVariable",
+      "position": [
+        1750.0,
+        1166.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 33,
+      "type": "Api",
+      "position": [
+        500.0,
+        1650.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Horizontal"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "Api",
+      "position": [
+        500.0,
+        1870.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Vertical"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "Api",
+      "position": [
+        500.0,
+        1760.0
+      ],
+      "params": {
+        "member": "right",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 36,
+      "type": "Api",
+      "position": [
+        500.0,
+        1980.0
+      ],
+      "params": {
+        "member": "forward",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 37,
+      "type": "ScaleVector3",
+      "position": [
+        750.0,
+        1694.0
+      ]
+    },
+    {
+      "id": 38,
+      "type": "ScaleVector3",
+      "position": [
+        750.0,
+        1914.0
+      ]
+    },
+    {
+      "id": 39,
+      "type": "AddVector3",
+      "position": [
+        1000.0,
+        1804.0
+      ]
+    },
+    {
+      "id": 40,
+      "type": "GetVariable",
+      "position": [
+        1000.0,
+        1936.0
+      ],
+      "params": {
+        "name": "Walk Speed"
+      }
+    },
+    {
+      "id": 41,
+      "type": "ScaleVector3",
+      "position": [
+        1250.0,
+        1804.0
+      ]
+    },
+    {
+      "id": 42,
+      "type": "GetVariable",
+      "position": [
+        1250.0,
+        1606.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 43,
+      "type": "MakeVector3",
+      "position": [
+        1500.0,
+        1606.0
+      ]
+    },
+    {
+      "id": 44,
+      "type": "AddVector3",
+      "position": [
+        1750.0,
+        1716.0
+      ]
+    },
+    {
+      "id": 45,
+      "type": "ScaleVector3",
+      "position": [
+        2000.0,
+        1716.0
+      ]
+    },
+    {
+      "id": 46,
+      "type": "Api",
+      "position": [
+        2250.0,
+        1430.0
+      ],
+      "params": {
+        "args": "motion",
+        "member": "Move",
+        "mode": "call",
+        "owner": "#CharacterController"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Result",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "Y"
+    },
+    {
+      "from": 4,
+      "output": "Then 0",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Vector",
+      "to": 9,
+      "input": "Euler Degrees"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 11,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 14,
+      "input": "Value"
+    },
+    {
+      "from": 4,
+      "output": "Then 1",
+      "to": 15,
+      "input": "In"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 15,
+      "input": "Value"
+    },
+    {
+      "from": 17,
+      "output": "Value",
+      "to": 18,
+      "input": "X"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 19,
+      "input": "Target"
+    },
+    {
+      "from": 18,
+      "output": "Vector",
+      "to": 19,
+      "input": "Value"
+    },
+    {
+      "from": 20,
+      "output": "Value",
+      "to": 22,
+      "input": "A"
+    },
+    {
+      "from": 21,
+      "output": "Result",
+      "to": 22,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Then 2",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Condition"
+    },
+    {
+      "from": 23,
+      "output": "True",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 24,
+      "output": "Value",
+      "to": 25,
+      "input": "Value"
+    },
+    {
+      "from": 27,
+      "output": "Value",
+      "to": 28,
+      "input": "A"
+    },
+    {
+      "from": 3,
+      "output": "Delta Time",
+      "to": 28,
+      "input": "B"
+    },
+    {
+      "from": 26,
+      "output": "Value",
+      "to": 29,
+      "input": "A"
+    },
+    {
+      "from": 28,
+      "output": "Result",
+      "to": 29,
+      "input": "B"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 30,
+      "input": "A"
+    },
+    {
+      "from": 20,
+      "output": "Value",
+      "to": 31,
+      "input": "Condition"
+    },
+    {
+      "from": 30,
+      "output": "Result",
+      "to": 31,
+      "input": "True"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 31,
+      "input": "False"
+    },
+    {
+      "from": 4,
+      "output": "Then 3",
+      "to": 32,
+      "input": "In"
+    },
+    {
+      "from": 31,
+      "output": "Result",
+      "to": 32,
+      "input": "Value"
+    },
+    {
+      "from": 35,
+      "output": "Value",
+      "to": 37,
+      "input": "Vector"
+    },
+    {
+      "from": 33,
+      "output": "Result",
+      "to": 37,
+      "input": "Scale"
+    },
+    {
+      "from": 36,
+      "output": "Value",
+      "to": 38,
+      "input": "Vector"
+    },
+    {
+      "from": 34,
+      "output": "Result",
+      "to": 38,
+      "input": "Scale"
+    },
+    {
+      "from": 37,
+      "output": "Result",
+      "to": 39,
+      "input": "A"
+    },
+    {
+      "from": 38,
+      "output": "Result",
+      "to": 39,
+      "input": "B"
+    },
+    {
+      "from": 39,
+      "output": "Result",
+      "to": 41,
+      "input": "Vector"
+    },
+    {
+      "from": 40,
+      "output": "Value",
+      "to": 41,
+      "input": "Scale"
+    },
+    {
+      "from": 42,
+      "output": "Value",
+      "to": 43,
+      "input": "Y"
+    },
+    {
+      "from": 41,
+      "output": "Result",
+      "to": 44,
+      "input": "A"
+    },
+    {
+      "from": 43,
+      "output": "Vector",
+      "to": 44,
+      "input": "B"
+    },
+    {
+      "from": 44,
+      "output": "Result",
+      "to": 45,
+      "input": "Vector"
+    },
+    {
+      "from": 3,
+      "output": "Delta Time",
+      "to": 45,
+      "input": "Scale"
+    },
+    {
+      "from": 4,
+      "output": "Then 4",
+      "to": 46,
+      "input": "In"
+    },
+    {
+      "from": 45,
+      "output": "Result",
+      "to": 46,
+      "input": "motion"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Walk Speed",
+      "type": "float",
+      "value": {
+        "Float": 5.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Speed",
+      "type": "float",
+      "value": {
+        "Float": 5.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Mouse Sensitivity",
+      "type": "float",
+      "value": {
+        "Float": 2.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Gravity",
+      "type": "float",
+      "value": {
+        "Float": -15.0
+      }
+    },
+    {
+      "name": "Velocity Y",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Pitch",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -154.0
+      ],
+      "size": [
+        460.0,
+        70.0
+      ],
+      "text": "First-person player: the mouse turns the body (left/right) and tilts the camera (up/down); WASD walks where you look; Space jumps; gravity pulls down."
+    }
+  ]
+}

@@ -1434,3 +1434,225 @@ fn a_hundred_node_graph_on_a_thousand_objects_runs_in_about_a_millisecond() {
         );
     }
 }
+
+// ---- saving, Animator parameters, cursor ---------------------------------------------------
+
+/// Play `g` on one object named "Thing" in an existing project folder.
+fn play_in(root: PathBuf, g: &ScriptGraph) -> (Play, Entity) {
+    g.save(&root.join(GRAPH)).unwrap();
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Thing", None);
+    attach(&mut scene, e, GRAPH, &[]);
+    (Play::start(root, scene), e)
+}
+
+#[test]
+fn player_prefs_nodes_save_and_read_typed_values() {
+    let _lock = crate::prefs::TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let root = project("prefs");
+    let file = root.join("prefs.json");
+    crate::prefs::open(&file);
+    let mut g = G::new();
+    let start = g.n("OnStart");
+    let set_i = g.api("PlayerPrefs", "SetInt", "call");
+    g.v(set_i, "Key", Literal::String("vs.score".into()));
+    g.v(set_i, "Value", Literal::Int(42));
+    let set_f = g.api("PlayerPrefs", "SetFloat", "call");
+    g.v(set_f, "Key", Literal::String("vs.x".into()));
+    g.f(set_f, "Value", 1.5);
+    let set_s = g.api("PlayerPrefs", "SetString", "call");
+    g.v(set_s, "Key", Literal::String("vs.name".into()));
+    g.v(set_s, "Value", Literal::String("Ada".into()));
+    let save = g.api("PlayerPrefs", "Save", "call");
+    let mut logs = Vec::new();
+    for (member, key, default) in [
+        ("GetInt", "vs.score", Literal::Int(0)),
+        ("GetFloat", "vs.x", Literal::Float(0.0)),
+        ("GetString", "vs.name", Literal::String("?".into())),
+        ("GetInt", "vs.missing", Literal::Int(3)),
+    ] {
+        let get = g.api("PlayerPrefs", member, "call");
+        g.v(get, "Key", Literal::String(key.into()));
+        g.v(get, "Default", default);
+        let l = g.log();
+        g.w(get, "Result", l, "Message");
+        logs.push(l);
+    }
+    let has = g.api("PlayerPrefs", "HasKey", "call");
+    g.v(has, "Key", Literal::String("vs.score".into()));
+    let l_has = g.log();
+    g.w(has, "Result", l_has, "Message");
+    let del = g.api("PlayerPrefs", "DeleteKey", "call");
+    g.v(del, "Key", Literal::String("vs.score".into()));
+    let has2 = g.api("PlayerPrefs", "HasKey", "call");
+    g.v(has2, "Key", Literal::String("vs.score".into()));
+    let l_has2 = g.log();
+    g.w(has2, "Result", l_has2, "Message");
+    let mut order = vec![set_i, set_f, set_s, save];
+    order.extend(&logs);
+    order.extend([l_has, del, l_has2]);
+    chain(&mut g, start, "Out", &order);
+    let (mut p, _) = play_in(root, &g.0);
+    p.frames(1);
+    p.no_errors();
+    assert_eq!(p.infos(), ["42", "1.5", "Ada", "3", "true", "false"]);
+    // Save wrote the file before the key was deleted: a new run reads it back.
+    crate::prefs::open(&file);
+    assert_eq!(crate::prefs::get_int("vs.score", 0), 42);
+    assert_eq!(crate::prefs::get_string("vs.name", ""), "Ada");
+}
+
+#[test]
+fn animator_parameter_nodes_drive_the_state_machine() {
+    use crate::animation::AnimatorController;
+    use crate::animation::controller::{
+        Condition, ConditionMode, Node as ANode, ParamKind, Parameter, State, StateMachine,
+        Transition,
+    };
+    let root = project("animator");
+    let param = |name: &str, kind| Parameter {
+        name: name.into(),
+        kind,
+        default: 0.0,
+    };
+    let when = |p: &str, mode, threshold| Condition {
+        parameter: p.into(),
+        mode,
+        threshold,
+    };
+    let ctrl = AnimatorController {
+        parameters: vec![
+            param("Speed", ParamKind::Float),
+            param("Jump", ParamKind::Trigger),
+            param("Crouch", ParamKind::Bool),
+            param("Weapon", ParamKind::Int),
+        ],
+        base: StateMachine {
+            states: ["Idle", "Walk", "Jump"]
+                .iter()
+                .map(|n| State {
+                    name: (*n).into(),
+                    ..Default::default()
+                })
+                .collect(),
+            default_state: Some("Idle".into()),
+            transitions: vec![
+                Transition {
+                    has_exit_time: false,
+                    duration: 0.0,
+                    conditions: vec![when("Speed", ConditionMode::Greater, 1.0)],
+                    ..Transition::new(ANode::state("Idle"), ANode::state("Walk"))
+                },
+                Transition {
+                    has_exit_time: false,
+                    duration: 0.0,
+                    conditions: vec![when("Jump", ConditionMode::If, 0.0)],
+                    ..Transition::new(ANode::AnyState, ANode::state("Jump"))
+                },
+            ],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    ctrl.save(&root.join("Assets/Hero.controller")).unwrap();
+    let mut g = G::new();
+    let start = g.n("OnStart");
+    let speed = g.api("#Animator", "SetFloat", "call");
+    g.v(speed, "Name", Literal::String("Speed".into()));
+    g.f(speed, "Value", 2.5);
+    let crouch = g.api("#Animator", "SetBool", "call");
+    g.v(crouch, "Name", Literal::String("Crouch".into()));
+    let weapon = g.api("#Animator", "SetInteger", "call");
+    g.v(weapon, "Name", Literal::String("Weapon".into()));
+    g.v(weapon, "Value", Literal::Int(2));
+    let mut logs = Vec::new();
+    for (member, name) in [
+        ("GetFloat", "Speed"),
+        ("GetBool", "Crouch"),
+        ("GetInteger", "Weapon"),
+    ] {
+        let get = g.api("#Animator", member, "call");
+        g.v(get, "Name", Literal::String(name.into()));
+        let l = g.log();
+        g.w(get, "Result", l, "Message");
+        logs.push(l);
+    }
+    // Lock the cursor too.
+    let lock = g.api("Cursor", "lockState", "set");
+    let mut order = vec![speed, crouch, weapon];
+    order.extend(&logs);
+    order.push(lock);
+    chain(&mut g, start, "Out", &order);
+    // Space sets the Jump trigger; a damped SetFloat eases Speed towards 0 every frame.
+    let update = g.n("OnUpdate");
+    let seq = g.np("Sequence", &[("count", "2")]);
+    g.w(update, "Out", seq, "In");
+    let key = g.api("Input", "GetKeyDown", "call");
+    let br = g.n("Branch");
+    g.w(key, "Result", br, "Condition");
+    g.w(seq, "Then 0", br, "In");
+    let jump = g.api("#Animator", "SetTrigger", "call");
+    g.w(br, "True", jump, "In");
+    let ease = g.api("#Animator", "SetFloat", "call");
+    g.v(ease, "Name", Literal::String("Speed".into()));
+    g.f(ease, "Damp Time", 0.2);
+    g.w(seq, "Then 1", ease, "In");
+    g.0.save(&root.join(GRAPH)).unwrap();
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Hero", None);
+    scene.add(
+        e,
+        crate::scene::Animator {
+            controller: Some("Assets/Hero.controller".into()),
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, e, GRAPH, &[]);
+    let mut p = Play::start(root, scene);
+    p.frames(1);
+    p.no_errors();
+    assert_eq!(&p.infos()[..3], ["2.5", "true", "2"]);
+    assert_eq!(
+        p.host.cursor().lock,
+        crate::scripting::CursorLockMode::Locked
+    );
+    assert!(!p.host.cursor().visible);
+    p.frames(2);
+    let state = |p: &Play| {
+        p.host
+            .with_animator(|a| a.status(&p.scene, e))
+            .unwrap()
+            .current
+            .unwrap()
+            .name
+    };
+    assert_eq!(state(&p), "Walk");
+    let mut space = Input::default();
+    space.pressed.insert("space".into());
+    p.frame_with(space);
+    p.frames(2);
+    assert_eq!(state(&p), "Jump");
+    // Damped: Speed eased down from 2.5 but has not reached 0 yet.
+    let speed = p
+        .host
+        .with_animator(|a| a.param(&p.scene, e, "Speed", &[ParamKind::Float]));
+    assert!(speed > 0.0 && speed < 2.5, "{speed}");
+    p.no_errors();
+}
+
+#[test]
+fn animator_nodes_say_when_the_target_has_no_animator() {
+    let mut g = G::new();
+    let start = g.n("OnStart");
+    let set = g.api("#Animator", "SetFloat", "call");
+    g.w(start, "Out", set, "In");
+    let (mut p, _) = play("no_animator", &g.0);
+    p.frames(1);
+    let errors = p.errors();
+    assert!(
+        errors.iter().any(|e| e.contains("'Thing' has no Animator")),
+        "{errors:?}"
+    );
+}

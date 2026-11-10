@@ -27,6 +27,7 @@
 //! the graph compiles, so they cost nothing at run time and may contain flow and latent nodes.
 
 pub mod api;
+pub mod api_game;
 pub mod compile;
 pub mod lua_bridge;
 pub mod natives;

@@ -1,0 +1,233 @@
+{
+  "parameters": [
+    {
+      "name": "Speed",
+      "type": "Float",
+      "default": 0.0
+    },
+    {
+      "name": "Jump",
+      "type": "Trigger",
+      "default": 0.0
+    }
+  ],
+  "states": [
+    {
+      "name": "Idle",
+      "motion": "Assets/Guides/Animation/Idle.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Walk",
+      "motion": "Assets/Guides/Animation/Walk.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        260.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Run",
+      "motion": "Assets/Guides/Animation/Run.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        520.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Jump",
+      "motion": "Assets/Guides/Animation/Jump.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": false,
+      "tag": "",
+      "machine": "",
+      "position": [
+        260.0,
+        -150.0
+      ]
+    }
+  ],
+  "default_state": "Idle",
+  "transitions": [
+    {
+      "from": {
+        "State": "Idle"
+      },
+      "to": {
+        "State": "Walk"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Greater",
+          "threshold": 0.5
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Walk"
+      },
+      "to": {
+        "State": "Idle"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Less",
+          "threshold": 0.5
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Walk"
+      },
+      "to": {
+        "State": "Run"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Greater",
+          "threshold": 4.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Run"
+      },
+      "to": {
+        "State": "Walk"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Less",
+          "threshold": 4.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": "AnyState",
+      "to": {
+        "State": "Jump"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.1,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Jump",
+          "mode": "If",
+          "threshold": 0.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Jump"
+      },
+      "to": "Exit",
+      "has_exit_time": true,
+      "exit_time": 0.9,
+      "fixed_duration": true,
+      "duration": 0.1,
+      "offset": 0.0,
+      "conditions": [],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    }
+  ],
+  "nodes": {
+    "entry": [
+      -260.0,
+      0.0
+    ],
+    "any_state": [
+      -260.0,
+      -150.0
+    ],
+    "exit": [
+      520.0,
+      -150.0
+    ],
+    "up": [
+      350.0,
+      -80.0
+    ]
+  }
+}

@@ -102,6 +102,8 @@ mod sample_cycles_room;
 #[cfg(test)]
 mod sample_foliage_lighting;
 #[cfg(test)]
+mod sample_guides;
+#[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
 mod sample_input;

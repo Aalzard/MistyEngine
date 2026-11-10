@@ -605,3 +605,7 @@ mod tests {
         assert!(glb_diff(&glb(p, [0, 2, 1]), &base).is_err(), "index order");
     }
 }
+
+/// PlayerPrefs are one store per process: tests that open a prefs file hold this so they don't
+/// swap each other's file mid-test.
+pub static PREFS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

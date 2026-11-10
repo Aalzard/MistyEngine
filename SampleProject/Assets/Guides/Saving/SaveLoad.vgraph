@@ -1,0 +1,777 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Api",
+      "position": [
+        1750.0,
+        264.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      },
+      "values": {
+        "Name": {
+          "String": "Score Text"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        0.0
+      ],
+      "params": {
+        "count": "2"
+      }
+    },
+    {
+      "id": 4,
+      "type": "Api",
+      "position": [
+        250.0,
+        154.0
+      ],
+      "params": {
+        "member": "HasKey",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.Score"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "Branch",
+      "position": [
+        500.0,
+        0.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        500.0,
+        154.0
+      ],
+      "params": {
+        "member": "GetInt",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.Score"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        0.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        750.0,
+        154.0
+      ],
+      "params": {
+        "member": "GetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerX"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        750.0,
+        264.0
+      ],
+      "params": {
+        "member": "GetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerY"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        750.0,
+        374.0
+      ],
+      "params": {
+        "member": "GetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerZ"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "MakeVector3",
+      "position": [
+        1000.0,
+        220.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        1250.0,
+        0.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 13,
+      "type": "Api",
+      "position": [
+        1500.0,
+        0.0
+      ],
+      "params": {
+        "member": "Log",
+        "mode": "call",
+        "owner": "Debug"
+      },
+      "values": {
+        "Message": {
+          "String": "Loaded the saved game"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "GetVariable",
+      "position": [
+        1250.0,
+        440.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 15,
+      "type": "Append",
+      "position": [
+        1500.0,
+        440.0
+      ],
+      "values": {
+        "A": {
+          "String": "Score: "
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        2000.0,
+        0.0
+      ],
+      "params": {
+        "member": "text",
+        "mode": "set",
+        "owner": "#Text"
+      }
+    },
+    {
+      "id": 17,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        660.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        660.0
+      ],
+      "params": {
+        "count": "2"
+      }
+    },
+    {
+      "id": 19,
+      "type": "Api",
+      "position": [
+        250.0,
+        814.0
+      ],
+      "params": {
+        "member": "GetKeyDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "f"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "Branch",
+      "position": [
+        500.0,
+        660.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        814.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 22,
+      "type": "AddInt",
+      "position": [
+        750.0,
+        814.0
+      ],
+      "values": {
+        "B": {
+          "Int": 10
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "SetVariable",
+      "position": [
+        1000.0,
+        660.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 24,
+      "type": "GetVariable",
+      "position": [
+        1250.0,
+        836.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 25,
+      "type": "Append",
+      "position": [
+        1500.0,
+        836.0
+      ],
+      "values": {
+        "A": {
+          "String": "Score: "
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        1500.0,
+        990.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      },
+      "values": {
+        "Name": {
+          "String": "Score Text"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "Api",
+      "position": [
+        2000.0,
+        660.0
+      ],
+      "params": {
+        "member": "text",
+        "mode": "set",
+        "owner": "#Text"
+      }
+    },
+    {
+      "id": 28,
+      "type": "Api",
+      "position": [
+        250.0,
+        1254.0
+      ],
+      "params": {
+        "member": "GetKeyDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "f5"
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "Branch",
+      "position": [
+        500.0,
+        1144.0
+      ]
+    },
+    {
+      "id": 30,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        1298.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 31,
+      "type": "Api",
+      "position": [
+        750.0,
+        1144.0
+      ],
+      "params": {
+        "member": "SetInt",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.Score"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "Api",
+      "position": [
+        750.0,
+        1364.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 33,
+      "type": "BreakVector3",
+      "position": [
+        1000.0,
+        1364.0
+      ]
+    },
+    {
+      "id": 34,
+      "type": "Api",
+      "position": [
+        1000.0,
+        1144.0
+      ],
+      "params": {
+        "member": "SetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerX"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "Api",
+      "position": [
+        1250.0,
+        1144.0
+      ],
+      "params": {
+        "member": "SetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerY"
+        }
+      }
+    },
+    {
+      "id": 36,
+      "type": "Api",
+      "position": [
+        1500.0,
+        1144.0
+      ],
+      "params": {
+        "member": "SetFloat",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      },
+      "values": {
+        "Key": {
+          "String": "Guide.PlayerZ"
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "Api",
+      "position": [
+        1750.0,
+        1144.0
+      ],
+      "params": {
+        "member": "Save",
+        "mode": "call",
+        "owner": "PlayerPrefs"
+      }
+    },
+    {
+      "id": 38,
+      "type": "Api",
+      "position": [
+        2000.0,
+        1144.0
+      ],
+      "params": {
+        "member": "Log",
+        "mode": "call",
+        "owner": "Debug"
+      },
+      "values": {
+        "Message": {
+          "String": "Game saved"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Then 0",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Result",
+      "to": 5,
+      "input": "Condition"
+    },
+    {
+      "from": 5,
+      "output": "True",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Result",
+      "to": 7,
+      "input": "Value"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 11,
+      "input": "X"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 11,
+      "input": "Y"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "Z"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 12,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Vector",
+      "to": 12,
+      "input": "Value"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 3,
+      "output": "Then 1",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Result",
+      "to": 16,
+      "input": "Target"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "Value"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Then 0",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 22,
+      "input": "A"
+    },
+    {
+      "from": 20,
+      "output": "True",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Value"
+    },
+    {
+      "from": 24,
+      "output": "Value",
+      "to": 25,
+      "input": "B"
+    },
+    {
+      "from": 23,
+      "output": "Out",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "Result",
+      "to": 27,
+      "input": "Target"
+    },
+    {
+      "from": 25,
+      "output": "Result",
+      "to": 27,
+      "input": "Value"
+    },
+    {
+      "from": 18,
+      "output": "Then 1",
+      "to": 29,
+      "input": "In"
+    },
+    {
+      "from": 28,
+      "output": "Result",
+      "to": 29,
+      "input": "Condition"
+    },
+    {
+      "from": 29,
+      "output": "True",
+      "to": 31,
+      "input": "In"
+    },
+    {
+      "from": 30,
+      "output": "Value",
+      "to": 31,
+      "input": "Value"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 33,
+      "input": "Vector"
+    },
+    {
+      "from": 31,
+      "output": "Out",
+      "to": 34,
+      "input": "In"
+    },
+    {
+      "from": 33,
+      "output": "X",
+      "to": 34,
+      "input": "Value"
+    },
+    {
+      "from": 34,
+      "output": "Out",
+      "to": 35,
+      "input": "In"
+    },
+    {
+      "from": 33,
+      "output": "Y",
+      "to": 35,
+      "input": "Value"
+    },
+    {
+      "from": 35,
+      "output": "Out",
+      "to": 36,
+      "input": "In"
+    },
+    {
+      "from": 33,
+      "output": "Z",
+      "to": 36,
+      "input": "Value"
+    },
+    {
+      "from": 36,
+      "output": "Out",
+      "to": 37,
+      "input": "In"
+    },
+    {
+      "from": 37,
+      "output": "Out",
+      "to": 38,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Score",
+      "type": "int",
+      "value": {
+        "Int": 0
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -154.0
+      ],
+      "size": [
+        460.0,
+        70.0
+      ],
+      "text": "Save and load: on start, load the saved score and position if there is a save; F adds 10 points; F5 saves the score and where the player stands."
+    }
+  ]
+}

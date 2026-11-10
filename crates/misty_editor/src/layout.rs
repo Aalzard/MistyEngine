@@ -54,6 +54,8 @@ pub enum Tab {
     PackageManager,
     /// Window ▸ Input ▸ Input Actions (or double-click an `.inputactions` asset).
     InputActions,
+    /// Help ▸ User Guide: the guide's chapters, rendered.
+    Guide,
     /// A tool window of an editor script (`ToolWindow(title)`), by the id of its title.
     Tool(u64),
 }
@@ -72,7 +74,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 20] = [
+    pub const ON_DEMAND: [Tab; 21] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -93,6 +95,7 @@ impl Tab {
         Tab::AssetGroups,
         Tab::PackageManager,
         Tab::InputActions,
+        Tab::Guide,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -129,6 +132,8 @@ impl Tab {
             Tab::PackageManager => Some(Tab::Scene),
             // Three columns want width, like the Package Manager.
             Tab::InputActions => Some(Tab::Scene),
+            // Reading wants width and height: it docks with the Editor Scene.
+            Tab::Guide => Some(Tab::Scene),
             // Script tools sit by the Inspector, like Lighting and Navigation.
             Tab::Tool(_) => Some(Tab::Inspector),
             _ => None,
@@ -165,6 +170,7 @@ impl Tab {
             Tab::AssetGroups => "Asset Groups",
             Tab::PackageManager => "Package Manager",
             Tab::InputActions => "Input Actions",
+            Tab::Guide => "User Guide",
             // The real title comes from the script (`PanelViewer::title`).
             Tab::Tool(_) => "Tool Window",
         }
@@ -192,6 +198,48 @@ impl Tab {
                 || t.legacy_title()
                     .is_some_and(|l| l.eq_ignore_ascii_case(title))
         })
+    }
+
+    /// A stable id for the tab that never changes with its title or the UI language (tutorial
+    /// targets are `tab.<key>`, see `tutorials::targets`).
+    pub fn key(self) -> &'static str {
+        match self {
+            Tab::Scene => "scene",
+            Tab::Game => "game",
+            Tab::Hierarchy => "hierarchy",
+            Tab::Inspector => "inspector",
+            Tab::Project => "project",
+            Tab::Console => "console",
+            Tab::Animation => "animation",
+            Tab::Lighting => "lighting",
+            Tab::Animator => "animator",
+            Tab::AudioMixer => "audio_mixer",
+            Tab::Navigation => "navigation",
+            Tab::CodeEditor => "code_editor",
+            Tab::Profiler => "profiler",
+            Tab::WorldBuilder => "world_builder",
+            Tab::WorldPartition => "world_partition",
+            Tab::UndoHistory => "undo_history",
+            Tab::Timeline => "timeline",
+            Tab::TilePalette => "tile_palette",
+            Tab::ShaderGraph => "shader_graph",
+            Tab::EffectGraph => "effect_graph",
+            Tab::ScriptGraph => "script_graph",
+            Tab::OcclusionCulling => "occlusion_culling",
+            Tab::FrameDebugger => "frame_debugger",
+            Tab::MemoryProfiler => "memory_profiler",
+            Tab::TestRunner => "test_runner",
+            Tab::AssetGroups => "asset_groups",
+            Tab::PackageManager => "package_manager",
+            Tab::InputActions => "input_actions",
+            Tab::Guide => "guide",
+            Tab::Tool(_) => "tool",
+        }
+    }
+
+    /// The built-in tab with this [`Tab::key`].
+    pub fn from_key(key: &str) -> Option<Tab> {
+        Self::every().find(|t| t.key() == key)
     }
 
     pub fn icon(self) -> &'static str {
@@ -224,6 +272,7 @@ impl Tab {
             Tab::AssetGroups => crate::panels::asset_groups::ICON,
             Tab::PackageManager => crate::panels::packages::ICON,
             Tab::InputActions => crate::panels::input_actions::ICON,
+            Tab::Guide => crate::panels::guide::ICON,
             Tab::Tool(_) => TOOL_ICON,
         }
     }
@@ -259,6 +308,7 @@ impl Tab {
             | Tab::AssetGroups
             | Tab::PackageManager
             | Tab::InputActions
+            | Tab::Guide
             | Tab::Tool(_) => "",
         }
     }
