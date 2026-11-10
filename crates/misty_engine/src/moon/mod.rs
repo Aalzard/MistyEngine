@@ -245,10 +245,7 @@ pub fn from_az_alt(azimuth: f32, altitude: f32) -> Vec3 {
 fn phase_light(moon: Vec3, phase: f32, lat: f32) -> Vec3 {
     let psi = phase.rem_euclid(1.0) * std::f32::consts::TAU;
     // Westward along the moon's daily circle.
-    let west = pole(lat)
-        .cross(moon)
-        .try_normalize()
-        .unwrap_or_else(|| Vec3::NEG_X);
+    let west = pole(lat).cross(moon).try_normalize().unwrap_or(Vec3::NEG_X);
     (moon * psi.cos() + west * psi.sin()).normalize_or(moon)
 }
 

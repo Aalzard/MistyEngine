@@ -63,6 +63,13 @@
   generator and maria placement; settings round trip; Lua; GPU render of the disc at full,
   quarter, crescent and new; sample generator, play test.
 
+## Screenshots (docs/screenshots/r27/)
+- `moon_phases.jpg` (strip) and `moon_waxing_crescent.jpg`, `moon_first_quarter.jpg`,
+  `moon_waxing_gibbous.jpg`, `moon_full.jpg`, `moon_waning_gibbous.jpg`, `moon_last_quarter.jpg`
+  (telephoto, MoonDemo's sky).
+- `moonlit_night_full.jpg`, `moonlit_night_crescent.jpg` (MoonDemo), `twilight_moonrise.jpg`
+  (sun 4° down, nearly full moon rising). Rendered by `sample_moon::render_moon_screenshots`.
+
 ## Not done yet
 - No moon shafts (sun shafts only look for the sun) and no lens flare / halo for the moon.
 - Stars do not turn with the sidereal time in Date and Time mode, and there is no Milky Way or
