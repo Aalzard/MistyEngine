@@ -3447,3 +3447,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   Effects, Timeline, Audio); Turkish and Arabic strings.
 - **WeatherDemo** sample (`sample_weather.rs`): asphalt square, shelter, trees, stone wall,
   street lamp, the demo cycle; keys 1–8 switch states, L strikes, 0 returns to the timeline.
+- **GPU cost** (WeatherDemo, 1920×1080, Quality High, `weather_gpu_timings`; the machine was
+  busy with other agents' builds):
+
+  | Case | Frame | Weather composite | Occlusion map | Main pass |
+  |---|---|---|---|---|
+  | No weather | 3.11 ms | — | — | 0.82 ms |
+  | Heavy Rain + splashes + wetness | 3.86 ms (+0.75) | 0.91 ms | 0.007 ms | 1.09 ms |
+  | Downpour | 4.42 ms (+1.31) | 1.48 ms | 0.007 ms | 1.09 ms |
+  | Thunderstorm | 4.06 ms (+0.95) | 1.11 ms | 0.007 ms | 1.09 ms |
+  | Blizzard + snow cover | 3.86 ms (+0.75) | 0.94 ms | 0.007 ms | 1.07 ms |
+
+  The main pass grows ~0.27 ms with wet / snowy surfaces (the scene copy for refraction is in
+  it too). Target was under ~2 ms for the heavy cases: all are.
+- Screenshots (`weather_screenshots`, 1600×900 JPEG): `docs/screenshots/r34/light_rain.jpg`,
+  `downpour_mist_splashes.jpg`, `thunderstorm_night.jpg`, `wet_street_puddles.jpg`,
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`.
+- Tests: presets, transitions (endpoints exact, rain → snow through sleet, visibility by
+  extinction), the timeline state machine (sequence, looping / not, weighted random without
+  repeats), area volume blending by priority, wetness / puddle / snow accumulation and decay,
+  thunder delay from distance, lightning rate and bolts, the script layer, wind gusts, the Lua
+  API with events, generated audio, shader validation (naga) of every lit shader with the
+  hook, GPU: rain and snow draw, a disabled volume changes no pixel, no snow under a roof
+  (and snow there without the occlusion map); WeatherDemo matches its generator and plays.
