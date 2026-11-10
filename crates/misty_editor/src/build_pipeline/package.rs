@@ -179,6 +179,13 @@ pub fn package(
     if roots.is_empty() {
         return Err("no scenes in Build Settings: add one with \"Add Open Scenes\"".into());
     }
+    // A missing build scene was only a warning: the build "succeeded" and the player failed
+    // when it loaded the scene.
+    if let Some(gone) = roots.iter().find(|r| !req.project.join(r.as_str()).is_file()) {
+        return Err(format!(
+            "the build scene {gone} is missing: restore it or remove it from Build Settings"
+        ));
+    }
     if !server {
         roots.extend(player_settings.icon.clone());
         roots.extend(player_settings.splash.image.clone());
@@ -848,6 +855,23 @@ mod tests {
         let mut inside = req.clone();
         inside.out = root.join("Assets/Build");
         assert!(package(&inside, &player, &mut |_| {}).is_err());
+    }
+
+    /// A build scene that no longer exists fails the build (the player would fail to load it).
+    #[test]
+    fn a_missing_build_scene_fails_the_build() {
+        let root = project("missing_scene");
+        let mut req = request(&root, BuildTarget::WindowsX64);
+        req.out = root.with_extension("missing");
+        req.build.create_zip = false;
+        req.build.steam_app_id.clear();
+        req.build.scenes.push(BuildScene::new("Assets/Scenes/Gone.scene"));
+        let player = root.join("player.bin");
+        std::fs::write(&player, "exe").unwrap();
+        let err = package(&req, &player, &mut |_| {}).unwrap_err();
+        assert!(err.contains("Gone.scene"), "{err}");
+        let _ = std::fs::remove_dir_all(&req.out);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
