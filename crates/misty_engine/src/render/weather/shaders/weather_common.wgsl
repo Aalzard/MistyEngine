@@ -158,7 +158,10 @@ fn weather_noise(p: vec2<f32>) -> f32 {
 }
 
 fn weather_fbm(p: vec2<f32>) -> f32 {
-    return weather_noise(p) * 0.55 + weather_noise(p * 2.13 + 7.1) * 0.3 + weather_noise(p * 4.37 + 3.3) * 0.15;
+    // Each octave turned (no grid-aligned blocks).
+    let r = mat2x2<f32>(0.8, 0.6, -0.6, 0.8);
+    let q = r * p * 2.13 + 7.1;
+    return weather_noise(p) * 0.55 + weather_noise(q) * 0.3 + weather_noise(r * q * 2.05 + 3.3) * 0.15;
 }
 
 // Settled snow on a surface (0..1) with normal `n` at `world`: on upward faces, patchy while

@@ -616,7 +616,8 @@ fn vs_snow(@builtin(vertex_index) vi: u32) -> FlakeOut {
     out.quad = corner;
     let fade = smoothstep(0.15, 0.6, dist) * (1.0 - smoothstep(select(50.0, 14.0, near_layer), select(62.0, 17.0, near_layer), dist));
     let fade_in = select(smoothstep(11.0, 15.0, dist), 1.0, near_layer);
-    let energy = 1.0 / ((1.0 + blur * 2.0) * (1.0 + blur * 2.0) * stretch);
+    // Blurred flakes spread their light; streaks keep more (the eye follows them).
+    let energy = 1.0 / ((1.0 + blur * 2.0) * (1.0 + blur * 2.0) * max(sqrt(stretch), 1.0));
     out.params = vec4<f32>(pr.snow2.z * coverage * fade * fade_in * box_fade(p, centre, box) * energy, blur, dist, r.z);
     out.world = p;
     // Tumbling: spin plus a squash as the flake turns edge-on.
