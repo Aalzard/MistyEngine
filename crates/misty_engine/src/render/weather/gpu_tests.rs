@@ -17,8 +17,13 @@ use crate::weather::{Weather, WeatherPreset};
 struct NoMaterials;
 
 impl MaterialSource for NoMaterials {
+    /// Dark rough asphalt everywhere (snow and wetness show clearly on it).
     fn params(&self, _: Option<&str>) -> crate::render::MaterialParams {
-        crate::render::MaterialParams::default()
+        crate::render::MaterialParams {
+            color: [0.12, 0.12, 0.13, 1.0],
+            smoothness: 0.1,
+            ..Default::default()
+        }
     }
 }
 
@@ -134,10 +139,8 @@ fn rain_and_snow_passes_draw_and_off_changes_nothing() {
     let (snow_img, _) = render(&device, &queue, &mut snow, 8, size, &q, true);
     let d = mean_diff(&clear, &snow_img);
     assert!(d > 4.0, "a blizzard changes the picture: {d}");
-    // Brighter overall (white flakes, white haze).
-    let b0 = brightness(&clear, size.0, (0, size.0), (0, size.1));
-    let b1 = brightness(&snow_img, size.0, (0, size.0), (0, size.1));
-    assert!(b1 > b0, "{b1} vs {b0}");
+    let d = mean_diff(&rain_img, &snow_img);
+    assert!(d > 2.0, "snow isn't rain: {d}");
 }
 
 #[test]

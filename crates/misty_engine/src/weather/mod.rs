@@ -401,6 +401,13 @@ impl WeatherParams {
     /// on one side take the other side's (rain → clear keeps the drop size while it thins).
     pub fn lerp(&self, b: &Self, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
+        // Exact at the ends (a state reached is that state).
+        if t <= 0.0 {
+            return *self;
+        }
+        if t >= 1.0 {
+            return *b;
+        }
         let (a, mut b2, mut a2) = (*self, *b, *self);
         // Absent rain or snow borrows the other side's look while it fades in or out.
         if a.rain_density <= 0.0 {
