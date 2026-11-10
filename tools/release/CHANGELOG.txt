@@ -1,6 +1,17 @@
 Misty Engine changelog
 ======================
 
+Unreleased
+----------
+
+Misty's own names
+- Windows: Inspector is now Properties, Hierarchy is Scene Tree, Project is Asset Files,
+  Scene is Editor Scene and Game is Scene Viewer. Menus: GameObject is Object, Component is
+  Archetype (Add Archetype), World Partition is World Streaming, Virtual Geometry is
+  Misty Mesh. Turkish and Arabic follow.
+- Nothing to redo: saved layouts, scenes, Lua scripts (GetComponent, AddComponent) and MCP
+  tools work as before, and old menu paths such as "GameObject/3D Object/Cube" still run.
+
 0.3.2 - Turkish and Arabic, Project window fixes (November 2026)
 -----------------------------------------------------------------
 

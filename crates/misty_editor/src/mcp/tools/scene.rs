@@ -35,7 +35,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "scene.create_object",
         title: "Create object",
-        description: "Create a GameObject (empty, a primitive, a light, a camera…) like the GameObject menu does, optionally under a parent, at a position, with extra components. One undo step.",
+        description: "Create an object (empty, a primitive, a light, a camera…) like the Object menu does, optionally under a parent, at a position, with extra components. One undo step.",
         kind: Kind::Edit,
         idempotent: false,
         schema: create_schema,
@@ -98,7 +98,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "scene.select",
         title: "Select objects",
-        description: "Select objects in the Hierarchy (an empty list clears the selection).",
+        description: "Select objects in the Scene Tree (an empty list clears the selection).",
         kind: Kind::Edit,
         idempotent: true,
         schema: objects_schema,
@@ -204,7 +204,7 @@ fn create_schema() -> Value {
             "name": { "type": "string", "description": "Object name (default: from the kind)" },
             "kind": { "type": "string", "enum": KINDS, "description": "What to create (default \"empty\")" },
             "parent": object_ref_schema("Parent object (default: scene root)"),
-            "position": vec3_schema("Local position [x, y, z] (default: the Scene view pivot at the root)"),
+            "position": vec3_schema("Local position [x, y, z] (default: the Editor Scene pivot at the root)"),
             "rotation": vec3_schema("Local rotation as Euler angles in degrees [x, y, z]"),
             "scale": vec3_schema("Local scale [x, y, z]"),
             "components": {
@@ -222,7 +222,7 @@ fn prefab_schema() -> Value {
         json!({
             "path": { "type": "string", "description": "Project path of a .prefab or model asset" },
             "parent": object_ref_schema("Parent object (default: scene root)"),
-            "position": vec3_schema("World position [x, y, z] (default: the Scene view pivot)"),
+            "position": vec3_schema("World position [x, y, z] (default: the Editor Scene pivot)"),
         }),
         &["path"],
     )

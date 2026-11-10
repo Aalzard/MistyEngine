@@ -6,7 +6,7 @@
 use std::sync::OnceLock;
 
 const TABLE: &str = r#"
-|Input||Keyboard, mouse and axes (the Game view must have focus)
+|Input||Keyboard, mouse and axes (the Scene Viewer must have focus)
 |Time||Frame timing
 |Physics||Raycasts and overlap queries
 |Vector3||3D vectors

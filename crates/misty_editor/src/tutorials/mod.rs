@@ -13,7 +13,7 @@
 
 mod card;
 mod conditions;
-mod data;
+pub(crate) mod data;
 mod demos;
 mod progress;
 mod scenes;

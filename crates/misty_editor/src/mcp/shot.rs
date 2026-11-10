@@ -168,7 +168,7 @@ pub fn render_offscreen(
     match view {
         View::Game => {
             let game = GameView::new(&s.scene, &s.assets)
-                .ok_or("the scene has no enabled Camera for the Game view")?;
+                .ok_or("the scene has no enabled Camera for the Scene Viewer")?;
             draw(&game.frame(), &game.effects);
         }
         View::Scene => {

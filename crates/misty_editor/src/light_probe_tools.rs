@@ -616,7 +616,7 @@ pub fn start_bake(state: &mut EditorState) {
         }
         None => {
             state.light_probes.status =
-                "No light probes: add a Light Probe Group (GameObject ▸ Light).".into()
+                "No light probes: add a Light Probe Group (Object ▸ Light).".into()
         }
     }
 }

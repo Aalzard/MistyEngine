@@ -498,7 +498,7 @@ The first active object with that name, or nil
 
 ## Input
 
-Keyboard, mouse and axes (the Game view must have focus)
+Keyboard, mouse and axes (the Scene Viewer must have focus)
 
 ### `Input.GetAxis(name)`
 
@@ -4218,7 +4218,7 @@ AddListener(fn(isOn))
 
 *function* · source: `api.rs`
 
-> GetChild(i): the i-th child (0-based, Hierarchy order), or an error past the end.
+> GetChild(i): the i-th child (0-based, Scene Tree order), or an error past the end.
 
 ### `transform:LookAt(target)`
 

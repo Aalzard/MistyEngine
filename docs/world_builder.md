@@ -5,7 +5,7 @@ The World Builder makes a whole landscape from a few settings: a base landform, 
 Everything is a recipe saved in the scene, so you can move a stamp and press **Generate** again.
 
 Open it from **Window ▸ Terrain ▸ World Builder**, or click **World Builder** at the top of a
-terrain's Inspector. For a ready-made world in one click, use **GameObject ▸ 3D Object ▸ World** and
+terrain's Properties panel. For a ready-made world in one click, use **Object ▸ 3D Object ▸ World** and
 pick a template. To see a finished example, open `Assets/Scenes/WorldBuilderDemo.scene`.
 
 ## 1. Start
@@ -14,7 +14,7 @@ pick a template. To see a finished example, open `Assets/Scenes/WorldBuilderDemo
   **Create World Builder (with a new Terrain)**.
 - Or click one of the **templates** under the button: it makes the terrain and a World Builder set up
   for that kind of world.
-- This adds a **World Builder** object to the Hierarchy. It also writes the biome presets and their textures
+- This adds a **World Builder** object to the Scene Tree. It also writes the biome presets and their textures
   into `Assets/WorldBuilder/`.
 
 At the top of the window are two cards, **Preview** and **Templates**, then four sections. Click a title
@@ -25,7 +25,7 @@ to fold it away.
 A top-down picture of the world that updates while you drag any setting or stamp: a quick rough
 version while you edit, then a sharper one a moment after you stop. Switch between **Height**
 (grayscale), **Relief** (shading, slopes, snow and water) and **Biomes** (the ground textures the
-terrain will get). **Live in Scene view** also shows the rough result on the terrain itself; **Generate**
+terrain will get). **Live in Editor Scene** also shows the rough result on the terrain itself; **Generate**
 replaces it with the full one, and **Revert** puts the terrain back.
 
 ### Templates
@@ -52,11 +52,11 @@ Every change shows up in the Preview card straight away.
 
 ## 3. Stamps & Areas
 
-Click an **Add** button to place a stamp at the centre of the Scene view. Each stamp is a child object of
+Click an **Add** button to place a stamp at the centre of the Editor Scene. Each stamp is a child object of
 the World Builder:
 
 - Move, rotate and scale it with the usual tools (W / E / R).
-- Drag the white dots in the Scene view to change the radius and falloff, or to move river and polygon
+- Drag the white dots in the Editor Scene to change the radius and falloff, or to move river and polygon
   points.
 
 | Stamp | What it does |
@@ -68,7 +68,7 @@ the World Builder:
 | Rock Area | Rock textures and rocks take over inside. |
 | Biome Zone | Uses another biome inside its circle (or polygon). |
 
-Stamps are applied in Hierarchy order, so drag them in the Hierarchy to change which one wins.
+Stamps are applied in Scene Tree order, so drag them in the Scene Tree to change which one wins.
 
 ## 4. Biomes
 
@@ -76,7 +76,7 @@ Stamps are applied in Hierarchy order, so drag them in the Hierarchy to change w
 - **Edge Breakup** adds noise to the edges where biomes meet.
 - Click a biome name to edit it. Changes save to its `.biome` file straight away. Each biome has:
   - a texture and tiling for each kind of ground: Flat, Slope, Cliff, Shore / Underwater and Peak / Snow.
-    Drag a texture from the Project window onto a slot.
+    Drag a texture from Asset Files onto a slot.
   - the angles and heights that decide where each kind of ground starts.
   - a **Scatter** list: trees, rocks, bushes or grass. For each item you can pick a prefab or a built-in
     shape, and set its density, minimum spacing, scale range, maximum slope, height band and whether it

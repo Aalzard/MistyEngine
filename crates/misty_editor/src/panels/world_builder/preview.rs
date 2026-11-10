@@ -406,7 +406,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
             .get::<&WorldBuilder>(builder)
             .is_ok_and(|s| s.live_preview);
         if ui
-            .checkbox(&mut live, "Live in Scene view")
+            .checkbox(&mut live, "Live in Editor Scene")
             .on_hover_text(
                 "Also show the low-resolution preview on the terrain while you edit. \
                  Generate replaces it with the full result.",

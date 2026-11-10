@@ -190,7 +190,7 @@ fn container(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         };
         if ui
             .selectable_label(drawing, label)
-            .on_hover_text("Click in the Scene view to place knots, drag for tangents")
+            .on_hover_text("Click in the Editor Scene to place knots, drag for tangents")
             .clicked()
         {
             state.splines.set_drawing(!drawing);
@@ -314,7 +314,7 @@ fn container(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         }
     } else {
         ui.label(
-            RichText::new("Select knots in the Scene view to edit them here.")
+            RichText::new("Select knots in the Editor Scene to edit them here.")
                 .color(theme::TEXT_DIM),
         );
     }
@@ -396,7 +396,7 @@ fn prefab_field(ui: &mut Ui, i: usize, prefab: &mut Option<String>) -> bool {
             ch |= ui
                 .selectable_value(prefab, None, "None (use the primitive)")
                 .changed();
-            ui.weak("Drop a prefab from the Project window here.");
+            ui.weak("Drop a prefab from Asset Files here.");
         })
         .response;
     if let Some(p) = slot.dnd_release_payload::<AssetPayload>()

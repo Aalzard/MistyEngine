@@ -285,7 +285,7 @@ fn groups(ui: &mut Ui, w: &mut AssetGroupsWindow, project: &Path) {
                     }
                 }
                 if g.entries.is_empty() {
-                    ui.weak("Drag assets here from the Project window.");
+                    ui.weak("Drag assets here from Asset Files.");
                 }
             });
         let resp = header.header_response.union(
@@ -481,7 +481,7 @@ pub fn addressable_header(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let mut on = entry.is_some();
     ui.horizontal(|ui| {
         if ui
-            .checkbox(&mut on, "Addressable")
+            .checkbox(&mut on, "Load by Address")
             .on_hover_text("Load this asset by address at runtime (Assets.LoadAsync)")
             .changed()
         {
@@ -625,14 +625,14 @@ mod tests {
             s,
         );
         h.run();
-        h.get_by_label("Addressable").click();
+        h.get_by_label("Load by Address").click();
         h.run();
         let saved = AssetGroupSettings::load(&root).unwrap();
         let (group, e) = saved.entry("Assets/Prefabs/B.prefab").unwrap();
         assert_eq!(group, DEFAULT_GROUP);
         assert_eq!(e.address, "Assets/Prefabs/B.prefab");
         h.get_by_label("Labels");
-        h.get_by_label("Addressable").click();
+        h.get_by_label("Load by Address").click();
         h.run();
         assert!(
             AssetGroupSettings::load(&root)

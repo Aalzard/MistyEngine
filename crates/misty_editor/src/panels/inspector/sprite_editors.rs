@@ -267,7 +267,7 @@ fn edit_collider_button(ui: &mut Ui, e: Entity) {
         let b = egui::Button::new("⬠").selected(on);
         if ui
             .add(b)
-            .on_hover_text("Edit the collider's shape in the Scene view")
+            .on_hover_text("Edit the collider's shape in the Editor Scene")
             .clicked()
         {
             ui.ctx().data_mut(|d| {

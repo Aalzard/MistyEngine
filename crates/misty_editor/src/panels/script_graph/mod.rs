@@ -1000,7 +1000,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     None => {}
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.toggle_value(&mut s.script_graph.show_inspector, "Graph Inspector");
+                    ui.toggle_value(&mut s.script_graph.show_inspector, "Graph Properties");
                     ui.toggle_value(&mut s.script_graph.show_blackboard, "Blackboard");
                     if let Some(live) = s.script_graph.live.clone() {
                         ui.separator();

@@ -24,8 +24,9 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
         .on_hover_text("Emit from both faces (off: only towards the light's forward axis).");
     ch |= mixed::checkbox(ui, "two_sided", &mut l.two_sided, "").changed();
     ui.end_row();
-    ui.label("Show Emitter")
-        .on_hover_text("Draw the rectangle as a glowing surface in the Scene and Game views.");
+    ui.label("Show Emitter").on_hover_text(
+        "Draw the rectangle as a glowing surface in the Editor Scene and Scene Viewer.",
+    );
     ch |= mixed::checkbox(ui, "show_emitter", &mut l.show_emitter, "").changed();
     ui.end_row();
     ch

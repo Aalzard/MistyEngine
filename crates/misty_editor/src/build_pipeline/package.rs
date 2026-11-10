@@ -287,7 +287,7 @@ pub fn package(
                     .add_counted(&key, &bytes)
                     .map_err(|e| io(&pak_path, e))?;
                 report.add(&key, bytes.len() as u64, packed);
-                send(Msg::Log(format!("Virtual geometry: {key}")));
+                send(Msg::Log(format!("Misty Mesh: {key}")));
             }
             Ok(None) => {}
             Err(e) => send(Msg::Warning(format!("virtual geometry of {rel}: {e}"))),

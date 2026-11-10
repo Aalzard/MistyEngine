@@ -231,8 +231,8 @@ fn placeholder(ui: &mut Ui, enabled: bool) {
         ui.label(RichText::new(ICON).size(34.0).color(theme::TEXT_DIM));
         ui.add_space(6.0);
         let text = match enabled {
-            true => "Waiting for the Game view to draw a frame…",
-            false => "Press Enable to freeze the Game view and step through its draw calls.",
+            true => "Waiting for the Scene Viewer to draw a frame…",
+            false => "Press Enable to freeze the Scene Viewer and step through its draw calls.",
         };
         ui.label(RichText::new(text).color(theme::TEXT_DIM));
     });
@@ -251,7 +251,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
             ui,
             enabled,
             label,
-            "Freeze the Game view and capture its frame",
+            "Freeze the Scene Viewer and capture its frame",
         )
         .clicked();
         let w = &mut s.frame_debugger;
@@ -322,7 +322,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
             })
             .response
             .on_hover_text(
-                "What the Game view shows: the event's target, depth, normals, GI or emission",
+                "What the Scene Viewer shows: the event's target, depth, normals, GI or emission",
             );
         if toggle_button(
             ui,

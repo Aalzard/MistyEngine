@@ -341,7 +341,7 @@ fn row(ui: &mut Ui, hit: &Hit, selected: bool) -> egui::Response {
 
 fn empty_state(ui: &mut Ui, blank: bool, indexing: bool) {
     let text = if blank {
-        "Type to search. Prefixes: h: Hierarchy   p: Project   m: Menu   s: Settings   \
+        "Type to search. Prefixes: h: Scene Tree   p: Asset Files   m: Menu   s: Settings   \
          Filters: t:Light  tag:Player  layer:UI   Calculator: =2*3"
     } else if indexing {
         "Indexing assets…"

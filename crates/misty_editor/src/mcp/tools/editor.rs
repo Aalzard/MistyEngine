@@ -31,7 +31,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "editor.list_menu_items",
         title: "List menu items",
-        description: "Menu bar commands (\"GameObject/3D Object/Cube\", \"Assets/Refresh\", editor script items…) that editor.run_menu_item runs.",
+        description: "Menu bar commands (\"Object/3D Object/Cube\", \"Assets/Refresh\", editor script items…) that editor.run_menu_item runs.",
         kind: Kind::Read,
         idempotent: true,
         schema: list_menu_schema,
@@ -85,7 +85,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "editor.screenshot",
         title: "Screenshot a view",
-        description: "A PNG of the Scene view (the editor camera) or the Game view (the scene's main camera).",
+        description: "A PNG of the Editor Scene (the editor camera) or the Scene Viewer (the scene's main camera).",
         kind: Kind::Read,
         idempotent: true,
         schema: screenshot_schema,
@@ -147,7 +147,7 @@ fn list_menu_schema() -> Value {
 
 fn run_menu_schema() -> Value {
     object_schema(
-        json!({ "path": { "type": "string", "description": "Menu path, like \"GameObject/3D Object/Cube\"" } }),
+        json!({ "path": { "type": "string", "description": "Menu path, like \"Object/3D Object/Cube\" (the old \"GameObject/…\" and \"Component/…\" paths still work)" } }),
         &["path"],
     )
 }
@@ -360,8 +360,14 @@ fn run_menu_item(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     let path = str_arg(args, "path")?.trim().trim_matches('/');
     let norm = |p: &str| p.replace(" > ", "/").replace('>', "/").to_lowercase();
     let wanted = norm(path);
+    // Paths with the names from before round 31 still run ("GameObject/3D Object/Cube").
+    let renamed = norm(&crate::renames::menu_path(&norm(path)));
     let items = menu_items::all(cx.s);
-    let Some(item) = items.iter().find(|m| norm(&m.path) == wanted) else {
+    let Some(item) = items
+        .iter()
+        .find(|m| norm(&m.path) == wanted)
+        .or_else(|| items.iter().find(|m| norm(&m.path) == renamed))
+    else {
         let last = wanted.rsplit('/').next().unwrap_or(&wanted).to_owned();
         let close: Vec<&str> = items
             .iter()
@@ -580,12 +586,12 @@ fn screenshot(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     let (w, h, rgba) = cx.shots.capture(cx.s, view, size)?;
     let png = super::super::png(w, h, &rgba)?;
     let name = match view {
-        super::super::shot::View::Scene => "Scene",
-        super::super::shot::View::Game => "Game",
+        super::super::shot::View::Scene => "Editor Scene",
+        super::super::shot::View::Game => "Scene Viewer",
     };
     Ok(Outcome::Done(ToolResult::image(
         &png,
-        format!("{name} view, {w}x{h}"),
+        format!("{name}, {w}x{h}"),
     )))
 }
 

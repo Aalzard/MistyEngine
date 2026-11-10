@@ -40,8 +40,8 @@ impl Provider {
         match self {
             Provider::Recent => "Recent searches",
             Provider::Calculator => "Calculator",
-            Provider::Hierarchy => "Hierarchy",
-            Provider::Project => "Project",
+            Provider::Hierarchy => "Scene Tree",
+            Provider::Project => "Asset Files",
             Provider::Menu => "Menu",
             Provider::Settings => "Settings",
             Provider::Help => "Help",

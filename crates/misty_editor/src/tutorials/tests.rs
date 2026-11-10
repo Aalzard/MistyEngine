@@ -407,7 +407,7 @@ fn clicking_the_real_ui_advances_steps() {
     h.get_by_label("Effects").click();
     h.run_steps(12);
     assert_eq!(step_index(&h), Some(1), "selecting Effects finished step 1");
-    h.get_by_label("Add Component").click();
+    h.get_by_label("Add Archetype").click();
     h.run_steps(2);
     h.event(egui::Event::Text("Post".into()));
     h.run_steps(2);

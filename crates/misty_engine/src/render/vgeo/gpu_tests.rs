@@ -528,32 +528,28 @@ fn virtual_geometry_shows_in_stats_debug_views_and_frame_debugger() {
     let names: Vec<&str> = capture.events.iter().map(|e| e.name.as_str()).collect();
     let culling = names
         .iter()
-        .filter(|n| n.starts_with("Dispatch Virtual Geometry Culling"))
+        .filter(|n| n.starts_with("Dispatch Misty Mesh Culling"))
         .count();
     assert!(culling >= 3, "camera phases and shadow maps: {names:?}");
     assert!(
         names
             .iter()
-            .any(|n| n.starts_with("Draw Virtual Geometry Casters")),
+            .any(|n| n.starts_with("Draw Misty Mesh Casters")),
         "{names:?}"
     );
     let vis = exact.visibility;
     let main_draw = match vis {
-        true => "Resolve Virtual Geometry",
-        false => "Draw Virtual Geometry Clusters",
+        true => "Resolve Misty Mesh",
+        false => "Draw Misty Mesh Clusters",
     };
     let at_main = names
         .iter()
         .position(|n| n.starts_with(main_draw))
         .unwrap_or_else(|| panic!("no {main_draw}: {names:?}"));
     if vis {
-        assert!(
-            names
-                .iter()
-                .any(|n| n.starts_with("Draw Virtual Geometry Ids"))
-        );
+        assert!(names.iter().any(|n| n.starts_with("Draw Misty Mesh Ids")));
     }
-    assert!(capture.roots().iter().any(|r| r == "Virtual Geometry"));
+    assert!(capture.roots().iter().any(|r| r == "Misty Mesh"));
     // Stopped just before the rock's main-pass draw: no rock in the colour target.
     r.begin_capture(crate::render::CaptureRequest {
         stop_after: Some(at_main - 1),

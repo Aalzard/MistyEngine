@@ -1,4 +1,4 @@
-//! Top menu bar: File, Edit, Assets, GameObject, Component, Tools, Window, Help.
+//! Top menu bar: File, Edit, Assets, Object, Archetype, Tools, Window, Help.
 
 use egui::Ui;
 
@@ -128,7 +128,7 @@ pub fn show_menus(ui: &mut Ui, state: &mut EditorState) -> f32 {
 /// Every top menu in order; returns the last one's rectangle.
 fn all_menus(ui: &mut Ui, state: &mut EditorState) -> egui::Rect {
     // Editor script menu items join the built-in menus at the end, and their own
-    // menus ("Tools") sit between Component and Window.
+    // menus ("Tools") sit between Archetype and Window.
     let scripts = crate::editor_scripts::menus::menu_ui;
     top(ui, "File", |ui| {
         file_menu(ui, state);
@@ -142,13 +142,14 @@ fn all_menus(ui: &mut Ui, state: &mut EditorState) -> egui::Rect {
         assets_menu(ui, state);
         scripts(ui, state, "Assets");
     });
-    top(ui, "GameObject", |ui| {
+    // Object and Archetype were "GameObject" and "Component" (scripts may still use those).
+    top(ui, "Object", |ui| {
         gameobject_menu(ui, state);
-        scripts(ui, state, "GameObject");
+        scripts(ui, state, "Object");
     });
-    top(ui, "Component", |ui| {
+    top(ui, "Archetype", |ui| {
         component_menu(ui, state);
-        scripts(ui, state, "Component");
+        scripts(ui, state, "Archetype");
     });
     top(ui, "Tools", |ui| {
         tools_menu(ui, state);
@@ -539,11 +540,11 @@ pub fn virtual_geometry_items(ui: &mut Ui, s: &mut EditorState) {
     ui.separator();
     if off {
         let action = Action::VirtualGeometry(Command::EnableSelected);
-        item(ui, s, "Enable Virtual Geometry", "", action);
+        item(ui, s, "Enable Misty Mesh", "", action);
     }
     if on {
         let action = Action::VirtualGeometry(Command::DisableSelected);
-        item(ui, s, "Disable Virtual Geometry", "", action);
+        item(ui, s, "Disable Misty Mesh", "", action);
     }
 }
 

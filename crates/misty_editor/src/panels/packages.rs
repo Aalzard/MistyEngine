@@ -406,7 +406,7 @@ fn details(ui: &mut Ui, w: &mut PackagesWindow, project: &Path) -> bool {
         .as_ref()
         .is_some_and(|_| w.is_registry_package(&name))
     {
-        ui.weak("Registry packages are read-only in the Project window.");
+        ui.weak("Registry packages are read-only in Asset Files.");
     }
     if installed.is_some()
         && let Some(origin) = w.resolution.packages.get(&name).map(|r| r.origin.clone())

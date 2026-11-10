@@ -58,8 +58,8 @@ pub enum Scope {
 impl Scope {
     pub fn title(self) -> &'static str {
         match self {
-            Scope::Scene => "Convert Scene to Virtual Geometry",
-            Scope::Project => "Convert Project to Virtual Geometry",
+            Scope::Scene => "Convert Scene to Misty Mesh",
+            Scope::Project => "Convert Project to Misty Mesh",
         }
     }
 }
@@ -486,7 +486,7 @@ pub fn apply(
         }
         crate::project_settings::changed(s);
         s.console.info(format!(
-            "Quality ▸ Virtual Geometry turned on for {}.",
+            "Quality ▸ Misty Mesh turned on for {}.",
             names.join(" and ")
         ));
     }
@@ -528,23 +528,21 @@ pub fn run(s: &mut EditorState, cmd: Command) {
             let plan = plan_objects(s, &targets, s.vgeo.min_triangles);
             for (rel, why, _) in &plan.skipped {
                 let reason = why.reason(plan.min_triangles);
-                s.console.info(format!(
-                    "Virtual Geometry: skipped {}: {reason}.",
-                    file_name(rel)
-                ));
+                s.console
+                    .info(format!("Misty Mesh: skipped {}: {reason}.", file_name(rel)));
             }
             let change = plan.to_change();
             if plan.models.is_empty() {
                 s.console
-                    .info("Virtual Geometry: nothing in the selection can use it.");
+                    .info("Misty Mesh: nothing in the selection can use it.");
                 return;
             }
             let quality = quality_levels_to_enable(&s.project_settings.quality);
-            let label = format!("Enable Virtual Geometry on {}", s.selection_label());
+            let label = format!("Enable Misty Mesh on {}", s.selection_label());
             let n = apply(s, &label, &change, true, &quality);
             let already = plan.models.len() - change.len();
             s.console.info(format!(
-                "Virtual Geometry on for {n} model{}{}.",
+                "Misty Mesh on for {n} model{}{}.",
                 if n == 1 { "" } else { "s" },
                 if already > 0 {
                     format!(" ({already} already on)")
@@ -558,13 +556,13 @@ pub fn run(s: &mut EditorState, cmd: Command) {
             let rels = selected_models(s, &targets, true);
             if rels.is_empty() {
                 s.console
-                    .info("Virtual Geometry: no model in the selection uses it.");
+                    .info("Misty Mesh: no model in the selection uses it.");
                 return;
             }
-            let label = format!("Disable Virtual Geometry on {}", s.selection_label());
+            let label = format!("Disable Misty Mesh on {}", s.selection_label());
             let n = apply(s, &label, &rels, false, &[]);
             s.console.info(format!(
-                "Virtual Geometry off for {n} model{}.",
+                "Misty Mesh off for {n} model{}.",
                 if n == 1 { "" } else { "s" }
             ));
         }
@@ -723,11 +721,11 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
         if done {
             let n = p.models.len();
             s.console.info(format!(
-                "Virtual Geometry: {n} model{} built.",
+                "Misty Mesh: {n} model{} built.",
                 if n == 1 { "" } else { "s" }
             ));
         } else {
-            egui::Window::new("Virtual Geometry")
+            egui::Window::new("Misty Mesh")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::RIGHT_BOTTOM, [-12.0, -36.0])
@@ -799,10 +797,7 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
             .collect();
         ui.checkbox(
             &mut d.quality,
-            format!(
-                "Turn on Quality ▸ Virtual Geometry for {}",
-                names.join(" and ")
-            ),
+            format!("Turn on Quality ▸ Misty Mesh for {}", names.join(" and ")),
         );
     }
     if !plan.skipped.is_empty() {
@@ -838,7 +833,7 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
         let line = if plan.models.is_empty() {
             format!("Nothing in {what} is dense enough to convert.")
         } else {
-            format!("Everything eligible in {what} already uses Virtual Geometry.")
+            format!("Everything eligible in {what} already uses Misty Mesh.")
         };
         ui.colored_label(ui.visuals().widgets.active.fg_stroke.color, line);
         ui.add_space(4.0);
@@ -849,8 +844,8 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
         if ui
             .add_enabled(convert, egui::Button::new("Convert"))
             .on_disabled_hover_text(if nothing_to_do {
-                "Nothing to convert: every eligible model already has Virtual Geometry on, \
-                and Quality ▸ Virtual Geometry is on."
+                "Nothing to convert: every eligible model already has Misty Mesh on, \
+                and Quality ▸ Misty Mesh is on."
             } else {
                 "Tick the Quality box above, or lower Min. triangles."
             })
@@ -864,7 +859,7 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
             };
             let n = apply(s, d.scope.title(), &change, true, &quality);
             s.console.info(format!(
-                "Virtual Geometry on for {n} model{}.",
+                "Misty Mesh on for {n} model{}.",
                 if n == 1 { "" } else { "s" }
             ));
             close = true;

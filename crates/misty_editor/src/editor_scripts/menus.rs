@@ -1,7 +1,7 @@
 //! Script menu items in the menu bar, their keyboard shortcuts and the Ctrl+K search.
 //!
-//! `MenuItem("Tools/Scatter Tool", fn)` adds a "Tools" menu after Component; a path under a
-//! built-in menu ("GameObject/Align to Floor") goes at the end of that menu. A `validate`
+//! `MenuItem("Tools/Scatter Tool", fn)` adds a "Tools" menu after Archetype; a path under a
+//! built-in menu ("Object/Align to Floor") goes at the end of that menu. A `validate`
 //! function greys the item out while it returns false.
 
 use std::collections::HashSet;
@@ -15,17 +15,23 @@ use super::api::{Registry, fetch};
 use crate::actions::Action;
 use crate::state::EditorState;
 
-/// The menu bar's own menus, in order.
+/// The menu bar's own menus, in order. A script path under an old top menu name
+/// ("GameObject/…", "Component/…") goes to its renamed menu (see [`crate::renames`]).
 pub const BUILTIN: [&str; 8] = [
     "File",
     "Edit",
     "Assets",
-    "GameObject",
-    "Component",
+    "Object",
+    "Archetype",
     "Tools",
     "Window",
     "Help",
 ];
+
+/// The menu a script path's first segment puts it in (old top menu names mapped).
+fn top_of(path: &str) -> &str {
+    crate::renames::top_menu(path.split('/').next().unwrap_or(""))
+}
 
 /// "Ctrl+Shift+T", "Alt+F5", "Ctrl+," … as a shortcut.
 pub fn parse_shortcut(text: &str) -> Option<KeyboardShortcut> {
@@ -53,7 +59,7 @@ pub fn parse_shortcut(text: &str) -> Option<KeyboardShortcut> {
 pub fn extra_tops(state: &EditorState) -> Vec<String> {
     let mut seen = Vec::new();
     for m in &state.editor_scripts.menus {
-        let top = m.path.split('/').next().unwrap_or("");
+        let top = top_of(&m.path);
         if !BUILTIN.contains(&top) && !seen.iter().any(|s| s == top) {
             seen.push(top.to_owned());
         }
@@ -68,7 +74,7 @@ fn items_under(state: &EditorState, top: &str) -> Vec<MenuInfo> {
         .menus
         .iter()
         .enumerate()
-        .filter(|(_, m)| m.path.split('/').next() == Some(top))
+        .filter(|(_, m)| top_of(&m.path) == top)
         .map(|(i, m)| (i, m.clone()))
         .collect();
     items.sort_by_key(|(i, m)| (m.priority, *i));

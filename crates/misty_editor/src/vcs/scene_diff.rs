@@ -85,10 +85,10 @@ impl SceneDiff {
         for o in &self.objects {
             out.push_str(&format!("{} {}\n", o.kind.sign(), o.path));
             for c in &o.components_added {
-                out.push_str(&format!("    + component {c}\n"));
+                out.push_str(&format!("    + archetype {c}\n"));
             }
             for c in &o.components_removed {
-                out.push_str(&format!("    - component {c}\n"));
+                out.push_str(&format!("    - archetype {c}\n"));
             }
             for f in &o.fields {
                 out.push_str(&format!("    {}\n", f.text()));
@@ -101,7 +101,7 @@ impl SceneDiff {
             }
         }
         if self.reordered {
-            out.push_str("~ Hierarchy order changed\n");
+            out.push_str("~ Scene Tree order changed\n");
         }
         out
     }
@@ -332,7 +332,7 @@ mod tests {
             text.contains("~ Main Camera\n    Camera.fov: 60 → 75"),
             "{text}"
         );
-        assert!(text.contains("~ Player\n    + component Rigidbody\n    Transform.position: (0, 1, 0) → (0, 2.5, 0)"), "{text}");
+        assert!(text.contains("~ Player\n    + archetype Rigidbody\n    Transform.position: (0, 1, 0) → (0, 2.5, 0)"), "{text}");
         assert!(
             text.contains("Button.on_click[0].target: → Player → → Main Camera"),
             "references compare by object: {text}"
@@ -359,7 +359,7 @@ mod tests {
         let d = diff_text(&sample(), &after).unwrap();
         assert_eq!(
             d.text(),
-            "1 added, 0 removed, 0 changed\n+ Sun\n    + component GameObject\n"
+            "1 added, 0 removed, 0 changed\n+ Sun\n    + archetype GameObject\n"
         );
     }
 
@@ -371,6 +371,6 @@ mod tests {
         moved.objects.push(cam);
         let d = diff(&doc, &moved);
         assert!(d.reordered && d.objects.is_empty());
-        assert!(d.text().contains("Hierarchy order changed"));
+        assert!(d.text().contains("Scene Tree order changed"));
     }
 }

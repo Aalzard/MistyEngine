@@ -112,17 +112,17 @@ fn saveable(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     ui.horizontal(|ui| {
         label(
             ui,
-            "Components",
-            "Whole components or single fields to store, like \"Light.intensity\".",
+            "Archetypes",
+            "Whole archetypes or single fields to store, like \"Light.intensity\".",
         );
         let options = storable(state, e);
         ui.menu_button("Add...", |ui| {
             if options.is_empty() {
-                ui.weak("No other components on this object.");
+                ui.weak("No other archetypes on this object.");
             }
             for (comp, fields) in &options {
                 ui.menu_button(*comp, |ui| {
-                    if ui.button("Whole Component").clicked() {
+                    if ui.button("Whole Archetype").clicked() {
                         add_entry(&mut s.components, comp);
                         ch = true;
                         ui.close();

@@ -45,15 +45,15 @@ Mirrored:
 - the title bar: window buttons on the left, menus from the right (File rightmost), entries
   right-aligned with the shortcut on the left and submenu arrows pointing left;
 - the Hub: page links on the right, template cards with the picture on the right;
-- Inspector property labels: right-aligned against their values;
-- the Default layout (when no saved layout exists, or Window ▸ Layouts ▸ Default): Inspector
-  on the left, Hierarchy on the right;
+- Properties panel labels: right-aligned against their values;
+- the Default layout (when no saved layout exists, or Window ▸ Layouts ▸ Default): Properties
+  on the left, Scene Tree on the right;
 - dock tab titles (icon after the title).
 
-Kept left to right on purpose: the Scene and Game views, gizmos, number fields, vectors
-(X Y Z), the Code Editor and the Console text. Not mirrored yet: the Hierarchy and Project
+Kept left to right on purpose: the Editor Scene and Scene Viewer, gizmos, number fields, vectors
+(X Y Z), the Code Editor and the Console text. Not mirrored yet: the Scene Tree and Asset Files
 trees (indentation stays on the left), submenus still open to the right, panel toolbars,
-the order of label and value columns in the Inspector, and other built-in layouts.
+the order of label and value columns in the Properties panel, and other built-in layouts.
 Long Arabic tooltips are broken into lines of about 64 characters before egui sees them
 (egui would wrap visual text from the wrong end); narrow places (Hub cards) break at the
 measured width with `i18n::tr_wrapped`.
@@ -81,7 +81,7 @@ where it is used as an id, a file name or a lookup key) and add the entries to t
 - Shaping: UI Text with right-to-left characters takes the rich text path, which shapes runs
   with rustybuzz and reorders them (UAX #9). The built-in Noto Sans Arabic is a fallback of
   every Text, so Arabic shows on any machine; project fonts with Arabic glyphs are used first.
-- **Mirror for RTL** (Text Inspector, `UiText::mirror_rtl`): text that starts in a
+- **Mirror for RTL** (Text properties, `UiText::mirror_rtl`): text that starts in a
   right-to-left script swaps Left and Right alignment, so one Text works for every language of
   a Localized Text.
 - Turkish casing: Rust's `to_uppercase` turns "istanbul" into "ISTANBUL"; Turkish wants
@@ -96,20 +96,22 @@ where it is used as an id, a file name or a lookup key) and add the entries to t
 
 Standard, searchable terms: the ones Microsoft's Turkish and Arabic style guides and the
 Turkish and Arabic game-dev communities use. Product names stay in Latin script (Misty Hub,
-Shader Graph, Misty GI, Lua, MCP); `Assets` stays as the folder name it is. Keyboard keys and
+Shader Graph, Misty GI, Misty Mesh, Lua, MCP); `Assets` stays as the folder name it is. Keyboard keys and
 shortcuts are never translated.
 
 | English | Türkçe | العربية | Note |
 |---|---|---|---|
 | Scene | Sahne | المشهد | |
-| Game | Oyun | اللعبة | |
-| Hierarchy | Hiyerarşi | التسلسل الهرمي | |
-| Inspector | Denetçi | المفتش | |
-| Project | Proje | المشروع | |
+| Editor Scene | Düzenleyici Sahnesi | مشهد المحرر | the editing view |
+| Scene Viewer | Sahne Görüntüleyici | عارض المشهد | the play view |
+| Scene Tree | Sahne Ağacı | شجرة المشهد | |
+| Properties | Özellikler | الخصائص | |
+| Asset Files | Varlık Dosyaları | ملفات الأصول | the asset browser |
+| Project | Proje | المشروع | a game project |
 | Console | Konsol | وحدة التحكم | Microsoft's Arabic term |
 | Asset(s) | Varlık(lar) | الأصول | |
-| GameObject | Oyun Nesnesi | كائن اللعبة | |
-| Component | Bileşen | المكون | |
+| Object | Nesne | كائن | the Object menu |
+| Archetype | Arketip | نمط | what objects are built from (Add Archetype) |
 | Prefab | Prefab | قالب جاهز | Turkish users say "prefab" |
 | Transform | Dönüşüm | التحويل | |
 | Position / Rotation / Scale | Konum / Döndürme / Ölçek | الموضع / الدوران / المقياس | |

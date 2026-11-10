@@ -302,7 +302,10 @@ fn visualization_page(ui: &mut Ui, state: &mut EditorState) {
     let w = &mut state.occlusion;
     ui.checkbox(&mut w.show_cell, "Camera Cell");
     ui.checkbox(&mut w.show_volumes, "View Volumes");
-    ui.checkbox(&mut w.hide_culled, "Hide Culled Objects in the Scene view");
+    ui.checkbox(
+        &mut w.hide_culled,
+        "Hide Culled Objects in the Editor Scene",
+    );
     ui.add_space(6.0);
     for line in summary(state) {
         ui.label(line);

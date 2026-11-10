@@ -1756,7 +1756,7 @@ pub fn test_scripts(scripts: &[(&str, &str)], chunk: &str) -> Result<(), String>
 /// Starter script for Assets ▸ Create ▸ Script.
 pub fn template(class_name: &str) -> String {
     format!(
-        r#"-- {class_name}: attach to a GameObject. Plain values below are public fields shown in the Inspector.
+        r#"-- {class_name}: attach to a GameObject. Plain values below are public fields shown in the Properties panel.
 local {class_name} = {{
     speed = 1.0,
 }}

@@ -145,7 +145,7 @@ impl Updater {
             notes: "• Misty Hub: a launcher with templates and recent projects\n\
                     • Faster terrain sculpting and painting\n\
                     • Light halos and lens flares\n\
-                    • Many fixes in the Inspector and Scene view"
+                    • Many fixes in the Properties panel and Editor Scene"
                 .into(),
             page_url: page,
             zip: None,

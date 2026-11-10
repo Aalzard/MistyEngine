@@ -57,7 +57,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         };
         if ui
             .selectable_label(editing, label)
-            .on_hover_text("Select, move, duplicate and delete probes in the Scene view")
+            .on_hover_text("Select, move, duplicate and delete probes in the Editor Scene")
             .clicked()
         {
             state.light_probes.set_editing(!editing);
@@ -80,7 +80,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Add Probe")
-                .on_hover_text("At the centre of the Scene view")
+                .on_hover_text("At the centre of the Editor Scene")
                 .clicked()
             {
                 tools::add_probe_at_view_center(state, e);
