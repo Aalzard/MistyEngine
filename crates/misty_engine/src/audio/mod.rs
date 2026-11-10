@@ -369,7 +369,12 @@ impl Audio {
     /// `AudioSource.PlayClipAtPoint(clip, position [, volume])`: a fully 3D one-shot at a
     /// fixed world position with the default rolloff, straight to the listener.
     pub fn play_clip_at_point(&mut self, scene: &Scene, clip: &str, at: Vec3, volume: f32) -> bool {
-        let volume = volume.clamp(0.0, 1.0);
+        // `clamp` keeps NaN: a NaN volume reached the audio thread.
+        let volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         let params = spatial::mix(&point_source(volume), at, listener(scene), self.muted);
         match self.start_voice(clip, params, None) {
             Some(id) => {
