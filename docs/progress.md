@@ -3338,8 +3338,11 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - User docs describe features on their own terms (no "Unity-like", "Lumen-like", "Nanite-like",
   "in the spirit of Blueprints"); CHANGELOG has an Unreleased entry.
 - Screenshots: `docs/screenshots/r31/default_layout_en.jpg`, `default_layout_ar.jpg`.
-- Checks: fmt clean, clippy 0 warnings, editor tests 816 passed / 0 failed (clean target);
-  translation coverage 793/793 in both languages (792/792 before), 60/124 component names (same).
+- Checks: fmt clean, clippy 0 warnings; `cargo test --workspace --release`: editor 816 / 0,
+  mcp_e2e 1 / 0, engine 1383 / 1 (`vgeo::auto_picks_one_phase_and_lit_for_a_few_rocks`, a GPU
+  counter-readback timing test on an overloaded machine; passes alone), player 11 / 0,
+  dedicated server 1 / 0; golden shots 20 / 20. Translation coverage 793/793 in both languages
+  (792/792 before), 60/124 component names (same).
 
 ### Not done yet
 - Kept on purpose: the default name of a new empty object ("GameObject", also the Lua class),
