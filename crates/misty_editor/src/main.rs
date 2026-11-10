@@ -203,6 +203,8 @@ mod sample_visual_scripting;
 #[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
+mod sample_weather;
+#[cfg(test)]
 mod sample_water;
 #[cfg(test)]
 mod sample_world_builder;
