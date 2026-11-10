@@ -250,11 +250,10 @@ fn noon_valley_times() {
     }
 }
 
-/// GPU tree culling on and off, interleaved round by round so the machine's load affects
-/// both alike (`MISTY_AB_ROUNDS`, default 3; `MISTY_NOON_VIEWS`, default `hero,inside`;
-/// `MISTY_QUALITY`, default `high`): median GPU frame, CPU render and the tree parts per
-/// mode. (Indirect tree draws are not in the triangle counter: the "off" rows show the trees'
-/// share.)
+/// GPU tree culling with and without its occlusion test, and off (CPU lists), interleaved
+/// round by round so the machine's load affects all alike (`MISTY_AB_ROUNDS`, default 3;
+/// `MISTY_NOON_VIEWS`, default `hero,inside`; `MISTY_QUALITY`, default `high`): median GPU
+/// frame, CPU render, triangles and the tree parts per mode.
 #[test]
 #[ignore = "timing, prints only"]
 fn noon_valley_cull_ab() {
@@ -266,6 +265,7 @@ fn noon_valley_cull_ab() {
     impl Drop for Restore {
         fn drop(&mut self) {
             crate::render::fast_paths::set("tree_gpu_cull", true);
+            crate::render::fast_paths::set("tree_occlusion", true);
         }
     }
     let _restore = Restore;
@@ -294,10 +294,11 @@ fn noon_valley_cull_ab() {
         };
         for (level, quality) in levels("high") {
             // [mode][gpu, cpu, parts..., M triangles]
-            let mut runs: [Vec<Vec<f32>>; 2] = [Vec::new(), Vec::new()];
+            let mut runs: [Vec<Vec<f32>>; 3] = [Vec::new(), Vec::new(), Vec::new()];
             for _ in 0..rounds {
-                for (mode, gpu) in [(0, true), (1, false)] {
+                for (mode, gpu, occlusion) in [(0, true, true), (1, true, false), (2, false, false)] {
                     crate::render::fast_paths::set("tree_gpu_cull", gpu);
+                    crate::render::fast_paths::set("tree_occlusion", occlusion);
                     let b = breakdown(&device, &queue, &view, &quality, (w, h));
                     let mut row = vec![b.gpu, b.cpu];
                     row.extend(PARTS.iter().map(|p| b.part(p)));
@@ -305,7 +306,11 @@ fn noon_valley_cull_ab() {
                     runs[mode].push(row);
                 }
             }
-            for (mode, label) in [(0, "gpu cull on "), (1, "gpu cull off")] {
+            for (mode, label) in [
+                (0, "gpu cull + occlusion"),
+                (1, "gpu cull, no occlusion"),
+                (2, "cpu lists"),
+            ] {
                 let col = |i: usize| median(runs[mode].iter().map(|r| r[i]).collect());
                 eprintln!(
                     "== ab {name} {level} {w}x{h} {label}: GPU {:.2} ms, CPU render {:.2} ms, {:.1} M triangles (counted)",
