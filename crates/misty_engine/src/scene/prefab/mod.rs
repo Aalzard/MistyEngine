@@ -91,16 +91,21 @@ impl Prefab {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+        crate::asset_db::write_atomic(path, crate::asset_db::embed_json(&self.to_json()))
             .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     pub fn load(path: &Path) -> Result<Prefab, String> {
+        Self::load_with_report(path).map(|(p, _)| p)
+    }
+
+    /// [`Self::load`] with what was skipped or fixed while reading (unknown components, bad
+    /// values, objects whose parent comes later in the file): the prefab is incomplete then,
+    /// and writing it back would lose those parts.
+    pub fn load_with_report(path: &Path) -> Result<(Prefab, LoadReport), String> {
         let text =
             crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        Self::from_json(&text)
-            .map(|(p, _)| p)
-            .map_err(|e| format!("{}: {e}", path.display()))
+        Self::from_json(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// The base prefab's path, for variants.

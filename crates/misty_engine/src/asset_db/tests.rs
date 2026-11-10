@@ -249,3 +249,38 @@ fn sample_project_walk_time() {
         started.elapsed().as_secs_f32() * 1000.0
     );
 }
+
+/// Asset saves go through a temp file and a rename: the file is replaced whole, no temp file
+/// is left behind, and a save that cannot write keeps the previous file intact (a crash or a
+/// full disk mid-save used to leave a truncated scene/prefab/terrain).
+#[test]
+fn atomic_writes_replace_whole_files_and_keep_the_old_one_on_failure() {
+    let dir = temp("atomic");
+    let path = dir.join("Assets/Level.scene");
+    write_atomic(&path, "first").unwrap();
+    write_atomic(&path, "second, longer").unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "second, longer");
+    let names = |d: &Path| -> Vec<String> {
+        std::fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect()
+    };
+    assert_eq!(names(&dir.join("Assets")), ["Level.scene"]);
+    // The scene, prefab and terrain savers use it too.
+    let scene = crate::scene::Scene::new("Level");
+    scene.save(&path).unwrap();
+    assert!(std::fs::read_to_string(&path).unwrap().contains("\"objects\""));
+    assert_eq!(names(&dir.join("Assets")), ["Level.scene"]);
+    // A save that fails (here: the folder is gone) reports it and leaves nothing behind.
+    assert!(write_atomic(&dir.join("Missing/X.scene"), "x").is_err());
+    // A path that is a folder: the rename and the in-place write both fail; the temp file
+    // is cleaned up.
+    std::fs::create_dir_all(dir.join("Assets/Folder.scene")).unwrap();
+    assert!(write_atomic(&dir.join("Assets/Folder.scene"), "x").is_err());
+    let mut left = names(&dir.join("Assets"));
+    left.sort();
+    assert_eq!(left, ["Folder.scene", "Level.scene"]);
+    let _ = std::fs::remove_dir_all(dir);
+}

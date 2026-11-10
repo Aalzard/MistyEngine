@@ -56,6 +56,39 @@ pub fn open_built(root: &Path) {
     });
 }
 
+/// Write a file so a crash, a full disk or a failed write never leaves it half written: the
+/// bytes go to a hidden temp file next to it (`.<name>.<pid>.<n>.tmp`, skipped by the
+/// asset scan and the Project window), which then replaces the file in one rename. If the
+/// rename is refused (Windows: another program has the file open without sharing delete),
+/// the file is written in place as before. On error the temp file is removed and the old
+/// file is untouched.
+pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let bytes = bytes.as_ref();
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other(format!("{}: not a file path", path.display())))?
+        .to_string_lossy();
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
+    let written = std::fs::File::create(&tmp).and_then(|mut f| {
+        f.write_all(bytes)?;
+        f.sync_all()
+    });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if std::fs::rename(&tmp, path).is_ok() {
+        return Ok(());
+    }
+    let direct = std::fs::write(path, bytes);
+    let _ = std::fs::remove_file(&tmp);
+    direct
+}
+
 pub fn install(db: GuidDatabase) {
     *write() = Some(db);
 }
