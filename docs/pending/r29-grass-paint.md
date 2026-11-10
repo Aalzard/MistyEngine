@@ -23,6 +23,11 @@ an idle machine), old blades never vanish, settings sliders never blank the fiel
   `details::tiles_hold_the_chunks_blades`.
 
 ## Measurements so far (machine busy with other agents)
+- 1fc66dc8 (tiles + queue, switching tiles first), CPU at ~74 %, dab to blades drawn at the
+  brush centre, median / 90 %:
+  - brush 0.25 m per frame (about 15 m/s at 60 fps): 76 / 228 ms (round 29: 865 / 1082 ms,
+    only 61 of 120 dabs ever shown); after release 0.29 s.
+  - brush 1 m per frame (60 m/s): 377 / 1756 ms (round 29: 666 / 906 ms, 63 of 120 shown).
 - At 55% load: round 29 327 ms median (78 of 120 dabs ever shown); tiles + queue (2310 ms
   stroke) 1020–1040 ms median, all shown; settle after release 0.4 s both. Suspected cause:
   a chunk switching to tiles hides its tiles until all 16 are up, and those tiles lost to
