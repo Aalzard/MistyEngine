@@ -96,7 +96,11 @@ The GPU path draws exactly what the CPU lists draw (same triangle counts; parity
 difference 0.000) and costs the same on the GPU; it takes the CPU from ~14.5 ms to ~4 ms.
 Inside the wood the frame went from 34 ms to 15.6 ms (shadow cascades 15–19 → 2.6 ms).
 Occlusion saves 0.2–0.4 ms of tree drawing here (big conservative spheres; the canopy has
-gaps). The meadow view's 45 M triangles are the grass (all passes).
+gaps) and building its pyramid costs ~0.5 ms ("Tree Hi-Z"): about even in these views (the
+A/B totals include both). The meadow view's 45 M triangles are the grass (all passes).
+
+Stress, 250 000 trees (hero copied and jittered), High: GPU 22.8 ms, CPU render 4.3 ms
+(t8: 22.1 / 7.8 ms; the CPU drop is the cached Misty GI proxies). Trees draw in 5.4 ms.
 
 ## Status / how to resume
 
