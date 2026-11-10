@@ -347,7 +347,7 @@ impl TerrainCull {
             device,
             "misty tree cull args",
             (lists.len().max(1) as u32 * ARGS_PER_LIST) as u64 * 4,
-            U::STORAGE | U::INDIRECT | U::COPY_DST,
+            U::STORAGE | U::INDIRECT | U::COPY_DST | U::COPY_SRC,
         );
         fn bind(binding: u32, b: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
             wgpu::BindGroupEntry {
