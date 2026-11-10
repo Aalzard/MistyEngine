@@ -1799,7 +1799,14 @@ fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
             impostor::VIEWS as f32,
         ],
         light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
-        shade: [a.crown_shading, 0.0, 0.0, 0.0],
+        // y: a small plant (understory) passes no sunlight through its leaves where something
+        // else shades it (a tree's own crown only dims its transmitted light).
+        shade: [
+            a.crown_shading,
+            f32::from(m.bounding_radius() < SMALL_PLANT),
+            0.0,
+            0.0,
+        ],
     }
 }
 
