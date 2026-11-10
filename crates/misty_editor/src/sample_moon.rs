@@ -391,8 +391,8 @@ fn night_sky_scene(d: &TerrainData) -> Scene {
     let n = &mut s.render_settings.night_sky;
     n.darkness = 0.35;
     n.star_brightness = 1.3;
-    n.star_density = 1.0;
-    n.star_magnitude_spread = 0.85;
+    n.star_density = 0.8;
+    n.star_magnitude_spread = 0.95;
     n.star_glow = 1.5;
     n.star_color_variation = 0.85;
     n.star_twinkle = 0.6;

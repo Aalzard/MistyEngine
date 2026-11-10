@@ -179,7 +179,7 @@ fn star_field(dir: vec3<f32>) -> vec4<f32> {
     let sigma = max(pixel_angle() * 0.6, 0.00005);
     // Magnitudes: many faint stars; the spread adds a few very bright ones.
     let spread = n[0].z;
-    let lum = 0.012 + 0.22 * pow(h.w, 6.0) + spread * 5.0 * pow(h.w, 28.0);
+    let lum = 0.01 + 0.12 * pow(h.w, 8.0) + spread * 5.0 * pow(h.w, 30.0);
     var glow = exp(-(dist * dist) / (sigma * sigma)) * lum;
     // A soft halo on the bright ones (kept inside the cell; bloom spreads the rest).
     let halo = min(sigma * (2.0 + 4.0 * n[0].w), cell_angle * 0.12);
@@ -298,7 +298,8 @@ fn aurora(dir: vec3<f32>, jitter: f32) -> vec3<f32> {
     let wavy = n[13].x;
     let rays = n[13].y;
     let time = n[1].w * n[13].z;
-    let t0 = h0 / dir.y;
+    // (The lower edge rises and falls by up to 25 km along the curtains.)
+    let t0 = max(h0 - 25.0, 1.0) / dir.y;
     let t1 = (h0 + thick) / dir.y;
     let d2 = dir.xz;
     // Skip rays that pass outside the display (across: ±(curtains·45 + folds) km, along: ±1500).
@@ -314,9 +315,14 @@ fn aurora(dir: vec3<f32>, jitter: f32) -> vec3<f32> {
     var acc = vec3<f32>(0.0);
     for (var i = 0; i < steps; i += 1) {
         let t = t0 + (f32(i) + jitter) * dt;
-        let hf = (dir.y * t - h0) / thick;
         let p = d2 * t;
         let q = vec2<f32>(dot(p, right), dot(p, fwd) - dist);
+        let edge = 34.0 * (vnoise1(q.x * 0.003 + time * 0.02) - 0.5)
+            + 12.0 * (vnoise1(q.x * 0.019 + 3.0) - 0.5);
+        let hf = (dir.y * t - h0 - edge) / thick;
+        if (hf < -0.02) {
+            continue;
+        }
         let along = smoothstep(1500.0, 900.0, abs(q.x));
         if (along <= 0.0) {
             continue;
@@ -329,23 +335,25 @@ fn aurora(dir: vec3<f32>, jitter: f32) -> vec3<f32> {
                 + 28.0 * sin(q.x * 0.0105 - time * 0.16 + fc * 4.1)
                 + 11.0 * sin(q.x * 0.031 + time * 0.37 + fc * 2.3));
             let dv = q.y - base - fold;
-            let sheet = exp(-dv * dv / (18.0 * 18.0));
+            // Thin sheets: dark gaps between the curtains.
+            let sheet = exp(-dv * dv / (9.0 * 9.0));
             if (sheet < 0.01) {
                 continue;
             }
             // Vertical rays: brightness varying along the curtain, drifting.
-            let x = q.x * 0.05 * max(rays, 0.05) + fc * 13.7 - time * 0.4;
-            let r = vnoise1(x) * 0.65 + vnoise1(x * 2.7 + 5.0) * 0.35;
-            let ray = mix(1.0, pow(r, 2.2) * 2.6, clamp(rays, 0.0, 1.0));
+            let x = q.x * 0.09 * max(rays, 0.05) + fc * 13.7 - time * 0.4;
+            let r = vnoise1(x) * 0.6 + vnoise1(x * 2.9 + 5.0) * 0.4;
+            let ray = mix(1.0, pow(r, 3.2) * 4.0, clamp(rays, 0.0, 1.0));
             dens += sheet * ray * (0.6 + 0.4 * vnoise1(q.x * 0.002 + fc * 7.0 + time * 0.05));
         }
-        let profile = smoothstep(0.0, 0.05, hf) * exp(-hf * 2.4);
-        let col = mix(n[10].rgb, n[11].rgb, smoothstep(0.2, 0.85, hf));
+        // Brightest just above the lower edge, fading upwards into the top colour.
+        let profile = smoothstep(-0.02, 0.06, hf) * exp(-max(hf, 0.0) * 3.4);
+        let col = mix(n[10].rgb, n[11].rgb, smoothstep(0.3, 1.0, hf));
         acc += col * dens * profile * along;
     }
     let pulse = 1.0 + n[13].w * (0.3 * sin(time * 0.9) + 0.2 * sin(time * 2.3 + 1.0)
         + 0.12 * sin(time * 6.1 + 2.0));
-    return acc * dt * 0.012 * k * max(pulse, 0.0) * view.sky_ground.w;
+    return acc * dt * 0.016 * k * max(pulse, 0.0) * view.sky_ground.w;
 }
 
 // Shooting stars: one may cross the sky in each `60 / rate` seconds; a bright head and a

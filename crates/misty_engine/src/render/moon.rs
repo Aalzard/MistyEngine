@@ -453,7 +453,7 @@ mod tests {
         assert!(night_sky(&e).is_none());
         // Packed parameters: default stars, the sky's axes orthonormal, aurora off.
         let p = night_params(&base, 1.0, 3.0, true);
-        assert_eq!(p[0][0], 1.0);
+        assert_eq!(p[0][0], 0.7);
         assert_eq!(p[1][3], 3.0);
         assert_eq!(p[9][3], 0.0, "no aurora by default");
         assert_eq!(p[3][3], 0.0, "no Milky Way by default");

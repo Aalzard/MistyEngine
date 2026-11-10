@@ -78,7 +78,7 @@
 
 ## Night sky (second part of the round, asked after the moon screenshots)
 - Lighting ▸ Environment ▸ **Night Sky** (Procedural sky; `lighting.night_sky`, left out while
-  default; every default reproduces the first part's night): Night Sky Darkness (darkens the
+  default; by default no Milky Way, aurora, meteors or town glow): Night Sky Darkness (darkens the
   sky colour, the stars stay), Sky Time (sidereal hours; Date and Time mode uses the date), and
   collapsible groups:
   - **Stars**: Brightness, Density, Magnitude Spread (a few bright stars among many faint ones),

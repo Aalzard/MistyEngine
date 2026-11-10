@@ -13,7 +13,8 @@
 use glam::{DVec3, Vec3};
 use serde::{Deserialize, Serialize};
 
-/// Night Sky settings. Every default reproduces the night sky as it was without them.
+/// Night Sky settings. Defaults: mostly faint stars with a few bright ones; no Milky Way,
+/// light pollution, aurora or meteors (daytime skies never change).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NightSkySettings {
@@ -93,9 +94,9 @@ impl Default for NightSkySettings {
             enabled: true,
             darkness: 0.0,
             star_brightness: 1.0,
-            star_density: 1.0,
-            star_magnitude_spread: 0.5,
-            star_glow: 0.0,
+            star_density: 0.7,
+            star_magnitude_spread: 0.8,
+            star_glow: 0.5,
             star_color_variation: 0.6,
             star_twinkle: 0.0,
             star_twinkle_speed: 1.0,
@@ -109,8 +110,8 @@ impl Default for NightSkySettings {
             light_pollution: 0.0,
             light_pollution_color: [1.0, 0.62, 0.32],
             aurora: 0.0,
-            aurora_color: [0.25, 1.0, 0.45],
-            aurora_top_color: [0.85, 0.25, 0.6],
+            aurora_color: [0.42, 1.0, 0.6],
+            aurora_top_color: [0.7, 0.32, 0.55],
             aurora_height: 100.0,
             aurora_thickness: 160.0,
             aurora_curtains: 3,
