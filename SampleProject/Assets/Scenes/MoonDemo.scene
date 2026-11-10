@@ -50,11 +50,61 @@
       "month": 11,
       "phase": 0.12,
       "size": 5.0,
-      "stars": 1.5,
       "texture": null,
       "time": 22.0,
       "utc_offset": 0.0,
       "year": 2026
+    },
+    "night_sky": {
+      "aurora": 0.0,
+      "aurora_ambient": 0.5,
+      "aurora_azimuth": 0.0,
+      "aurora_color": [
+        0.25,
+        1.0,
+        0.45
+      ],
+      "aurora_curtains": 3,
+      "aurora_distance": 300.0,
+      "aurora_height": 100.0,
+      "aurora_pulse": 0.5,
+      "aurora_rays": 1.0,
+      "aurora_speed": 1.0,
+      "aurora_thickness": 160.0,
+      "aurora_top_color": [
+        0.85,
+        0.25,
+        0.6
+      ],
+      "aurora_waviness": 1.0,
+      "darkness": 0.0,
+      "enabled": true,
+      "light_pollution": 0.0,
+      "light_pollution_color": [
+        1.0,
+        0.62,
+        0.32
+      ],
+      "meteor_brightness": 1.0,
+      "meteor_rate": 0.0,
+      "milky_way": 0.0,
+      "milky_way_core": 1.0,
+      "milky_way_dust": 1.0,
+      "milky_way_tint": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "milky_way_width": 1.0,
+      "sky_time": 20.0,
+      "star_brightness": 1.5,
+      "star_color_variation": 0.6,
+      "star_density": 1.0,
+      "star_fade": 1.0,
+      "star_glow": 0.0,
+      "star_magnitude_spread": 0.5,
+      "star_twinkle": 0.0,
+      "star_twinkle_speed": 1.0
     },
     "reflection_intensity": 1.0,
     "skybox": {
