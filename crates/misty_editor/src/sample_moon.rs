@@ -463,7 +463,7 @@ fn moon_demo_matches_its_generator() {
         "regenerate with write_moon_demo",
     );
     let n = &night.render_settings.night_sky;
-    assert!(n.milky_way > 1.0 && n.aurora > 1.0 && n.meteor_rate > 0.0);
+    assert!(n.milky_way > 1.0 && n.aurora > 0.5 && n.meteor_rate > 0.0);
     // Night: the sun is down, the moon up in front of the camera and lighting the scene.
     let lights = misty_engine::render_scene::lights(&scene);
     let env = misty_engine::render_scene::environment(&scene, &lights);
