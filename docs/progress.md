@@ -3471,3 +3471,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   changes and were left out to keep the merge with the grass painting round easy.
 - Grass species colours come from the terrain grass's healthy / dry colours (a species tint
   is not a separate colour yet); a Grass Type asset (`.grass`) is the next round.
+
+## Round 33 — Engine-wide QA (branch r33-qa)
+
+Review of terrain, scenes/prefabs/assets, Lua and Script Graphs, tilemaps/2D, physics, audio,
+MCP and the renderer; the bug list, routing and status per bug are in
+`docs/pending/r33-qa.md`. Each fix comes with a regression test.
+
+- Crashes: Script Graph constants or pass-through subgraphs wired in a loop (stack overflow
+  while wiring); Lua tables that hold themselves passed to a graph or returned from `OnSave`
+  (overflow / exponential save); Lua handles kept after `Destroy` (Rigidbody, Rigidbody2D,
+  Collider2D, Tilemap, Terrain, Network, Ragdoll) raise "object was destroyed" instead of
+  aborting; a deleted mixer snapshot; zero world scale (NaN physics poses, 3D and 2D); a NaN
+  point in a Polygon Collider 2D; corrupt pak indexes; terrain blade counts on huge texels;
+  terrain undo after an outside resize; garbage terrain resolutions with holes; MCP clients
+  sending endless lines.
+- Data loss: asset saves (scenes, prefabs, terrains, materials, meta files) are atomic (temp
+  file + rename); renaming the prefab open in Prefab Mode no longer recreates the old file;
+  prefabs with components this version doesn't know are not written back (the components
+  would be deleted); a rename whose meta can't follow is rolled back; terrain Inspector edits
+  in Play mode are reverted on Stop like the scene instead of being saved without an undo step.
+- Wrong behaviour: tile seams with MSAA in the 2D Platformer template (unlit draws sample at
+  the centroid of the covered samples); renames with a dot in the name; World Partition tiles
+  got the whole flower mask; terrain undo memory ignored maps kept whole.
+- Flaky tests: frame-count waits replaced by clock deadlines (package registry, meadow
+  project creation); the terrain view test retries only when another test moved the project
+  root (`assets::root_generation`); MCP info file removal retried; shader graph demo render
+  reloads its shaders and uses absolute texture paths.
