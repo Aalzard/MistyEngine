@@ -28,7 +28,7 @@ held the target; then usage limits). Next steps, in order:
 
 1. `source /d/MistyTargets/build-slot.sh; take_slot r33-qa` (max 3 builds machine-wide,
    `-j 4`, `drop_slot` right after cargo ends, also on failure). Env: `CARGO_TARGET_DIR=
-   D:/MistyTargets/r33-qa CARGO_INCREMENTAL=0 TMP=TEMP=D:\MistyTargets	mp33-qa`.
+   D:/MistyTargets/r33-qa CARGO_INCREMENTAL=0 TMP=TEMP=D:\MistyTargets\tmp\r33-qa`.
 2. `cargo test --release -j 4 -p misty_engine --lib --no-run`, then the editor
    (`-p misty_editor --bin misty --no-run`); fix compile errors (all code below was written
    without a compiler: expect small API mismatches, e.g. mlua `Table::to_pointer`,
@@ -41,7 +41,7 @@ held the target; then usage limits). Next steps, in order:
 
 Main was merged in (540d532a, r30 terrain Inspector). F1 and T4 now belong to r33.
 
-Baseline (main 431dfc3a, `D:\MistyTargets33-scratch	est1.log`): editor 811 passed, 3
+Baseline (main 431dfc3a, `D:\MistyTargets\r33-scratch\test1.log`): editor 811 passed, 3
 failed: `registry_url_page_in_project_settings` (still "Loading the registry index…" after
 200 frames: timeout), `opening_a_scene_lifts_a_view_left_under_the_terrain` (terrain not
 found: project root moved by a parallel test), `string_literal_lint` (caused by this
