@@ -48,11 +48,19 @@ can't handle 90k trees, what's the point?": real time, fix the engine, don't cut
 
 ## Engine changes since (b3d6e414)
 
-- **Hi-Z occlusion for GPU-culled trees** (fast path `tree_occlusion`, `TreeHiz` per target):
+- **Hi-Z occlusion for GPU-culled trees** — **off by default** (dad81e9f;
+  `MISTY_TREE_OCCLUSION=1` turns it on): it saves about what its pyramid costs here, and on
+  Low it drifts MeadowDemo's golden shots `meadow_low_close` (mean 0.80) and
+  `meadow_low_behind` (mean 8.7, 11 % of pixels); with it off every golden shot passes. Cause
+  not found yet (Low: render scale 0.75, no TAA, LOD bias 0.5, one cascade). Design (fast
+  path `tree_occlusion`, `TreeHiz` per target):
   after the main pass the target's depth becomes a Hi-Z pyramid (the gpu_culling pyramid
   code); next frame the tree cull skips camera-list trees whose sphere is behind it, only
   while the camera has moved < 1 m and turned < ~3.6° (else the test is off for that frame).
   Cascades are never occlusion culled. Only in the unsplit main pass and with MSAA depth.
+- **Small plants in shade** (ee87aa5c): a small plant passes no sunlight through its leaves
+  where something else shades it (the 35 % floor stays for trees, whose crowns shade
+  themselves); the understory no longer glows under the canopy.
 - **Draw statistics** for GPU-culled trees: the indirect arguments are copied to a staging
   buffer and mapped after submit (never waited for); draws count the latest instance counts.
 
