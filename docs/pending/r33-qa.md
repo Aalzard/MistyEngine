@@ -21,6 +21,81 @@ scratch `D:\MistyTargets\r33-scratch\`.
   by running anything. Severity: C = crash/data loss, W = wrong behaviour, P = perf, X =
   cosmetic.
 
+## Status (2026-11-10, second agent) — RESUME HERE
+
+Everything below "Fixed" is committed but **NOT yet compiled or run** (the baseline test run
+held the target; then usage limits). Next steps, in order:
+
+1. `source /d/MistyTargets/build-slot.sh; take_slot r33-qa` (max 3 builds machine-wide,
+   `-j 4`, `drop_slot` right after cargo ends, also on failure). Env: `CARGO_TARGET_DIR=
+   D:/MistyTargets/r33-qa CARGO_INCREMENTAL=0 TMP=TEMP=D:\MistyTargets	mp33-qa`.
+2. `cargo test --release -j 4 -p misty_engine --lib --no-run`, then the editor
+   (`-p misty_editor --bin misty --no-run`); fix compile errors (all code below was written
+   without a compiler: expect small API mismatches, e.g. mlua `Table::to_pointer`,
+   rapier2d `Vector` methods, `Option::is_none_or`).
+3. Run the new tests by name (list per commit below), then fmt, clippy, full tests, golden
+   (`golden_shots`, GPU lock) — the seam shader change needs the golden check.
+4. Red check (optional): crash tests (V1 stack overflow, V3-V7 panics) were not run red.
+5. `docs/progress.md` Round 33 section; no Lua API surface changed (no `docs/api` regen
+   needed: only error behaviour).
+
+Main was merged in (540d532a, r30 terrain Inspector). F1 and T4 now belong to r33.
+
+Baseline (main 431dfc3a, `D:\MistyTargets33-scratch	est1.log`): editor 811 passed, 3
+failed: `registry_url_page_in_project_settings` (still "Loading the registry index…" after
+200 frames: timeout), `opening_a_scene_lifts_a_view_left_under_the_terrain` (terrain not
+found: project root moved by a parallel test), `string_literal_lint` (caused by this
+branch's then-unfinished multi-line Lua literal in visual_script/tests.rs, fixed). The engine
+lib run was still going when this was written.
+
+### Done this session (commits on r33-qa, unbuilt)
+
+| Bug | Commit | Fix | New tests |
+|-----|--------|-----|-----------|
+| V1 C | 22b8fea0 | constant/Tunnel arms of `pull` go through `visiting` | `visual_script::tests::constant_and_tunnel_loops_are_reported` |
+| V2 C | 22b8fea0 | `from_lua` path set + depth 64 + 100k item budget | `lua_tables_that_hold_themselves_convert_without_overflowing` |
+| V10 | 22b8fea0 | `Op::Incr` saturating (no test: release can't observe) | — |
+| V3-V7 C | 2ef27011 | `alive()` checks (made `pub(super)`) in Rigidbody, Rigidbody2D, Collider2D, Tilemap, Terrain, Network Spawn/rpc/Teleport; ragdoll disable tolerates destroyed bones | `rigidbody_of_a_destroyed_object_errors_in_lua`, `rigidbody2d_and_collider2d_of_a_destroyed_object_error_in_lua`, `tilemap_of_a_destroyed_object_errors_in_lua`, `terrain_of_a_destroyed_object_errors_in_lua`, `network_calls_on_destroyed_objects_error_in_lua`, `ragdoll_disable_after_a_bone_was_destroyed` (rpc: no test) |
+| V9 | 2ef27011 | `GetContact` `checked_add` | — |
+| P1 C | 2ef27011 | `Scene::world_parts` (finite rotation by chaining local rotations when a scale is 0); `world_rotation`, physics 3D/2D `world_pose`, `sync_body`, network teleports use it; collider scale ≥ 1e-3. Not fixed: `set_world_position` under a zero-scale *parent* still inverts a singular matrix | `physics::tests::zero_scale_bodies_keep_finite_poses`, `physics2d::tests::zero_scale_bodies_keep_finite_poses` |
+| B1 C | 2ef27011 | `polygon()` filters non-finite/duplicate points, rejects zero area | `polygon_with_nan_or_repeated_points_builds` |
+| V8 C | a95f7793 | `snapshots.get()` → nil | `a_deleted_snapshot_has_no_name` |
+| W1 C | fbeec148 | `to_json` path set + 1M value budget | `save_api::tests::shared_and_self_holding_tables_save_in_bounded_time` |
+| F8 C | 67052217 | index entries must lie in [16, index offset); read caps preallocation by 1032× stored; LZ4 prepended size checked | `pak::tests::corrupt_entry_sizes_are_refused` |
+| Atomic C | d3917789 | `asset_db::write_atomic` (`.<name>.<pid>.<n>.tmp` + rename, falls back to in-place write if the rename is refused; no backup file kept) at scene/file, multi_scene, prefab, terrain/file, Material, meta write_guid/write_settings | `asset_db::tests::atomic_writes_replace_whole_files_and_keep_the_old_one_on_failure` |
+| F2 C | 3f171576 | `prefab_mode::rename` called from `update_memory` | `prefabs::tests::renaming_the_prefab_in_prefab_mode_follows_the_stage_and_the_stashed_scene` |
+| F3 C | d3917789 + 3f171576 | `Prefab::load_with_report`; editor AssetDatabase pushes warnings to `messages` and refuses `save_prefab` for prefabs that lost something on load (except "added default") | `prefabs_with_unknown_components_are_not_written_back` |
+| F4 C | 3f171576 | `move_with_meta` rolls the file back | `asset_ops::tests::a_failed_meta_move_rolls_the_rename_back` |
+| F5 W | 3f171576 | target = `{stem}.{ext}` | `names_with_dots_keep_the_extension` |
+| F1 C | fe857ccf | in Play, `begin_edit` snapshots the terrain into `PlaySession.terrains`, `end_frame` neither saves nor pushes undo, `play::stop` restores | `terrain_tools::tests::edits_during_play_are_reverted_on_stop_and_not_saved` |
+| T4 P | — | already fixed by r30: `terrain_previews::counts` caches per version and recounts at most every 300 ms (still on the UI thread while painting; fine) | — |
+| Seams W | 0288cf67 | `uv_centroid` (location 7, `perspective, centroid`) set in vs_main, terrain, vgeo mesh/resolve, custom wrap; `fs_unlit` samples it with `textureSampleGrad` using the centre-uv gradients × 2^bias | `render::sprite_seam_gpu_tests::tiles_sharing_an_atlas_edge_show_no_seam_with_msaa` (runtime texture 1024×16 red/blue, 4 tiles of 23 px at x = 10.25) |
+| M1 C | 968d8b70 | `read_line` reads through `take(MAX_LINE + 1 - len)` | `mcp::bridge::line_tests::overlong_lines_are_refused_at_the_limit` |
+
+### Flaky tests (fixed in 6b3cc2f7 / 968d8b70, unbuilt)
+
+- `registry_url_page_in_project_settings`: 200 frames ran out while loading under load →
+  60 s wall-clock deadline (exits as soon as it is not Loading).
+- `new_project_page_shows_the_meadow_demo_card`: 1500 frames × 20 ms for copying the meadow
+  project → 300 s deadline.
+- `opening_a_scene_lifts_a_view_left_under_the_terrain`: terrain store keys by
+  `assets::absolute` (global root) → new `assets::root_generation()`; the test retries (≤20)
+  only when the root was moved by another test *and* the lift failed.
+- `bridge_writes_and_removes_its_info_file`: passed in baseline; likely Windows sharing
+  violation on `remove_file` right after writing (indexer/AV) → Drop retries removal 20×25 ms.
+- `shader_graph_demo_renders`: passed in baseline; aligned with the examples fix
+  (`shader_asset::reload` before load; material texture maps made absolute).
+
+### Still open
+
+T6, Tex (zero-size image: also `mip_chain` would loop forever on 0×0), F7, F9, F6, Build, W2,
+W3, Mixer, Audio NaN, B2-B6, MCP schemas, physics exit events, F10, W6, X items. Not covered:
+live-editor MCP checks, player builds, golden check.
+
+## Route to other branches
+
+- (none left: F1/T4 came back to r33 after r30 merged.)
+
 ## Fixed in the WIP commit (tests written, NOT yet run)
 
 | # | Sev | Bug | Where | Test |
