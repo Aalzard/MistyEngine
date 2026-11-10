@@ -132,7 +132,7 @@ fn guide_card(ui: &mut egui::Ui, p: &style::Palette) -> bool {
                     ui.label(RichText::new(title).size(15.0).strong());
                     ui.label(
                         RichText::new(tr!(
-                            "The editor's layout, finding what is slow, quality settings and                              Script Graphs, with four step-by-step guides."
+                            "The editor's layout, finding what is slow, quality settings and Script Graphs, with four step-by-step guides."
                         ))
                         .color(p.dim),
                     );

@@ -337,7 +337,7 @@ fn offer_tour(ctx: &egui::Context, s: &mut EditorState) {
             ui.set_max_width(340.0);
             ui.label(crate::i18n::tr_wrapped(
                 ui,
-                "Take a two-minute tour of the editor's main areas. You can start it any time                  from Help ▸ Layout Tour.",
+                "Take a two-minute tour of the editor's main areas. You can start it any time from Help ▸ Layout Tour.",
                 340.0,
             ));
             ui.add_space(6.0);
