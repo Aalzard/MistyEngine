@@ -139,8 +139,8 @@ fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32,
         let back = pow(clamp(dot(v, -l), 0.0, 1.0), 2.5);
         let through = clamp((dot(-n, l) + 0.35) / 1.35, 0.0, 1.0);
         // (Under a canopy a small plant's shade is not its own: nothing comes through.)
-        let floor = select(0.35, 0.0, tree.shade.y > 0.5);
-        color += transmission * li.color.rgb * atten * mix(floor, 1.0, shadow) * (back * 1.6 + through * through * 0.7);
+        let shade_floor = select(0.35, 0.0, tree.shade.y > 0.5);
+        color += transmission * li.color.rgb * atten * mix(shade_floor, 1.0, shadow) * (back * 1.6 + through * through * 0.7);
         atten *= shadow * direct_occlusion(ssao);
         if (kind == 0u) {
             atten *= tree_sun_reach;
