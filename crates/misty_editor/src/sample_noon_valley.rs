@@ -971,6 +971,9 @@ fn ground(d: &TerrainData, x: f32, z: f32) -> f32 {
     CORNER.y + d.sample_height(x - CORNER.x, z - CORNER.z)
 }
 
+/// A group of rocks: (right, ahead) of the camera, spread radius, count, rock kinds, scale range.
+type RockGroup = (f32, f32, f32, usize, &'static [usize], [f32; 2]);
+
 /// Rocks: a few small ones in the meadow, boulders along the hill's foot and big layered
 /// outcrops on the slope (world space).
 fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
@@ -983,8 +986,7 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
         .collect();
     let mut out = Vec::new();
     let mut taken: Vec<Vec2> = Vec::new();
-    // (right, ahead, spread, count, kinds, scale)
-    let groups: &[(f32, f32, f32, usize, &[usize], [f32; 2])] = &[
+    let groups: &[RockGroup] = &[
         (-150.0, 140.0, 40.0, 4, &[ROCK_SMALL, ROUND], [0.7, 1.1]),
         (-230.0, 220.0, 50.0, 5, &[ROCK_SMALL, SPLIT, ROCK_SMALL], [0.6, 1.0]),
         (-60.0, 70.0, 20.0, 2, &[ROCK_SMALL], [0.6, 0.9]),
@@ -1021,7 +1023,7 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
             let normal = crate::sample_rocks::terrain_normal(d, p.x, p.y);
             let up = Vec3::Y.lerp(normal, 0.6).normalize();
             let rotation =
-                Quat::from_rotation_arc(Vec3::Y, up) * Quat::from_rotation_y(r(4) * 6.283);
+                Quat::from_rotation_arc(Vec3::Y, up) * Quat::from_rotation_y(r(4) * std::f32::consts::TAU);
             // Sunk into the slope so no edge floats.
             let h = d.sample_height(p.x, p.y);
             let slope = Vec2::new(normal.x, normal.z).length() / normal.y.max(0.2);
