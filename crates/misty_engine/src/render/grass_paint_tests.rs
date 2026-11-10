@@ -196,7 +196,13 @@ fn grass_paint_latency() {
     // The stroke: 60 frames at 60 fps across the painted square's edge, erasing first (so
     // there is something to paint back) then painting.
     let dt = 1.0 / 60.0;
-    let path = |i: usize| Vec2::new(70.0 + i as f32 * 1.0, 100.0);
+    // Metres the brush moves per frame (`MISTY_STROKE_STEP`; 1 m by default, a quick
+    // stroke: 60 m/s at 60 fps).
+    let step: f32 = std::env::var("MISTY_STROKE_STEP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
+    let path = |i: usize| Vec2::new(70.0 + i as f32 * step, 100.0);
     let mut worst_frame = 0.0f32;
     let mut hidden_frames = 0;
     let mut lag_frames: Vec<usize> = Vec::new();
