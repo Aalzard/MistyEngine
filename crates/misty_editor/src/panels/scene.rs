@@ -337,8 +337,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.
-            let stats = gpu.renderer.stats();
-            if stats.grass_pending > 0 || stats.loading > 0 {
+            if gpu.renderer.stats().busy() {
                 ui.ctx().request_repaint();
             }
             ui.painter().image(
