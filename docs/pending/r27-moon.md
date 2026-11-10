@@ -5,13 +5,14 @@
   twilight_moonrise). Full test run before the night sky: all moon tests passed; unrelated
   failures seen under load: `scene_files::opening_a_scene_lifts_a_view_left_under_the_terrain`,
   `asset_groups::remote_bundles_download_verify_and_cache` (timing). Clippy 0 warnings, fmt clean.
-- Night sky part: code committed. First renders checked (aurora, Milky Way, stars, meteors);
-  the aurora was then retuned (thinner rays, wavy soft lower edge, gentler colours) and the star
-  defaults made fainter. Still to verify on the tuned code: `write_moon_demo` (regenerates MoonDemo
-  + NightSkyDemo), `misty --api-docs docs/api`, the screenshots (`render_moon_screenshots`), the
-  full tests, clippy (own target `D:/MistyTargets/r27-moon-clippy`), then golden shots and
-  `moon_gpu_cost` under the GPU lock. Script: scratchpad `r27/final.sh` (log
-  `MistyWork/r27-final.log`).
+- Night sky part: committed and rendered (screenshots in docs/screenshots/r27/ are from the
+  tuned aurora and star defaults; the very last commit, white-noise aurora step jitter, is not in
+  them yet: re-run `render_moon_screenshots` to remove the faint diagonal hatching in the
+  curtains). Samples (MoonDemo, NightSkyDemo) and docs/api regenerated on the tuned code.
+- Still running when handed back (scratchpad `r27/final.sh`, log `MistyWork/r27-final.log`):
+  full `cargo test --workspace`, clippy in its own target `D:/MistyTargets/r27-moon-clippy`, then
+  under the GPU lock `golden_shots` and `moon_gpu_cost` (its lines start with `round 0:` /
+  `round 1:`). Check those results; the GPU cost numbers go into docs/progress.md.
 - Build inside the shared slot (`source /d/MistyTargets/build-slot.sh; take_slot r27-moon`,
   `-j 4`), target `D:/MistyTargets/r27-moon`, TMP/TEMP `D:/MistyTargets/tmp/r27-moon`. Run
   clippy last (it once left check-only rmeta files that broke the next test build).
