@@ -577,11 +577,13 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Fern"),
             TreeAsset {
                 seed: 35,
-                height: 0.9,
+                // 1 m and 2 cm are the recipe minimums (smaller plants come from the
+                // instances' scale, see `SMALL_SCALE`).
+                height: 1.0,
                 crown_shape: CrownShape::Spreading,
                 crown_width: 1.7,
                 crown_base: 0.0,
-                trunk_radius: 0.012,
+                trunk_radius: 0.02,
                 leader: 0.0,
                 trunk_bend: 0.0,
                 branches: 9,
@@ -606,11 +608,11 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             tree_path("Groundcover"),
             TreeAsset {
                 seed: 37,
-                height: 0.5,
+                height: 1.0,
                 crown_shape: CrownShape::Spreading,
                 crown_width: 2.2,
                 crown_base: 0.0,
-                trunk_radius: 0.008,
+                trunk_radius: 0.02,
                 leader: 0.0,
                 trunk_bend: 0.0,
                 branches: 10,
@@ -648,6 +650,10 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
         })
         .collect()
 }
+
+/// Instance scale of the fern and groundcover recipes (both 1 m tall, the recipe minimum): a
+/// 0.9 m fern, a 0.5 m groundcover plant.
+const SMALL_SCALE: (f32, f32) = (0.9, 0.5);
 
 /// Lone trees and bushes in the meadow: (right, ahead) of the camera in metres, prototype,
 /// scale.
@@ -744,7 +750,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                     let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0xfe12);
                     let at = p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell;
                     let fern = q(3) < 0.55;
-                    let s = 0.7 + 0.7 * q(4);
+                    let s = (0.7 + 0.7 * q(4)) * if fern { SMALL_SCALE.0 } else { SMALL_SCALE.1 };
                     out.push(TreeInstance {
                         position: at / size,
                         prototype: if fern { 7 } else { 8 },
