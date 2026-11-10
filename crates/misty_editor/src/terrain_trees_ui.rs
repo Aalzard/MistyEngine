@@ -1,7 +1,7 @@
 //! The Terrain Inspector's Paint Trees tab: the terrain's tree prototypes (`.tree` assets) as a
 //! palette of thumbnail cards (each tree's impostor, lit), the brush (plant with a left click,
 //! remove with Shift), how new trees vary, Mass Place Trees, and how the trees are drawn.
-//! Cards stand for their tree asset (Select in Project, double-click to edit) and `.tree` assets
+//! Cards stand for their tree asset (Select in Asset Files, double-click to edit) and `.tree` assets
 //! dropped from the Project window are added. Every change is one undo step.
 
 use egui::Ui;
@@ -311,7 +311,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                     ui,
                     Icon::TerrainTree,
                     &tr!("Edit Tree"),
-                    &tr!("Open the tree asset in the Inspector (trunk, branches, leaves)"),
+                    &tr!("Open the tree asset in Properties (trunk, branches, leaves)"),
                 )
                 .clicked()
                 {

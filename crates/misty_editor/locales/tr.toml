@@ -925,7 +925,7 @@
 "New Tree Asset" = "Yeni Ağaç Varlığı"
 "Create an oak tree asset in Assets/Trees and add it" = "Assets/Trees içinde bir meşe ağacı varlığı oluşturur ve ekler"
 "Edit Tree" = "Ağacı Düzenle"
-"Open the tree asset in the Inspector (trunk, branches, leaves)" = "Ağaç varlığını Denetçi'de açar (gövde, dallar, yapraklar)"
+"Open the tree asset in Properties (trunk, branches, leaves)" = "Ağaç varlığını Özellikler'de açar (gövde, dallar, yapraklar)"
 "Brush" = "Fırça"
 "Brush diameter ([ and ] change it)" = "Fırça çapı ([ ve ] değiştirir)"
 "Trees per 100 m² the brush fills up to" = "Fırçanın 100 m² başına doldurduğu ağaç sayısı"

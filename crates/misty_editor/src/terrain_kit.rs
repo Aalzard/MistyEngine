@@ -712,7 +712,7 @@ pub struct Card {
     /// Small badge over the thumbnail's corner (count, density, coverage).
     pub badge: Option<String>,
     pub tip: String,
-    /// The asset the card stands for (Select in Project / Open).
+    /// The asset the card stands for (Select in Asset Files / Open).
     pub asset: Option<String>,
     pub can_duplicate: bool,
     pub can_remove: bool,
@@ -888,7 +888,7 @@ pub fn palette(
                 action(
                     ui,
                     Icon::Locate,
-                    &tr!("Select in Project"),
+                    &tr!("Select in Asset Files"),
                     CardEvent::Locate(i),
                 );
             }

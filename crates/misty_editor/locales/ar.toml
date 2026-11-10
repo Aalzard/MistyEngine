@@ -923,7 +923,7 @@
 "New Tree Asset" = "أصل شجرة جديد"
 "Create an oak tree asset in Assets/Trees and add it" = "إنشاء أصل شجرة بلوط في Assets/Trees وإضافته"
 "Edit Tree" = "تحرير الشجرة"
-"Open the tree asset in the Inspector (trunk, branches, leaves)" = "فتح أصل الشجرة في المفتش (الجذع والأغصان والأوراق)"
+"Open the tree asset in Properties (trunk, branches, leaves)" = "فتح أصل الشجرة في الخصائص (الجذع والأغصان والأوراق)"
 "Brush" = "الفرشاة"
 "Brush diameter ([ and ] change it)" = "قطر الفرشاة (‏[ و ] يغيّرانه)"
 "Trees per 100 m² the brush fills up to" = "عدد الأشجار لكل 100 م² التي تملؤها الفرشاة"
