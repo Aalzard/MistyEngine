@@ -64,6 +64,16 @@ Forked from `r26-noon-meadow` at 80e185bb.
 - r13 generator: occlusion 0.9; ferns and broad-leaved plants (2–4 per cell, 65 % ferns) in the
   treeline wood's dropped cells and canopy gaps; a quarter birches there.
 
+- r13 (32588f6d; `docs/screenshots/r26/level_r13_*.jpg`): the forest floor is visible and
+  mid-toned in both inside views, birches and ferns between spaced trunks. Now too even: the
+  shade is nearly as bright as the sun flecks, the litter texture reads coarse, the undergrowth
+  sparse next to the reference's carpet of ferns and leaves.
+- Merged `r26-noon-meadow` 24abc5b6 (final engine work: understory no longer glows under a
+  canopy, occlusion culling off by default, docs). Clippy fixes in the generator (fcc0a28b).
+- r14 generator: floor sky light 0.65, litter tile 3 → 2 m, compensation +0.15 EV, gap cells 3–6
+  plants at 0.9–1.7× scale, one more plant per tree in the treeline wood, grass lod_distance
+  6.5 → 5.8 (≈ 20 % fewer distant blades, for the grass cost).
+
 ## State (handed over 2026-11-10, no scene changes committed yet)
 
 - Round r9 = the baseline of 80e185bb (Tree Clumping, small-plant LOD and shadows, Terrain Tree
@@ -139,6 +149,7 @@ hero view), the lone oak's darkness, then the forest interior against `reference
 
 | round | hero GPU / CPU | inside GPU / CPU | notes |
 |---|---|---|---|
+| r13 | 20.4 / 2.5 ms | 14.2 / 2.3 ms | |
 | r12 | 20.4 / 3.5 ms | 14.2 / 3.4 ms | |
 | r11 | 20.4 / 4.0 ms | 14.3 / 3.6 ms | |
 | r10 | 20.4 / 3.9 ms | 14.6 / 3.7 ms | trees 3.5 (hero) / 2.3 (inside, half the wood's trees) |
