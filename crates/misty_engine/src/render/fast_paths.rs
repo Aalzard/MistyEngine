@@ -8,7 +8,7 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 7] = [
+pub const NAMES: [&str; 8] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
@@ -16,6 +16,7 @@ pub const NAMES: [&str; 7] = [
     "shaft_cascades",
     "tree_depth",
     "tree_gpu_cull",
+    "tree_occlusion",
 ];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
@@ -25,6 +26,7 @@ static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
+static TREE_OCCLUSION: AtomicBool = AtomicBool::new(true);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -35,6 +37,7 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "shaft_cascades" => Some(&SHAFT_CASCADES),
         "tree_depth" => Some(&TREE_DEPTH),
         "tree_gpu_cull" => Some(&TREE_GPU_CULL),
+        "tree_occlusion" => Some(&TREE_OCCLUSION),
         _ => None,
     }
 }
@@ -107,4 +110,10 @@ pub fn tree_depth() -> bool {
 /// the virtual shadow map keeps the CPU lists).
 pub fn tree_gpu_cull() -> bool {
     get(&TREE_GPU_CULL)
+}
+
+/// GPU-culled trees hidden behind last frame's depth (a Hi-Z pyramid) are left out of the
+/// camera's lists while the view has hardly moved (trees_cull.rs).
+pub fn tree_occlusion() -> bool {
+    get(&TREE_OCCLUSION)
 }

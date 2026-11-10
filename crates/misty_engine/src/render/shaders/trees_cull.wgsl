@@ -15,6 +15,10 @@ struct Params {
     lod: vec4<f32>,
     // x = views (1 + cascades), y = prototypes, z = lists.
     counts: vec4<u32>,
+    // x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels).
+    occlusion: vec4<f32>,
+    // The view-projection the Hi-Z pyramid's depth was drawn with (last frame's).
+    hiz_view_proj: mat4x4<f32>,
 };
 
 struct Tree {
@@ -59,6 +63,64 @@ struct Instance {
 @group(0) @binding(4) var<storage, read> lists: array<List>;
 @group(0) @binding(5) var<storage, read_write> instances: array<Instance>;
 @group(0) @binding(6) var<storage, read_write> args: array<atomic<u32>>;
+// Last frame's depth, farthest per texel (gpu_culling/hiz.wgsl; level 0 = 2 × 2 pixels).
+@group(1) @binding(0) var hiz: texture_2d<f32>;
+
+// Hidden behind last frame's depth? Conservative (gpu_culling/cull.wgsl `occluded`): the
+// sphere's box's nearest depth against the farthest depth of the pyramid texels covering its
+// screen rectangle.
+fn occluded(center: vec3<f32>, radius: f32) -> bool {
+    let mips = u32(params.occlusion.x);
+    if (mips == 0u) {
+        return false;
+    }
+    var lo = vec2<f32>(1e9);
+    var hi = vec2<f32>(-1e9);
+    var z = 1e9;
+    for (var i = 0u; i < 8u; i++) {
+        let corner = center + radius * vec3<f32>(
+            select(-1.0, 1.0, (i & 1u) != 0u),
+            select(-1.0, 1.0, (i & 2u) != 0u),
+            select(-1.0, 1.0, (i & 4u) != 0u),
+        );
+        let c = params.hiz_view_proj * vec4<f32>(corner, 1.0);
+        if (c.w <= 1e-5) {
+            return false;
+        }
+        let ndc = c.xyz / c.w;
+        lo = min(lo, ndc.xy);
+        hi = max(hi, ndc.xy);
+        z = min(z, ndc.z);
+    }
+    if (z <= 0.0) {
+        return false;
+    }
+    let full = params.occlusion.yz;
+    let p0 = clamp(vec2<f32>(lo.x * 0.5 + 0.5, 0.5 - hi.y * 0.5) * full, vec2<f32>(0.0), full - 1.0);
+    let p1 = clamp(vec2<f32>(hi.x * 0.5 + 0.5, 0.5 - lo.y * 0.5) * full, vec2<f32>(0.0), full - 1.0);
+    let t0 = vec2<u32>(p0) / 2u;
+    let t1 = vec2<u32>(p1) / 2u;
+    var level = 0u;
+    loop {
+        let a = t0 >> vec2<u32>(level);
+        let c = t1 >> vec2<u32>(level);
+        if ((c.x - a.x <= 1u && c.y - a.y <= 1u) || level + 1u >= mips) {
+            break;
+        }
+        level++;
+    }
+    let dims = textureDimensions(hiz, level) - vec2<u32>(1u);
+    let a = min(t0 >> vec2<u32>(level), dims);
+    let c = min(t1 >> vec2<u32>(level), dims);
+    if (c.x - a.x > 1u || c.y - a.y > 1u) {
+        return false;
+    }
+    let far = max(
+        max(textureLoad(hiz, a, i32(level)).r, textureLoad(hiz, vec2<u32>(c.x, a.y), i32(level)).r),
+        max(textureLoad(hiz, vec2<u32>(a.x, c.y), i32(level)).r, textureLoad(hiz, c, i32(level)).r),
+    );
+    return z > far;
+}
 
 // The box `center` ± `half` touches the frustum (render/culling.rs `Frustum::intersects`).
 fn intersects(v: u32, center: vec3<f32>, half: f32) -> bool {
@@ -117,8 +179,9 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let protos_n = params.counts.y;
-    // The camera: level by distance.
-    if (intersects(0u, center, radius)) {
+    // The camera: level by distance (unless hidden behind last frame's depth; a little
+    // margin for the camera's jitter and the leaves' sway).
+    if (intersects(0u, center, radius) && !occluded(center, radius * 1.1 + 0.3)) {
         var lod = 3u;
         if (dist < params.lod.x * k * (1.0 + FADE)) {
             lod = 0u;
