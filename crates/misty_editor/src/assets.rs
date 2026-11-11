@@ -132,8 +132,9 @@ impl AssetDatabase {
     pub fn refresh(&mut self) {
         // The files are read back below: saves still on their way go first.
         misty_engine::asset_db::saver::flush();
-        // Keep the GUID map in step: new assets get meta files, copies get new GUIDs.
-        if let Some(report) = misty_engine::asset_db::rescan() {
+        // Keep the GUID map in step: new assets get meta files, copies get new GUIDs. Only this
+        // project's map: another project's open database is left alone.
+        if let Some(report) = misty_engine::asset_db::rescan(&self.root) {
             self.imported.extend(report.created.iter().cloned());
             self.note_guids(report);
         }
@@ -338,7 +339,7 @@ impl AssetDatabase {
             return false;
         }
         self.last_guid_poll = Some(now);
-        match misty_engine::asset_db::poll() {
+        match misty_engine::asset_db::poll(&self.root) {
             Some(report) => {
                 self.imported.extend(report.created.iter().cloned());
                 self.note_guids(report);
