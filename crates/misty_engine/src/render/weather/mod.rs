@@ -76,10 +76,10 @@ const FAR_VOLUME: f32 = 64.0 * 32.0 * 64.0;
 /// Most drops / flakes drawn in one render (all layers).
 pub const MAX_PARTICLES: u32 = 700_000;
 /// Base exposure of a streak (s) at Streak Length 1: a film camera's shutter.
-const SHUTTER: f32 = 1.0 / 25.0;
+const SHUTTER: f32 = 1.0 / 55.0;
 /// Depth of field of the drops: the blur disc of a drop 1 m from the lens as a share of the
 /// picture height (the lens is focused far away, so only drops within a few metres blur).
-const DEFOCUS: f32 = 0.014;
+const DEFOCUS: f32 = 0.028;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
@@ -799,7 +799,8 @@ impl Renderer {
                 p.snow_speed,
                 p.snow_turbulence,
                 p.snow_opacity,
-                SHUTTER * 0.6 * p.streak_length,
+                // Flakes are photographed faster than rain is (they'd all be dashes otherwise).
+                SHUTTER * 0.53 * p.streak_length,
             ],
             wind: w.wind.extend(w.rain_fall).to_array(),
             drift: w.wind_offset.extend(w.snow_fall).to_array(),

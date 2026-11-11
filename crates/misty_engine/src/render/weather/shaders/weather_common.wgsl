@@ -197,7 +197,7 @@ fn weather_foliage(world: vec3<f32>, n: vec3<f32>, albedo: vec3<f32>, smoothness
     let snow = weather_snow_amount(world, normalize(n + vec3<f32>(0.0, 0.35, 0.0)), a.z, exposure) * 0.85;
     let wet = a.x * mix(0.35, 1.0, exposure) * (1.0 - snow);
     var c = albedo * mix(1.0, 0.7, wet);
-    var g = mix(smoothness, max(smoothness, 0.7), wet);
+    var g = mix(smoothness, max(smoothness, 0.5), wet);
     c = mix(c, weather.snow.rgb * 0.9, snow);
     g = mix(g, 0.25, snow);
     return vec4<f32>(c, g);

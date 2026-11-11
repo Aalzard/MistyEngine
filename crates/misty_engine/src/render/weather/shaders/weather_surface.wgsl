@@ -33,7 +33,7 @@ fn weather_ripples(xz: vec2<f32>, t: f32, strength: f32) -> vec2<f32> {
             }
         }
     }
-    return g * strength * 0.55;
+    return g * strength * 0.38;
 }
 
 fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
@@ -59,10 +59,13 @@ fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
         // The film is never even: it stands thick in the hollows of a surface and thin on
         // its high spots, so a wet road shines in patches, not like one mirror.
         let film = weather_noise(world.xz * 2.7) * 0.6 + weather_noise(world.xz * 9.3 + 5.0) * 0.4;
-        s.smoothness = mix(s.smoothness, max(s.smoothness, mix(0.62, 0.93, film)), wet);
+        // Soil and turf (very rough surfaces) soak the water up: they darken and stay dull,
+        // and hold fewer puddles; sealed surfaces (asphalt, stone, wood) carry the film.
+        let sealed = smoothstep(0.04, 0.12, s.smoothness + s.metallic);
+        s.smoothness = mix(s.smoothness, max(s.smoothness, mix(0.3, mix(0.62, 0.93, film), sealed)), wet);
         // Puddles on flat open ground.
         let flatness = smoothstep(0.94, 0.99, n.y);
-        let fill = a.y * weather.snow_line.z;
+        let fill = a.y * weather.snow_line.z * mix(0.45, 1.0, sealed);
         if (flatness > 0.0 && fill > 0.0) {
             let pattern = weather_fbm(world.xz / max(weather.snow.w, 0.1));
             let puddle = smoothstep(1.0 - fill, 1.0 - fill + 0.1, pattern) * flatness * exposure;

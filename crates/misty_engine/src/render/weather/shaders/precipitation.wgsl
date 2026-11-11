@@ -191,7 +191,7 @@ fn local_scatter(world: vec3<f32>, v: vec3<f32>, g: f32) -> vec3<f32> {
             att *= smoothstep(li.spot.x, li.spot.y, dot(-l, li.dir_type.xyz));
         }
         // A lamp seen through the drop is brightest; from the side a drop still glints.
-        sum += li.color.rgb * att * (0.06 + henyey(dot(l, -v), g) * 3.0);
+        sum += li.color.rgb * att * (0.02 + henyey(dot(l, -v), g) * 1.0);
     }
     return sum;
 }
@@ -486,7 +486,7 @@ fn culled_drop() -> DropOut {
 
 // Circle of confusion (px) of a point `dist` metres away for a lens focused far off.
 fn defocus_px(dist: f32) -> f32 {
-    let c = pr.sizes.y * pr.rain3.y * 2.0 * max(1.0 / max(dist, 0.05) - 1.0 / 14.0, 0.0);
+    let c = pr.sizes.y * pr.rain3.y * max(1.0 / max(dist, 0.05) - 1.0 / 14.0, 0.0);
     return min(c, pr.sizes.y * 0.07);
 }
 
@@ -537,7 +537,13 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
         sin(p.x * 0.31 + p.z * 0.17 + t * 1.3 + r2.z * 6.2831853),
         cos(p.z * 0.29 - p.x * 0.13 + t * 1.1 + r2.y * 6.2831853),
     ) * pr.rain3.x * (0.8 + length(pr.wind.xz) * 0.25);
-    let vel = vec3<f32>(pr.wind.x * carried + eddy.x, -speed, pr.wind.z * carried + eddy.y);
+    // A drop doesn't fall dead straight: it sways on small loops of its own (air drag on a
+    // wobbling drop), so no two streaks lie along the same line.
+    let sway_f = vec2<f32>(5.0 + r2.z * 6.0, 4.0 + r2.x * 7.0);
+    let sway_ph = vec2<f32>(r.w, r2.y) * 6.2831853;
+    let sway_amp = (0.012 + 0.03 * (1.0 - big)) * (0.6 + pr.rain3.x * 1.6);
+    let sway_vel = vec2<f32>(cos(t * sway_f.x + sway_ph.x) * sway_f.x, -sin(t * sway_f.y + sway_ph.y) * sway_f.y) * sway_amp;
+    let vel = vec3<f32>(pr.wind.x * carried + eddy.x + sway_vel.x, -speed, pr.wind.z * carried + eddy.y + sway_vel.y);
     let tail = p - vel * pr.rain2.y;
     let ct = pr.view_proj * vec4<f32>(tail, 1.0);
     if (ch.w < pr.forward.w + 0.05 || ct.w < pr.forward.w + 0.05) {
@@ -550,16 +556,19 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     d = select(vec2<f32>(0.0, -1.0), d / max(len, 1e-4), len > 1e-3);
     let perp = vec2<f32>(-d.y, d.x);
     let dist = ch.w;
-    let drop_px = pr.rain.w * size * px_per_metre(dist);
-    let coc = defocus_px(dist);
+    // Drawn a little thicker than a real drop (a streak also holds the drop's wobble).
+    let drop_px = pr.rain.w * size * 1.7 * px_per_metre(dist);
+    // Depth: near drops are big; about half of them are out of focus (wide and soft), the
+    // rest stay sharp and clearly seen, so the rain has a near, a middle and a far.
+    let coc = defocus_px(dist) * mix(0.12, 1.0, smoothstep(0.35, 0.65, r.z));
     let width_px = drop_px + coc;
-    let w = max(width_px, 1.7);
+    let w = max(width_px, 2.2);
     // Thinner than a pixel: fade instead of shrinking (no aliasing).
     let coverage = width_px / w;
     // Out of focus the drop's light spreads over the blur disc (some is kept so the big
     // near drops still read as water).
     let soft = coc / max(width_px, 1e-3);
-    let spread_out = mix(drop_px / max(width_px, 1e-3), 1.0, 0.3);
+    let spread_out = mix(drop_px / max(width_px, 1e-3), 1.0, 0.45);
     let s = mix(sh, st, corner.y) + perp * corner.x * w * 0.5 + d * (corner.y * 2.0 - 1.0) * w * 0.5;
     var out: DropOut;
     out.clip = from_screen(s, mix(ch, ct, corner.y));
@@ -568,7 +577,7 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     let fade = smoothstep(0.2, 0.7, dist) * (1.0 - smoothstep(select(34.0, 14.0, near_layer), select(52.0, 17.0, near_layer), dist));
     let fade_in = select(smoothstep(11.0, 15.0, dist), 1.0, near_layer);
     // Every drop its own brightness (how it catches the light as it wobbles).
-    let own = 0.3 + r2.y * r2.y * 1.1;
+    let own = 0.55 + r2.y * r2.y * 1.2;
     let alpha = pr.rain2.z * coverage * spread_out * own * fade * fade_in * box_fade(p, centre, box);
     // The lens: the image across the drop is flipped and squeezed.
     let lens = w * 0.5 * (1.0 + 2.5 * pr.rain2.w);
@@ -633,11 +642,12 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     }
     let soft = in.params.y;
     let thick = in.look.w;
-    // Sharp drops have an edge, blurred ones fade from the middle.
-    let ax = abs(x);
-    let across = 1.0 - smoothstep(1.0 - mix(0.5, 1.0, soft), 1.0, ax);
-    // The streak starts and stops with the shutter; the blur softens both ends.
-    let ends = smoothstep(0.0, mix(0.08, 0.3, soft), y) * (1.0 - smoothstep(mix(0.82, 0.6, soft), 1.0, y));
+    // A bead, not a line: full and round at the head (where the drop is when the shutter
+    // closes), thinning and fading up its tail. Blurred drops fade from the middle.
+    let taper = mix(1.0, 0.45, smoothstep(0.1, 1.0, y));
+    let ax = abs(x) / taper;
+    let across = 1.0 - smoothstep(1.0 - mix(0.7, 1.0, soft), 1.0, ax);
+    let ends = smoothstep(0.0, mix(0.1, 0.3, soft), y) * (1.0 - smoothstep(0.25, 1.0, y) * 0.85) * (1.0 - smoothstep(0.85, 1.0, y));
     // A falling drop wobbles: its streak is beaded, not even.
     let bead = 1.0 + 0.14 * (1.0 - soft) * sin(y * in.look.z * 6.2831853 + in.look.y);
     let a = clamp(in.params.x * across * ends * bead * clamp(behind / 0.25, 0.0, 1.0), 0.0, 0.92);
@@ -661,7 +671,11 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     let fresnel = 0.03 + 0.97 * pow(1.0 - ndv, 4.0);
     // A hairline streak can't show an image: it carries the average light instead.
     let clear = mix(0.25, 1.0 - fresnel, thick);
-    var col = seen * clear * 0.96 + around * (1.0 - clear) * 1.05;
+    var col = seen * clear + around * (1.0 - clear) * 1.2;
+    // Every drop carries a highlight of the sky (a bright line off its middle): it is what
+    // shows the rain against dark ground. At night there is no sky to mirror.
+    let shine = exp(-(x - 0.4) * (x - 0.4) * 14.0) * mix(0.35, 1.0, thick);
+    col += haze_col * shine * (1.0 - over_sky) * 0.55;
     // Light shining through the drop: the sun ahead and lamps. Lightning lasts a
     // thousandth of a second: it freezes the drop where it is (the head of the streak).
     var glint = sun_scatter(in.world, v, 0.8) * 0.8;
@@ -750,7 +764,7 @@ fn vs_snow(@builtin(vertex_index) vi: u32) -> FlakeOut {
     size_px = max(size_px, min_px);
     // Motion streak in strong wind (blizzard), from this frame's screen motion.
     let vel = vec3<f32>(pr.wind.x, -pr.snow2.x * (1.0 + spread), pr.wind.z) + vec3<f32>(cos(t * f1 + ph), 0.0, -sin(t * f1 * 0.9 + ph)) * swirl * 0.4 * f1;
-    let c2 = pr.view_proj * vec4<f32>(p - vel * pr.snow2.w * 0.4, 1.0);
+    let c2 = pr.view_proj * vec4<f32>(p - vel * pr.snow2.w, 1.0);
     var mdir = vec2<f32>(1.0, 0.0);
     var stretch = 1.0;
     if (c2.w > pr.forward.w) {
@@ -1120,16 +1134,17 @@ fn fs_lens(in: FullscreenOut) -> @location(0) vec4<f32> {
         let gen = floor(phase);
         let life = fract(phase);
         let r2 = rand4(u32(gen) * 31u + u32(i32(cell.x) + 1000) * 7919u + u32(i32(cell.y) + 1000) * 104729u);
-        if (r2.w > pr.misc.z * open) {
+        // A few drops at a time, even in a downpour (the glass would be wiped otherwise).
+        if (r2.w > pr.misc.z * open * 0.22) {
             continue;
         }
         // Heavy drops run down late in their life (staying inside their cell).
-        let radius = 0.1 + r2.z * 0.2;
+        let radius = 0.06 + r2.z * r2.z * 0.24;
         let slide = max(life - 0.6, 0.0) * r2.z * 0.5;
         let centre = cell + vec2<f32>(0.32 + r2.x * 0.36, 0.31 + r2.y * 0.18 + slide);
         var q = (g - centre) / radius;
         // Drops aren't round: a little lumpy, longer when they run.
-        q *= 1.0 + 0.12 * sin(atan2(q.y, q.x) * 3.0 + r2.x * 20.0);
+        q *= 1.0 + 0.05 * sin(atan2(q.y, q.x) * 2.0 + r2.x * 20.0);
         q.y *= 1.0 - slide * 1.5;
         let d = length(q);
         if (d >= 1.0) {
@@ -1139,12 +1154,12 @@ fn fs_lens(in: FullscreenOut) -> @location(0) vec4<f32> {
         // A drop on the glass is a tiny fisheye: the view upside down, far out of focus.
         let cuv = centre / scale * vec2<f32>(1.0 / aspect, 1.0);
         let suv = cuv - (uv - cuv) * 3.0;
-        var c = through_water(suv, 2.0 + r2.z * 1.5) * 0.92;
-        // Dark rim, and a soft highlight of the light above.
-        c *= mix(1.0, 0.5, smoothstep(0.65, 1.0, d));
+        var c = through_water(suv, 2.0 + r2.z * 1.5);
+        // A darker rim, and a soft highlight of the light above.
+        c *= mix(1.0, 0.72, smoothstep(0.6, 1.0, d));
         let shine = 1.0 - smoothstep(0.0, 0.32, length(q - vec2<f32>(-0.3, -0.4)));
-        c += through_water(vec2<f32>(0.5, 0.25), pr.rain3.z) * 0.7 * shine;
-        let a = fade * (1.0 - smoothstep(0.78, 1.0, d));
+        c += through_water(vec2<f32>(0.5, 0.25), pr.rain3.z) * 0.5 * shine;
+        let a = fade * (1.0 - smoothstep(0.7, 1.0, d)) * 0.85;
         col = mix(col, c, a);
         alpha = max(alpha, a);
     }

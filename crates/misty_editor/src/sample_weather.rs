@@ -40,7 +40,6 @@ const GROUND: &str = "Assets/Textures/Meadow/MeadowThatch.png";
 const GROUND_NORMAL: &str = "Assets/Textures/Meadow/MeadowThatchNormal.png";
 const GROUND_HEIGHT: &str = "Assets/Textures/Meadow/MeadowThatchHeight.png";
 const GRAVEL: &str = "Assets/Textures/Terrain/Scree.png";
-const ROCK_NORMAL: &str = "Assets/Textures/TerrainRockNormal.png";
 const TIMBER: &str = "Assets/Trees/Textures/OakBark.png";
 const TIMBER_NORMAL: &str = "Assets/Trees/Textures/OakBarkNormal.png";
 /// Terrain tree recipes written by `sample_meadow`.
@@ -126,13 +125,7 @@ fn materials() -> [(&'static str, Material); 7] {
     [
         (
             ASPHALT,
-            Material {
-                // Coarse aggregate: the wet film glints unevenly.
-                normal_map: Some(ROCK_NORMAL.into()),
-                normal_scale: 0.35,
-                tiling: [14.0, 2.0],
-                ..m([0.2, 0.2, 0.21, 1.0], 0.0, 0.12)
-            },
+            m([0.2, 0.2, 0.21, 1.0], 0.0, 0.14),
         ),
         (
             WOOD,
@@ -285,7 +278,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
         }
         // Clear of the path, the camera's spot and the other trees.
         let local = p - corner;
-        if path.iter().any(|q| q.distance(local) < 4.0) || p.distance(Vec2::new(-1.5, -9.0)) < 14.0
+        if path.iter().any(|q| q.distance(local) < 4.0) || p.distance(Vec2::new(-1.5, -6.4)) < 14.0
         {
             continue;
         }
@@ -511,8 +504,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
     if let Some(cam) = s.find_by_name("Main Camera") {
         s.set_transform(
             cam,
-            Transform::from_position(Vec3::new(-1.5, 1.7, -9.0))
-                .with_euler(Vec3::new(4.0, 12.0, 0.0)),
+            Transform::from_position(Vec3::new(-1.5, 1.7, -6.4))
+                .with_euler(Vec3::new(2.0, 12.0, 0.0)),
         );
         s.world
             .get::<&mut misty_engine::scene::Camera>(cam)
@@ -651,7 +644,6 @@ fn weather_demo_matches_its_generator() {
         GROUND_NORMAL,
         GROUND_HEIGHT,
         GRAVEL,
-        ROCK_NORMAL,
         TIMBER,
         TIMBER_NORMAL,
     ] {
@@ -701,7 +693,7 @@ fn weather_demo_matches_its_generator() {
         assert!((p.y + 4.0).abs() > 4.0, "a tree on the lane at {p}");
     }
     // The lane and the shelter's floor are level with the world's y = 0.
-    for (x, z) in [(0.0, -4.0), (30.0, -4.0), (0.0, 4.0), (-1.5, -9.0)] {
+    for (x, z) in [(0.0, -4.0), (30.0, -4.0), (0.0, 4.0), (-1.5, -6.4)] {
         assert!(ground(&generated, x, z).abs() < 0.05, "ground at {x}, {z}");
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
@@ -760,7 +752,7 @@ fn weather_demo_plays_and_keys_switch_the_weather() {
     let mut time = Time::default();
     let mut step = |scene: &mut Scene, host: &mut ScriptHost, key: Option<&str>| {
         time.advance(1.0 / 30.0);
-        misty_engine::weather::update_scene(scene, time.delta, Vec3::new(0.0, 1.7, -9.0));
+        misty_engine::weather::update_scene(scene, time.delta, Vec3::new(-1.5, 1.7, -6.4));
         let mut input = Input::default();
         if let Some(k) = key {
             input.pressed.insert(k.into());
