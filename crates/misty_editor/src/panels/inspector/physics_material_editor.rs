@@ -48,7 +48,7 @@ pub fn project_materials() -> Vec<String> {
                 if p.is_dir() {
                     stack.push(p);
                 } else if is_physics_material(&p.to_string_lossy()) {
-                    out.push(misty_engine::assets::relative(&p).replace('\', "/"));
+                    out.push(misty_engine::assets::relative(&p).replace('\\', "/"));
                 }
             }
         }

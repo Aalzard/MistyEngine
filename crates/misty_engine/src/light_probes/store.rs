@@ -31,8 +31,7 @@ pub fn load(path: &Path) -> Option<Arc<LightProbeField>> {
         }
         e.checked = Instant::now();
         // The background file watch's stamp first; a difference is checked on disk.
-        if crate::file_watch::cached_modified(path) == e.modified || modified(path) == e.modified
-        {
+        if crate::file_watch::cached_modified(path) == e.modified || modified(path) == e.modified {
             return e.field.clone();
         }
     }
