@@ -32,6 +32,7 @@ const DATA: &str = "Assets/Terrains/WeatherDemo.terrain";
 const SCRIPT: &str = "Assets/Scripts/WeatherDemo.lua";
 const ASPHALT: &str = "Assets/Materials/Weather Asphalt.mat";
 const WOOD: &str = "Assets/Materials/Weather Wood.mat";
+const ROOF: &str = "Assets/Materials/Weather Roof.mat";
 const BARK: &str = "Assets/Materials/Weather Bark.mat";
 const LEAVES: &str = "Assets/Materials/Weather Leaves.mat";
 const STONE: &str = "Assets/Materials/Weather Stone.mat";
@@ -118,7 +119,7 @@ fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
 }
 
-fn materials() -> [(&'static str, Material); 7] {
+fn materials() -> [(&'static str, Material); 8] {
     let m = |color: [f32; 4], metallic, smoothness| Material {
         color,
         metallic,
@@ -135,6 +136,18 @@ fn materials() -> [(&'static str, Material); 7] {
                 normal_scale: 0.8,
                 tiling: [1.0, 2.0],
                 ..m([0.78, 0.6, 0.45, 1.0], 0.0, 0.2)
+            },
+        ),
+        (
+            // Roof boards: dark, fine-grained and nearly flat, so the wet roof shines evenly
+            // instead of in blotches.
+            ROOF,
+            Material {
+                albedo_map: Some(TIMBER.into()),
+                normal_map: Some(TIMBER_NORMAL.into()),
+                normal_scale: 0.2,
+                tiling: [10.0, 5.0],
+                ..m([0.42, 0.33, 0.27, 1.0], 0.0, 0.25)
             },
         ),
         (BARK, m([0.3, 0.23, 0.17, 1.0], 0.0, 0.1)),
@@ -576,7 +589,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
         let mut t =
             Transform::from_position(Vec3::new(0.0, 3.3, z)).with_euler(Vec3::new(tilt, 0.0, 0.0));
         t.scale = Vec3::new(7.4, 0.1, 3.5);
-        mesh(&mut s, name, PrimitiveMesh::Cube, t, WOOD);
+        mesh(&mut s, name, PrimitiveMesh::Cube, t, ROOF);
     }
     mesh(
         &mut s,

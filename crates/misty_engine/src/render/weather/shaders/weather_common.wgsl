@@ -149,7 +149,8 @@ fn weather_hash2(p: vec2<f32>) -> f32 {
 fn weather_noise(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
+    // Quintic: no creases along the cell edges.
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
     let a = weather_hash2(i);
     let b = weather_hash2(i + vec2<f32>(1.0, 0.0));
     let c = weather_hash2(i + vec2<f32>(0.0, 1.0));
@@ -164,7 +165,11 @@ fn weather_fbm(p: vec2<f32>) -> f32 {
     let bend = vec2<f32>(weather_noise(p * 0.47 + 3.7), weather_noise(p * 0.53 + 19.2)) - 0.5;
     let p0 = r * (p + bend * 1.6);
     let q = r * p0 * 2.13 + 7.1;
-    return weather_noise(p0) * 0.55 + weather_noise(q) * 0.3 + weather_noise(r * q * 2.05 + 3.3) * 0.15;
+    // The broad octave is two lattices at 45° to each other: no straight edges or facets
+    // where it is thresholded.
+    let turned = mat2x2<f32>(0.7071, 0.7071, -0.7071, 0.7071) * p0 * 1.09 + 31.7;
+    let broad = (weather_noise(p0) + weather_noise(turned)) * 0.5;
+    return broad * 0.55 + weather_noise(q) * 0.3 + weather_noise(r * q * 2.05 + 3.3) * 0.15;
 }
 
 // Settled snow on a surface (0..1) with normal `n` at `world`: on upward faces, patchy while

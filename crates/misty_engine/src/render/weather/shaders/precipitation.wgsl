@@ -939,7 +939,7 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         // fast, stands a moment and drops back.
         let c0 = pr.view_proj * vec4<f32>(sp.pos.xyz, 1.0);
         // Only the bigger drops throw a crown worth seeing; the rest make droplets and a ring.
-        if (c0.w < pr.forward.w + 0.05 || own.x < 0.62) {
+        if (c0.w < pr.forward.w + 0.05 || own.x < 0.8) {
             return culled_splash();
         }
         let grow = 1.0 - (1.0 - min(t * 2.5, 1.0)) * (1.0 - min(t * 2.5, 1.0));
@@ -955,13 +955,13 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         side = side / sl;
         let ppm = px_per_metre(c0.w);
         // Too small to see as a shape: leave it to the droplets.
-        if (w * ppm < 1.5) {
+        if (w * ppm < 3.0) {
             return culled_splash();
         }
         let p = sp.pos.xyz + side * corner.x * w + n * (corner.y * 0.5 + 0.5) * h;
         let c = pr.view_proj * vec4<f32>(p, 1.0);
         out.clip = c;
-        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(1.5, 5.0, w * ppm) * 0.5, 3.0, c.w, t);
+        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(3.0, 8.0, w * ppm) * 0.3, 3.0, c.w, t);
         out.world = sp.pos.xyz;
         return out;
     }
@@ -993,7 +993,7 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
     let l = length(d);
     d = select(vec2<f32>(0.0, 1.0), d / max(l, 1e-4), l > 1e-3);
     let side = vec2<f32>(-d.y, d.x);
-    let dpx = size * (0.18 + seed.w * 0.24) * px_per_metre(c.w);
+    let dpx = size * (0.12 + seed.w * 0.16) * px_per_metre(c.w);
     let w = max(dpx, 1.2);
     let s = mix(s0, s1, k.y) + side * k.x * w * 0.5 + d * (k.y * 2.0 - 1.0) * w * 0.5;
     out.clip = from_screen(s, c);
@@ -1037,7 +1037,7 @@ fn fs_splash(in: SplashOut) -> @location(0) vec4<f32> {
     } else {
         shape = exp(-dot(in.quad, in.quad) * 2.2);
     }
-    let a = shape * in.params.x * 0.75;
+    let a = shape * in.params.x * 0.55;
     if (a < 0.003) {
         discard;
     }
@@ -1056,7 +1056,7 @@ fn fs_splash(in: SplashOut) -> @location(0) vec4<f32> {
     var light = light_around(uv, haze_behind(scene_at, -v), haze_col) * 1.1 + ambient_light(1.0) * 0.06;
     light += sun_scatter(in.world, v, 0.6) * 1.0;
     light += local_scatter(in.world, v, 0.6) * 1.5;
-    light += flash_scatter(v, 0.4) * 0.25;
+    light += flash_scatter(v, 0.4) * 0.1;
     return vec4<f32>(light * a, a);
 }
 
