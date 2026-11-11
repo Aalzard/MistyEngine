@@ -1029,9 +1029,9 @@ fn fs_splash(in: SplashOut) -> @location(0) vec4<f32> {
         let half = 0.45 + 0.5 * hgt;
         let x = in.quad.x / half;
         let ax = abs(x);
-        let rim = 0.72 + 0.28 * sin(x * 7.0 + in.own.x * 30.0) * sin(x * 3.0 + in.own.y * 11.0);
+        let rim = 0.84 + 0.16 * sin(x * 5.0 + in.own.x * 30.0) * sin(x * 2.0 + in.own.y * 11.0);
         let inside = (1.0 - smoothstep(0.85, 1.0, ax)) * (1.0 - smoothstep(rim - 0.25, rim, hgt));
-        let wall = 0.22 + 0.78 * smoothstep(0.45, 0.95, ax);
+        let wall = 0.4 + 0.6 * smoothstep(0.45, 0.95, ax);
         shape = inside * wall * (0.5 + 0.5 * hgt) * 0.75;
     } else {
         shape = exp(-dot(in.quad, in.quad) * 2.2);

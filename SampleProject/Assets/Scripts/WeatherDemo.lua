@@ -1,6 +1,7 @@
 -- WeatherDemo: keys switch the weather (4 s blends), L strikes lightning, N turns day into
 -- night and back (the sun goes under the horizon: the lamps and the lightning light the
--- rain), 0 hands the weather back to the Weather volume's timeline.
+-- rain), 0 hands the weather back to the Weather volume (the values in its Properties).
+-- While a key's weather is held, Properties shows "Script override" with a Clear button.
 local Demo = {}
 
 local keys = {
@@ -22,7 +23,7 @@ function Demo:Start()
         self.sun = sun.transform
         self.day = self.sun.eulerAngles
     end
-    Debug.Log("Weather keys: 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour, 5 Thunderstorm, 6 Snow, 7 Blizzard, 8 Sleet, L lightning, N night / day, 0 timeline")
+    Debug.Log("Weather keys: 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour, 5 Thunderstorm, 6 Snow, 7 Blizzard, 8 Sleet, L lightning, N night / day, 0 back to the volume")
 end
 
 function Demo:Update()

@@ -41,20 +41,20 @@
         },
         "Transform": {
           "euler_hint": [
-            4.0,
+            2.0,
             12.0,
             0.0
           ],
           "position": [
             -1.5,
             1.7,
-            -9.0
+            -6.4
           ],
           "rotation": [
-            0.034708314,
-            0.10446479,
-            -0.0036479908,
-            0.9939161
+            0.0173568,
+            0.10451254,
+            -0.0018242731,
+            0.99437046
           ],
           "scale": [
             1.0,
@@ -81,11 +81,11 @@
         "Light": {
           "color": [
             1.0,
-            0.85,
-            0.7
+            0.9,
+            0.78
           ],
           "enabled": true,
-          "intensity": 1.6,
+          "intensity": 2.4,
           "kind": "Directional",
           "range": 10.0,
           "shadows": "Soft",
@@ -93,7 +93,7 @@
         },
         "Transform": {
           "euler_hint": [
-            18.0,
+            34.0,
             -60.0,
             0.0
           ],
@@ -103,10 +103,10 @@
             0.0
           ],
           "rotation": [
-            0.13547623,
-            -0.49384418,
-            0.07821724,
-            0.8553632
+            0.2532013,
+            -0.4781524,
+            0.14618585,
+            0.82818425
           ],
           "scale": [
             1.0,
@@ -1225,10 +1225,10 @@
             40.0
           ],
           "state": {
-            "ambient_dimming": 0.28,
-            "cloud_coverage": 0.8,
-            "cloud_density": 0.7,
-            "drop_size": 1.0,
+            "ambient_dimming": 0.36,
+            "cloud_coverage": 0.86,
+            "cloud_density": 0.85,
+            "drop_size": 1.6,
             "flake_size": 1.2,
             "gust_frequency": 4.0,
             "gusts": 0.0,
@@ -1236,23 +1236,23 @@
             "lightning_intensity": 1.0,
             "lightning_max_distance": 6000.0,
             "lightning_min_distance": 400.0,
-            "mist": 0.0,
-            "rain_density": 14.0,
-            "rain_intensity": 0.3,
-            "rain_opacity": 0.45,
-            "rain_speed": 5.5,
+            "mist": 0.15,
+            "rain_density": 22.0,
+            "rain_intensity": 0.55,
+            "rain_opacity": 0.55,
+            "rain_speed": 7.0,
             "refraction": 0.6,
             "snow_density": 0.0,
             "snow_intensity": 0.0,
             "snow_opacity": 0.9,
             "snow_speed": 1.2,
             "snow_turbulence": 0.5,
-            "splashes": 0.5,
+            "splashes": 1.0,
             "streak_length": 1.0,
-            "sun_dimming": 0.55,
-            "visibility": 3500.0,
+            "sun_dimming": 0.65,
+            "visibility": 1800.0,
             "wind_direction": 70.0,
-            "wind_speed": 3.0,
+            "wind_speed": 4.0,
             "wind_turbulence": 0.25
           },
           "surfaces": {
@@ -1305,7 +1305,7 @@
               }
             ],
             "looping": true,
-            "mode": "Sequence"
+            "mode": "Off"
           },
           "weight": 1.0
         }
@@ -1417,7 +1417,7 @@
               1.0
             ],
             "contrast": 0.0,
-            "post_exposure": 0.5,
+            "post_exposure": 1.0,
             "saturation": 0.0
           },
           "enabled": true,
