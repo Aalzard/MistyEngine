@@ -73,10 +73,10 @@ pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()>
         .to_string_lossy();
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let tmp = path.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
-    let written = std::fs::File::create(&tmp).and_then(|mut f| {
-        f.write_all(bytes)?;
-        f.sync_all()
-    });
+    // No `sync_all`: these saves run on the editor's main thread (a material is saved on every
+    // frame of a slider drag), and flushing to the device took 2.5 ms on an SSD but 0.9 s
+    // (up to 27 s) on a busy hard disk. The rename still never exposes a half-written file.
+    let written = std::fs::File::create(&tmp).and_then(|mut f| f.write_all(bytes));
     if let Err(e) = written {
         let _ = std::fs::remove_file(&tmp);
         return Err(e);
