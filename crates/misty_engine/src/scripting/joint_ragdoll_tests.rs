@@ -155,3 +155,32 @@ fn ragdoll_enable_and_disable_from_lua() {
     let logs = run(&mut scene, root, 240, key);
     assert!(logs.contains(&"off false".to_owned()), "{logs:?}");
 }
+
+/// `Ragdoll.Disable` after one of the ragdoll's bones was destroyed: no panic, the other
+/// bones blend back.
+#[test]
+fn ragdoll_disable_after_a_bone_was_destroyed() {
+    let src = r#"
+local K = { frames = 0 }
+function K:Update()
+    self.frames = self.frames + 1
+    if self.frames == 2 then
+        Ragdoll.Enable(self.gameObject)
+    elseif self.frames == 10 then
+        Destroy(GameObject.Find("LeftLowerArm"))
+    elseif self.frames == 14 then
+        Debug.Log("off", Ragdoll.Disable(self.gameObject, 0.25), Ragdoll.IsEnabled(self.gameObject))
+    end
+end
+return K
+"#;
+    let root = project(&[("K.lua", src)]);
+    let mut scene = Scene::new("t");
+    let character = crate::physics::ragdoll::test_skeleton(&mut scene);
+    let bones = auto_fill(&scene, character);
+    create(&mut scene, character, &bones, &RagdollOptions::default()).unwrap();
+    script(&mut scene, character, "K.lua");
+    let logs = run(&mut scene, root, 40, |_| Input::default());
+    assert!(logs.contains(&"off true false".to_owned()), "{logs:?}");
+    assert!(scene.find_by_name("LeftLowerArm").is_none());
+}

@@ -140,7 +140,16 @@ impl Drop for Server {
             && Info::read(path.parent().and_then(Path::parent).unwrap_or(Path::new("")))
                 .is_ok_and(|i| i.pid == self.info.pid && i.port == self.info.port)
         {
-            let _ = std::fs::remove_file(path);
+            // Windows refuses for a moment while another program (an indexer, a virus
+            // scanner) has the new file open: try a few times.
+            for _ in 0..20 {
+                match std::fs::remove_file(path) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
+                    _ => break,
+                }
+            }
         }
         if let Some(t) = self.thread.take() {
             let _ = t.join();
@@ -204,8 +213,14 @@ fn read_line(
     stop: &AtomicBool,
 ) -> std::io::Result<Option<String>> {
     loop {
-        match r.read_until(b'\n', buf) {
+        // At most one byte past the limit: a client streaming bytes without a newline can't
+        // grow the buffer without end (the limit used to be checked only on a timeout).
+        let room = (MAX_LINE + 1).saturating_sub(buf.len()) as u64;
+        match r.by_ref().take(room).read_until(b'\n', buf) {
             Ok(0) if buf.is_empty() => return Ok(None),
+            Ok(_) if buf.len() > MAX_LINE && buf.last() != Some(&b'\n') => {
+                return Err(std::io::Error::new(ErrorKind::InvalidData, "line too long"));
+            }
             // A whole line, or the last one without a newline.
             Ok(_) => {
                 let mut line = std::mem::take(buf);
@@ -412,5 +427,36 @@ pub fn connect_main(args: &[String]) -> i32 {
             eprintln!("misty --mcp-connect: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod line_tests {
+    use std::io::Cursor;
+    use std::sync::atomic::AtomicBool;
+
+    use super::{MAX_LINE, read_line};
+
+    /// A line longer than the limit is refused once the limit is reached, without reading
+    /// (and buffering) the rest of it.
+    #[test]
+    fn overlong_lines_are_refused_at_the_limit() {
+        let stop = AtomicBool::new(false);
+        let mut data = vec![b'a'; MAX_LINE + 4096];
+        data.extend_from_slice(b"\n{}\n");
+        let mut r = Cursor::new(data);
+        let mut buf = Vec::new();
+        assert!(read_line(&mut r, &mut buf, &stop).is_err());
+        assert!(buf.len() <= MAX_LINE + 1, "{}", buf.len());
+        assert!(r.position() as usize <= MAX_LINE + 1);
+        // Normal lines still read, the last one without a newline too.
+        let mut r = Cursor::new(b"{\"a\": 1}\r\nlast".to_vec());
+        let mut buf = Vec::new();
+        assert_eq!(
+            read_line(&mut r, &mut buf, &stop).unwrap().unwrap(),
+            "{\"a\": 1}"
+        );
+        assert_eq!(read_line(&mut r, &mut buf, &stop).unwrap().unwrap(), "last");
+        assert_eq!(read_line(&mut r, &mut buf, &stop).unwrap(), None);
     }
 }

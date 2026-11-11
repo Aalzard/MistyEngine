@@ -537,6 +537,10 @@ pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
         return false;
     }
     let path = s.project.root.join(rel);
+    // The new path is taken now (the file's GUID table and name follow it) and given back if
+    // the write fails: a failed Save As used to leave the scene pointing at a file that
+    // doesn't exist, which the next Ctrl+S wrote to.
+    let (old_path, old_name) = (s.scene.scene_path(id), s.scene.scene_name(id));
     s.scene.set_scene_path(id, rel);
     // References into other scenes can't be stored (like the familiar editor, they are lost).
     for w in s.scene.cross_scene_references(id) {
@@ -560,6 +564,15 @@ pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
             true
         }
         Err(e) => {
+            match old_path {
+                Some(p) => s.scene.set_scene_path(id, &p),
+                None => {
+                    s.scene.forget_scene_path(id);
+                    if id == s.scene.active_scene() {
+                        s.scene.name = old_name;
+                    }
+                }
+            }
             s.console.log(
                 crate::console::LogLevel::Error,
                 format!("Could not save scene: {e}"),
@@ -699,13 +712,27 @@ mod tests {
     #[test]
     fn opening_a_scene_lifts_a_view_left_under_the_terrain() {
         let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-        let mut s = EditorState::new(ProjectBrowser::open(sample));
-        s.scene_view
-            .camera
-            .set_view(glam::Vec3::new(0.0, -50.0, 0.0), glam::Quat::IDENTITY);
-        assert!(load(&mut s, "Assets/Scenes/MeadowDemo.scene"));
-        let eye = s.scene_view.camera.position();
-        let ground = ground_under(&s.scene, eye).expect("the eye is over the meadow terrain");
+        let mut s = EditorState::new(ProjectBrowser::open(sample.clone()));
+        // The terrain is found through the process-wide project root, which tests running
+        // alongside move: try again (a few times) only when that happened meanwhile.
+        let mut tries = 0;
+        let (eye, ground) = loop {
+            tries += 1;
+            misty_engine::assets::set_project_root(&sample);
+            let generation = misty_engine::assets::root_generation();
+            s.scene_view
+                .camera
+                .set_view(glam::Vec3::new(0.0, -50.0, 0.0), glam::Quat::IDENTITY);
+            assert!(load(&mut s, "Assets/Scenes/MeadowDemo.scene"));
+            let eye = s.scene_view.camera.position();
+            let ground = ground_under(&s.scene, eye);
+            let moved = misty_engine::assets::root_generation() != generation;
+            let lifted = ground.is_some_and(|g| eye.y >= g + GROUND_CLEARANCE);
+            if !lifted && moved && tries < 20 {
+                continue;
+            }
+            break (eye, ground.expect("the eye is over the meadow terrain"));
+        };
         assert!(
             eye.y >= ground + GROUND_CLEARANCE,
             "eye {eye} ground {ground}"
@@ -715,6 +742,22 @@ mod tests {
         s.scene_view.camera.set_view(above, glam::Quat::IDENTITY);
         keep_view_above_ground(&mut s);
         assert!((s.scene_view.camera.position() - above).length() < 1e-3);
+    }
+
+    /// A Save As that can't write (here: the target is a folder) keeps the scene on its old
+    /// file, so the next Save doesn't go to the failed path.
+    #[test]
+    fn a_failed_save_as_keeps_the_old_path() {
+        let mut s = state("failed_save_as");
+        assert!(write(&mut s, 0, "Assets/Scenes/Level.scene"));
+        std::fs::create_dir_all(s.project.root.join("Assets/Scenes/Blocked.scene/x")).unwrap();
+        assert!(!write(&mut s, 0, "Assets/Scenes/Blocked.scene"));
+        assert_eq!(
+            s.scene.scene_path(0).as_deref(),
+            Some("Assets/Scenes/Level.scene")
+        );
+        assert_eq!(s.scene.name, "Level");
+        let _ = std::fs::remove_dir_all(&s.project.root);
     }
 
     #[test]

@@ -28,7 +28,7 @@ use mlua::{
     Variadic,
 };
 
-use super::api::{LGameObject, LVec3, with_world};
+use super::api::{LGameObject, LVec3, alive, with_world};
 use super::{LogKind, Request, ScriptHost, World};
 use crate::network::interpolation::Snapshot;
 use crate::network::protocol::{Msg, SpawnMsg, SpawnSource, TransformMsg, VarChange};
@@ -610,7 +610,7 @@ fn place(w: &mut World, e: Entity, snap: &Snapshot, settings: &NetworkTransform)
         w.scene.set_transform(e, t);
     }
     if w.physics.has_body(e) {
-        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
 }
@@ -661,6 +661,9 @@ fn rpc_call(
     let plan = with_world(lua, |w| -> std::result::Result<RpcPlan, String> {
         if !w.network.is_running() {
             return Err("networking is not running".into());
+        }
+        if !w.scene.contains(e) {
+            return Err("object was destroyed".into());
         }
         let name = w.scene.name(e);
         let id = w
@@ -968,6 +971,7 @@ impl UserData for LNetwork {
                         )?,
                         other => {
                             let e = entity_arg(other)?;
+                            alive(w, e)?;
                             if let Some(p) = position {
                                 w.scene.set_world_position(e, p.0);
                             }
@@ -1232,13 +1236,14 @@ impl UserData for LNetworkTransform {
             "Teleport",
             |lua, n, (pos, euler): (LVec3, Option<LVec3>)| {
                 with_world(lua, |w| {
+                    alive(w, n.0)?;
                     w.scene.set_world_position(n.0, pos.0);
                     if let Some(r) = euler {
                         w.scene
                             .set_world_rotation(n.0, crate::camera::euler_to_quat(r.0));
                     }
                     if w.physics.has_body(n.0) {
-                        let (_, rot, p) = w.scene.world_matrix(n.0).to_scale_rotation_translation();
+                        let (_, rot, p) = w.scene.world_parts(n.0);
                         w.physics.teleport(n.0, p, rot);
                     }
                     if let Some(id) = w.network.by_entity.get(&n.0).copied()
@@ -1250,7 +1255,8 @@ impl UserData for LNetworkTransform {
                     {
                         ts.last_sent = None;
                     }
-                })
+                    Ok(())
+                })?
             },
         );
     }

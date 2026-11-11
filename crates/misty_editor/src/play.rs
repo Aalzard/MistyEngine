@@ -18,9 +18,25 @@ pub struct PlaySession {
     selection: Selection,
     undo: UndoStack,
     dirty: bool,
+    /// Terrain data from before its first edit in Play mode (Inspector buttons, settings):
+    /// put back on Stop, like the scene.
+    terrains: Vec<crate::terrain_tools::TerrainSnapshot>,
 }
 
 impl PlaySession {
+    /// Keep `path`'s terrain data as it was before its first edit while playing.
+    pub fn remember_terrain(&mut self, path: &str) {
+        if self.terrains.iter().any(|t| t.path == path) {
+            return;
+        }
+        if let Some((data, _)) = misty_engine::terrain::store::get(path) {
+            self.terrains.push(crate::terrain_tools::TerrainSnapshot {
+                path: path.to_owned(),
+                data: (*data).clone(),
+            });
+        }
+    }
+
     /// The scene as it was when Play started (Multiplayer Play Mode's players load it).
     pub fn edit_scene(&self) -> &Scene {
         &self.scene
@@ -47,6 +63,7 @@ pub fn start(s: &mut EditorState) {
         selection: s.selection.clone(),
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
+        terrains: Vec::new(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -97,6 +114,9 @@ pub fn stop(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
     s.scene_dirty = session.dirty;
+    for t in session.terrains {
+        misty_engine::terrain::store::insert(&t.path, t.data);
+    }
     // Scripts may have changed the text scale or colour filter: back to Player Settings.
     crate::project_settings::install_accessibility(s);
     s.play = PlayState::Edit;

@@ -177,6 +177,26 @@ impl AudioMixer {
                 g.parent = Some(MASTER);
             }
         }
+        // Parent loops (A under B under A) never reach Master: such groups vanished from the
+        // Mixer window's tree. Hang each loop's group under Master.
+        for i in 1..self.groups.len() {
+            let mut seen = vec![self.groups[i].id];
+            let mut cur = self.groups[i].parent;
+            while let Some(p) = cur
+                && p != MASTER
+            {
+                if seen.contains(&p) {
+                    self.groups[i].parent = Some(MASTER);
+                    break;
+                }
+                seen.push(p);
+                cur = self
+                    .groups
+                    .iter()
+                    .find(|g| g.id == p)
+                    .and_then(|g| g.parent);
+            }
+        }
         if self.snapshots.is_empty() {
             self.snapshots = AudioMixer::default().snapshots;
         }
@@ -725,5 +745,19 @@ mod tests {
         assert_eq!((m.snapshots.len(), m.start_snapshot), (1, 0));
         assert_eq!(m.next_id, 5);
         assert!(is_mixer("Assets/Audio/Main.MIXER") && !is_mixer("a.wav"));
+    }
+
+    /// Groups whose parents loop (hand-edited file) hang under Master after loading, so the
+    /// Mixer window's tree shows them.
+    #[test]
+    fn parent_loops_are_broken() {
+        let mut m = AudioMixer::default();
+        let a = m.add_group(MASTER, "A");
+        let b = m.add_group(a, "B");
+        m.groups.iter_mut().find(|g| g.id == a).unwrap().parent = Some(b);
+        m.sanitize();
+        let ids: Vec<u32> = m.tree().into_iter().map(|(g, _)| g).collect();
+        assert!(ids.contains(&a) && ids.contains(&b), "{ids:?}");
+        assert!(m.path(b).starts_with(&m.path(MASTER)));
     }
 }

@@ -9,7 +9,7 @@ use glam::{IVec2, Vec3};
 use hecs::Entity;
 use mlua::{FromLua, Lua, Result, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
-use super::api::{LGameObject, LVec3, with_world};
+use super::api::{LGameObject, LVec3, alive, with_world};
 use super::ui_api::{LColor, get, set};
 use crate::light2d::Light2D;
 use crate::tilemap::{self, TileTransform, Tilemap};
@@ -88,26 +88,31 @@ impl UserData for LTilemap {
         });
         m.add_method("WorldToCell", |lua, t, p: LVec3| {
             with_world(lua, |w| {
-                cell_value(tilemap::world_to_cell(&w.scene, t.0, p.0))
-            })
+                alive(w, t.0)?;
+                Ok(cell_value(tilemap::world_to_cell(&w.scene, t.0, p.0)))
+            })?
         });
         // The cell's lower-left corner, like the reference API (the centre is
         // GetCellCenterWorld).
         m.add_method("CellToWorld", |lua, t, args: Variadic<Value>| {
             let (c, _) = cell_args(lua, &args)?;
             with_world(lua, |w| {
+                alive(w, t.0)?;
                 let g = tilemap::grid_of(&w.scene, t.0);
                 let corner = g.cell_center(c) - g.cell_size * 0.5;
-                LVec3(
+                Ok(LVec3(
                     w.scene
                         .world_matrix(t.0)
                         .transform_point3(corner.extend(0.0)),
-                )
-            })
+                ))
+            })?
         });
         m.add_method("GetCellCenterWorld", |lua, t, args: Variadic<Value>| {
             let (c, _) = cell_args(lua, &args)?;
-            with_world(lua, |w| LVec3(tilemap::cell_to_world(&w.scene, t.0, c)))
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                Ok(LVec3(tilemap::cell_to_world(&w.scene, t.0, c)))
+            })?
         });
     }
 }

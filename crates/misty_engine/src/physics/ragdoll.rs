@@ -620,8 +620,12 @@ impl Physics {
             let from = bones
                 .iter()
                 .map(|b| {
-                    let t = scene.transform(*b);
-                    (t.position, t.rotation)
+                    // A bone destroyed while the ragdoll played has no pose to blend from
+                    // (the blend skips it).
+                    scene
+                        .world
+                        .get::<&crate::scene::Transform>(*b)
+                        .map_or((Vec3::ZERO, Quat::IDENTITY), |t| (t.position, t.rotation))
                 })
                 .collect();
             for b in &bones {

@@ -388,7 +388,9 @@ impl ParticleEmitter {
 
     /// Emit `n` particles now, whatever the play state (up to Max Particles).
     pub fn emit(&mut self, system: &ParticleSystem, world: &Mat4, n: u32) {
-        for _ in 0..n {
+        // No more tries than free slots: `Emit(4294967295)` spun 4 billion times.
+        let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, None);
         }
     }
@@ -402,7 +404,8 @@ impl ParticleEmitter {
         n: u32,
         inherit: Inherit,
     ) {
-        for _ in 0..n {
+        let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, Some((at, inherit)));
         }
     }

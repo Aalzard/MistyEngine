@@ -100,3 +100,69 @@ fn lua_paints_tiles_and_drives_2d_lights() {
     let l = scene.world.get::<&Light2D>(torch).unwrap();
     assert_eq!((l.intensity, l.color), (2.5, [1.0, 0.5, 0.0]));
 }
+
+/// A Tilemap handle kept after `Destroy`: the cell ↔ world methods raise a Lua error instead
+/// of panicking.
+#[test]
+fn tilemap_of_a_destroyed_object_errors_in_lua() {
+    let src = r#"
+local Keeper = { frames = 0 }
+local function check(name, f)
+    local ok, err = pcall(f)
+    Debug.Log(name, ok, string.find(tostring(err), "destroyed", 1, true) ~= nil)
+end
+function Keeper:Start()
+    local go = GameObject.Find("Tilemap")
+    self.map = go:GetComponent("Tilemap")
+    Destroy(go)
+end
+function Keeper:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local map = self.map
+        check("WorldToCell", function() return map:WorldToCell(Vector3.new(1, 2, 0)) end)
+        check("CellToWorld", function() return map:CellToWorld(1, 2) end)
+        check("GetCellCenterWorld", function() return map:GetCellCenterWorld(1, 2) end)
+    end
+end
+return Keeper
+"#;
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("misty_tilemap_dead_{n}"));
+    std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+    std::fs::write(root.join("Assets/Scripts/Keeper.lua"), src).unwrap();
+    let mut scene = Scene::new("Dead Tiles");
+    let grid = scene.spawn("Grid", None);
+    scene.add(grid, Grid::default());
+    let tm = scene.spawn("Tilemap", Some(grid));
+    scene.add(tm, Tilemap::default());
+    let keeper = scene.spawn("Keeper", None);
+    scene.add(
+        keeper,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/Keeper.lua".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root.clone());
+    let mut time = Time::default();
+    for _ in 0..5 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+    }
+    let logs: Vec<String> = host.take_logs().into_iter().map(|(_, t)| t).collect();
+    assert!(!scene.contains(tm));
+    for name in ["WorldToCell", "CellToWorld", "GetCellCenterWorld"] {
+        assert!(
+            logs.contains(&format!("{name} false true")),
+            "{name}: {logs:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
