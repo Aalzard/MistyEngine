@@ -1823,121 +1823,121 @@ Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeathe
 
 ### `Weather.ClearState([seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Hand the weather back to the Weather volumes and their timelines
 
 ### `Weather.GetPuddles()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Puddle fill at the camera (0–1)
 
 ### `Weather.GetRain()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Rain intensity at the camera (0–1)
 
 ### `Weather.GetSnow()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Snow intensity at the camera (0–1)
 
 ### `Weather.GetSnowCover()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Snow cover at the camera (0–1)
 
 ### `Weather.GetState()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Name of the state the weather is closest to
 
 ### `Weather.GetVisibility()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 How far you can see through the rain or snow (m)
 
 ### `Weather.GetWetness()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Surface wetness at the camera (0–1)
 
 ### `Weather.GetWind()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Wind at the camera with gusts (Vector3, m/s)
 
 ### `Weather.IsScripted()`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Whether a script is holding the weather (SetState until ClearState)
 
 ### `Weather.SetIntensity(intensity [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 How hard the current rain or snow falls (0–1)
 
 ### `Weather.SetLightning(perMinute [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Lightning strikes per minute (0 = none)
 
 ### `Weather.SetRain(intensity [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Rain from 0 (none) to 1 (downpour)
 
 ### `Weather.SetSnow(intensity [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Snow from 0 (none) to 1 (blizzard)
 
 ### `Weather.SetSnowCover(value)`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Set snow cover everywhere (0–1)
 
 ### `Weather.SetState(name [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Blend to a weather state ("Rain", "HeavyRain", "Thunderstorm", "Snow", "Blizzard"…); false for an unknown name
 
 ### `Weather.SetWetness(value)`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Set surface wetness everywhere (0–1)
 
 ### `Weather.SetWind(degrees, speed [, seconds])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 Wind direction (clockwise from +Z) and speed in m/s
 
 ### `Weather.Strike([position [, intensity]])`
 
-*function*
+*function* · source: `weather_api.rs`
 
 A lightning strike now (thunder follows by distance / 343 m/s)
 
 ### `Weather.states`
 
-*property*
+*property* · source: `weather_api.rs`
 
 The state names, for a dropdown
 
