@@ -6,7 +6,6 @@ use egui::{Color32, RichText, Ui};
 use misty_engine::assets::Material;
 use misty_engine::shader_asset::{self, Blend, Cull, PropertyKind, PropertyValue, ShaderModel};
 
-use super::slots::texture_slot;
 use crate::theme;
 
 fn file_stem(path: &str) -> String {
@@ -66,8 +65,34 @@ fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     changed
 }
 
-/// Property rows of a `.shader` material (inside the material's grid).
+/// Property rows of a `.shader` material without the editor state (tests of the property
+/// list): texture properties get the plain dropdown.
+#[cfg(test)]
 pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> bool {
+    custom_rows(ui, id, m, &mut |ui, id, label, tip, t| {
+        ui.label(label).on_hover_text(tip);
+        super::slots::texture_slot(ui, id, t, textures)
+    })
+}
+
+/// Property rows of a `.shader` material in the material's Properties view: texture properties
+/// get the square slot at the left of their name, like the Standard shader's maps.
+pub fn material_fields(
+    ui: &mut Ui,
+    state: &mut crate::state::EditorState,
+    id: &str,
+    m: &mut Material,
+) -> bool {
+    custom_rows(ui, id, m, &mut |ui, id, label, tip, t| {
+        super::texture_square::map_label(ui, state, id, label, tip, t)
+    })
+}
+
+/// Draws a texture property's row (label cell and value cell, not the row end): the grid, the
+/// slot id, the property's name and tooltip, its value. True when the texture changed.
+type TextureRow<'a> = dyn FnMut(&mut Ui, &str, &str, &str, &mut Option<String>) -> bool + 'a;
+
+fn custom_rows(ui: &mut Ui, id: &str, m: &mut Material, texture_row: &mut TextureRow<'_>) -> bool {
     let asset = match shader_asset::load(&m.shader) {
         Ok(a) => a,
         Err(e) => {
@@ -98,7 +123,9 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
     }
     for p in &asset.properties {
         let tip = p.tooltip.as_deref().unwrap_or(&p.name);
-        ui.label(&p.display).on_hover_text(tip);
+        if !matches!(p.default, PropertyValue::Texture(_)) {
+            ui.label(&p.display).on_hover_text(tip);
+        }
         let mut value = m
             .properties
             .get(&p.name)
@@ -135,7 +162,7 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
                 .inner
             }
             (PropertyValue::Texture(t), _) => {
-                texture_slot(ui, &format!("{id}_{}", p.name), t, textures)
+                texture_row(ui, &format!("{id}_{}", p.name), &p.display, tip, t)
             }
         };
         ui.end_row();
@@ -176,7 +203,6 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
         return ch;
     }
     let s = asset.settings;
-    ui.label("Render Queue");
     let blend = match s.blend {
         Blend::Off => "Opaque",
         Blend::Alpha => "Alpha blend",
@@ -192,11 +218,10 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
         ShaderModel::Surface => "Lit",
         ShaderModel::Unlit => "Unlit",
     };
-    ui.label(RichText::new(format!("From Shader  {}", s.queue)).color(theme::TEXT_DIM))
-        .on_hover_text(format!(
-            "{model}, {blend}, {cull}, depth write {}",
-            if s.zwrite { "on" } else { "off" }
-        ));
-    ui.end_row();
+    let tip = format!(
+        "{model}, {blend}, {cull}, depth write {}",
+        if s.zwrite { "on" } else { "off" }
+    );
+    super::material::render_queue_row(ui, s.queue, &tip);
     ch
 }
