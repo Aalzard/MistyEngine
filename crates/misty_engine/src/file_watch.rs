@@ -27,7 +27,10 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// Pause between two background passes over the watched files.
 pub const PASS: Duration = Duration::from_millis(200);
-/// A file nobody asked about for this long stops being watched.
+/// A file nobody asked about for this long, while other files were asked about, stops being
+/// watched. An idle editor draws no frames and asks about nothing: its files stay watched, or
+/// the first frame after a quiet spell would `stat` every one of them on the main thread
+/// (hundreds of files: seconds while the project's disk is busy).
 const FORGET: Duration = Duration::from_secs(30);
 
 /// What a `stat` says about a path (`None` from the functions below: it doesn't exist).
@@ -64,6 +67,8 @@ type Waker = Box<dyn Fn() + Send + Sync>;
 struct Watch {
     background: AtomicBool,
     entries: Mutex<HashMap<PathBuf, Entry>>,
+    /// Last time a poller asked about any path.
+    asked: Mutex<Option<Instant>>,
     waker: Mutex<Option<Waker>>,
 }
 
@@ -78,8 +83,11 @@ impl Watch {
     /// Returns true when a stamp changed (the waker was called).
     fn pass(&self) -> bool {
         let paths: Vec<PathBuf> = {
+            let asked = *self.asked.lock().unwrap_or_else(|e| e.into_inner());
             let mut map = self.entries();
-            map.retain(|_, e| e.pinned || e.used.elapsed() < FORGET);
+            map.retain(|_, e| {
+                e.pinned || asked.is_none_or(|a| a.saturating_duration_since(e.used) < FORGET)
+            });
             map.keys().cloned().collect()
         };
         let fresh: Vec<(PathBuf, Option<Meta>)> = paths
@@ -138,8 +146,10 @@ impl Watch {
         if !self.background.load(Ordering::Relaxed) {
             return metadata(path);
         }
+        let now = Instant::now();
+        *self.asked.lock().unwrap_or_else(|e| e.into_inner()) = Some(now);
         if let Some(e) = self.entries().get_mut(path) {
-            e.used = Instant::now();
+            e.used = now;
             return e.meta;
         }
         let meta = metadata(path);
@@ -301,5 +311,31 @@ mod tests {
         w.entries().get_mut(&path).unwrap().used = Instant::now() - FORGET * 2;
         w.pass();
         assert!(w.entries().is_empty());
+    }
+
+    #[test]
+    fn an_idle_editor_keeps_its_paths_watched() {
+        let w = Watch::default();
+        w.background.store(true, Ordering::Relaxed);
+        let (a, b) = (temp_file("idle_a.txt"), temp_file("idle_b.txt"));
+        w.cached(&a);
+        w.cached(&b);
+        // A quiet spell: nobody asked about anything for a long time.
+        let long_ago = Instant::now() - FORGET * 2;
+        for e in w.entries().values_mut() {
+            e.used = long_ago;
+        }
+        *w.asked.lock().unwrap() = Some(long_ago);
+        w.pass();
+        assert_eq!(
+            w.entries().len(),
+            2,
+            "nothing is forgotten while nobody asks"
+        );
+        // Frames again, asking only about one of them: the other was last used long before.
+        w.cached(&a);
+        w.pass();
+        assert_eq!(w.entries().len(), 1);
+        assert!(w.entries().contains_key(&a));
     }
 }
