@@ -102,6 +102,7 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
     }
     // Terrain data lives in the engine's store (shared with the renderer and physics).
     let root = s.project.root.clone();
+    misty_engine::profile_scope!("LiveReload.Terrains");
     for path in misty_engine::terrain::store::poll_changes() {
         reloaded.push(crate::scene_files::relative(&root, &path));
     }
