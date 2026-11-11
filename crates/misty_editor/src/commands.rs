@@ -338,6 +338,7 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         }
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::FogVolume => s.scene.add(e, misty_engine::scene::FogVolume::default()),
+        Create::Weather => s.scene.add(e, misty_engine::weather::Weather::default()),
         Create::DecalProjector => {
             // Pointing down, so it paints the ground under where it is made.
             t.set_euler(Vec3::new(90.0, 0.0, 0.0));

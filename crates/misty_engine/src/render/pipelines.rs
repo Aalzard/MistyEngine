@@ -33,6 +33,12 @@ pub(super) const MESH_SRC: &str = concat!(
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_common.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_surface.wgsl"),
     "\n",
     include_str!("screen_trace/shaders/screen_trace.wgsl")
 );
@@ -78,6 +84,12 @@ pub(super) const TERRAIN_SRC: &str = concat!(
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_common.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_surface.wgsl"),
     "\n",
     include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",
@@ -114,6 +126,12 @@ pub(super) const GRASS_SRC: &str = concat!(
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_common.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_surface.wgsl"),
     "\n",
     include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",
@@ -318,6 +336,8 @@ impl Pipelines {
         // HDRI sky: uniform, background and specular cubes, sampler (render/hdri_sky).
         view_entries.extend(super::hdri_sky::layout_entries());
         view_entries.extend(super::clouds::view_layout_entries());
+        // Weather: globals and the top-down occlusion map (render/weather).
+        view_entries.extend(super::weather::view_layout_entries());
         // (The grass visibility resolve lights blades in a compute pass, grass_vis.rs.)
         for e in &mut view_entries {
             e.visibility |= S::COMPUTE;

@@ -287,7 +287,7 @@ impl Audio {
     }
 
     /// Mixer and group id of an Output; warns once when it can't be found.
-    fn resolve_output(&mut self, output: &str) -> Option<(usize, u32)> {
+    pub(super) fn resolve_output(&mut self, output: &str) -> Option<(usize, u32)> {
         let (path, group) = split_output(output);
         let found = self.load_mixer(path).and_then(|m| {
             let g = self.mixers[m].asset.group_by_name(group)?.id;

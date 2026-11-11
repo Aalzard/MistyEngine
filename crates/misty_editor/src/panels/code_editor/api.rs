@@ -25,6 +25,7 @@ const TABLE: &str = r#"
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
 |Water||Water surface heights (buoyancy, wading)
+|Weather||Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeatherChanged)
 |Accessibility||UI text scale and colour-blind filter (for options menus)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
@@ -186,6 +187,26 @@ AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene
 Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a Vector3), nil when dry
+Weather|SetState|SetState(name [, seconds])|Blend to a weather state ("Rain", "HeavyRain", "Thunderstorm", "Snow", "Blizzard"…); false for an unknown name
+Weather|ClearState|ClearState([seconds])|Hand the weather back to the Weather volumes and their timelines
+Weather|SetRain|SetRain(intensity [, seconds])|Rain from 0 (none) to 1 (downpour)
+Weather|SetSnow|SetSnow(intensity [, seconds])|Snow from 0 (none) to 1 (blizzard)
+Weather|SetIntensity|SetIntensity(intensity [, seconds])|How hard the current rain or snow falls (0–1)
+Weather|SetWind|SetWind(degrees, speed [, seconds])|Wind direction (clockwise from +Z) and speed in m/s
+Weather|SetLightning|SetLightning(perMinute [, seconds])|Lightning strikes per minute (0 = none)
+Weather|Strike|Strike([position [, intensity]])|A lightning strike now (thunder follows by distance / 343 m/s)
+Weather|GetState|GetState()|Name of the state the weather is closest to
+Weather|GetRain|GetRain()|Rain intensity at the camera (0–1)
+Weather|GetSnow|GetSnow()|Snow intensity at the camera (0–1)
+Weather|GetWind|GetWind()|Wind at the camera with gusts (Vector3, m/s)
+Weather|GetVisibility|GetVisibility()|How far you can see through the rain or snow (m)
+Weather|GetWetness|GetWetness()|Surface wetness at the camera (0–1)
+Weather|GetPuddles|GetPuddles()|Puddle fill at the camera (0–1)
+Weather|GetSnowCover|GetSnowCover()|Snow cover at the camera (0–1)
+Weather|SetWetness|SetWetness(value)|Set surface wetness everywhere (0–1)
+Weather|SetSnowCover|SetSnowCover(value)|Set snow cover everywhere (0–1)
+Weather|IsScripted|IsScripted()|Whether a script is holding the weather (SetState until ClearState)
+Weather|states|states|The state names, for a dropdown
 Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as designed)
 Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
 Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)

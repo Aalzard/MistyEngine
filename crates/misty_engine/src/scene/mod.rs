@@ -103,6 +103,9 @@ pub struct Scene {
     next_scene_id: SceneId,
     /// Scene new root objects go into (`None` = the active scene).
     spawn_into: Option<SceneId>,
+    /// Weather runtime: clocks, timelines, wetness and lightning (not saved, see
+    /// [`crate::weather`]).
+    pub weather: crate::weather::WeatherWorld,
 }
 
 impl Default for Scene {
@@ -133,6 +136,7 @@ impl Clone for Scene {
             active: self.active,
             next_scene_id: self.next_scene_id,
             spawn_into: self.spawn_into,
+            weather: self.weather.clone(),
         }
     }
 }
@@ -150,6 +154,7 @@ impl Scene {
             active: 0,
             next_scene_id: 1,
             spawn_into: None,
+            weather: Default::default(),
         }
     }
 

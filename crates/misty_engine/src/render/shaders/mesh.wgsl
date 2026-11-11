@@ -489,8 +489,9 @@ fn coat_ambient(s: Surface, world: vec3<f32>, v: vec3<f32>, ambient: vec3<f32>, 
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
 fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
-    // Decals (render/decals) change the surface before it is lit.
-    let s = decal_surface(world, surface);
+    // Decals (render/decals) change the surface before it is lit, then the weather (wet,
+    // puddles, snow, lightning; render/weather).
+    let s = weather_surface(world, decal_surface(world, surface));
     let albedo = s.albedo;
     let metallic = clamp(s.metallic, 0.0, 1.0);
     let smoothness = clamp(s.smoothness, 0.0, 1.0);

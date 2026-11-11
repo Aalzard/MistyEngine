@@ -210,6 +210,8 @@ mod sample_volumetric_fog;
 #[cfg(test)]
 mod sample_water;
 #[cfg(test)]
+mod sample_weather;
+#[cfg(test)]
 mod sample_world_builder;
 mod saveloc;
 mod scene_camera;
@@ -259,6 +261,7 @@ mod vcs;
 mod vfx_preview;
 mod vgeo_convert;
 mod viewport;
+mod weather_preview;
 mod widgets;
 
 use std::path::{Path, PathBuf};
