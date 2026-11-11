@@ -938,12 +938,13 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         // The crown: a cup of water standing on the surface, seen from the side. It opens
         // fast, stands a moment and drops back.
         let c0 = pr.view_proj * vec4<f32>(sp.pos.xyz, 1.0);
-        if (c0.w < pr.forward.w + 0.05) {
+        // Only the bigger drops throw a crown worth seeing; the rest make droplets and a ring.
+        if (c0.w < pr.forward.w + 0.05 || own.x < 0.62) {
             return culled_splash();
         }
         let grow = 1.0 - (1.0 - min(t * 2.5, 1.0)) * (1.0 - min(t * 2.5, 1.0));
-        let h = size * (1.3 + own.y * 2.0) * grow * (1.0 - smoothstep(0.55, 1.0, t) * 0.6);
-        let w = size * (0.9 + t * 1.5);
+        let h = size * (0.9 + own.y * 1.3) * grow * (1.0 - smoothstep(0.55, 1.0, t) * 0.6);
+        let w = size * (0.6 + t * 1.0);
         // Upright on the surface, turned to the camera.
         let to_eye = normalize(pr.camera.xyz - sp.pos.xyz);
         var side = cross(n, to_eye);
@@ -960,7 +961,7 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         let p = sp.pos.xyz + side * corner.x * w + n * (corner.y * 0.5 + 0.5) * h;
         let c = pr.view_proj * vec4<f32>(p, 1.0);
         out.clip = c;
-        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(1.5, 5.0, w * ppm) * 0.85, 3.0, c.w, t);
+        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(1.5, 5.0, w * ppm) * 0.5, 3.0, c.w, t);
         out.world = sp.pos.xyz;
         return out;
     }
