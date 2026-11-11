@@ -12,13 +12,16 @@ Writes (all seamless unless noted, OpenGL normal maps, sRGB albedo):
   ``OakBarkHeight.png``.  One tile is about 1.2 m of trunk; image up is trunk up.
 * ``BirchBark*`` 2048^2: white birch with dark lenticels and black patches, same five maps.
 * ``ForestFloor*`` 2048^2: brown leaf litter, twigs and small sticks over dark soil
-  (``ForestFloor.png``, ``ForestFloorNormal.png``, ``ForestFloorHeight.png``); 3 m a tile.
+  (``ForestFloor.png``, ``ForestFloorNormal.png``, ``ForestFloorHeight.png``); 2 m a tile.
 * ``Fern*`` 2048^2 2 x 2 leaf atlas (not tiled): a fern frond in each cell entering at the
   bottom centre, straight alpha (``Fern.png``), ``FernNormal.png``, ``FernRoughness.png``,
   ``FernTranslucency.png`` (the tree leaf-atlas layout, so a ``.tree`` recipe can use it).
 * ``Groundcover*`` 2048^2 2 x 2 leaf atlas of broad-leaved woodland plants (same maps).
+* ``CreamDaisy.png``: the sample daisy's flower atlas with cream rays (needs
+  ``<SampleProject>/Assets/Flowers/Daisy.png``).
 
-All imagery is synthesised from periodic noise and analytic shapes; no source imagery is used.
+All imagery is synthesised from periodic noise and analytic shapes; no source imagery is used
+(the cream daisy recolours the project's own generated daisy).
 """
 
 from __future__ import annotations
@@ -238,77 +241,128 @@ def birch_bark(out: Path):
     save_gray(out / "BirchBarkRoughness.png", 0.55 + 0.35 * patch + 0.1 * len_mask)
 
 
-def stamp_leaf(col, height, cx, cy, length, width, angle, rgb, top, n, lobes):
-    reach = int(length) + 2
+def stamp_leaf(col, height, cx, cy, length, width, angle, rgb, top, n, lobes, curl, blotch, rng):
+    """One fallen leaf: a pointed (or lobed oak) blade, cupped across its midrib (one half
+    catches the light, the other is in its own shade), with a pale midrib, side veins, a dark
+    worn rim and blotches. Written where it lies above what is already there."""
+    reach = int(length) + 3
     ys, xs = np.mgrid[-reach:reach + 1, -reach:reach + 1].astype(np.float32)
     ca, sa = math.cos(angle), math.sin(angle)
     lx = xs * ca + ys * sa
     ly = -xs * sa + ys * ca
     t = lx / length
-    w = width * np.sqrt(np.clip(1 - t * t, 0, 1))
+    # Widest a third of the way from the stalk, tapering to a point.
+    u = np.clip((t + 1) * 0.5, 0, 1)
+    w = width * np.power(np.clip(np.sin(math.pi * np.power(u, 0.8)), 0, 1), 0.75)
     if lobes:
-        w = w * (0.8 + 0.25 * np.cos(t * 18.0))
+        w = w * (0.72 + 0.3 * np.cos(u * 26.0 + 1.0)) * (0.9 + 0.1 * np.cos(u * 61.0))
     inside = (np.abs(ly) < w) & (np.abs(t) < 1)
     if not inside.any():
         return
     py = (int(cy) + ys.astype(int)) % n
     px = (int(cx) + xs.astype(int)) % n
-    h = top + 0.04 * (1 - np.abs(ly) / np.maximum(w, 1e-3)) - 0.02 * np.abs(t)
-    vein = np.exp(-(ly / 0.8) ** 2) * 0.25
+    across = ly / np.maximum(w, 1e-3)
+    # Cupped or arched across the midrib, lifted a little at one end.
+    h = top + curl * 0.05 * (across * across - 0.4) + 0.025 * t * rng.normal()
     old = height[py, px]
     upd = inside & (h > old)
+    if not upd.any():
+        return
     height[py[upd], px[upd]] = h[upd]
-    shade = (1.0 - vein - 0.15 * np.abs(t))[upd][:, None]
-    col[py[upd], px[upd]] = np.asarray(rgb, np.float32)[None, :] * shade
+    midrib = np.exp(-(ly / 1.2) ** 2)
+    side = np.abs(np.sin((np.abs(lx) * 0.9 + np.abs(ly) * 1.1) * 0.22)) ** 24 * (np.abs(across) < 0.92)
+    rim = smooth(0.72, 1.0, np.abs(across)) * 0.3 + smooth(0.8, 1.0, np.abs(t)) * 0.25
+    half = 0.5 + 0.5 * np.tanh(across * 2.5 * np.sign(curl + 1e-3))
+    shade = (0.8 + 0.34 * half) * (1.0 - rim) * (0.78 + 0.44 * blotch[py, px])
+    shade = shade * (1.0 + 0.3 * midrib + 0.12 * side)
+    c = np.asarray(rgb, np.float32)[None, :] * shade[upd][:, None]
+    col[py[upd], px[upd]] = c
 
 
 def forest_floor(out: Path):
     n = FLOOR
     rng = np.random.default_rng(9)
+    # One tile is 2 m: a pixel is a millimetre. Dark crumbly humus underneath.
     soil_n = fbm(n, 6, 6, 5, 71)
+    crumbs = fbm(n, 220, 220, 3, 72)
     col = np.zeros((n, n, 3), np.float32)
-    col[:] = np.array([0.065, 0.048, 0.032]) * (0.7 + 0.6 * soil_n[..., None])
-    height = 0.2 * soil_n
-    leaves = 26000
-    # Dry oak and beech litter: warm browns, pale tans and a few greyed, older leaves.
-    browns = [(0.30, 0.17, 0.07), (0.24, 0.15, 0.07), (0.36, 0.22, 0.09), (0.18, 0.12, 0.06),
-              (0.28, 0.21, 0.11), (0.42, 0.27, 0.12), (0.15, 0.11, 0.06), (0.46, 0.33, 0.18),
-              (0.40, 0.32, 0.22), (0.30, 0.26, 0.20)]
+    col[:] = np.array([0.05, 0.036, 0.025]) * (0.6 + 0.5 * soil_n[..., None]) * (0.6 + 0.8 * crumbs[..., None])
+    height = 0.12 * soil_n + 0.05 * crumbs
+    blotch = fbm(n, 90, 90, 3, 74)
+    # Dry oak, beech and lime litter, 5-10 cm leaves: red-browns and warm tans, some bleached
+    # or greyed older leaves underneath, a few freshly fallen ochre ones on top.
+    browns = [(0.30, 0.14, 0.065), (0.25, 0.12, 0.06), (0.36, 0.18, 0.08), (0.20, 0.10, 0.055),
+              (0.29, 0.17, 0.09), (0.40, 0.22, 0.10), (0.17, 0.095, 0.055), (0.42, 0.28, 0.15),
+              (0.34, 0.25, 0.17), (0.27, 0.21, 0.16), (0.33, 0.13, 0.06), (0.23, 0.13, 0.07)]
+    leaves = 11000
     for k in range(leaves):
         cx, cy = rng.random() * n, rng.random() * n
-        length = 12 + rng.random() ** 1.5 * 30
-        width = length * (0.35 + rng.random() * 0.25)
-        rgb = np.array(browns[rng.integers(len(browns))]) * (0.75 + rng.random() * 0.5) * 0.72
-        rgb = rgb * np.array([1.08, 0.92, 0.85])
-        top = 0.25 + 0.7 * k / leaves
+        length = 24 + rng.random() ** 1.3 * 30
+        lobes = rng.random() < 0.45
+        width = length * ((0.5 if lobes else 0.36) + rng.random() * 0.2)
+        age = k / leaves
+        rgb = np.array(browns[rng.integers(len(browns))]) * (0.6 + rng.random() * 0.5)
+        # Older (lower) leaves are darker and greyer.
+        grey = rgb.mean()
+        rgb = (rgb + (grey - rgb) * 0.35 * (1 - age)) * (0.55 + 0.45 * age)
+        top = 0.22 + 0.62 * age + rng.random() * 0.05
         stamp_leaf(col, height, cx, cy, length, width, rng.random() * math.tau, rgb, top, n,
-                   lobes=rng.random() < 0.5)
-    # Twigs and small sticks on top.
-    img_h = np.zeros((n, n), np.float32)
-    img_c = np.zeros((n, n, 3), np.float32)
-    mask = Image.new("L", (n, n), 0)
-    dr = ImageDraw.Draw(mask)
-    for _ in range(420):
-        x, y = rng.random() * n, rng.random() * n
-        a = rng.random() * math.tau
-        length = 40 + rng.random() ** 2 * 320
-        width = 2 + rng.random() * (5 if length < 200 else 9)
-        pts = [(x, y)]
-        for s in range(6):
-            a += rng.normal() * 0.25
-            x += math.cos(a) * length / 6; y += math.sin(a) * length / 6
-            pts.append((x, y))
-        for ox in (-n, 0, n):
-            for oy in (-n, 0, n):
-                dr.line([(px + ox, py + oy) for px, py in pts], fill=255, width=int(width))
-    twig = gaussian_filter(np.asarray(mask, np.float32) / 255.0, 1.0, mode="wrap")
-    tw = twig > 0.35
-    height = np.where(tw, np.maximum(height, 1.0 + 0.1 * twig), height)
-    twig_col = np.array([0.075, 0.055, 0.04]) * (0.8 + 0.4 * fbm(n, 40, 40, 2, 73))[..., None]
+                   lobes, rng.normal() * 0.9, blotch, rng)
+    # Twigs, sticks and a few fallen branches on top: round in section, grey-brown bark.
+    tw_h = np.zeros((n, n), np.float32)
+    kinds = [(190, 30, 150, 2.0, 4.0), (40, 120, 420, 6.0, 11.0), (5, 700, 1500, 18.0, 30.0)]
+    for count, lo, hi, w0, w1 in kinds:
+        mask = Image.new("L", (n, n), 0)
+        dr = ImageDraw.Draw(mask)
+        for _ in range(count):
+            x, y = rng.random() * n, rng.random() * n
+            a = rng.random() * math.tau
+            length = lo + rng.random() ** 2 * (hi - lo)
+            width = w0 + rng.random() * (w1 - w0)
+            pts = [(x, y)]
+            steps = 8
+            for s in range(steps):
+                a += rng.normal() * 0.16
+                x += math.cos(a) * length / steps; y += math.sin(a) * length / steps
+                pts.append((x, y))
+                # A side shoot now and then.
+                if rng.random() < 0.3 and width > 3:
+                    b = a + rng.choice([-1, 1]) * (0.5 + rng.random() * 0.5)
+                    l2 = length * (0.15 + rng.random() * 0.25)
+                    for ox in (-n, 0, n):
+                        for oy in (-n, 0, n):
+                            dr.line([(x + ox, y + oy), (x + ox + math.cos(b) * l2, y + oy + math.sin(b) * l2)],
+                                    fill=255, width=max(1, int(width * 0.45)))
+            for ox in (-n, 0, n):
+                for oy in (-n, 0, n):
+                    dr.line([(px + ox, py + oy) for px, py in pts], fill=255, width=int(width), joint="curve")
+        m = np.asarray(mask, np.float32) / 255.0
+        inside = m > 0.5
+        # Round section: height from the distance to the stick's edge.
+        d = distance_transform_edt(np.pad(inside, 32, mode="wrap"))[32:-32, 32:-32]
+        r = max(w1 * 0.5, 1.0)
+        prof = np.sqrt(np.clip(1.0 - (1.0 - np.clip(d / r, 0, 1)) ** 2, 0, 1))
+        tw_h = np.maximum(tw_h, np.where(inside, (0.35 + 0.65 * min(1.0, w1 / 30.0)) * prof, 0.0))
+    tw = tw_h > 0.0
+    bark_n = value_noise(n, 30, 260, 75) * 0.6 + fbm(n, 120, 120, 2, 76) * 0.4
+    # (Lit from above: the round sticks' flanks fall into shade.)
+    twig_col = np.array([0.12, 0.09, 0.065]) * ((0.55 + 0.9 * bark_n) * (0.45 + 0.55 * tw_h))[..., None]
+    lichen = smooth(0.62, 0.75, fbm(n, 40, 40, 3, 77))
+    twig_col = twig_col + (np.array([0.24, 0.26, 0.2]) - twig_col) * (lichen * 0.4)[..., None]
+    height = np.where(tw, np.maximum(height, 0.9 + 0.5 * tw_h), height)
     col = np.where(tw[..., None], twig_col, col)
+    hmax = max(float(height.max()), 1e-3)
+    height = height / hmax
+    # Shade baked in: each leaf's edge drops a soft shadow on what lies under it, hollows are
+    # darker (the map is lit from straight above at noon, so no direction).
+    near = gaussian_filter(height, 3.0, mode="wrap")
+    wide = gaussian_filter(height, 14.0, mode="wrap")
+    ao = np.clip(1.0 - 2.6 * np.clip(near - height, 0, 1) - 1.3 * np.clip(wide - height, 0, 1), 0.3, 1.0)
+    grain = fbm(n, 400, 400, 2, 78)
+    col = col * ao[..., None] * (0.9 + 0.2 * grain[..., None]) * np.array([0.74, 0.66, 0.62])
     save_rgb(out / "ForestFloor.png", col)
-    save_normal(out / "ForestFloorNormal.png", normal_map(gaussian_filter(height, 0.7, mode="wrap"), 9.0))
-    save_gray(out / "ForestFloorHeight.png", height / max(height.max(), 1e-3))
+    save_normal(out / "ForestFloorNormal.png", normal_map(gaussian_filter(height, 0.8, mode="wrap"), 14.0))
+    save_gray(out / "ForestFloorHeight.png", height)
 
 
 def atlas_maps(out: Path, name: str, draw_cell):
@@ -387,53 +441,78 @@ def fern(out: Path):
                 dt.polygon(poly, fill=int(110 + 120 * u + rng.random() * 30))
                 dt.line([(x, y), (x + math.cos(a) * length, y + math.sin(a) * length)], fill=60, width=lw(1))
     a, t = atlas_maps(out, "Fern", cell)
-    finish_atlas(out, "Fern", a, t, light=(0.26, 0.42, 0.09), dark=(0.06, 0.13, 0.025))
+    finish_atlas(out, "Fern", a, t, light=(0.085, 0.17, 0.03), dark=(0.02, 0.05, 0.01))
 
 
 def groundcover(out: Path):
     def cell(da, dt, size, seed):
         rng = np.random.default_rng(seed)
-        # Stems from the bottom centre ending in broad, pointed leaves.
-        # Dense, overlapping broad leaves (dog's mercury, wood sorrel, young lime).
-        for _ in range(14):
-            a = -math.pi / 2 + (rng.random() - 0.5) * 2.4
-            length = size * (0.18 + rng.random() * 0.38)
+        # Stems from the bottom centre ending in broad, pointed leaves: dense, overlapping
+        # (dog's mercury, wood sorrel, young lime). The back ones are drawn first and darker.
+        count = 24
+        for i in range(count):
+            a = -math.pi / 2 + (rng.random() - 0.5) * 2.5
+            length = size * (0.1 + rng.random() * 0.42)
             sx, sy = size * 0.5, size * 0.98
             ex, ey = sx + math.cos(a) * length, sy + math.sin(a) * length
+            leaf_len = size * (0.13 + rng.random() * 0.13)
+            la = a + (rng.random() - 0.5) * 0.9
+            tx, ty = ex + math.cos(la) * leaf_len, ey + math.sin(la) * leaf_len
+            w = leaf_len * (0.36 + rng.random() * 0.12)
+            m = w + 4
+            # Whole leaves only (the cell's edge would cut them square).
+            if min(ex, tx) < m or max(ex, tx) > size - m or min(ey, ty) < m or max(ey, ty) > size - 3:
+                continue
             da.line([(sx, sy), (ex, ey)], fill=255, width=lw(3))
-            dt.line([(sx, sy), (ex, ey)], fill=80, width=lw(3))
-            leaf_len = size * (0.15 + rng.random() * 0.14)
-            la = a + (rng.random() - 0.5) * 0.8
-            w = leaf_len * 0.42
-            poly = []
+            dt.line([(sx, sy), (ex, ey)], fill=70, width=lw(3))
+            nx, ny = math.cos(la + math.pi / 2), math.sin(la + math.pi / 2)
+            mid, left, right = [], [], []
             for k in range(17):
                 v = k / 16
-                r = math.sin(math.pi * v) ** 0.8 * w
-                poly.append((ex + math.cos(la) * leaf_len * v + math.cos(la + math.pi / 2) * r,
-                             ey + math.sin(la) * leaf_len * v + math.sin(la + math.pi / 2) * r))
-            for k in range(16, -1, -1):
-                v = k / 16
-                r = math.sin(math.pi * v) ** 0.8 * w
-                poly.append((ex + math.cos(la) * leaf_len * v - math.cos(la + math.pi / 2) * r,
-                             ey + math.sin(la) * leaf_len * v - math.sin(la + math.pi / 2) * r))
-            da.polygon(poly, fill=255)
-            dt.polygon(poly, fill=int(120 + rng.random() * 110))
-            dt.line([(ex, ey), (ex + math.cos(la) * leaf_len, ey + math.sin(la) * leaf_len)], fill=90, width=lw(2))
+                # Heart-shaped: widest near the stalk, a drawn-out tip.
+                r = math.sin(math.pi * v ** 0.75) ** 0.85 * w
+                cx, cy = ex + math.cos(la) * leaf_len * v, ey + math.sin(la) * leaf_len * v
+                mid.append((cx, cy)); left.append((cx + nx * r, cy + ny * r)); right.append((cx - nx * r, cy - ny * r))
+            da.polygon(left + right[::-1], fill=255)
+            # Cupped along the midrib: one half catches the light, the other is shaded; leaves
+            # drawn later lie on top and are lighter.
+            tone = 95 + 90 * i / count + rng.random() * 40
+            dt.polygon(left + mid[::-1], fill=int(min(250, tone + 22)))
+            dt.polygon(right + mid[::-1], fill=int(tone - 14))
+            dt.line([(ex, ey), (tx, ty)], fill=int(min(255, tone + 55)), width=lw(2))
             # Side veins.
-            for k in range(1, 6):
-                v = k / 6.5
+            for k in range(1, 7):
+                v = k / 7.5
                 bx = ex + math.cos(la) * leaf_len * v
                 by = ey + math.sin(la) * leaf_len * v
-                r = math.sin(math.pi * v) ** 0.8 * w * 0.8
+                r = math.sin(math.pi * v ** 0.75) ** 0.85 * w * 0.85
                 for side in (-1, 1):
-                    va = la + side * 0.9
-                    dt.line([(bx, by), (bx + math.cos(va) * r, by + math.sin(va) * r)], fill=100, width=lw(1))
+                    va = la + side * 0.95
+                    dt.line([(bx, by), (bx + math.cos(va) * r, by + math.sin(va) * r)],
+                            fill=int(min(255, tone + 40)), width=lw(1))
     a, t = atlas_maps(out, "Groundcover", cell)
-    finish_atlas(out, "Groundcover", a, t, light=(0.22, 0.4, 0.1), dark=(0.05, 0.12, 0.03))
+    # A soft mottle so no leaf is one flat tone.
+    t = np.clip(t * (0.86 + 0.28 * fbm(ATLAS, 48, 48, 3, 91)), 0, 1)
+    finish_atlas(out, "Groundcover", a, t, light=(0.085, 0.17, 0.035), dark=(0.012, 0.035, 0.01))
+
+
+def cream_daisy(out: Path):
+    """The sample oxeye daisy's atlas (tools/flower_textures.py, ``Assets/Flowers/Daisy.png``)
+    with its white rays tinted cream: ``CreamDaisy.png`` (the other maps are the daisy's)."""
+    src = out.parent.parent / "Flowers" / "Daisy.png"
+    im = np.asarray(Image.open(src).convert("RGBA"), np.float32)
+    rgb = im[..., :3]
+    lo = rgb.min(-1); hi = rgb.max(-1)
+    # White and pale grey texels (the rays, lit and shaded), not the yellow disc or the greens.
+    white = smooth(120.0, 175.0, lo) * smooth(60.0, 30.0, hi - lo)
+    tint = np.array([1.0, 0.93, 0.66], np.float32)
+    rgb = rgb * (1.0 + (tint - 1.0) * white[..., None])
+    out_im = np.dstack([rgb, im[..., 3:]])
+    Image.fromarray((np.clip(out_im, 0, 255) + 0.5).astype(np.uint8), "RGBA").save(out / "CreamDaisy.png")
 
 
 JOBS = {"oak": oak_bark, "birch": birch_bark, "floor": forest_floor, "fern": fern,
-        "groundcover": groundcover}
+        "groundcover": groundcover, "daisy": cream_daisy}
 
 
 def main():

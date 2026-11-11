@@ -59,7 +59,7 @@ fn views() -> [View; 9] {
         view("down", 10.0, -38.0, Vec3::new(0.0, -0.7, 0.0)),
         view("treeline", 30.0, 3.0, Vec3::new(40.0, 0.0, 200.0)),
         // Inside the wood along the meadow's far edge: among the trunks, the canopy overhead.
-        view("inside", 70.0, -10.0, Vec3::new(-60.0, 0.0, 530.0)),
+        view("inside", 70.0, -8.0, Vec3::new(-60.0, 0.0, 530.0)),
         view("inside2", -25.0, 2.0, Vec3::new(-160.0, 0.0, 570.0)),
     ]
 }
@@ -111,6 +111,32 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     }
     gv.camera.position = eye;
     gv.camera.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, fwd));
+    // `MISTY_NOON_GRASS=density:500,lod:5,draw:140,width:0.05,billboards:60`: the grass (and
+    // tree rendering) with these settings (cost against look, without regenerating the terrain).
+    if let Ok(edits) = std::env::var("MISTY_NOON_GRASS") {
+        let t = &mut gv.terrains[0];
+        let mut d = (*t.data).clone();
+        for e in edits.split(',') {
+            let Some((k, v)) = e.split_once(':') else {
+                continue;
+            };
+            let Ok(v) = v.parse::<f32>() else { continue };
+            match k {
+                "density" => d.details.density = v,
+                "lod" => d.details.lod_distance = v,
+                "draw" => d.details.draw_distance = v,
+                "width" => d.details.width = v,
+                "shadows" => d.details.cast_shadows = v > 0.5,
+                "flowers" => d.flowers.lod_distance = v,
+                "billboards" => d.trees.billboard_start = v,
+                "treelod" => d.trees.lod_distance = v,
+                "shadowdetail" => d.trees.shadow_detail = v,
+                _ => eprintln!("(MISTY_NOON_GRASS: {k} unknown)"),
+            }
+        }
+        t.key = format!("{}#grass{edits}", t.key);
+        t.data = std::sync::Arc::new(d);
+    }
     // `MISTY_NOON_AE=off`: eye adaptation off (the before / after shots).
     if std::env::var("MISTY_NOON_AE").is_ok_and(|v| v == "off") {
         gv.post.auto_exposure.active = false;
@@ -118,9 +144,9 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     Some(gv)
 }
 
-/// The spot within 12 m of `p` (XZ) farthest from any tree or bush (up to 4 m clear; nearer
-/// spots win ties): inside the wood the camera stands in the open between trunks, not in a
-/// bush.
+/// The spot within 12 m of `p` (XZ) farthest from any tree or bush (up to 2.5 m clear; nearer
+/// spots win ties): inside the wood the camera stands between the trunks, a big one close by
+/// as in the reference, not in a bush.
 fn clear_spot(gv: &GameView, p: Vec3) -> Vec3 {
     let t = &gv.terrains[0];
     let d = &t.data;
@@ -145,7 +171,7 @@ fn clear_spot(gv: &GameView, p: Vec3) -> Vec3 {
                 continue;
             }
             let q = glam::Vec2::new(p.x, p.z) + o;
-            let clear = trunks.iter().map(|t| t.distance(q)).fold(4.0f32, f32::min);
+            let clear = trunks.iter().map(|t| t.distance(q)).fold(2.5f32, f32::min);
             let score = clear - 0.02 * o.length();
             if score > best.0 {
                 best = (score, Vec3::new(q.x, p.y, q.y));

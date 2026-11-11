@@ -19,8 +19,8 @@ use glam::{Quat, Vec2, Vec3};
 use misty_engine::image::{self, RgbaImage};
 use misty_engine::scene::render_settings::SunDisk;
 use misty_engine::scene::{
-    CloudPreset, Light, PostProcessVolume, Scene, Shadows, Terrain, TerrainCollider, TonemapMode,
-    Transform, WindZone,
+    CloudPreset, FogVolume, Light, PostProcessVolume, Scene, Shadows, Terrain, TerrainCollider,
+    TonemapMode, Transform, WindZone,
 };
 use misty_engine::terrain::auto_paint::{self, AutoPaintRules};
 use misty_engine::terrain::detail_layers::DetailLayer;
@@ -111,8 +111,31 @@ fn terrace(h: f32, step: f32) -> f32 {
     let t = h / step;
     let base = t.floor();
     let f = t - base;
-    let rise = smooth(0.62, 0.97, f);
+    let rise = smooth(0.7, 0.97, f);
     (base + 0.12 * f + 0.88 * rise) * step
+}
+
+/// Limestone cliffs on the hillside in the first view: (right, ahead) of the camera and radius
+/// (metres). Ledges step the slope there, the faces between them too steep for trees.
+const CLIFFS: &[(f32, f32, f32)] = &[
+    (200.0, 380.0, 60.0),
+    (150.0, 520.0, 55.0),
+    (300.0, 610.0, 90.0),
+    (420.0, 420.0, 90.0),
+    (265.0, 265.0, 60.0),
+    (520.0, 700.0, 120.0),
+];
+
+/// 0..1 inside the [`CLIFFS`] (ragged outlines, none at the hill's foot).
+fn cliff_site(x: f32, z: f32) -> f32 {
+    let p = rel(x, z);
+    let u = hill_side(x, z);
+    let mut site = 0.0f32;
+    for &(right, ahead, radius) in CLIFFS {
+        let d = p.distance(Vec2::new(right, ahead)) + 0.25 * radius * noise::fbm(x, z, 45.0, 2, 27);
+        site = site.max(smooth(radius, 0.55 * radius, d) * smooth(50.0, 100.0, u));
+    }
+    site
 }
 
 /// Height in metres at terrain-local (x, z).
@@ -132,10 +155,11 @@ fn height_m(x: f32, z: f32) -> f32 {
     let mut hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
     hill += 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u);
     // Limestone cliffs: ledges in patches on the slope.
-    let cliffs = smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
+    let mut cliffs = smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
         * smooth(140.0, 220.0, u)
         * smooth(650.0, 500.0, u)
         * smooth(1100.0, 800.0, p.y);
+    cliffs = cliffs.max(cliff_site(x, z));
     if cliffs > 0.0 {
         let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29);
         hill += (terrace(hill, step) - hill) * cliffs;
@@ -179,11 +203,9 @@ fn forest(x: f32, z: f32) -> f32 {
         * smooth(700.0, 640.0, p.y)
         * smooth(-420.0, -320.0, p.x + 60.0 * noise::fbm(x, z, 120.0, 2, 57));
     f = f.max(ahead);
-    // Woods on the far hills (their ring starts ~1.3 km out), patchy.
+    // Woods on the far hills (their ring starts ~1.3 km out): closed, blue with distance.
     let r = far_radius(p);
-    let woods = smooth(1150.0, 1350.0, r)
-        * smooth(3000.0, 2700.0, r)
-        * smooth(-0.25, -0.15, noise::fbm(x, z, 300.0, 3, 59));
+    let woods = smooth(1150.0, 1350.0, r) * smooth(3000.0, 2700.0, r);
     f = f.max(woods);
     // Behind the camera, the far treeline 600 m back.
     let behind = smooth(-560.0, -640.0, p.y + 40.0 * noise::fbm(x, z, 80.0, 2, 61))
@@ -233,7 +255,7 @@ fn grass() -> details::DetailSettings {
         draw_distance: 160.0,
         height: [0.16, 0.5],
         width: 0.04,
-        healthy_color: [0.47, 0.63, 0.19],
+        healthy_color: [0.58, 0.64, 0.2],
         dry_color: [0.66, 0.66, 0.36],
         wind_strength: 0.18,
         wind_speed: 0.9,
@@ -245,8 +267,8 @@ fn grass() -> details::DetailSettings {
         tip_dryness: 0.4,
         lod_distance: 5.8,
         patch_scale: 30.0,
-        lush_color: [0.16, 0.3, 0.07],
-        lush_amount: 0.65,
+        lush_color: [0.2, 0.3, 0.08],
+        lush_amount: 0.45,
         dry_amount: 0.45,
         color_variation: 0.5,
         height_variation: 0.75,
@@ -257,7 +279,7 @@ fn grass() -> details::DetailSettings {
         gust_strength: 0.55,
         gust_scale: 22.0,
         turbulence: 0.3,
-        depth_shading: 0.8,
+        depth_shading: 0.65,
     }
 }
 
@@ -269,25 +291,32 @@ fn flowers() -> FlowerSettings {
             // Small cream daisies, fewer buttercups: specks of cream and yellow just above
             // the tall turf (the grass reaches half a metre).
             let (amount, head) = match k.name.as_str() {
-                "Oxeye Daisy" => (1.0, 0.6),
-                "Buttercup" => (1.0, 0.75),
+                "Oxeye Daisy" => (1.0, 1.0),
+                "Buttercup" => (0.5, 1.2),
                 _ => return None,
             };
+            if k.name == "Oxeye Daisy" {
+                // Cream, not white (white petals turn blue under the open sky): the daisy's
+                // atlas tinted by tools/noon_valley_textures.py.
+                k.name = "Cream Daisy".into();
+                k.texture = nv_texture("CreamDaisy");
+            }
             k.amount = amount;
             k.head_size *= head;
-            k.height = [0.3, 0.52];
+            // Heads at the top of the tall turf (the grass reaches half a metre).
+            k.height = [0.5, 0.72];
             Some(k)
         })
         .collect();
     FlowerSettings {
         enabled: true,
         kinds,
-        density: 130.0,
-        coverage: 0.22,
-        patch_scale: 12.0,
+        density: 60.0,
+        coverage: 0.4,
+        patch_scale: 14.0,
         scattered: 0.004,
         edges: 0.3,
-        lod_distance: 45.0,
+        lod_distance: 80.0,
         map: Vec::new(),
     }
 }
@@ -383,50 +412,83 @@ fn maps(n: usize, color: &[[f32; 3]], height: &[f32], strength: f32) -> [RgbaIma
 /// Side of the generated limestone and forest floor textures in pixels (they tile).
 const TEX: usize = 1024;
 
-/// Pale weathered limestone, as a cliff face seen from the side (v = down the face): bedding
-/// planes across, joints down, blocky relief, grey water streaks under the ledges, lichen and
-/// a little moss. Albedo (sRGB), height and normal.
+/// Pale weathered limestone, as a cliff face seen from the side (v = down the face): massive
+/// beds of uneven thickness with a few ragged joints, rounded, pitted blocks, grey water
+/// streaks under the ledges, ochre stains, lichen and a little moss. Albedo (sRGB), height
+/// and normal.
 fn limestone() -> [RgbaImage; 3] {
     let n = TEX;
     let mut color = vec![[0.0f32; 3]; n * n];
     let mut height = vec![0.0f32; n * n];
+    // Bed boundaries down the tile (they wrap): uneven thicknesses.
+    let beds: Vec<f32> = {
+        let w: Vec<f32> = (0..6).map(|i| 0.5 + noise::hash(i, 1, 101)).collect();
+        let total: f32 = w.iter().sum();
+        let mut at = 0.0;
+        w.iter()
+            .map(|t| {
+                at += t / total;
+                at
+            })
+            .collect()
+    };
     for y in 0..n {
         for x in 0..n {
             let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
-            // Beds: uneven bands across, wavy.
-            let wave = tile_fbm(u, v, 3, 2, 101) * 0.08;
-            let bed_t = (v + wave) * 7.0;
-            let bed = bed_t - bed_t.floor();
-            let bed_id = bed_t.floor() as i32;
-            let bed_tone = noise::hash(bed_id.rem_euclid(7), 3, 103);
-            // Joints: vertical cracks, offset per bed.
-            let ju = u * 9.0 + bed_tone * 3.7;
-            let joint = (ju - ju.floor() - 0.5).abs();
-            let crack = smooth(0.03, 0.0, joint) * (0.6 + 0.4 * tile_noise(u, v, 40, 105));
-            let parting = smooth(0.05, 0.0, bed) + smooth(0.95, 1.0, bed) * 0.6;
-            let blocks = tile_fbm(u, v, 6, 4, 107);
-            let grain = tile_noise(u, v, 180, 109);
-            // Water streaks running down from the beds (v grows down the face).
-            let streak = (tile_fbm(u, 0.0, 24, 2, 111) - 0.45).max(0.0) * 2.5 * (1.0 - bed * 0.6);
+            // The beds dip and waver a little.
+            let wave = (tile_fbm(u, v, 3, 3, 101) - 0.5) * 0.09;
+            let vv = (v + wave).rem_euclid(1.0);
+            let bed_id = beds.iter().position(|&b| vv < b).unwrap_or(0);
+            let (top, bottom) = (
+                if bed_id == 0 { 0.0 } else { beds[bed_id - 1] },
+                beds[bed_id],
+            );
+            // 0 at the bed's top .. 1 at its bottom.
+            let bed = (vv - top) / (bottom - top);
+            let bed_tone = noise::hash(bed_id as i32, 3, 103);
+            // A few ragged joints down each bed, at its own places.
+            let mut crack = 0.0f32;
+            for j in 0..3 {
+                let ju = noise::hash(bed_id as i32, 10 + j, 105);
+                let wander = (tile_fbm(u, v, 9, 3, 106 + j as u32) - 0.5) * 0.06;
+                let d = ((u - ju + wander + 0.5).rem_euclid(1.0) - 0.5).abs();
+                crack = crack.max(smooth(0.012, 0.0, d));
+            }
+            let parting = smooth(0.06, 0.0, bed) + smooth(0.94, 1.0, bed) * 0.7;
+            let blocks = tile_fbm(u, v, 5, 5, 107);
+            let lumps = tile_fbm(u, v, 14, 3, 108);
+            let pits = smooth(0.62, 0.8, tile_fbm(u, v, 60, 2, 110));
+            let grain = tile_noise(u, v, 200, 109);
+            // Water streaks running down from the partings (v grows down the face).
+            let streak =
+                (tile_fbm(u, v * 0.15, 28, 2, 111) - 0.48).max(0.0) * 3.0 * (1.0 - bed * 0.7);
+            let stain = smooth(0.55, 0.75, tile_fbm(u, v, 4, 3, 112));
             let lichen = smooth(0.62, 0.72, tile_fbm(u, v, 10, 3, 113));
-            let moss = smooth(0.7, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.9, bed);
-            let mut c = [0.33, 0.32, 0.29].map(|k| {
-                k * (0.82 + 0.25 * bed_tone)
-                    * (0.85 + 0.3 * blocks)
-                    * (0.92 + 0.12 * grain)
-                    * (1.0 - 0.45 * crack)
-                    * (1.0 - 0.35 * parting)
-                    * (1.0 - 0.4 * streak.min(1.0))
+            let moss = smooth(0.68, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.95, bed);
+            let mut c = [0.43, 0.41, 0.365].map(|k| {
+                k * (0.84 + 0.22 * bed_tone)
+                    * (0.78 + 0.4 * blocks)
+                    * (0.9 + 0.2 * lumps)
+                    * (0.94 + 0.1 * grain)
+                    * (1.0 - 0.5 * crack)
+                    * (1.0 - 0.4 * parting)
+                    * (1.0 - 0.3 * pits)
+                    * (1.0 - 0.35 * streak.min(1.0))
             });
-            let lc = [0.33, 0.34, 0.27];
-            let mc = [0.12, 0.16, 0.06];
+            let oc = [0.42, 0.33, 0.2];
+            let lc = [0.34, 0.35, 0.28];
+            let mc = [0.1, 0.14, 0.05];
             for i in 0..3 {
-                c[i] += (lc[i] - c[i]) * lichen * 0.5;
+                c[i] += (oc[i] - c[i]) * stain * 0.3;
+                c[i] += (lc[i] - c[i]) * lichen * 0.4;
                 c[i] += (mc[i] - c[i]) * moss * 0.7;
             }
             color[y * n + x] = c;
-            height[y * n + x] = (0.55 + 0.3 * blocks + 0.05 * grain - 0.35 * crack - 0.3 * parting
-                + 0.1 * (1.0 - bed))
+            height[y * n + x] = (0.5 + 0.28 * blocks + 0.12 * lumps + 0.04 * grain
+                - 0.4 * crack
+                - 0.35 * parting
+                - 0.12 * pits
+                + 0.08 * (1.0 - bed))
                 .clamp(0.0, 1.0);
         }
     }
@@ -440,7 +502,7 @@ fn tree_path(name: &str) -> String {
 /// The valley's trees: file, recipe. 0–2 make the forest (tall, packed crowns), 3 is a bush,
 /// 4 a low-crowned tree for the forest's edges, 5 a broad lone oak of the meadow, 6 a birch
 /// among the forest trees, 7 a fern and 8 a broad-leaved groundcover plant (the forest's
-/// undergrowth).
+/// undergrowth), 9-11 the treeline wood's tall oak, beech and saplings.
 fn tree_assets() -> Vec<(String, TreeAsset)> {
     let forest_wind = TreeWind {
         trunk_bend: 0.5,
@@ -463,9 +525,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 12,
                 leaf_density: 2.1,
                 leaf_size: 1.6,
-                leaf_color: [0.88, 0.95, 0.72],
-                crown_shading: 0.85,
-                clumping: 0.75,
+                leaf_color: [0.8, 0.84, 0.6],
+                crown_shading: 1.0,
+                clumping: 0.85,
                 wind: forest_wind.clone(),
                 ..TreeAsset::oak()
             },
@@ -479,9 +541,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 crown_base: 0.45,
                 leaf_density: 2.1,
                 leaf_size: 1.5,
-                leaf_color: [0.9, 0.98, 0.74],
-                crown_shading: 0.85,
-                clumping: 0.75,
+                leaf_color: [0.84, 0.88, 0.62],
+                crown_shading: 1.0,
+                clumping: 0.85,
                 wind: forest_wind.clone(),
                 ..TreeAsset::linden()
             },
@@ -500,9 +562,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 11,
                 leaf_density: 2.2,
                 leaf_size: 1.5,
-                leaf_color: [0.8, 0.9, 0.62],
-                crown_shading: 0.85,
-                clumping: 0.75,
+                leaf_color: [0.74, 0.8, 0.54],
+                crown_shading: 1.0,
+                clumping: 0.85,
                 wind: forest_wind,
                 ..TreeAsset::oak()
             },
@@ -602,8 +664,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leaf_size: 0.62,
                 leaf_color: [1.0, 1.0, 1.0],
                 leaf_variation: 0.35,
-                translucency: 0.8,
-                crown_shading: 0.35,
+                translucency: 0.5,
+                crown_shading: 0.5,
                 wind: TreeWind {
                     trunk_bend: 0.2,
                     branch_sway: 1.4,
@@ -630,17 +692,79 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 3,
                 leaf_density: 2.6,
                 leaf_size: 0.38,
-                // Matte, shaded leaves (not glowing cards): darker tint, little light through.
-                leaf_color: [0.6, 0.66, 0.54],
+                // Matte leaves (the atlas holds their own dark greens): little light through.
+                leaf_color: [1.0, 1.0, 1.0],
                 leaf_variation: 0.45,
-                translucency: 0.15,
-                crown_shading: 0.9,
+                translucency: 0.25,
+                crown_shading: 0.6,
                 wind: TreeWind {
                     trunk_bend: 0.1,
                     branch_sway: 1.0,
                     leaf_flutter: 1.0,
                 },
                 ..with_leaves(TreeAsset::oak(), "Groundcover")
+            },
+        ),
+        // The treeline wood's own trees (the forest you walk into): tall bare trunks, high
+        // open crowns that let the sun through in flecks, and slim young trees between them.
+        (
+            tree_path("Wood Oak"),
+            TreeAsset {
+                seed: 41,
+                height: 26.0,
+                crown_shape: CrownShape::Round,
+                crown_width: 0.44,
+                crown_base: 0.55,
+                trunk_radius: 0.42,
+                leader: 0.45,
+                trunk_bend: 0.2,
+                branches: 10,
+                branch_angle: 50.0,
+                twigs: 10,
+                leaf_density: 1.05,
+                leaf_size: 1.1,
+                leaf_color: [0.86, 0.92, 0.68],
+                crown_shading: 0.6,
+                clumping: 0.5,
+                ..TreeAsset::oak()
+            },
+        ),
+        (
+            tree_path("Wood Beech"),
+            TreeAsset {
+                seed: 43,
+                height: 24.0,
+                crown_width: 0.42,
+                crown_base: 0.5,
+                trunk_radius: 0.27,
+                leader: 0.7,
+                leaf_density: 1.0,
+                leaf_size: 1.0,
+                leaf_color: [0.88, 0.96, 0.7],
+                crown_shading: 0.6,
+                clumping: 0.45,
+                ..TreeAsset::linden()
+            },
+        ),
+        (
+            tree_path("Sapling"),
+            TreeAsset {
+                seed: 45,
+                height: 9.0,
+                crown_shape: CrownShape::Oval,
+                crown_width: 0.5,
+                crown_base: 0.38,
+                trunk_radius: 0.07,
+                leader: 0.9,
+                trunk_bend: 0.45,
+                branches: 9,
+                twigs: 5,
+                leaf_density: 0.9,
+                leaf_size: 0.8,
+                leaf_color: [0.9, 0.98, 0.72],
+                crown_shading: 0.4,
+                clumping: 0.3,
+                ..TreeAsset::linden()
             },
         ),
     ];
@@ -650,7 +774,11 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
         .map(|(path, t)| {
             let species = if path.ends_with("Birch.tree") {
                 "Birch"
-            } else if path.ends_with("Fern.tree") || path.ends_with("Groundcover.tree") {
+            } else if ["Fern", "Groundcover", "Wood Beech", "Sapling"]
+                .iter()
+                .any(|n| path.ends_with(&format!("{n}.tree")))
+            {
+                // (Smooth lime bark on the beeches and saplings, the sample's own.)
                 return (path, t);
             } else {
                 "Oak"
@@ -688,6 +816,67 @@ const LONE: &[(f32, f32, u16, f32)] = &[
     (-420.0, 520.0, 5, 1.0),
 ];
 
+/// One 8 m cell of the treeline wood, the forest you walk into: tall trunks standing apart
+/// under high, open crowns (sun flecks all over the floor), pools of sun where a tree is
+/// missing, slim birches and saplings between, bushes, ferns, and carpets of broad-leaved
+/// plants in patches.
+fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2, cell: f32) {
+    let r = |salt: u32| noise::hash(ix, iz, 0x3d0f + salt);
+    let corner = Vec2::new(ix as f32, iz as f32) * cell;
+    let mut plant = |k: u32, seed: u32, prototype: u16, height: [f32; 2], width: [f32; 2]| {
+        let q = |salt: i32| noise::hash(ix * 5 + salt, iz * 9 + k as i32, seed);
+        let h = height[0] + (height[1] - height[0]) * q(3);
+        out.push(TreeInstance {
+            position: (corner + Vec2::new(q(1), q(2)) * cell) / size,
+            prototype,
+            rotation: q(4) * std::f32::consts::TAU,
+            height_scale: h,
+            width_scale: width[0] + (width[1] - width[0]) * q(5),
+            color: q(6),
+        });
+    };
+    let gap = noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.62;
+    let carpet = smooth(0.46, 0.58, noise::fbm(p.x, p.y, 21.0, 2, 67));
+    // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
+    for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
+        if !gap && noise::hash(ix + k as i32, iz, 0x51b1) < 0.45 {
+            plant(k, 0xb12c, 6, [0.55, 0.95], [0.7, 1.0]);
+        } else {
+            plant(k, 0x5a91, 11, [0.6, 1.25], [0.7, 1.1]);
+        }
+    }
+    if r(6) < if gap { 0.35 } else { 0.14 } {
+        plant(0, 0xb054, 3, [0.4, 0.7], [0.5, 0.8]);
+    }
+    // Ferns everywhere, more in the light of the gaps.
+    for k in 0..2 + (r(7) * 3.0) as u32 + if gap { 3 } else { 0 } {
+        let s = SMALL_SCALE.0;
+        plant(k, 0xfe21, 7, [0.7 * s, 1.5 * s], [0.7 * s, 1.4 * s]);
+    }
+    // Carpets of low broad-leaved plants: flat (a third of a metre high, 1.5 m across),
+    // overlapping.
+    for k in 0..(carpet * (16.0 + 10.0 * r(8))) as u32 + u32::from(r(9) < 0.5) {
+        plant(k, 0x6c07, 8, [0.26, 0.48], [0.55, 0.95]);
+    }
+    if gap || r(1) > 0.62 {
+        return;
+    }
+    let kind = match r(2) {
+        k if k < 0.42 => 9,
+        k if k < 0.75 => 10,
+        _ => 6,
+    };
+    let height = 0.85 + 0.35 * r(3);
+    out.push(TreeInstance {
+        position: p / size,
+        prototype: kind,
+        rotation: r(10) * std::f32::consts::TAU,
+        height_scale: height,
+        width_scale: (0.85 + 0.35 * r(4)) * height.powf(0.4),
+        color: r(11),
+    });
+}
+
 /// Every tree (deterministic): the forest on a jittered grid where [`forest`] says so (never
 /// on cliff faces), then the lone trees.
 fn trees(d: &TerrainData) -> Vec<TreeInstance> {
@@ -709,31 +898,13 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             if f <= 0.0 || r(3) > f * 0.97 {
                 continue;
             }
-            // Gaps in the canopy of the treeline wood ahead (sun patches on its floor): small
-            // groups of missing trees, none at the edges, on the hillside (a closed wall of
-            // crowns from the meadow) or on the far hills.
+            // The treeline wood ahead and the wood behind (not their edges, the hillside's
+            // closed wall of crowns or the far hills) are open inside: see `wood_cell`.
             let near_wood = smooth(900.0, 600.0, rel(p.x, p.y).length())
                 * smooth(0.9, 1.0, f)
                 * smooth(-10.0, -40.0, hill_side(p.x, p.y));
-            // There the trunks also stand apart (half the trees): sun reaches the floor in large
-            // patches between the crowns, and ferns and broad-leaved plants fill the light.
-            if near_wood > 0.0
-                && (noise::fbm(p.x, p.y, 28.0, 2, 63) > 0.66 - 0.18 * near_wood
-                    || r(24) < 0.5 * near_wood)
-            {
-                for k in 0..3 + (r(25) * 3.5) as u32 {
-                    let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0x9a95);
-                    let fern = q(3) < 0.65;
-                    let s = (0.9 + 0.8 * q(4)) * if fern { SMALL_SCALE.0 } else { SMALL_SCALE.1 };
-                    out.push(TreeInstance {
-                        position: (p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell) / size,
-                        prototype: if fern { 7 } else { 8 },
-                        rotation: q(5) * std::f32::consts::TAU,
-                        height_scale: s,
-                        width_scale: s * (0.85 + 0.3 * q(6)),
-                        color: q(7),
-                    });
-                }
+            if near_wood > 0.5 {
+                wood_cell(&mut out, ix, iz, p, size, cell);
                 continue;
             }
             // Far away fewer, bigger trees keep the canopy closed: the share kept falls from
@@ -744,24 +915,25 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 continue;
             }
             let grow = (1.0 / keep).sqrt().min(1.8);
+            // (The far ranges are wooded up their steep faces too: no bare turf from afar.)
             let slope = misty_engine::terrain::trees::slope_at(d, p.x, p.y);
-            if slope > 47.0 {
+            if slope > 47.0 + 14.0 * smooth(1000.0, 1400.0, dist) {
+                continue;
+            }
+            // The cliff faces stay bare rock (trees stand on the ledges between them).
+            if slope > 30.0 && cliff_site(p.x, p.y) > 0.25 {
                 continue;
             }
             // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
             let depth = wood_depth(p.x, p.y);
             let at_edge = depth < 0.6;
+            // The closed wood has a missing tree here and there: dark hollows between the
+            // sunlit crowns.
+            if !at_edge && dist < 1500.0 && noise::hash(ix, iz, 0x9a11) < 0.1 {
+                continue;
+            }
             let kind = if at_edge {
                 if r(4) < 0.5 { 3 } else { 4 }
-            } else if near_wood > 0.5 {
-                // The treeline wood: a quarter birches among the oaks, limes and beeches.
-                match r(4) {
-                    k if k < 0.3 => 0,
-                    k if k < 0.52 => 1,
-                    k if k < 0.7 => 2,
-                    k if k < 0.95 => 6,
-                    _ => 3,
-                }
             } else {
                 match r(4) {
                     k if k < 0.38 => 0,
@@ -773,12 +945,12 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             };
             // Bigger towards the far woods; edge trees a little lower.
             let edge = smooth(0.0, 0.6, f);
-            let height = (0.8 + 0.45 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45);
+            let height = (0.7 + 0.6 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45);
             // Undergrowth within 700 m: ferns and broad-leaved plants between the trunks
             // (one to three per tree, more in the light of clearings and edges), and a bush
             // for every few trees.
             if dist < 700.0 {
-                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(at_edge || near_wood > 0.5);
+                let plants = 1 + (r(17) * 2.6) as u32 + u32::from(at_edge);
                 for k in 0..plants {
                     let q = |salt: i32| noise::hash(ix * 7 + salt, iz * 5 + k as i32, 0xfe12);
                     let at = p + Vec2::new(q(1) - 0.5, q(2) - 0.5) * cell;
@@ -894,7 +1066,7 @@ fn terrain_data() -> TerrainData {
             smoothness: 0.1,
             // Sky light reaching the floor (1 = open ground): less under the canopy, so the
             // sun flecks stand out from the shade.
-            occlusion: 0.65,
+            occlusion: 1.0,
             ..Default::default()
         },
     ];
@@ -922,10 +1094,26 @@ fn terrain_data() -> TerrainData {
             let slope = misty_engine::terrain::trees::slope_at(&d, x, z);
             f *= smooth(0.55, 0.95, wood_depth(x, z)) * smooth(50.0, 44.0, slope);
         }
-        if f <= 0.0 && far <= 0.0 {
+        // The cliffs' faces are limestone whatever the rules painted.
+        let site = cliff_site(x, z);
+        let face = if site > 0.0 {
+            smooth(0.2, 0.5, site) * smooth(28.0, 38.0, misty_engine::terrain::trees::slope_at(&d, x, z))
+        } else {
+            0.0
+        };
+        if f <= 0.0 && far <= 0.0 && face <= 0.0 {
             continue;
         }
         let mut w = d.layer_weights(t);
+        if face > 0.0 {
+            let rock = (255.0 * face) as u8;
+            w[2] = w[2].max(rock);
+            let rest = 255 - w[2];
+            let others = w[0] as u32 + w[1] as u32 + w[3] as u32;
+            for i in [0, 1, 3] {
+                w[i] = (w[i] as u32 * rest as u32).checked_div(others).unwrap_or(0) as u8;
+            }
+        }
         if far > 0.0 {
             let moved = (w[2] as f32 * far).round() as u8;
             w[2] -= moved;
@@ -1060,12 +1248,12 @@ fn volume() -> PostProcessVolume {
     // (never darker than the meadow's own exposure).
     let ae = &mut v.auto_exposure;
     ae.active = true;
-    ae.limit_min = -4.5;
+    ae.limit_min = -4.0;
     ae.limit_max = 0.0;
     // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
     // brighter: the shaded forest floor reads mid-brown, not black.
-    ae.histogram_high = 80.0;
-    ae.compensation = 0.15;
+    ae.histogram_high = 70.0;
+    ae.compensation = 0.6;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
@@ -1083,11 +1271,11 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.34;
-    c.density = 0.6;
-    c.shape = 0.7;
-    c.altitude = 1500.0;
-    c.thickness = 1400.0;
+    c.coverage = 0.22;
+    c.density = 0.7;
+    c.shape = 0.75;
+    c.altitude = 1400.0;
+    c.thickness = 1100.0;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
@@ -1097,7 +1285,7 @@ fn volume() -> PostProcessVolume {
     let f = &mut v.fog;
     f.active = true;
     f.max_fog_distance = 6000.0;
-    f.attenuation_distance = 1700.0;
+    f.attenuation_distance = 1400.0;
     f.base_height = 60.0;
     f.maximum_height = 260.0;
     f.albedo = [0.62, 0.8, 1.0];
@@ -1135,6 +1323,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
         l.color = [1.0, 0.97, 0.92];
         l.intensity = 3.2;
         l.shadows = Shadows::Soft;
+        // Crisp leaf shadows: the dappled light on the forest floor.
+        l.shadow_softness = 0.35;
         l.contact_shadows = true;
         // Bright and white this high; dimmer and warmer if the sun is moved lower.
         l.intensity_from_sun_height = true;
@@ -1144,9 +1334,9 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.3, 0.36, 0.46];
+    rs.skybox.sky_tint = [0.15, 0.27, 0.42];
     rs.realtime_gi = true;
-    rs.environment_lighting.intensity = 0.9;
+    rs.environment_lighting.intensity = 1.1;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));
@@ -1160,6 +1350,23 @@ fn demo_scene(d: &TerrainData) -> Scene {
     s.add(terrain, TerrainCollider::default());
     let fx = s.spawn("Global Volume", None);
     s.add(fx, volume());
+    // Light haze between the trunks of the treeline wood: depth among the trees, and faint
+    // shafts where the sun comes through the canopy.
+    let haze = s.spawn("Forest Haze", None);
+    s.set_transform(
+        haze,
+        Transform::from_position(Vec3::new(-180.0, ground(d, -180.0, 515.0) + 12.0, 515.0)),
+    );
+    s.add(
+        haze,
+        FogVolume {
+            size: [520.0, 40.0, 390.0],
+            fog_distance: 160.0,
+            albedo: [0.82, 0.9, 1.0],
+            blend_distance: 12.0,
+            ..Default::default()
+        },
+    );
     let wind = s.spawn("Wind Zone", None);
     s.set_transform(
         wind,

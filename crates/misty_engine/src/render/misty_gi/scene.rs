@@ -338,8 +338,11 @@ impl TreeProxies {
                 Vec3::from(BARK_ALBEDO),
                 Vec3::ZERO,
             );
-            let radii =
-                Vec3::new(width * 0.5, (height - crown_base) * 0.5, width * 0.5) * CROWN_SHRINK;
+            // Thin crowns (Leaf Density under 1.3) let more sky through: a smaller proxy.
+            let thin = (a.leaf_density / 1.3).clamp(0.6, 1.0);
+            let radii = Vec3::new(width * 0.5, (height - crown_base) * 0.5, width * 0.5)
+                * CROWN_SHRINK
+                * thin;
             let leaf = Vec3::from(srgb_to_linear(a.leaf_color)) * LEAF_DARKEN;
             let crown = Instance::analytic(
                 KIND_ELLIPSOID,

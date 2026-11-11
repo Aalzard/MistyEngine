@@ -19,8 +19,8 @@
     1.0
   ],
   "leaf_variation": 0.35,
-  "translucency": 0.8,
-  "crown_shading": 0.35,
+  "translucency": 0.5,
+  "crown_shading": 0.5,
   "bark_color": [
     1.0,
     1.0,

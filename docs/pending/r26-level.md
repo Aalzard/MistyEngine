@@ -5,6 +5,25 @@ Scene content only (generator `crates/misty_editor/src/sample_noon_valley.rs`,
 Engine code stays on `r26-noon-meadow` (merge it in now and then: `git merge r26-noon-meadow`).
 Forked from `r26-noon-meadow` at 80e185bb.
 
+## Third agent (from 2026-11-11): scene and engine on this branch
+
+`r26-noon-meadow` is fully merged (24abc5b6) and finished; scene **and** engine changes for the
+NoonValley look now land here. `main` (d1703eb3: new window names, terrain Inspector redesign,
+grass tiles) was merged in 3a4a83ba; conflicts: `GrassParams` keeps both `depth` and `species`,
+the Tree Rendering section and the layer card are main's new `kit` rows plus **Shadow Detail**
+and **Occlusion** (with `tr!()`, Turkish and Arabic entries).
+
+- The target directory `D:/MistyTargets/r26-level/release` had been emptied and its `deps`
+  folder left with unreadable entries (os error 1392, NTFS): moved aside as
+  `D:/MistyTargets/r26-level/release.corrupt` (cannot be deleted without a disk check) and
+  rebuilt from scratch.
+- Another agent works on the grass engine (`r35-grass-fps`: `grass_cull.rs`, `grass_pool.rs`),
+  so grass cost is handled here with scene settings only.
+- Harness (`render/noon_valley_tests.rs`): `MISTY_NOON_GRASS=density:500,lod:5,draw:140,
+  width:0.05,shadows:0,flowers:60,billboards:60,treelod:24,shadowdetail:0.5` overrides grass
+  and tree rendering settings for a run (cost against look without regenerating); the inside
+  views stand 2.5 m from the nearest trunk (was 4 m).
+
 ## Progress log (second agent, from 2026-11-10 06:00)
 
 - Merged `r26-noon-meadow` (3a254653 = the regeneration from 80e185bb's generator), so the
