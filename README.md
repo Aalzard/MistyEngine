@@ -36,6 +36,11 @@ Misty Engine tells you when a new version is out and updates itself with one cli
 **Update** button). Windows may say "Windows protected your PC" because the app is not signed yet:
 click **More info ▸ Run anyway**.
 
+**Code signing policy:** signed Windows downloads are on the way. Free code signing provided by
+[SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+Who can sign, how a release is built and what the program sends over the network:
+[Code signing policy](docs/code-signing-policy.md).
+
 **You need:** Windows 10 or 11 (64-bit) or a 64-bit Linux (glibc 2.35 or newer, X11 or Wayland), and
 a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is coming.
 
