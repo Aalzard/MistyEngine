@@ -158,10 +158,13 @@ fn weather_noise(p: vec2<f32>) -> f32 {
 }
 
 fn weather_fbm(p: vec2<f32>) -> f32 {
-    // Each octave turned (no grid-aligned blocks).
+    // Each octave turned, and the first one bent by a slow warp: thresholded value noise
+    // otherwise shows its square cells (snow patches and puddles with straight edges).
     let r = mat2x2<f32>(0.8, 0.6, -0.6, 0.8);
-    let q = r * p * 2.13 + 7.1;
-    return weather_noise(p) * 0.55 + weather_noise(q) * 0.3 + weather_noise(r * q * 2.05 + 3.3) * 0.15;
+    let bend = vec2<f32>(weather_noise(p * 0.47 + 3.7), weather_noise(p * 0.53 + 19.2)) - 0.5;
+    let p0 = r * (p + bend * 1.6);
+    let q = r * p0 * 2.13 + 7.1;
+    return weather_noise(p0) * 0.55 + weather_noise(q) * 0.3 + weather_noise(r * q * 2.05 + 3.3) * 0.15;
 }
 
 // Settled snow on a surface (0..1) with normal `n` at `world`: on upward faces, patchy while

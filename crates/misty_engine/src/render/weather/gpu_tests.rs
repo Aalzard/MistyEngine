@@ -372,7 +372,7 @@ fn weather_screenshots() {
             Vec3::new(-12.0, 62.0, 0.0),
         );
     };
-    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 13] = [
+    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 14] = [
         ("clear", WeatherPreset::Clear, 0.0, 0.0, None),
         ("light_rain", WeatherPreset::LightRain, 0.5, 0.0, None),
         ("rain", WeatherPreset::Rain, 0.8, 0.0, None),
@@ -406,6 +406,17 @@ fn weather_screenshots() {
             }),
         ),
         ("rain_lamp_day", WeatherPreset::HeavyRain, 1.0, 0.0, Some(lamp_view)),
+        (
+            "rain_lens_drops",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                let e = s.find_by_name("Weather").unwrap();
+                let mut w = s.world.get::<&mut Weather>(e).unwrap();
+                w.effects.lens_drops = true;
+            }),
+        ),
         (
             "wet_lane_puddles",
             WeatherPreset::Rain,

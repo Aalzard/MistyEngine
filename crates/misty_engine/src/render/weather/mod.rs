@@ -81,18 +81,6 @@ const SHUTTER: f32 = 1.0 / 25.0;
 /// picture height (the lens is focused far away, so only drops within a few metres blur).
 const DEFOCUS: f32 = 0.014;
 
-/// 0 by day .. 1 at night: how little light the sun (or moon) and the sky give this frame.
-/// At night the rain, the haze and the sheets take their light from lamps and lightning.
-fn night_factor(frame: &Frame) -> f32 {
-    let sun = frame
-        .lights
-        .iter()
-        .filter(|l| l.kind == crate::scene::LightType::Directional)
-        .map(|l| l.color.iter().copied().fold(0.0, f32::max) * l.intensity)
-        .fold(0.0, f32::max);
-    1.0 - ((sun - 0.05) / 0.5).clamp(0.0, 1.0)
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
 struct RegionGpu {
@@ -140,7 +128,6 @@ struct PrecipGpu {
     misc: [f32; 4],
     bolt: [f32; 4],
     rain3: [f32; 4],
-    look: [f32; 4],
 }
 
 /// `SplashSim` in splash_sim.wgsl.
@@ -739,10 +726,9 @@ impl Renderer {
         let Some(blur) = self.weather.blur.as_mut() else {
             return;
         };
-        // Rain, splashes and lens drops show the scene through water: the blurred chain.
-        let wet = now.counts[0] + now.counts[1] > 0
-            || now.frame.effects.lens_drops
-            || (now.frame.max_rain > 0.0 && now.frame.effects.splashes);
+        // Rain, its far sheets, splashes and lens drops show the scene through water: the
+        // blurred chain.
+        let wet = now.frame.max_rain > 0.0 || now.frame.effects.lens_drops;
         if wet {
             blur.record(
                 device,
@@ -849,7 +835,6 @@ impl Renderer {
                     0.0
                 },
             ],
-            look: [night_factor(frame), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.weather.precip, 0, bytemuck::bytes_of(&u));
         u.sizes[0] = internal.0 as f32;
@@ -1304,8 +1289,8 @@ mod tests {
             std::mem::size_of::<GlobalsGpu>(),
             9 * 16 + 4 * (64 + 4 * 16)
         );
-        // Precip: 2 matrices + 16 vec4s.
-        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 16 * 16);
+        // Precip: 2 matrices + 15 vec4s.
+        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 15 * 16);
         assert_eq!(std::mem::size_of::<SplashSimGpu>(), 64 + 4 * 16);
     }
 
