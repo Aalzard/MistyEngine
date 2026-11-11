@@ -7,5 +7,6 @@ fn main() {
     embed_windows_icon(
         std::path::Path::new("../misty_editor/assets/branding/misty.ico"),
         "Misty Engine Player",
+        "misty_player.exe",
     );
 }

@@ -4,8 +4,12 @@
 // The resource uses the neutral language so a game build's own icon (written by the editor's
 // build pipeline with the neutral language too) replaces it instead of adding a second one.
 
-/// Compile `<ico>` into the package's binaries as icon resource 1 (Windows targets only).
-fn embed_windows_icon(ico: &std::path::Path, description: &str) {
+/// Compile `<ico>` into the package's binaries as icon resource 1, with the version info
+/// (Windows targets only). `original_filename` is the name cargo gives the exe.
+///
+/// The release signing checks these values (tools/release/signpath/): ProductName must stay
+/// "Misty Engine" and ProductVersion the workspace version.
+fn embed_windows_icon(ico: &std::path::Path, description: &str, original_filename: &str) {
     println!("cargo:rerun-if-changed={}", ico.display());
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
@@ -20,6 +24,7 @@ fn embed_windows_icon(ico: &std::path::Path, description: &str) {
     let version = env!("CARGO_PKG_VERSION");
     let numbers: Vec<&str> = version.split(['.', '-']).take(3).collect();
     let numeric = format!("{},0", numbers.join(","));
+    let internal_name = original_filename.trim_end_matches(".exe");
     let rc = format!(
         r#"#pragma code_page(65001)
 LANGUAGE 0, 0
@@ -39,6 +44,9 @@ VALUE "FileDescription", "{description}"
 VALUE "ProductName", "Misty Engine"
 VALUE "FileVersion", "{version}"
 VALUE "ProductVersion", "{version}"
+VALUE "InternalName", "{internal_name}"
+VALUE "OriginalFilename", "{original_filename}"
+VALUE "LegalCopyright", "Copyright (C) Misty Engine contributors. GPL-3.0-or-later with runtime exception."
 }}
 }}
 BLOCK "VarFileInfo"

@@ -1,0 +1,317 @@
+# Windows x64 release: built on a GitHub-hosted runner when a v* tag is pushed, signed through
+# SignPath (free code signing from SignPath Foundation, see docs/code-signing-policy.md) when
+# the SignPath settings below exist, and uploaded to that tag's GitHub release. Without the
+# settings the same files are built and uploaded unsigned. See docs/release.md.
+#
+# Order, so that every published file is signed and every checksum is of the final file:
+#   build -> sign MistyEngine.exe and misty_player.exe -> zip and installer from the signed exes
+#   -> sign the installer -> .sha256.txt files -> upload.
+# Each signing request waits for an approver in SignPath (two approvals per release).
+#
+# Repository settings (Settings > Secrets and variables > Actions), all optional:
+#   secret   SIGNPATH_API_TOKEN            a SignPath CI user's token (submitter). Turns signing on.
+#   variable SIGNPATH_ORGANIZATION_ID      the SignPath organization id (a secret of that name works too)
+#   variable SIGNPATH_PROJECT_SLUG         default: MistyEngine
+#   variable SIGNPATH_SIGNING_POLICY_SLUG  default: release-signing
+#   variable SIGNPATH_EXES_CONFIG_SLUG     default: executables (tools/release/signpath/executables.xml)
+#   variable SIGNPATH_INSTALLER_CONFIG_SLUG  default: installer (tools/release/signpath/installer.xml)
+#   variable SIGNPATH_WAIT_SECONDS         how long one signing request may wait for approval; default 7200
+#   variable RELEASE_CARGO_CACHE           "off" builds without the cargo cache
+#
+# "Run workflow" on a branch is a trial run: it builds and packages, keeps the files as a
+# workflow artifact and uploads nothing to a release. Give it a signing policy (for example
+# test-signing) to also try the signing steps. "Run workflow" on a v* tag repeats the release
+# upload for that tag.
+
+name: Release (Windows)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      signing_policy:
+        description: "Trial run on a branch: SignPath signing policy to try (e.g. test-signing). Empty = unsigned."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  windows-x64:
+    # GitHub-hosted: SignPath only signs open source builds whose jobs all ran on GitHub's runners.
+    runs-on: windows-latest
+    # The build plus up to two waits for a signing approval.
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID || vars.SIGNPATH_ORGANIZATION_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG || 'MistyEngine' }}
+      SIGNPATH_EXES_CONFIG_SLUG: ${{ vars.SIGNPATH_EXES_CONFIG_SLUG || 'executables' }}
+      SIGNPATH_INSTALLER_CONFIG_SLUG: ${{ vars.SIGNPATH_INSTALLER_CONFIG_SLUG || 'installer' }}
+      SIGNPATH_WAIT_SECONDS: ${{ vars.SIGNPATH_WAIT_SECONDS || '7200' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and mode
+        env:
+          HAS_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          TRIAL_POLICY: ${{ github.event.inputs.signing_policy }}
+        run: |
+          $toml = Get-Content Cargo.toml -Raw
+          if ($toml -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'No workspace version in Cargo.toml.' }
+          $version = $Matches[1]
+          $release = $env:REF_TYPE -eq 'tag'
+          if ($release -and "v$version" -ne $env:REF_NAME) {
+            Write-Output "::error::Tag $env:REF_NAME does not match the workspace version $version in Cargo.toml (the updater would keep offering the update)."
+            exit 1
+          }
+          $hasToken = $env:HAS_TOKEN -eq 'true'
+          $hasOrg = [bool]$env:SIGNPATH_ORGANIZATION_ID
+          if ($hasToken -ne $hasOrg) {
+            Write-Output "::error::SignPath is half set up: SIGNPATH_API_TOKEN and SIGNPATH_ORGANIZATION_ID must both be set, or neither."
+            exit 1
+          }
+          $policy = if ($release) { $env:RELEASE_POLICY } else { $env:TRIAL_POLICY }
+          $sign = $hasToken -and [bool]$policy
+          if (-not $release -and $policy -and -not $hasToken) {
+            Write-Output "::error::A signing policy was given, but the SignPath settings are missing."
+            exit 1
+          }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "RELEASE=$($release.ToString().ToLower())" >> $env:GITHUB_ENV
+          "SIGN=$($sign.ToString().ToLower())" >> $env:GITHUB_ENV
+          "SIGNPATH_POLICY=$policy" >> $env:GITHUB_ENV
+          "DIST=$env:GITHUB_WORKSPACE\dist" >> $env:GITHUB_ENV
+          "PKG=MistyEngine-v$version-windows-x64" >> $env:GITHUB_ENV
+          "SETUP=MistyEngine-Setup-v$version-windows-x64.exe" >> $env:GITHUB_ENV
+          $what = if ($release) { "Release $env:REF_NAME" } else { "Trial run of $env:REF_NAME (nothing is uploaded to a release)" }
+          $how = if ($sign) { "signed with the SignPath policy ``$policy``" } else { "**not signed** (SignPath is not set up)" }
+          "### Misty Engine $version for Windows`n$what, $how." >> $env:GITHUB_STEP_SUMMARY
+
+      # A draft, so the Linux workflow (release.yml) has a release to upload to while this job
+      # builds and waits for signing, and nobody is offered the update before you publish it.
+      - name: Make sure the release exists (as a draft)
+        if: env.RELEASE == 'true'
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Output "The release exists already."; exit 0 }
+          $notes = @()
+          $on = $false
+          foreach ($line in Get-Content tools/release/CHANGELOG.txt) {
+            if ($line.StartsWith("$env:VERSION - ")) { $on = $true; continue }
+            if ($on -and $line -match '^\d+\.\d+\.\d+ - ') { break }
+            if ($on -and $line -notmatch '^-+$') { $notes += $line }
+          }
+          $text = ($notes -join "`n").Trim()
+          if (-not $text) { $text = "Misty Engine $env:VERSION." }
+          if ($env:SIGN -eq 'true') {
+            # SignPath Foundation asks for the term "Code signing policy" on the download page.
+            $text += "`n`nThe Windows files are signed. Free code signing provided by SignPath.io, certificate by SignPath Foundation. Code signing policy: https://github.com/$env:GH_REPO/blob/main/docs/code-signing-policy.md"
+          }
+          [IO.File]::WriteAllText("$env:RUNNER_TEMP\notes.txt", "$text`n")
+          gh release create $env:GITHUB_REF_NAME --draft --verify-tag --title "Misty Engine $env:VERSION" --notes-file "$env:RUNNER_TEMP\notes.txt"
+          if ($LASTEXITCODE -ne 0) {
+            # Made meanwhile by hand or by the Linux workflow: fine.
+            gh release view $env:GITHUB_REF_NAME *> $null
+            if ($LASTEXITCODE -ne 0) { Write-Output "::error::Could not create the release."; exit 1 }
+          }
+          exit 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        if: vars.RELEASE_CARGO_CACHE != 'off'
+        with:
+          shared-key: windows-release
+          cache-on-failure: true
+
+      - name: Build
+        run: cargo build --release --locked -p misty_editor -p misty_player
+
+      - name: Smoke check the editor
+        run: |
+          # Command-line mode needs no window: a bad option prints the usage and exits with 2.
+          $p = Start-Process -FilePath "$env:GITHUB_WORKSPACE\target\release\misty.exe" -ArgumentList '--no-such-option' `
+            -Wait -PassThru -NoNewWindow -RedirectStandardError "$env:RUNNER_TEMP\usage.txt"
+          Get-Content "$env:RUNNER_TEMP\usage.txt"
+          if ($p.ExitCode -ne 2) { Write-Output "::error::misty.exe --no-such-option exited with $($p.ExitCode)"; exit 1 }
+
+      - name: Install Inno Setup
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          if (-not (Test-Path $iscc)) { Write-Output "::error::Inno Setup 6 not found after installing it."; exit 1 }
+
+      # --- signing pass 1: the executables ------------------------------------------------
+      - name: Collect the executables to sign
+        if: env.SIGN == 'true'
+        run: |
+          New-Item -ItemType Directory -Force "$env:DIST\unsigned-exes" | Out-Null
+          Copy-Item target\release\misty.exe "$env:DIST\unsigned-exes\MistyEngine.exe"
+          Copy-Item target\release\misty_player.exe "$env:DIST\unsigned-exes\misty_player.exe"
+
+      # SignPath takes its input from the workflow artifact, never from the runner's disk.
+      - name: Upload the unsigned executables
+        if: env.SIGN == 'true'
+        id: unsigned-exes
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-executables
+          path: dist/unsigned-exes/*.exe
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Sign the executables (waits for approval in SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_EXES_CONFIG_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-exes.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: ${{ env.SIGNPATH_WAIT_SECONDS }}
+          output-artifact-directory: dist/signed-exes
+          parameters: |
+            version: ${{ toJSON(env.VERSION) }}
+
+      - name: Check the signed executables
+        if: env.SIGN == 'true'
+        run: |
+          foreach ($exe in 'MistyEngine.exe', 'misty_player.exe') {
+            $sig = Get-AuthenticodeSignature "$env:DIST\signed-exes\$exe"
+            Write-Output "$exe  $($sig.Status)  $($sig.SignerCertificate.Subject)"
+            if (-not $sig.SignerCertificate) { Write-Output "::error::$exe came back without a signature."; exit 1 }
+            # A test certificate is not trusted by Windows; a release certificate must be.
+            if ($env:RELEASE -eq 'true' -and $sig.Status -ne 'Valid') { Write-Output "::error::The signature of $exe is $($sig.Status)."; exit 1 }
+          }
+
+      # --- the package: folder, zip, installer --------------------------------------------
+      - name: Package (signed executables)
+        if: env.SIGN == 'true'
+        run: ./tools/make_release.ps1 -ExeDir "$env:DIST\signed-exes" -Strict -OutDir $env:DIST
+
+      - name: Package (unsigned)
+        if: env.SIGN != 'true'
+        run: ./tools/make_release.ps1 -SkipBuild -TargetDir target -Strict -OutDir $env:DIST
+
+      # --- signing pass 2: the installer --------------------------------------------------
+      - name: Upload the unsigned installer
+        if: env.SIGN == 'true'
+        id: unsigned-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: dist/MistyEngine-Setup-v*-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Sign the installer (waits for approval in SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_INSTALLER_CONFIG_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: ${{ env.SIGNPATH_WAIT_SECONDS }}
+          output-artifact-directory: dist/signed-installer
+          parameters: |
+            version: ${{ toJSON(env.VERSION) }}
+
+      - name: Put the signed installer in place
+        if: env.SIGN == 'true'
+        run: |
+          $signed = "$env:DIST\signed-installer\$env:SETUP"
+          $sig = Get-AuthenticodeSignature $signed
+          Write-Output "$env:SETUP  $($sig.Status)  $($sig.SignerCertificate.Subject)"
+          if (-not $sig.SignerCertificate) { Write-Output "::error::The installer came back without a signature."; exit 1 }
+          if ($env:RELEASE -eq 'true' -and $sig.Status -ne 'Valid') { Write-Output "::error::The signature of the installer is $($sig.Status)."; exit 1 }
+          Copy-Item $signed "$env:DIST\$env:SETUP" -Force
+
+      # --- checksums last, then publish ---------------------------------------------------
+      - name: Checksums and a last look
+        run: |
+          ./tools/make_release.ps1 -HashOnly -Strict -OutDir $env:DIST
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead("$env:DIST\$env:PKG.zip")
+          try { $names = $zip.Entries | ForEach-Object FullName } finally { $zip.Dispose() }
+          foreach ($need in "$env:PKG/MistyEngine.exe", "$env:PKG/misty_player.exe", "$env:PKG/LICENSE.txt") {
+            if ($names -notcontains $need) { Write-Output "::error::$need is missing from the zip."; exit 1 }
+          }
+          $rows = @('', '| File | Size | Signature |', '| --- | --- | --- |')
+          $files = @(
+            "$env:DIST\$env:PKG\MistyEngine.exe", "$env:DIST\$env:PKG\misty_player.exe",
+            "$env:DIST\$env:SETUP", "$env:DIST\$env:PKG.zip"
+          )
+          foreach ($f in $files) {
+            $item = Get-Item $f
+            $state = if ($item.Extension -eq '.exe') {
+              $sig = Get-AuthenticodeSignature $f
+              if ($sig.SignerCertificate) { "$($sig.Status): $($sig.SignerCertificate.Subject)" } else { 'not signed' }
+            } else { '' }
+            $rows += "| $($item.Name) | {0:N1} MB | $state |" -f ($item.Length / 1MB)
+          }
+          $rows += ''
+          $rows += '```'
+          $rows += Get-Content "$env:DIST\*.sha256.txt"
+          $rows += '```'
+          $rows >> $env:GITHUB_STEP_SUMMARY
+          $rows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MistyEngine-v${{ env.VERSION }}-windows-x64
+          path: |
+            dist/MistyEngine-v*-windows-x64.zip
+            dist/MistyEngine-v*-windows-x64.zip.sha256.txt
+            dist/MistyEngine-Setup-v*-windows-x64.exe
+            dist/MistyEngine-Setup-v*-windows-x64.exe.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload to the GitHub release
+        if: env.RELEASE == 'true'
+        run: |
+          $files = @(
+            "$env:DIST\$env:PKG.zip", "$env:DIST\$env:PKG.zip.sha256.txt",
+            "$env:DIST\$env:SETUP", "$env:DIST\$env:SETUP.sha256.txt"
+          )
+          # --clobber: a re-run replaces the Windows files; the Linux files are left alone.
+          foreach ($attempt in 1..5) {
+            gh release upload $env:GITHUB_REF_NAME @files --clobber
+            if ($LASTEXITCODE -eq 0) {
+              gh release view $env:GITHUB_REF_NAME --json assets --jq .assets[].name
+              "`nUploaded to the **$env:GITHUB_REF_NAME** release. If it is still a draft, do the smoke test (docs/release.md), then publish it." >> $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+            Write-Output "Upload failed (attempt $attempt); retrying in 30 s."
+            Start-Sleep -Seconds 30
+          }
+          exit 1
