@@ -3740,3 +3740,58 @@ MCP and the renderer; the bug list, routing and status per bug are in
   API with events, generated audio, shader validation (naga) of every lit shader with the
   hook, GPU: rain and snow draw, a disabled volume changes no pixel, no snow under a roof
   (and snow there without the occlusion map); WeatherDemo matches its generator and plays.
+
+## Round 38 — Weather polish: rain that reads as water (branch r38-weather-polish)
+
+### Done (docs/pending/r38-weather-polish.md)
+- **Properties bug** (commit "Weather Properties: edits always show"): with a timeline on, the
+  runtime took its values from the timeline's states and ignored the volume's own, and a
+  script's `Weather.SetState` (WeatherDemo's keys 1–8) held the weather until
+  `Weather.ClearState`: either way presets and sliders did nothing. Now picking a preset or
+  changing any weather value turns the timeline off (its states are kept) and clears the
+  script's hold, so the edit shows on the next frame in the Edit Mode preview and in Play. A
+  notice names what is driving the weather ("Timeline is driving the weather (now: …)" with
+  Turn Timeline Off, "Script override: Blizzard" with Clear Override). Turkish and Arabic
+  strings. A timeline's Time Scale left out of a scene file loads as 1 (it loaded as 0).
+- **Rain drops are lenses, not white lines** (`precipitation.wgsl`, `vs_rain` / `fs_rain`):
+  - A drop shows the scene behind it flipped across its width, read from a small blurred
+    chain of the opaque scene (`render/weather/scene_blur.rs`: 6 levels from half size,
+    recorded only while it rains; cheaper to sample than the full-size copy read before).
+  - **Depth**: near drops are drawn larger; about half of the drops within a few metres are
+    out of focus (wide, soft, see-through), the rest sharp; further out they are thin beads;
+    far away they merge into soft streaky sheets with drifting bands.
+  - **Bead shape and motion** (what the user liked in Sleet): a shorter exposure
+    (`SHUTTER` 1/55 s at Streak Length 1), a round head thinning up its tail, every drop
+    swaying on its own small loops and carried differently by the wind, so no two lie along
+    one line; size, speed (big drops fall faster), brightness and beading differ per drop.
+  - **Light**: a thin drop carries the light around it (the widest blur level, seen through
+    the same haze as the pixel behind it), so it vanishes against the sky and shows against
+    trees; every drop has a highlight of the sky so rain shows against dark ground; glints
+    from the sun (towards it: the scattering direction was reversed in r34, which lit drops
+    looking away from the sun), lamps and lightning. A flash lasts a millisecond: it lights
+    the head of each streak only (frozen drops).
+  - Heavy rain pulls distant colour towards grey; an early frustum test skips the occlusion
+    lookups of drops outside the picture.
+- **Night storms are dark**: the test's night is a real one (sun under the horizon, r27's
+  moon and night sky); rain is lit by lamps and lightning. The flash lights the cloud base
+  in cloud shapes round the strike instead of whitening the whole sky and the haze.
+- **Splashes**: droplets on real arcs (2–5 per splash), a thin broken ring, a small crown
+  from the biggest drops only; clear water lit by the light around it; every splash differs.
+- **Snow**: the same depth of field as the rain (big soft flakes near the lens), flakes
+  smeared by wind are soft dashes instead of pills, a faster exposure, far flakes thin into
+  the haze in a gale.
+- **Wet surfaces**: the water film is uneven (patches of gloss, not one mirror); soil and
+  turf (very rough surfaces) darken but stay dull and hold fewer puddles; puddles have soft
+  edges; the noise behind puddles and snow patches no longer shows square cells or facets.
+- **Lens drops** (still optional, off by default): a few lumpy drops at a time, each a small
+  upside-down, out-of-focus view.
+- **WeatherDemo** is a lane by an oak wood: a small terrain (`Terrains/WeatherDemo.terrain`)
+  with grass and a gravel path, terrain trees from `Assets/Trees` (oak, young oak, birch),
+  rock prefabs, a timber shelter with a pitched roof and a bench, two street lamps. It
+  starts in manual (Rain; the demo cycle's states are kept with the timeline off). Keys as
+  before, plus N for night / day.
+- `weather_screenshots` takes `MISTY_WEATHER_OUT` / `MISTY_WEATHER_SHOTS`, `weather_demo`
+  takes `MISTY_WEATHER_SCENE`; tests can read the composite shaders from disk
+  (`MISTY_WEATHER_SHADERS`) to tune the look without rebuilding.
+- **GPU cost and screenshots: not measured yet** (hand-over mid-round; see
+  docs/pending/r38-weather-polish.md for the baseline numbers and the steps left).
