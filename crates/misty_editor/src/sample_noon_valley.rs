@@ -115,15 +115,16 @@ fn terrace(h: f32, step: f32) -> f32 {
     (base + 0.12 * f + 0.88 * rise) * step
 }
 
-/// Limestone cliffs on the hillside in the first view: (right, ahead) of the camera and radius
+/// Limestone cliffs on the hillside in the first view, where the hill swings across it ahead
+/// (nearer ones hide behind the slope's own flank): (right, ahead) of the camera and radius
 /// (metres). Ledges step the slope there, the faces between them too steep for trees.
 const CLIFFS: &[(f32, f32, f32)] = &[
-    (200.0, 380.0, 60.0),
-    (150.0, 520.0, 55.0),
-    (300.0, 610.0, 90.0),
+    (150.0, 800.0, 90.0),
+    (260.0, 950.0, 110.0),
+    (60.0, 1000.0, 80.0),
+    (330.0, 700.0, 90.0),
+    (200.0, 1200.0, 120.0),
     (420.0, 420.0, 90.0),
-    (265.0, 265.0, 60.0),
-    (520.0, 700.0, 120.0),
 ];
 
 /// 0..1 inside the [`CLIFFS`] (ragged outlines, none at the hill's foot).
@@ -255,7 +256,7 @@ fn grass() -> details::DetailSettings {
         draw_distance: 160.0,
         height: [0.16, 0.5],
         width: 0.04,
-        healthy_color: [0.58, 0.64, 0.2],
+        healthy_color: [0.54, 0.64, 0.2],
         dry_color: [0.66, 0.66, 0.36],
         wind_strength: 0.18,
         wind_speed: 0.9,
@@ -836,7 +837,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
         });
     };
     let gap = noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.62;
-    let carpet = smooth(0.46, 0.58, noise::fbm(p.x, p.y, 21.0, 2, 67));
+    let carpet = smooth(0.38, 0.5, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
         if !gap && noise::hash(ix + k as i32, iz, 0x51b1) < 0.45 {
@@ -855,7 +856,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
     }
     // Carpets of low broad-leaved plants: flat (a third of a metre high, 1.5 m across),
     // overlapping.
-    for k in 0..(carpet * (16.0 + 10.0 * r(8))) as u32 + u32::from(r(9) < 0.5) {
+    for k in 0..(carpet * (22.0 + 12.0 * r(8))) as u32 + u32::from(r(9) < 0.5) {
         plant(k, 0x6c07, 8, [0.26, 0.48], [0.55, 0.95]);
     }
     if gap || r(1) > 0.62 {
@@ -1067,9 +1068,8 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [2.0, 2.0],
             smoothness: 0.1,
-            // Sky light reaching the floor (1 = open ground): less under the canopy, so the
-            // sun flecks stand out from the shade.
-            occlusion: 0.35,
+            // Sky light reaching the floor (1 = open ground).
+            occlusion: 1.0,
             ..Default::default()
         },
     ];
@@ -1343,7 +1343,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
     // the Forest Floor layer's Occlusion sets the shade instead.)
     rs.realtime_gi = false;
-    rs.environment_lighting.intensity = 1.0;
+    rs.environment_lighting.intensity = 1.3;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));
@@ -1368,8 +1368,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
         haze,
         FogVolume {
             size: [520.0, 40.0, 390.0],
-            fog_distance: 160.0,
-            albedo: [0.82, 0.9, 1.0],
+            fog_distance: 220.0,
+            albedo: [0.9, 0.93, 0.96],
             blend_distance: 12.0,
             ..Default::default()
         },
