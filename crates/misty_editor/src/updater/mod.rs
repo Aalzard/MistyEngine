@@ -85,6 +85,9 @@ pub struct Updater {
     pub show_box: bool,
     /// Pretend update (`MISTY_FAKE_UPDATE`): no network, no install.
     fake: bool,
+    /// Edit ▸ Preferences ▸ Check for updates at startup (on by default). Off, [`Updater::start`]
+    /// makes no request; Help ▸ Check for Updates… still does.
+    pub check_at_startup: bool,
     ctx: Option<egui::Context>,
 }
 
@@ -107,6 +110,7 @@ impl Updater {
             cache::path(),
             std::env::current_exe().ok(),
         );
+        u.check_at_startup = crate::hub::config::check_updates_at_startup();
         if let Ok(v) = std::env::var("MISTY_FAKE_UPDATE")
             && version::Version::parse(&v).is_some()
         {
@@ -128,6 +132,7 @@ impl Updater {
             })),
             show_box: false,
             fake: false,
+            check_at_startup: true,
             ctx: None,
         }
     }
@@ -158,7 +163,8 @@ impl Updater {
         self.shared.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// On startup: clean up after a previous update and check (at most every 6 hours).
+    /// On startup: clean up after a previous update and check (at most every 6 hours, and only
+    /// while "Check for updates at startup" is on).
     pub fn start(&mut self, ctx: &egui::Context) {
         self.ctx = Some(ctx.clone());
         // Automated captures and tests never touch the network or the install folder.
@@ -176,10 +182,27 @@ impl Updater {
                 }
             });
         }
-        self.check(false);
+        self.startup_check();
     }
 
-    /// Help ▸ Check for Updates…: always asks GitHub and reports the result.
+    /// The automatic check: nothing at all (no request, no cached offer) when the user turned
+    /// "Check for updates at startup" off. Returns whether a check was asked for.
+    pub fn startup_check(&mut self) -> bool {
+        if !self.check_at_startup {
+            return false;
+        }
+        self.check(false);
+        true
+    }
+
+    /// Change and save the "Check for updates at startup" preference.
+    pub fn set_check_at_startup(&mut self, on: bool) -> Result<(), String> {
+        self.check_at_startup = on;
+        crate::hub::config::set_check_updates_at_startup(on)
+    }
+
+    /// Help ▸ Check for Updates…: always asks GitHub and reports the result (also when the
+    /// startup check is turned off).
     pub fn check_now(&mut self) {
         if self.fake {
             self.lock().announce = true;

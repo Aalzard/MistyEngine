@@ -979,6 +979,7 @@ fn prompt(ctx: &egui::Context, s: &mut EditorState) {
 fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let (mcp, project) = (&mut s.mcp, &s.project.root);
     let (ui_scale, console) = (&mut s.ui_scale, &mut s.console);
+    let updater = &mut s.updater;
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -999,6 +1000,12 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
                 && let Err(e) = ui_scale.set(v)
             {
                 console.warn(format!("UI scale not saved: {e}"));
+            }
+            let mut check = updater.check_at_startup;
+            if crate::updater::ui::startup_check_row(ui, &mut check)
+                && let Err(e) = updater.set_check_at_startup(check)
+            {
+                console.warn(format!("Update check setting not saved: {e}"));
             }
             ui.separator();
             ui.strong(tr!("External Tools"));
