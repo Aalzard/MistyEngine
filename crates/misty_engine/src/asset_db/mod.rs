@@ -14,6 +14,7 @@ mod database;
 mod guid;
 pub mod meta;
 pub mod refs;
+pub mod saver;
 #[cfg(test)]
 mod tests;
 

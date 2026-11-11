@@ -311,6 +311,14 @@ impl Material {
         let text = crate::asset_db::embed_json(&text);
         crate::asset_db::write_atomic(path, text).map_err(|e| e.to_string())
     }
+
+    /// [`Self::save`] through the background writer (see [`crate::asset_db::saver`]): for
+    /// edits that save on every change, like a slider being dragged in the Inspector.
+    pub fn save_later(&self, path: &Path) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let text = crate::asset_db::embed_json(&text);
+        crate::asset_db::saver::save_later(path, text.into_bytes()).map_err(|e| e.to_string())
+    }
 }
 
 /// Read-only asset lookups for a built game: every material under `Assets/`, loaded once.
