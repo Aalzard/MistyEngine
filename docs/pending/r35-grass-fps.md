@@ -41,8 +41,30 @@ until I reopen the scene; it also happens when I look backward after a while."
   `main-base.exe` = main d1703eb3 + harness, `v032-base.exe` = v0.3.2 + harness from the
   worktree `MistyWork\r35-v032`, target `D:/MistyTargets/r35-v032`).
 
+## Numbers
+Before (main d1703eb3 + harness, `base-main-high.log/.csv`; machine shared with other agents'
+builds, so absolute times are high; MeadowDemo, High, 1920×1080, 5 m/s):
+
+| Mark | wall ms (FPS) | GPU ms | blades held | pages | own buffers | no cull records | grass GPU MB | device MB |
+|---|---|---|---|---|---|---|---|---|
+| start | 22.3 (45) | 16.5 | 2.96 M | 2 | 0 | 0 | 354 | 1441 |
+| 500 m | 55.7 (18) | 40.7 | 10.21 M | 4 | 22 | 17 | 953 | 2041 |
+| 500 m, looking back | 49.0 (20) | 39.9 | 10.21 M | 4 | 22 | 17 | 953 | 2041 |
+| 2 km | 52.0 (19) | 40.6 | 10.21 M | 4 | 22 | 17 | 967 | 2055 |
+| 2 km, looking back | 44.8 (22) | 36.3 | 10.21 M | 4 | 22 | 17 | 967 | 2055 |
+| end (2771 m) | 37.6 (27) | 34.1 | 13.54 M | 4 | 37 | 32 | 1163 | 2251 |
+
+- Fourth page at 70 m; first chunk in a buffer of its own at 115 m (visibility buffer off);
+  first chunk without cull records at 150 m (GPU culling off for every chunk): GPU 17 → 42 ms.
+- Peak: 16.0 M blades, grass 1382 MB, device allocator 2470 MB.
+- GPU parts at 500 m: "Main: grass lit" 29.7 ms (start: Grass visibility 2.8 + shading 1.8 +
+  composite 0.5). Everything else flat: terrain 1.9 → 2.2, shadow maps 0.5 → 1.1, Misty GI,
+  clouds, TAA, GTAO, sun shafts unchanged; CPU render 4.0 → 3.7 ms; textures 294 MB throughout.
+  So not VSM, Misty GI, trees, TAA history or a CPU leak.
+
 ## Status
-- See "Numbers" below (filled in as runs finish).
+- Fix committed (3bafb96c); unit and GPU tests of the trim / pressure / pages pass.
+- Running: v0.3.2 walk (`base-v032-high`), then the walk on the fixed build.
 
 ## Next steps
 - Run the walk on the fixed build, compare; run fmt, clippy, full tests, golden shots.
