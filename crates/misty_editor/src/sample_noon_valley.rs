@@ -304,7 +304,7 @@ fn flowers() -> FlowerSettings {
             k.amount = amount;
             k.head_size *= head;
             // Heads at the top of the tall turf (the grass reaches half a metre).
-            k.height = [0.5, 0.72];
+            k.height = [0.42, 0.62];
             Some(k)
         })
         .collect();
@@ -312,7 +312,7 @@ fn flowers() -> FlowerSettings {
         enabled: true,
         kinds,
         density: 60.0,
-        coverage: 0.4,
+        coverage: 0.22,
         patch_scale: 14.0,
         scattered: 0.004,
         edges: 0.3,
@@ -662,10 +662,10 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 2,
                 leaf_density: 2.4,
                 leaf_size: 0.62,
-                leaf_color: [1.0, 1.0, 1.0],
+                leaf_color: [0.8, 0.8, 0.8],
                 leaf_variation: 0.35,
                 translucency: 0.5,
-                crown_shading: 0.5,
+                crown_shading: 0.85,
                 wind: TreeWind {
                     trunk_bend: 0.2,
                     branch_sway: 1.4,
@@ -921,7 +921,10 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 continue;
             }
             // The cliff faces stay bare rock (trees stand on the ledges between them).
-            if slope > 30.0 && cliff_site(p.x, p.y) > 0.25 {
+            // (Few trees in the middle of a cliff site at all: tall crowns on the ledges
+            // would hide the faces from the meadow.)
+            let site = cliff_site(p.x, p.y);
+            if site > 0.25 && (slope > 30.0 || (site > 0.4 && noise::hash(ix, iz, 0xc11f) > 0.15)) {
                 continue;
             }
             // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
@@ -1066,7 +1069,7 @@ fn terrain_data() -> TerrainData {
             smoothness: 0.1,
             // Sky light reaching the floor (1 = open ground): less under the canopy, so the
             // sun flecks stand out from the shade.
-            occlusion: 1.0,
+            occlusion: 0.35,
             ..Default::default()
         },
     ];
@@ -1097,7 +1100,9 @@ fn terrain_data() -> TerrainData {
         // The cliffs' faces are limestone whatever the rules painted.
         let site = cliff_site(x, z);
         let face = if site > 0.0 {
-            smooth(0.2, 0.5, site) * smooth(28.0, 38.0, misty_engine::terrain::trees::slope_at(&d, x, z))
+            // (Stony ground on the ledges too.)
+            smooth(0.2, 0.5, site)
+                * (0.45 + 0.55 * smooth(18.0, 32.0, misty_engine::terrain::trees::slope_at(&d, x, z)))
         } else {
             0.0
         };
@@ -1253,7 +1258,7 @@ fn volume() -> PostProcessVolume {
     // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
     // brighter: the shaded forest floor reads mid-brown, not black.
     ae.histogram_high = 70.0;
-    ae.compensation = 0.6;
+    ae.compensation = 0.0;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
@@ -1271,7 +1276,7 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.22;
+    c.coverage = 0.3;
     c.density = 0.7;
     c.shape = 0.75;
     c.altitude = 1400.0;
@@ -1335,8 +1340,10 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
     rs.skybox.sky_tint = [0.15, 0.27, 0.42];
-    rs.realtime_gi = true;
-    rs.environment_lighting.intensity = 1.1;
+    // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
+    // the Forest Floor layer's Occlusion sets the shade instead.)
+    rs.realtime_gi = false;
+    rs.environment_lighting.intensity = 1.0;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));
