@@ -78,15 +78,24 @@ After, first version of the fix (3bafb96c, `fix2-main-high.log/.csv`), same walk
   the room long runs need). Second version (ba5eeea2): short and long runs in pages of their
   own kind, cull records mirror the pages (one free list).
 
-## Status (after the power loss of 11 Nov, ~10:45)
-- Committed: harness b75e1da0, fix 3bafb96c, pages by kind + mirrored records ba5eeea2 (WIP).
-- `fix3.exe` in the scratch folder = ba5eeea2. Its grass GPU tests pass except two test
-  expectations fixed since (pressure rule, page count of the MeadowDemo walk).
-- Running: walk on fix3 (`fix3-main-high`), rebuild (`build4.log`).
-- Not run yet: v0.3.2 walk (`walk.sh v032-base.exe base-v032-high MISTY_WALK_SCALE=0.4`),
-  clippy on the final code, full workspace tests, golden shots, `docs/progress.md` section.
+After, final version (d646fa47, `fix4-main-high.log/.csv`): GPU 15.0 / 15.3 / 14.2 / 15.2 /
+14.1 / 14.4 ms at the six marks, 3.85-4.21 M blades (peak 4.6 M), grass 592-628 MB, device
+allocator 1679-1715 MB, 4 pages (456 MB), nothing refused or thinned. The full table is in
+`docs/progress.md` (Round 35).
 
-## Next steps
-- Compare fix3 walk with the tables above; then fmt, clippy, full tests, golden shots.
-- Found, not fixed: the editor Console keeps every message and lays out every row each frame
+v0.3.2 (`base-v032-high.log`, walk at 0.4 scale): 15.1 ms at the start, 41.3 ms after 200 m,
+39.9 ms at the end; own buffers from 115 m, no cull records from 150 m: the same fault.
+
+## Status
+- Done: harness, fix, tests, numbers before / after / v0.3.2, clippy (0 warnings), fmt,
+  `docs/progress.md` section.
+- Running or next: golden shots (`golden.log`), full workspace tests (`fulltest.log`) in
+  `D:\MistyTargets35-scratch\`.
+- The worktree `MistyWork35-v032` (v0.3.2 + harness, uncommitted, detached) and
+  `D:\MistyTargets35-v032`, `r35-grass-fps`, `r35-scratch` can be deleted when the round
+  is merged.
+
+## Found, not fixed
+- The editor Console keeps every message and lays out every row each frame
   (`panels/console.rs`): a script printing every frame slows the editor the longer it plays.
+- Pages still grow to four for 4 M blades (two kinds, each a little over one page).
