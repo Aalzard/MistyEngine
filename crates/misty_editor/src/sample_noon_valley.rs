@@ -839,7 +839,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
         });
     };
     let gap = noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.62;
-    let carpet = smooth(0.38, 0.5, noise::fbm(p.x, p.y, 21.0, 2, 67));
+    let carpet = smooth(0.28, 0.42, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
         if !gap && noise::hash(ix + k as i32, iz, 0x51b1) < 0.45 {
@@ -859,7 +859,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
     // Carpets of low broad-leaved plants: flat (a third of a metre high, 1.5 m across),
     // overlapping.
     for k in 0..(carpet * (22.0 + 12.0 * r(8))) as u32 + u32::from(r(9) < 0.5) {
-        plant(k, 0x6c07, 8, [0.26, 0.48], [0.55, 0.95]);
+        plant(k, 0x6c07, 8, [0.3, 0.55], [0.7, 1.1]);
     }
     if gap || r(1) > 0.62 {
         return;
@@ -927,7 +927,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             // (Few trees in the middle of a cliff site at all: tall crowns on the ledges
             // would hide the faces from the meadow.)
             let site = cliff_site(p.x, p.y);
-            if site > 0.25 && (slope > 30.0 || noise::hash(ix, iz, 0xc11f) > 0.12) {
+            if site > 0.12 && (slope > 30.0 || noise::hash(ix, iz, 0xc11f) > 0.12) {
                 continue;
             }
             // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
@@ -1071,7 +1071,7 @@ fn terrain_data() -> TerrainData {
             tile_size: [2.0, 2.0],
             smoothness: 0.1,
             // Sky light reaching the floor (1 = open ground).
-            occlusion: 0.7,
+            occlusion: 0.5,
             ..Default::default()
         },
     ];
@@ -1103,7 +1103,7 @@ fn terrain_data() -> TerrainData {
         let site = cliff_site(x, z);
         let face = if site > 0.0 {
             // (Stony ground on the ledges too.)
-            smooth(0.2, 0.5, site)
+            smooth(0.1, 0.35, site)
                 * (0.7 + 0.3 * smooth(18.0, 32.0, misty_engine::terrain::trees::slope_at(&d, x, z)))
         } else {
             0.0
