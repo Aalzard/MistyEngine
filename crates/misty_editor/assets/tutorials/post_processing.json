@@ -7,15 +7,15 @@
   "steps": [
     {
       "title": "Select the Effects object",
-      "text": "This scene looks plain on purpose. Click Effects in the Hierarchy. This empty object will hold the look of the scene.",
-      "targets": ["hierarchy.Effects", "panel.Hierarchy"],
+      "text": "This scene looks plain on purpose. Click Effects in the Scene Tree. This empty object will hold the look of the scene.",
+      "targets": ["hierarchy.Effects", "panel.Scene Tree"],
       "done_when": "selected:Effects",
       "demo": "select:Effects"
     },
     {
       "title": "Add a Post-process Volume",
-      "text": "In the Inspector, click Add Component, type Post and pick Post-process Volume. It changes how the camera image looks.",
-      "targets": ["inspector.add_component", "panel.Inspector"],
+      "text": "In the Properties panel, click Add Archetype, type Post and pick Post-process Volume. It changes how the camera image looks.",
+      "targets": ["inspector.add_component", "panel.Properties"],
       "done_when": "has:Post-process Volume",
       "demo": "add:Post-process Volume"
     },
@@ -75,8 +75,8 @@
       "demo": "ppv:cloud_shape"
     },
     {
-      "title": "Scene view effects",
-      "text": "This ☁ button turns fog, clouds and effects on or off in the Scene view while you work. The arrow next to it picks which ones.",
+      "title": "Editor Scene effects",
+      "text": "This ☁ button turns fog, clouds and effects on or off in the Editor Scene while you work. The arrow next to it picks which ones.",
       "targets": ["scene.effects"]
     },
     {

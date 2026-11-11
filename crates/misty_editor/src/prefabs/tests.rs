@@ -67,7 +67,7 @@ fn create_links_and_instantiate_is_undoable() {
     );
     assert!(
         s.project.entries.iter().any(|e| e.name == "Cube.prefab"),
-        "Project window shows the new asset"
+        "Asset Files shows the new asset"
     );
     assert!(
         !s.scene
@@ -91,7 +91,7 @@ fn create_links_and_instantiate_is_undoable() {
     assert_eq!(
         s.scene.world_position(e),
         s.scene_view.camera.pivot().round(),
-        "placed at the Scene view pivot"
+        "placed at the Editor Scene pivot"
     );
     assert_eq!(s.selection.active(), Some(e));
     s.undo_step();
@@ -402,7 +402,7 @@ fn prefab_mode_edits_saves_and_returns_to_the_scene() {
     let root = s.selection.active().unwrap();
     assert_eq!(s.scene.name(root), "Crate");
     // Edit in the stage: a collider on the root.
-    s.record("Add Component");
+    s.record("Add Archetype");
     s.scene.add(root, BoxCollider::default());
     assert!(s.scene_dirty);
     // Ctrl+S saves the prefab, not the scene.

@@ -129,6 +129,14 @@ fn folder_row(
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
     let selected = node.path == browser.current;
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::SelectableLabel,
+            true,
+            selected,
+            &node.name,
+        )
+    });
     let parent = !node.children.is_empty();
     tree_lines::paint_background(ui.painter(), rect, index, parent);
     if selected {
@@ -166,10 +174,11 @@ fn folder_row(
         }
     }
 
-    let renaming = browser
-        .renaming
-        .as_ref()
-        .is_some_and(|(p, _)| *p == node.path);
+    let renaming = browser.rename_in_tree
+        && browser
+            .renaming
+            .as_ref()
+            .is_some_and(|(p, _)| *p == node.path);
     let color = match (selected, parent) {
         (true, _) => Color32::WHITE,
         (false, true) => tree_lines::PARENT_TEXT,
@@ -188,12 +197,38 @@ fn folder_row(
     if locked {
         return;
     }
+    if resp.contains_pointer() {
+        browser.os_drop_folder = Some((node.path.clone(), rect));
+    }
     drop_target(&resp, &browser.root, &node.path, req);
     if depth > 0 {
         if let Some(rel) = asset_relative(&node.path) {
-            resp.dnd_set_drag_payload(super::AssetPayload(rel));
+            crate::hold_rename::drag_payload(ui, &resp, super::AssetPayload(rel));
         }
         let path = node.path.clone();
+        let before = req.actions.len();
         resp.context_menu(|ui| project_menus::item_menu(ui, &path, asset_relative(&path), req));
+        // Create ▸ on a folder in the tree makes the asset in that folder.
+        if req.actions[before..]
+            .iter()
+            .any(|a| matches!(a, crate::actions::Action::CreateAsset(_)))
+        {
+            req.create_in = Some(path.clone());
+        }
+        if req.rename.as_ref() == Some(&path) {
+            req.rename_in_tree = true;
+        }
+        // Press and hold renames the folder.
+        let hold = crate::hold_rename::check(ui, &resp);
+        crate::hold_rename::paint(ui, rect, hold);
+        if hold == crate::hold_rename::Hold::Fire {
+            req.rename = Some(node.path.clone());
+            req.rename_by_hold = true;
+            req.rename_in_tree = true;
+        }
+    } else {
+        // The Assets row: the folder menu (Create, Show in Explorer, Refresh).
+        let path = node.path.clone();
+        resp.context_menu(|ui| project_menus::folder_menu(ui, &path, req));
     }
 }

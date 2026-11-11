@@ -54,6 +54,8 @@ pub struct Hub {
     tutorial_pick: Option<&'static str>,
     /// The tutorial to start once the editor has opened `open`.
     open_tutorial: Option<String>,
+    /// Learn ▸ User Guide ▸ Read: the guide, in a window over the Hub.
+    guide: Option<crate::panels::guide::GuideView>,
     /// The process's updater (`launcher::Launcher::updater`; disabled in tests). The Hub
     /// shows its green Update button and windows, and hands it to the editor with the project.
     pub updater: crate::updater::Updater,
@@ -94,6 +96,7 @@ impl Hub {
             applied_theme: None,
             tutorials_done,
             tutorial_pick: None,
+            guide: None,
             open_tutorial: None,
             updater: crate::updater::Updater::disabled(),
         }

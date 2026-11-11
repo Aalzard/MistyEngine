@@ -98,8 +98,8 @@ it, connects to `127.0.0.1:<port>`, sends `{"token": "<token>"}` as its first li
 or closing the editor, stops listening and deletes the file.
 
 In the editor, every request runs on the main thread between frames, exactly like a menu
-command: scene edits are normal undo steps (Ctrl+Z takes back what the AI did), the Hierarchy and
-Inspector update at once, and a toast says when a client connects or disconnects.
+command: scene edits are normal undo steps (Ctrl+Z takes back what the AI did), the Scene Tree and
+Properties panel update at once, and a toast says when a client connects or disconnects.
 
 ## Tools
 
@@ -121,7 +121,7 @@ unknown or mistyped arguments are refused with the list of expected ones. Client
 | `scene.add_component` / `scene.remove_component` | By component name, or a Lua script by path |
 | `scene.set_parent` | Re-parent (keeps the world position), or move to the root |
 | `scene.delete_objects` | Delete objects and their children |
-| `scene.select` | Set the Hierarchy selection |
+| `scene.select` | Set the Scene Tree selection |
 | `scene.save` | Save changed scenes (the prefab in Prefab Mode); `path` for a scene with no file yet |
 | `scene.open` | Open a `.scene` (or `additive`); refuses over unsaved changes unless `discard_changes` |
 | `scene.component_types` | The component names `add_component` accepts |
@@ -142,15 +142,15 @@ unknown or mistyped arguments are refused with the list of expected ones. Client
 | Tool | What it does |
 |---|---|
 | `editor.get_state` | Project, scenes, Play mode, selection, undo/redo, Console counts |
-| `editor.list_menu_items` / `editor.run_menu_item` | Any menu bar command by path (`"GameObject/3D Object/Cube"`, `"Assets/Refresh"`, editor-script menu items); returns what it logged |
+| `editor.list_menu_items` / `editor.run_menu_item` | Any menu bar command by path (`"Object/3D Object/Cube"`, `"Assets/Refresh"`, editor-script menu items); returns what it logged. Older paths still run: `"GameObject/…"`, `"Component/…"`, `"Hierarchy/…"`, `"Window/General/Inspector"` and the other old window names, and `"… Virtual Geometry"` entries |
 | `editor.play` / `editor.stop` / `editor.pause` | Play mode (live editor only) |
 | `editor.read_console` | Console lines with an index; `since` reads only new ones, `level` filters |
-| `editor.screenshot` | A PNG of the Scene view or the Game view, as MCP image content |
+| `editor.screenshot` | A PNG of the Editor Scene or the Scene Viewer, as MCP image content |
 | `editor.run_tests` | The project's Lua tests (EditMode / PlayMode, `filter`), with failures |
 | `editor.build` | Build the player into a folder; returns the executable's path |
 | `editor.undo` / `editor.redo` | Undo or redo steps, the AI's or anyone's |
 
-In `--mcp` mode the Scene view screenshot uses the camera position saved with the project, and the
+In `--mcp` mode the Editor Scene screenshot uses the camera position saved with the project, and the
 renderer starts on the first screenshot (a GPU is needed; the tool says so when there is none).
 In the live editor a screenshot without a size is the view as it is on screen (without the editor
 overlays); with a size, or for a closed view, it is rendered offscreen.

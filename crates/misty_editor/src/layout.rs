@@ -54,6 +54,8 @@ pub enum Tab {
     PackageManager,
     /// Window ▸ Input ▸ Input Actions (or double-click an `.inputactions` asset).
     InputActions,
+    /// Help ▸ User Guide: the guide's chapters, rendered.
+    Guide,
     /// A tool window of an editor script (`ToolWindow(title)`), by the id of its title.
     Tool(u64),
 }
@@ -72,7 +74,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 20] = [
+    pub const ON_DEMAND: [Tab; 21] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -93,6 +95,7 @@ impl Tab {
         Tab::AssetGroups,
         Tab::PackageManager,
         Tab::InputActions,
+        Tab::Guide,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -129,6 +132,8 @@ impl Tab {
             Tab::PackageManager => Some(Tab::Scene),
             // Three columns want width, like the Package Manager.
             Tab::InputActions => Some(Tab::Scene),
+            // Reading wants width and height: it docks with the Editor Scene.
+            Tab::Guide => Some(Tab::Scene),
             // Script tools sit by the Inspector, like Lighting and Navigation.
             Tab::Tool(_) => Some(Tab::Inspector),
             _ => None,
@@ -137,11 +142,11 @@ impl Tab {
 
     pub fn title(self) -> &'static str {
         match self {
-            Tab::Scene => "Scene",
-            Tab::Game => "Game",
-            Tab::Hierarchy => "Hierarchy",
-            Tab::Inspector => "Inspector",
-            Tab::Project => "Project",
+            Tab::Scene => "Editor Scene",
+            Tab::Game => "Scene Viewer",
+            Tab::Hierarchy => "Scene Tree",
+            Tab::Inspector => "Properties",
+            Tab::Project => "Asset Files",
             Tab::Console => "Console",
             Tab::Animation => "Animation",
             Tab::Lighting => "Lighting",
@@ -151,7 +156,7 @@ impl Tab {
             Tab::CodeEditor => "Code Editor",
             Tab::Profiler => "Profiler",
             Tab::WorldBuilder => "World Builder",
-            Tab::WorldPartition => "World Partition",
+            Tab::WorldPartition => "World Streaming",
             Tab::UndoHistory => "Undo History",
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
@@ -165,9 +170,76 @@ impl Tab {
             Tab::AssetGroups => "Asset Groups",
             Tab::PackageManager => "Package Manager",
             Tab::InputActions => "Input Actions",
+            Tab::Guide => "User Guide",
             // The real title comes from the script (`PanelViewer::title`).
             Tab::Tool(_) => "Tool Window",
         }
+    }
+
+    /// The title before round 31 renamed it (scripts and `MISTY_TAB` may still use it).
+    /// Saved layouts store the variant name, not the title, so they need nothing.
+    pub fn legacy_title(self) -> Option<&'static str> {
+        match self {
+            Tab::Scene => Some("Scene"),
+            Tab::Game => Some("Game"),
+            Tab::Hierarchy => Some("Hierarchy"),
+            Tab::Inspector => Some("Inspector"),
+            Tab::Project => Some("Project"),
+            Tab::WorldPartition => Some("World Partition"),
+            _ => None,
+        }
+    }
+
+    /// The tab with this title, current or legacy (any case).
+    pub fn from_title(title: &str) -> Option<Tab> {
+        let title = title.trim();
+        Self::every().find(|t| {
+            t.title().eq_ignore_ascii_case(title)
+                || t.legacy_title()
+                    .is_some_and(|l| l.eq_ignore_ascii_case(title))
+        })
+    }
+
+    /// A stable id for the tab that never changes with its title or the UI language (tutorial
+    /// targets are `tab.<key>`, see `tutorials::targets`).
+    pub fn key(self) -> &'static str {
+        match self {
+            Tab::Scene => "scene",
+            Tab::Game => "game",
+            Tab::Hierarchy => "hierarchy",
+            Tab::Inspector => "inspector",
+            Tab::Project => "project",
+            Tab::Console => "console",
+            Tab::Animation => "animation",
+            Tab::Lighting => "lighting",
+            Tab::Animator => "animator",
+            Tab::AudioMixer => "audio_mixer",
+            Tab::Navigation => "navigation",
+            Tab::CodeEditor => "code_editor",
+            Tab::Profiler => "profiler",
+            Tab::WorldBuilder => "world_builder",
+            Tab::WorldPartition => "world_partition",
+            Tab::UndoHistory => "undo_history",
+            Tab::Timeline => "timeline",
+            Tab::TilePalette => "tile_palette",
+            Tab::ShaderGraph => "shader_graph",
+            Tab::EffectGraph => "effect_graph",
+            Tab::ScriptGraph => "script_graph",
+            Tab::OcclusionCulling => "occlusion_culling",
+            Tab::FrameDebugger => "frame_debugger",
+            Tab::MemoryProfiler => "memory_profiler",
+            Tab::TestRunner => "test_runner",
+            Tab::AssetGroups => "asset_groups",
+            Tab::PackageManager => "package_manager",
+            Tab::InputActions => "input_actions",
+            Tab::Guide => "guide",
+            Tab::Tool(_) => "tool",
+        }
+    }
+
+    /// The built-in tab with this [`Tab::key`].
+    pub fn from_key(key: &str) -> Option<Tab> {
+        Self::every().find(|t| t.key() == key)
     }
 
     pub fn icon(self) -> &'static str {
@@ -200,6 +272,7 @@ impl Tab {
             Tab::AssetGroups => crate::panels::asset_groups::ICON,
             Tab::PackageManager => crate::panels::packages::ICON,
             Tab::InputActions => crate::panels::input_actions::ICON,
+            Tab::Guide => crate::panels::guide::ICON,
             Tab::Tool(_) => TOOL_ICON,
         }
     }
@@ -235,6 +308,7 @@ impl Tab {
             | Tab::AssetGroups
             | Tab::PackageManager
             | Tab::InputActions
+            | Tab::Guide
             | Tab::Tool(_) => "",
         }
     }
@@ -400,6 +474,37 @@ mod tests {
                 assert!(dock.find_tab(&tab).is_none(), "{}", layout.name());
             }
         }
+    }
+
+    #[test]
+    fn saved_layouts_keep_their_tab_ids_after_the_renames() {
+        // Layouts store the variant, not the shown title, so files saved before the round 31
+        // renames (Inspector → Properties, …) load unchanged.
+        let json = serde_json::to_string(&default_layout()).unwrap();
+        for id in ["Scene", "Game", "Hierarchy", "Inspector", "Project"] {
+            assert!(json.contains(&format!("\"{id}\"")), "{id} in {json}");
+        }
+        let old: Vec<Tab> =
+            serde_json::from_str(r#"["Scene", "Game", "Hierarchy", "Inspector", "Project"]"#)
+                .unwrap();
+        assert_eq!(
+            old,
+            [
+                Tab::Scene,
+                Tab::Game,
+                Tab::Hierarchy,
+                Tab::Inspector,
+                Tab::Project
+            ]
+        );
+        assert_eq!(Tab::Inspector.title(), "Properties");
+        assert_eq!(Tab::from_title("Inspector"), Some(Tab::Inspector));
+        assert_eq!(Tab::from_title("game"), Some(Tab::Game));
+        assert_eq!(Tab::from_title("Scene Viewer"), Some(Tab::Game));
+        assert_eq!(
+            Tab::from_title("World Partition"),
+            Some(Tab::WorldPartition)
+        );
     }
 
     #[test]

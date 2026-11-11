@@ -242,6 +242,63 @@ fn new_project_page_creates_and_opens_the_project() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// New Project lists the 2D Platformer (always available: it is generated); clicking its card
+/// picks it, and Create makes a project that opens on its scene with the Scene view in 2D.
+#[test]
+fn new_project_page_creates_a_2d_platformer() {
+    use crate::templates::Template;
+    let dir = temp("platformer_card");
+    let path = dir.join("hub.json");
+    HubConfig {
+        projects_folder: Some(dir.join("Projects")),
+        ..Default::default()
+    }
+    .save(&path)
+    .unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.state_mut().hub.start_new_project();
+    h.run();
+    let t = Template::Platformer2D;
+    assert!(t.available());
+    assert_eq!(h.query_all_by_label(t.description()).count(), 1, "the card");
+    h.get_by_label(t.name()).click();
+    h.run();
+    assert_eq!(h.state().hub.new_project.as_ref().unwrap().template, t);
+    // The card and the details.
+    assert_eq!(h.query_all_by_label(t.description()).count(), 2);
+    h.state_mut().hub.new_project.as_mut().unwrap().name = "Jumper".into();
+    h.run();
+    h.get_by_label("Create project").click();
+    for _ in 0..500 {
+        // The spinner keeps repainting: step instead of run.
+        h.step();
+        if h.state().opened.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let error = h
+        .state()
+        .hub
+        .new_project
+        .as_ref()
+        .and_then(|n| n.target().err());
+    let opened = h
+        .state()
+        .opened
+        .clone()
+        .unwrap_or_else(|| panic!("not opened: {error:?}"));
+    assert_eq!(opened, dir.join("Projects/Jumper"));
+    assert!(opened.join(crate::templates::SCENE).is_file());
+    let editor = crate::scene_files::EditorSettings::load(&opened);
+    assert!(
+        editor.scene_view_2d.is_some(),
+        "the Scene view starts in 2D"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// New Project lists every template with its one-line description (MeadowDemo's says it has a
 /// first-person player); clicking the MeadowDemo card picks it, and Create makes a project
 /// that opens on MeadowDemo.
@@ -413,5 +470,30 @@ fn learn_asks_which_recent_project() {
     assert_eq!(s.opened.as_deref(), Some(game.as_path()));
     assert_eq!(s.tutorial.as_deref(), Some(crate::tutorials::list()[2].id));
     assert!(!dir.join("Projects").exists(), "no playground made");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The Learn page's User Guide card opens the guide over the Hub; closing it goes back.
+#[test]
+fn learn_opens_the_user_guide() {
+    let dir = temp("learn_guide");
+    let path = dir.join("hub.json");
+    HubConfig::default().save(&path).unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.get_by_label("Learn").click();
+    h.run();
+    h.get_by_label("Read").click();
+    h.run();
+    assert!(
+        h.get_all_by_label("The editor layout").count() >= 1,
+        "chapters listed"
+    );
+    h.get_all_by_label("Guide: saving and loading")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    assert!(h.get_all_by_label("PlayerPrefs in one minute").count() >= 1);
     let _ = std::fs::remove_dir_all(dir);
 }

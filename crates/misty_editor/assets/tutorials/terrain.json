@@ -7,14 +7,14 @@
   "steps": [
     {
       "title": "Create a terrain",
-      "text": "Add GameObject ▸ 3D Object ▸ Terrain. A flat piece of land appears and is selected.",
-      "targets": ["menu.GameObject/3D Object/Terrain", "menu.GameObject/3D Object", "menu.GameObject"],
+      "text": "Add Object ▸ 3D Object ▸ Terrain. A flat piece of land appears and is selected.",
+      "targets": ["menu.Object/3D Object/Terrain", "menu.Object/3D Object", "menu.Object"],
       "done_when": "has:Terrain",
       "demo": "create:Terrain"
     },
     {
       "title": "Raise and lower",
-      "text": "Pick the first tool, Raise or Lower Terrain. Click and drag on the terrain in the Scene view to make hills. Hold Shift to dig down.",
+      "text": "Pick the first tool, Raise or Lower Terrain. Click and drag on the terrain in the Editor Scene to make hills. Hold Shift to dig down.",
       "targets": ["inspector.Terrain/tool/Raise or Lower Terrain", "inspector.Terrain"],
       "done_when": "undo:Raise or Lower Terrain",
       "demo": "terrain:raise"
@@ -26,21 +26,21 @@
     },
     {
       "title": "Smooth it out",
-      "text": "Pick Smooth Height (≈) and paint over sharp bumps to soften them.",
+      "text": "Pick Smooth Height (the wave icon) and paint over sharp bumps to soften them.",
       "targets": ["inspector.Terrain/tool/Smooth Height", "inspector.Terrain"],
       "done_when": "undo:Smooth Terrain",
       "demo": "terrain:smooth"
     },
     {
       "title": "Make flat ground",
-      "text": "Pick Set Height (⊟), choose a Height and paint. The ground moves to that height, good for roads or a village.",
+      "text": "Pick Set Height (the plateau icon), choose a Height and paint. The ground moves to that height, good for roads or a village.",
       "targets": ["inspector.Terrain/tool/Set Height", "inspector.Terrain"],
       "done_when": "undo:Set Terrain Height",
       "demo": "terrain:set_height"
     },
     {
       "title": "Add a texture layer",
-      "text": "Pick Paint Texture (🖌) and click + Add Layer. Each layer is one kind of ground.",
+      "text": "Pick Paint Texture (the brush icon) and click the + Add Layer card. Each layer is one kind of ground.",
       "targets": ["inspector.Terrain/+ Add Layer", "inspector.Terrain/tool/Paint Texture", "inspector.Terrain"],
       "done_when": "terrain:layers1",
       "demo": "terrain:layers1"
@@ -61,8 +61,8 @@
     },
     {
       "title": "Paint by hand",
-      "text": "With the rock layer selected, paint on the terrain in the Scene view. Rock shows up where you paint.",
-      "targets": ["panel.Scene"],
+      "text": "With the rock layer selected, paint on the terrain in the Editor Scene. Rock shows up where you paint.",
+      "targets": ["panel.Editor Scene"],
       "done_when": "undo:Paint Terrain",
       "demo": "terrain:paint"
     },

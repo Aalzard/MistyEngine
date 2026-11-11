@@ -133,7 +133,7 @@ fn probe(ui: &mut Ui, state: &mut EditorState, e: Entity, p: &mut ReflectionProb
     let mut editing = state.probes.edit_bounds;
     if ui
         .toggle_value(&mut editing, "⬚ Edit Bounding Volume")
-        .on_hover_text("Drag the face handles in the Scene view")
+        .on_hover_text("Drag the face handles in the Editor Scene")
         .changed()
     {
         state.probes.edit_bounds = editing;

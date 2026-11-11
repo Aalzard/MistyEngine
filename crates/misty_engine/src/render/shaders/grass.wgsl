@@ -129,13 +129,14 @@ fn grass_out(v: BladeVertex, prev: vec3<f32>, b: BladeIn) -> GrassOut {
     let far = smoothstep(5.0, 55.0, v.dist);
     let phase = b.shape.w;
     // Far away a grazing view sees mostly the tips (paler, drier) and the seed stalks.
-    let dry_mix = mix(b.shape.z, 0.2 + 0.4 * b.shape.z, far * 0.7);
+    let blade_dry = grass_dry_mix(b);
+    let dry_mix = mix(blade_dry, 0.2 + 0.4 * blade_dry, far * 0.7);
     let patches = b.field.xy;
     var base = grass_base_color(patches, dry_mix, grass.healthy.rgb, grass.dry.rgb, grass.lush.rgb, grass.amounts.xy);
     base = grass_swathe_tint(base, b.field.z) * grass_far_tint(v.dist);
     // Tufts and single blades: warmer / cooler hue and lighter / darker value.
     let cv = grass.look.w * (1.0 - 0.5 * far);
-    let tint = b.extra.w;
+    let tint = grass_tint(b);
     // Mostly per clump (each tuft its own green or yellow-green), a little per blade.
     let hue = (fract(phase * 13.7) - 0.5) * 0.3 + tint * 1.0;
     let value = (fract(phase * 7.31 + 0.37) - 0.5) * 0.2 + tint * 0.5;

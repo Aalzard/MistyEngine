@@ -66,7 +66,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let render = gpu.renderer.stats();
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.
-            if render.grass_pending > 0 || render.loading > 0 {
+            if render.busy() {
                 ui.ctx().request_repaint();
             }
             // The Profiler's Rendering and Memory modules report the Game view.
@@ -183,7 +183,7 @@ pub fn stats_lines(
         ),
         format!("  Occlusion culled: {}", render.occlusion_culled),
         format!(
-            "  Virtual geometry: {} objects  {} clusters  {} tris (shadows {})  {:.1} MB",
+            "  Misty Mesh: {} objects  {} clusters  {} tris (shadows {})  {:.1} MB",
             render.vgeo_instances,
             fmt_k(render.vgeo_clusters as usize),
             fmt_k(render.vgeo_triangles as usize),

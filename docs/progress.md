@@ -3277,6 +3277,307 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   the common ones, tutorials' steps) is still English; the Hierarchy and Project trees,
   submenus and panel toolbars are not mirrored; text fields edit Arabic in logical order
   without shaping.
+## Round 25 — Project window fixes (branch r25-project-fixes)
+
+### Done (docs/pending/r25-project-fixes.md)
+- Right-click anywhere in the Project window's content (grid, list, empty folders, gaps) and
+  the folder tree's empty space opens the folder menu; Create ▸ in a tree folder's menu makes
+  the asset there. Same for the Hierarchy's empty space and the Timeline's track headers.
+- Inline renames keep the keyboard: stable ids, no layout jump, and a lost focus only ends the
+  rename after a click elsewhere or a key. New assets and folders start renaming with the whole
+  name selected, scrolled into view.
+- Files and folders dragged in from the desktop are copied (recursively) into the folder under
+  the pointer or the open folder and imported, with a drop outline; on the Hierarchy or Scene
+  view models and prefabs are also instantiated.
+- Show in Explorer opens the right folder (or selects the file) also with spaces in the path
+  (raw `explorer` command line); macOS / Linux equivalents.
+- Files added, removed or renamed by other programs appear without leaving the folder and are
+  imported: listed folders' stamps come from the background file watch, which now also wakes
+  an idle editor.
+- New: press and hold 1.5 s on a Project item or Hierarchy object to rename it (a bar fills;
+  moving cancels). Timeline track, Input Actions, Shader / Script Graph group renames that could
+  never end (focus asked every frame) now end on Enter / click away.
+
+### Not done yet
+- Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
+  on Windows the drop target is the panel/folder last under the pointer (winit reports no
+  pointer moves during an OS drag).
+## Round 28 — 2D Platformer template (branch r28-template2d)
+
+### Done
+- New Project ▸ **2D Platformer** (`--new "2D Platformer"`, also `2d` / `platformer2d`): built
+  from the Platformer2D and TilemapDemo samples and generated in code (like Racing), so every
+  install can make it, sample project or not. The pixel art, tiles and level layout now live in
+  `templates/platformer_2d/art.rs`, shared with the two sample generators (their
+  `matches_its_generator` tests still pass, so the committed samples are unchanged).
+- The project: a daytime tilemap level on a Grid (Rule Tile ground with Tilemap Collider 2D
+  and Shadow Caster 2D, animated water in a pit, ruined stone walls behind), the Platformer2D
+  player (Rigidbody 2D, Box Collider 2D), ten coins counted by a UI Text, a sun travelling with
+  the camera, clouds and hills, a Global Light 2D plus five torches with shadowed Point Light
+  2D lights, and a bloom volume (sun, flames and coins glow). A Tile Palette
+  (`Assets/Palettes/Level.palette`) holds the three tiles. Every asset gets a meta file with a
+  GUID and the scene, tiles and palette carry GUID tables from the new project.
+- Scripts in `Assets/Scripts`: `PlayerController2D.lua` (A/D or arrows run; Space, W or Up
+  jumps; jump buffer, coyote time, short hop on early release; coins) and `CameraFollow2D.lua`
+  (eases after the player, stops at the level's edges using the camera's size and the screen's
+  aspect).
+- Project settings for 2D: Sorting Layers Background / Default / Foreground (the sky, walls
+  and water use them, with orders that also draw right before the layers are installed);
+  2D gravity stays at the default (0, −9.81) with the player's Gravity Scale 3.
+- The Scene view starts in 2D mode: `Library/EditorSettings.json` gained `scene_view_2d`
+  (centre and half height), written by the template and remembered when a project closes in
+  2D (new `SceneCamera::set_2d_view` / `view_2d`; turning 2D off returns to the 3D view).
+- Hub card with a headless-rendered thumbnail (`assets/templates/platformer_2d.png`); Turkish
+  and Arabic names and descriptions.
+- Tests: the template's files, GUIDs, references, settings and scene objects; the editor
+  opens it in 2D and reopens a moved 2D view; Play lands the player on the tiles, a held
+  Space jumps high, a tapped W hops, Up jumps, running right with the arrow key collects three
+  coins and the camera follows, without a script error; the Hub creates it from its card;
+  the template names / aliases test and the GPU render test cover it.
+- Screenshots: `docs/screenshots/r28/hub_new_project.jpg` (the new card), `platformer_2d_editor.jpg`
+  (a new project: Scene view in 2D) and `platformer_2d_play.jpg` (Play mode).
+
+- Checks: fmt clean, clippy 0 warnings; full tests: editor 811 passed, 3 failed under load
+  (`mcp::tests::bridge_writes_and_removes_its_info_file`,
+  `panels::packages::tests::registry_url_page_in_project_settings`,
+  `scene_files::tests::opening_a_scene_lifts_a_view_left_under_the_terrain`; all three pass run
+  on their own), engine 1384 passed, player 11, dedicated server and MCP e2e pass; golden
+  shots 20/20.
+
+### Not done yet
+- No parallax or level end/goal; the Tile Palette window is not opened automatically.
+- The stone wall tilemap shows faint vertical seams between some tile columns (looks like a
+  tilemap chunk rendering artefact; not investigated this round).
+
+## Round 29 — Painting grass shows at once (branch r29-grass-paint)
+
+### Done
+- Paint Details at 1000 blades/m²: the painted slice vanished and took minutes to come back.
+  Every stroke frame dropped the chunks under the brush and restarted every scatter of the
+  terrain, so nothing finished until the mouse was released; then each 256k-blade chunk was
+  scattered on one thread and uploaded 8k blades a frame, behind the camera's chunks.
+- Edits now mark chunks out of date instead of dropping them: the old blades draw until the
+  new scatter is on the GPU (paint, erase, Fill / Clear, undo, settings sliders). An edited
+  chunk has one job at a time; edits made meanwhile go out with its next job, and older
+  results still show, so a stroke updates continuously and never restarts work.
+- Edited chunks go first: their own job slots, the front of the workers' queue, the front of
+  the upload queue and a 6 ms upload budget. Their rows are scattered on a rayon pool (all
+  cores but two), with exactly the same blades in the same order; camera chunks keep one
+  thread each. Blades are sorted as 8-byte key/index words (the same order, quicker).
+- Chunks near any camera of the last 1.5 s stay: the Scene and Game views share the
+  renderer, and side by side each view's frame dropped the other's chunks.
+- `RenderStats::busy()`: the Scene and Game views keep redrawing while grass work is pending
+  and go idle when it is done.
+- Measured with the harness `grass_paint_latency` (200 m terrain, a 64 m square at 1000/m²,
+  a 120-frame erase-then-paint stroke across its edge; this machine was busy with other
+  builds, so absolute numbers vary run to run):
+  - before: painted chunks vanished during the stroke and none came back until it ended;
+    after release 3030 frames / 162 s until the grass was back; first load 56.6 s.
+  - after: no chunk ever hidden; the chunk under the brush shows each dab in 0.67 s median
+    (0.98 s at 90 %) while painting; after release 29 frames / 0.53 s; first load 3.5 s.
+  - one full chunk (256k blades): 188 ms on one thread, 61 ms on 8 row threads (busy machine).
+- Golden shots unchanged (the scatter gives the same blades in the same order).
+- Tests: edits keep the old blades, repeated edits coalesce, edited jobs jump the queue,
+  painted grass shows within frames through the renderer (and pending work is reported until
+  done), parallel scatter equals serial, `busy()`; timing benches `grass_scatter_cost`,
+  `grass_paint_latency` (ignored).
+
+### Done, part 2: tiles under the brush
+- A chunk touched by the brush switches to 4 × 4 m tiles, each its own run of blades in the
+  pages; a dab re-scatters and uploads only the tiles it touches. The tiles hold exactly the
+  chunk's blades (`details::scatter_tile`); while all 16 come up the whole run keeps drawing.
+- Tiles run on their own threads from a queue: tiles of a chunk switching to tiles first,
+  then the newest dab, nearest the brush first; a tile's waiting job is replaced by a newer
+  one, so a stroke never waits on its own stale work.
+- Settings changes (sliders dragged in the Inspector) keep every blade drawing and
+  re-scatter by distance to the camera, one job per chunk at a time; the brush still goes
+  first. A grass species' Healthy↔Dry and Brightness come from a table in the grass uniform
+  (`species_mark` in the blade, `grass_dry_mix` / `grass_tint` in the shader): colour edits
+  show on the next frame with nothing scattered again.
+- Measured (`grass_paint_latency`, CPU at ~74 % from other builds), dab to the blades drawn
+  at the brush centre, median / 90 %:
+  - brush 0.25 m per frame (about 15 m/s at 60 fps): 76 / 228 ms; before (whole chunks)
+    865 / 1082 ms with only half the dabs ever shown during the stroke.
+  - brush 1 m per frame (60 m/s): 377 / 1756 ms, mostly chunks switching to tiles; before
+    666 / 906 ms with half the dabs shown.
+  - grass back after release: 0.3–0.55 s.
+
+### Not done yet
+- A fast brush entering an unpainted chunk waits for all 16 of its tiles (one chunk's
+  scatter) before its dabs show; switching the chunks around the brush ahead of it would
+  hide that.
+- The 50 ms goal could not be checked on an idle machine (other agents' builds kept the CPU
+  at 55–100 %).
+- The editor stroke itself was not scripted end to end (the harness drives the same store and
+  renderer calls the Paint Details brush makes).
+
+## Round 30 — Terrain Inspector redesign (branch r30-terrain-ui)
+
+### Done (screenshots `docs/screenshots/r30/*`)
+- **Tool bar**: the nine terrain tools as icon buttons in one bar (new icons in the editor's
+  icon set: raise / lower, set height, smooth, paint, holes, grass, tree, place, settings),
+  with a clear selected state and tooltips (name, what a click and Shift + click do). The
+  current tool's name, icon and help sit under it, with World Builder on the right.
+- **Brush section**: a shape picker of four thumbnails drawn from the brush's own falloff curve
+  (Hard, Firm, Soft, Feather), size (with `[` / `]`), opacity and falloff, each with a reset.
+  Set Height adds its target height and a confirmed Flatten All.
+- **Palettes of cards** for texture layers, grass and detail types, trees and Place Objects
+  prefabs: a thumbnail, the name, a selected outline, a badge (layer coverage %, blades or
+  meshes placed, trees planted, objects placed), hover actions (Duplicate, Remove, Select in
+  Project when the card stands for an asset), double-click to open the asset, drag a card onto
+  another to reorder (layer splat channels, tree instances and the grass's "grow on" layer
+  follow), a "+" card with an Add menu and empty states. Cards accept Project assets dropped on
+  the palette: textures become layers, models and prefabs (first renderer) become detail
+  meshes, `.tree` assets and prefabs are added to their palettes. Cards hold an optional asset
+  path, so the coming Grass Type asset can be a card without a layout change.
+- **Live previews** (`terrain_previews.rs`): grass tufts are built on the CPU from the
+  terrain's blade recipe and the grass shader's arc and colour model (heights, widths, bend,
+  seed-head panicles, healthy / dry mix, per-tuft hue and value jitter, dry tips), cached by a
+  settings hash and rebuilt the next frame after a change (at most four per frame). Trees use
+  their impostor (baked by the tree store's worker) lit on the CPU once per built version.
+  Detail meshes and prefabs are rendered offscreen by the engine renderer after the UI pass
+  (three per frame, keyed by mesh, material and file versions). Texture layers show their
+  albedo with a mean-colour swatch. Placeholders pulse while a preview is made.
+- **Settings of the selected item** in sections with icons (Shape, Colour, Density,
+  Placement, Rendering, Textures, Tiling, Surface…), aligned labels, units, two-handle range
+  sliders (heights, scales, slopes), gradient sliders that show the colour they pick (Healthy ↔
+  Dry, Brightness, Dry Tips), colour swatches with hex, a reset button on every changed field
+  and a tooltip on every control. The terrain grass card edits its look directly (healthy,
+  dry, seed colours, height, width, bend, density) with a link to its rules, wind and patches.
+- Fill / Clear with icons, the selected type's name in their tooltips, and a confirmation on
+  every destructive whole-terrain action (Clear details, Clear Trees, Clear All objects,
+  Fill All Holes, Flatten All).
+- **Scene view brush cursor**: coloured by tool (raise blue, Shift lower / erase orange-red,
+  paint violet, grass and trees green, smooth cyan, set height yellow), the falloff ring, the
+  brush's influence drawn as a dome (height = opacity, profile = falloff curve), Set Height's
+  target level and a centre mark.
+- New strings in Turkish and Arabic (`[terrain]` tables); cards mirror in right-to-left.
+- `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` capture options open a terrain tool and select a
+  palette item.
+- Tests: egui harness tests for the tool bar, selecting cards, adding and removing a grass type
+  with undo, previews requested and refreshed after a change, reset buttons, confirmed Clear,
+  `[` / `]`, and the Inspector's draw time; unit tests for tufts, counts, moving trees.
+
+- **Cost**: the Terrain Inspector on Paint Details with seven grass cards and the large preview
+  draws in about 1 ms a frame steady and 1.3 ms a frame while a setting is dragged (a card and
+  the large tuft rebuilt every frame), release build, egui harness
+  (`terrain_ui_tests::inspector_draw_time_with_previews`); the first frame that shows the
+  sections costs 30-40 ms once (icon textures rasterised per size). A tuft costs ~0.1 ms, a
+  tree thumbnail ~1 ms once per tree version, an offscreen mesh / prefab thumbnail one small
+  renderer pass.
+- Screenshots (`docs/screenshots/r30/`): before / after of Paint Details, Paint Trees, texture
+  layers and the tool bar; after: detail mesh settings, Place Objects, the brush cursor, Arabic,
+  200 % UI scale and the light theme.
+
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, tests 2223 passed
+  with one failure that passes alone (`live_reload::tests::own_saves_and_touches_dont_reload`,
+  timing under a fully loaded machine), golden shots 20 / 20 unchanged.
+
+### Notes for the grass painting round
+- Any change to a grass species (also look-only ones: Healthy ↔ Dry and Brightness are baked
+  into each blade by the scatter) changes `terrain_grass::scatter_key`, which drops every grass
+  chunk at once (`keep_chunks(|_| false)`): while a slider is dragged the whole field vanishes
+  and re-scatters. Same for the terrain grass's height, width, bend and seed heads (its colours
+  are uniforms and update at once). Keeping the old chunks until their replacements are
+  uploaded, and moving species dry mix / tint into a small per-species uniform table, would make
+  these edits instant in the Scene view.
+
+### Not done yet
+- At 200 % UI scale the Inspector panel of a 1920 px window is narrower than its content (all
+  components, not only the terrain); the tool bar wraps.
+- `scene_files::tests::opening_a_scene_lifts_a_view_left_under_the_terrain` can fail when run
+  alongside other tests that open their own project folder (the engine's project root is
+  global); it passes alone.
+- Brush shapes are falloff presets; custom brush masks (noise, stamps) need brush code
+  changes and were left out to keep the merge with the grass painting round easy.
+- Grass species colours come from the terrain grass's healthy / dry colours (a species tint
+  is not a separate colour yet); a Grass Type asset (`.grass`) is the next round.
+## Round 31 — Misty's own names (branch r31-rebrand)
+
+### Done
+- The editor uses its own names for what it shows (`crates/misty_editor/src/renames.rs`):
+  Inspector → **Properties**, Hierarchy → **Scene Tree**, Project → **Asset Files**, Scene →
+  **Editor Scene**, Game → **Scene Viewer**, the GameObject menu → **Object**, the Component
+  menu and Add Component → **Archetype** / **Add Archetype** (Remove / Copy / Paste / Move
+  Archetype, Revert Archetype Overrides), World Partition → **World Streaming**, Virtual
+  Geometry → **Misty Mesh** (menus, Quality, draw modes, Frame Debugger events, profiler rows),
+  the asset "Addressable" checkbox → **Load by Address**, the NavMesh Surface's "All Game
+  Objects" / "Current Object Hierarchy" → "All Objects" / "Current Object and Children".
+  Tooltips, empty states, status text, MCP tool descriptions and tutorials follow ("the Scene
+  view" → "the Editor Scene", "the Project window" → "Asset Files", …). Turkish and Arabic
+  translations updated (Özellikler / الخصائص, Sahne Ağacı / شجرة المشهد, Varlık Dosyaları /
+  ملفات الأصول, Düzenleyici Sahnesi / مشهد المحرر, Sahne Görüntüleyici / عارض المشهد, Arketip /
+  نمط, Nesne / كائن, Dünya Akışı / بث العالم) and the glossary in `docs/localization.md`.
+- Nothing stored changed: tab ids in saved layouts are the enum variants (a test loads one),
+  component names in scenes ("World Partition", "Hierarchy Folder" are shown as World Streaming
+  and Scene Tree Folder through `renames::shown_name`, translations keyed by the stored name),
+  Lua names (`GetComponent`, `AddComponent`, `CustomInspector`, `HideInInspector`, the
+  `GameObject` class and the default "GameObject" object name), MCP tool names
+  (`scene.add_component`, …) and tutorial target prefixes (`inspector.…`, `hierarchy.…`).
+- Old names keep working: `editor.run_menu_item` maps old paths (`GameObject/3D Object/Cube`,
+  `Component/…`, `Hierarchy/<scene>/…`, `Window/General/Inspector` and the other old window
+  titles, `… Virtual Geometry`) to the new ones; editor scripts' `MenuItem("GameObject/…")` /
+  `("Component/…")` land in the renamed menus; `MISTY_TAB=Game`, `MISTY_OPEN_MENU=GameObject`
+  and `MISTY_DRAW_MODE=Virtual Geometry Clusters` still work.
+- Tutorials target the new labels (`panel.Scene Tree`, `panel.Properties`, `panel.Editor Scene`,
+  `menu.Object/…`); the end-to-end tutorial tests check every target is drawn.
+- Guard test `renames::tests::ui_text_and_user_docs_use_mistys_own_names`: tab titles, menu
+  commands, tutorials, both translation files, every string literal of the editor's sources and
+  the user guides (README, `docs/*.md` except progress / decisions / unity-notes, the release
+  READMEs, `docs/api/lua-api.md`) never say Unity, Unreal, Nanite, Lumen or Blueprint.
+- User docs describe features on their own terms (no "Unity-like", "Lumen-like", "Nanite-like",
+  "in the spirit of Blueprints"); CHANGELOG has an Unreleased entry.
+- Screenshots: `docs/screenshots/r31/default_layout_en.jpg`, `default_layout_ar.jpg`.
+- Checks: fmt clean, clippy 0 warnings; `cargo test --workspace --release`: editor 816 / 0,
+  mcp_e2e 1 / 0, engine 1383 / 1 (`vgeo::auto_picks_one_phase_and_lit_for_a_few_rocks`, a GPU
+  counter-readback timing test on an overloaded machine; passes alone), player 11 / 0,
+  dedicated server 1 / 0; golden shots 20 / 20. Translation coverage 793/793 in both languages
+  (792/792 before), 60/124 component names (same).
+
+### Not done yet
+- Kept on purpose: the default name of a new empty object ("GameObject", also the Lua class),
+  "Shader Graph", "Animator", "Tile Palette", "Prefab", "Play Mode" (generic words), the
+  sample scene name `AddressablesDemo` and sample Lua scripts' comments (generated files).
+
+## Round 32 — User Guide and layout tour (branch r32-guide)
+
+### Done
+- **User Guide** in English and Arabic (`docs/guide/en`, `docs/guide/ar`): index, the editor
+  layout, finding what is slow (Stats, Profiler, Frame Debugger, Memory Profiler, build report,
+  a worked example), quality and rendering (the Editor Scene's Quality menu, Project Settings ▸
+  Quality, LODs, occlusion culling, Misty Mesh, Misty GI), Script Graph basics, four
+  step-by-step guides (first-person player, door, saving and loading, animation transitions)
+  and a glossary. Written with the round 31 names (Scene Tree, Properties, Asset Files, Editor
+  Scene, Scene Viewer, Archetypes, Misty GI, Misty Mesh, Script Graphs).
+- **Example graphs** for the four guides in `SampleProject/Assets/Guides/` (FirstPerson, Door,
+  Saving, Animation), from `sample_guides.rs` with a `matches_its_generator` test and play
+  tests: the player walks, looks (yaw and clamped pitch) and jumps; the key door opens with E
+  only from its zone and closes again, the auto door opens and closes by itself, both turning
+  smoothly; the score and position survive a save, a new prefs load and a fresh scene; the
+  Animator goes Idle → Walk → Run → Idle with the speed and plays Jump on its trigger.
+- **New Script Graph nodes** (native, typed pins): PlayerPrefs Set/Get Int, Float, String,
+  HasKey, DeleteKey, Save; Animator Set/Get Float (with Damp Time), Bool, Integer, Set/Reset
+  Trigger; Cursor: Set/Get lockState (graph only).
+- **Help ▸ User Guide**: a dockable Guide tab that renders the chapters (headings, lists, code,
+  tables, pictures, note boxes, links between chapters) in the editor's language (Arabic right
+  to left through `i18n::shape`, Turkish reads English), with search and "Open example" (copies
+  the example into the project when missing, then opens its scene and graph). Chapters,
+  pictures and example files are built into the binary, so installs need nothing extra. The
+  Hub's Learn page has a User Guide card that opens the reader over the Hub.
+- **Editor Layout tour** (`assets/tutorials/layout_tour.json`): Scene Tree, Properties, Asset
+  Files, Editor Scene, the Quality menu, Scene Viewer, Console, Play, Help. It keeps the open
+  scene, brings hidden tabs forward per step, is offered once on the first launch (remembered
+  in `hub.json`), and is on Help ▸ Layout Tour and the Hub's Learn page. Its targets are stable
+  `tab.<key>` ids (`Tab::key`), so renaming or translating panels doesn't break them. The
+  tutorial card's text and buttons are translated now.
+- `MISTY_GUIDE=<chapter>` opens the guide on a chapter in capture runs.
+
+### Not done yet
+- Screenshots show the pre-round-31 panel names until they are retaken after the rename.
+- Menu labels the guide already writes with new names: Assets ▸ Create ▸ Script Graph (now
+  "Visual Script Graph") and Window ▸ Script Graphs (now "Visual Scripting").
+
+
 
 ## Round 26 — NoonValley: a noon meadow valley, and trees at forest scale (branch r26-noon-meadow)
 

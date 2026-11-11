@@ -122,7 +122,7 @@ fn apply_row(ui: &mut Ui, state: &mut EditorState, rel: &str, p: &Preset) {
                 }
                 if count == 0 {
                     ui.weak(format!(
-                        "Lock the Inspector and select objects with a {name}."
+                        "Lock the Properties panel and select objects with a {name}."
                     ));
                 } else {
                     ui.weak(format!("{count} selected"));
@@ -193,7 +193,7 @@ fn default_row(ui: &mut Ui, state: &mut EditorState, rel: &str, target: &str) {
     let defaults = &state.project_settings.default_presets;
     let mut on = defaults.get(target).is_some_and(|d| d == rel);
     let what = if misty_engine::scene::registry::find(target).is_some() {
-        format!("Default for new {target} components")
+        format!("Default for new {target} archetypes")
     } else {
         format!("Default for new {target} assets")
     };

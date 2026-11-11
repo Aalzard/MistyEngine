@@ -201,7 +201,7 @@ impl Gpu {
     /// The Scene and Game views' render targets (Memory Profiler).
     pub fn view_target_items(&self) -> Vec<misty_engine::memory_snapshot::MemItem> {
         use misty_engine::memory_snapshot::{MemCategory, MemItem};
-        [("Scene View", &self.scene), ("Game View", &self.game)]
+        [("Editor Scene", &self.scene), ("Scene Viewer", &self.game)]
             .into_iter()
             .filter_map(|(name, vp)| {
                 let t = vp.target.as_ref()?;

@@ -1,0 +1,48 @@
+{
+  "length": 0.5,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Body",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.9
+        },
+        {
+          "time": 0.125,
+          "value": 1.1
+        },
+        {
+          "time": 0.25,
+          "value": 0.9
+        },
+        {
+          "time": 0.375,
+          "value": 1.1
+        },
+        {
+          "time": 0.5,
+          "value": 0.9
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 15.0
+        },
+        {
+          "time": 0.5,
+          "value": 15.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}

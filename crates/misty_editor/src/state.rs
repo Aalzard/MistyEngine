@@ -109,6 +109,11 @@ pub struct HierarchyState {
     pub expanded: HashSet<Entity>,
     /// Object being renamed inline and the text typed so far.
     pub renaming: Option<(Entity, String)>,
+    /// The object whose rename field is on screen (a new one selects the whole name).
+    pub rename_shown: Option<Entity>,
+    /// The rename was started by press and hold: its field keeps the keyboard until the
+    /// button is released (see [`crate::hold_rename::keep_focus`]).
+    pub rename_hold_guard: bool,
     /// Keyboard focus: last click landed in the Hierarchy.
     pub focused: bool,
     /// Scene headers folded closed.
@@ -407,6 +412,8 @@ pub struct EditorState {
     pub search: crate::search::SearchPalette,
     /// Help ▸ Tutorials: the running tutorial and finished ones.
     pub tutorials: crate::tutorials::Tutorials,
+    /// Help ▸ User Guide: the reader's chapter, search and pictures.
+    pub guide: crate::panels::guide::GuideView,
     /// Scenes and assets reloading when their files change; dev-build restarts.
     pub live: crate::live_reload::LiveReload,
     /// Editor scripts (`Editor` folders): menu items, tool windows, Inspectors, gizmos.
@@ -540,6 +547,7 @@ impl EditorState {
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),
+            guide: Default::default(),
             live: Default::default(),
             editor_scripts: crate::editor_scripts::EditorScripts::new(&root),
             prefab_stages: Vec::new(),

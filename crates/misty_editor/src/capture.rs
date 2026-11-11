@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER` / `MISTY_GUIDE`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -242,20 +242,31 @@ impl Capture {
     }
 }
 
-/// `MISTY_OPEN_MENU=<top menu>` (English name: `File`, `GameObject`…): that menu of the title
+/// `MISTY_OPEN_MENU=<top menu>` (English name: `File`, `Object`…; old names work): that menu of the title
 /// bar opens and stays open (screenshots of translated menus).
 pub fn open_menu_from_env(ui: &egui::Ui, label: &str, button: &egui::Response) {
     static MENU: OnceLock<Option<String>> = OnceLock::new();
     let wanted = MENU.get_or_init(|| std::env::var("MISTY_OPEN_MENU").ok());
     if wanted
         .as_deref()
-        .is_some_and(|w| w.trim().eq_ignore_ascii_case(label))
+        .is_some_and(|w| crate::renames::top_menu(w.trim()).eq_ignore_ascii_case(label))
     {
         let id = egui::Popup::default_response_id(button);
         if !egui::Popup::is_id_open(ui.ctx(), id) {
             egui::Popup::open_id(ui.ctx(), id);
         }
     }
+}
+
+/// `MISTY_TERRAIN_HOVER=<x>,<z>`: the terrain brush cursor shown at that terrain-local point
+/// (screenshots of the cursor without a mouse).
+pub fn terrain_hover() -> Option<[f32; 2]> {
+    static AT: OnceLock<Option<[f32; 2]>> = OnceLock::new();
+    *AT.get_or_init(|| {
+        let v = std::env::var("MISTY_TERRAIN_HOVER").ok()?;
+        let (x, z) = v.split_once(',')?;
+        Some([x.trim().parse().ok()?, z.trim().parse().ok()?])
+    })
 }
 
 /// `MISTY_INSPECTOR_SCROLL=<px>`: the object Inspector scrolled down that far (screenshots of
@@ -307,6 +318,18 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_TERRAIN_TOOL=details` (raise, set_height, smooth, paint, holes, details, trees,
+    // place, settings) opens that Terrain Inspector tool; `MISTY_TERRAIN_ITEM=2` selects that
+    // palette item of it (texture layer, detail row, tree).
+    if let Some(tool) = std::env::var_os("MISTY_TERRAIN_TOOL") {
+        crate::terrain_tools::apply_env(
+            s,
+            &tool.to_string_lossy(),
+            std::env::var("MISTY_TERRAIN_ITEM")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+        );
+    }
     // `MISTY_EDIT_LIGHT_PROBES=1` turns on Edit Light Probes for the selected group.
     if std::env::var_os("MISTY_EDIT_LIGHT_PROBES").is_some() {
         s.light_probes.set_editing(true);
@@ -341,6 +364,17 @@ pub fn apply_env(
         s.project.selected = Some(abs);
         s.selection.clear();
         s.inspector_asset = Some(rel);
+    }
+    // `MISTY_CREATE=Folder` (or Material): Create ▸ that asset in the open Project folder, so
+    // the shot shows the new item renaming (with `MISTY_ASSET` to pick the folder).
+    if let Some(kind) = std::env::var_os("MISTY_CREATE") {
+        let kind = kind.to_string_lossy();
+        if let Some(k) = crate::actions::AssetKind::ALL
+            .into_iter()
+            .find(|k| k.label().eq_ignore_ascii_case(&kind))
+        {
+            s.push(crate::actions::Action::CreateAsset(k));
+        }
     }
     // `MISTY_PREVIEW_SHAPE=plane` (sphere / cube / plane): the material Inspector preview's shape.
     if let Some(shape) = std::env::var_os("MISTY_PREVIEW_SHAPE") {
@@ -434,6 +468,10 @@ pub fn apply_env(
             s.script_graph.search = Some(search);
         }
         s.script_graph.focused = true;
+        // `MISTY_GRAPH_FRAME=1` frames the whole graph (as F does).
+        if std::env::var_os("MISTY_GRAPH_FRAME").is_some() {
+            s.script_graph.canvas.frame_all = true;
+        }
         // `MISTY_GRAPH_PANELS=none` hides the Blackboard and the Graph Inspector.
         if std::env::var("MISTY_GRAPH_PANELS").is_ok_and(|v| v == "none") {
             s.script_graph.show_blackboard = false;
@@ -479,10 +517,15 @@ pub fn apply_env(
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {
-            if let Some(tab) = crate::layout::Tab::every().find(|t| t.title() == title.trim()) {
+            if let Some(tab) = crate::layout::Tab::from_title(title) {
                 crate::layout::focus_or_open(dock, tab);
             }
         }
+    }
+    // `MISTY_GUIDE=<chapter>` opens Help ▸ User Guide on that chapter (`05-guide-first-person`).
+    if let Ok(chapter) = std::env::var("MISTY_GUIDE") {
+        s.guide.open(chapter.trim());
+        crate::layout::focus_or_open(dock, crate::layout::Tab::Guide);
     }
     // `MISTY_TIMELINE_TIME=4.5` previews the Timeline window's director at that time.
     if let Some(t) = std::env::var_os("MISTY_TIMELINE_TIME")
@@ -634,7 +677,7 @@ pub fn apply_env(
     if let Some(mode) = std::env::var_os("MISTY_DRAW_MODE")
         && let Some(i) = crate::panels::scene::DRAW_MODES
             .iter()
-            .position(|m| *m == mode.to_string_lossy())
+            .position(|m| *m == crate::renames::current_phrase(&mode.to_string_lossy()))
     {
         s.scene_view.draw_mode = i;
     }

@@ -242,7 +242,7 @@ impl UserData for LTransform {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
-        // GetChild(i): the i-th child (0-based, Hierarchy order), or an error past the end.
+        // GetChild(i): the i-th child (0-based, Scene Tree order), or an error past the end.
         m.add_method("GetChild", |lua, t, i: usize| {
             with_world(lua, |w| {
                 alive(w, t.0)?;

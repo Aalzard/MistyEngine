@@ -14,6 +14,8 @@ pub struct Thumbnails {
     cache: HashMap<PathBuf, (Option<SystemTime>, Option<egui::TextureHandle>)>,
     /// Material thumbnails and the Inspector's preview sphere.
     pub materials: crate::material_preview::MaterialPreviews,
+    /// The Terrain Inspector's palette previews (grass tufts, trees, detail meshes, prefabs).
+    pub terrain: crate::terrain_previews::TerrainPreviews,
 }
 
 impl Thumbnails {

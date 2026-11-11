@@ -51,7 +51,7 @@ choice is remembered. Each level has:
   filtering, a maximum texture size.
 - **Effects** — ambient occlusion, volumetric fog, reflection probes.
 
-The dropdown in the Game view's toolbar previews a level in the editor.
+The dropdown in the Scene Viewer's toolbar previews a level in the editor.
 
 ## Build Profiles
 

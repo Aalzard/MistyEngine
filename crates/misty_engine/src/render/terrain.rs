@@ -1152,6 +1152,7 @@ impl TerrainCache {
                 .with_ground_cover(self.ground_cover.is_some())
                 .with_vis_index(i as u32)
                 .with_flowers(d.flowers.lod_distance)
+                .with_species(&d.detail_layers)
             };
             // (Made once per terrain, rewritten every frame: no buffers or groups to create,
             // track and drop per frame; again when the atlas changes.)
@@ -1529,6 +1530,28 @@ impl TerrainCache {
     #[cfg(test)]
     pub fn grass_resident(&self) -> Vec<(usize, u64)> {
         self.entries.values().map(|g| g.grass.resident()).collect()
+    }
+
+    /// Blades and density level of grass chunk `chunk` of terrain `key` (None: no chunk held)
+    /// (tests).
+    #[cfg(test)]
+    pub fn grass_chunk(&self, key: &str, chunk: (u32, u32)) -> Option<(u32, u32)> {
+        self.entries.get(key)?.grass.chunk(chunk)
+    }
+
+    /// Grass of terrain `key` at terrain-local point `p`: the edit count of the blades drawn
+    /// there and the edits so far (tests).
+    #[cfg(test)]
+    pub fn grass_stamps_at(&self, key: &str, p: glam::Vec2) -> Option<(u64, u64)> {
+        self.entries.get(key)?.grass.stamps_at(p)
+    }
+
+    /// Every chunk of `chunks` holds the blades of the terrain's latest data (tests).
+    #[cfg(test)]
+    pub fn grass_fresh(&self, key: &str, chunks: &[(u32, u32)]) -> bool {
+        self.entries
+            .get(key)
+            .is_some_and(|g| chunks.iter().all(|c| g.grass.fresh(*c)))
     }
 
     /// Per terrain: blades each grass pass drew after / before the GPU culling (tests).

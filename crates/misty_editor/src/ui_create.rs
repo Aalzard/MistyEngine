@@ -279,7 +279,7 @@ mod tests {
         );
         for el in UiElement::ALL {
             h.run();
-            h.get_by_label("GameObject").click();
+            h.get_by_label("Object").click();
             h.run();
             h.get_by_label("UI ⏵").hover();
             h.run();

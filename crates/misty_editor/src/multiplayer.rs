@@ -155,7 +155,7 @@ pub fn on_play_started(s: &mut EditorState) {
         .into_iter()
         .any(|(e, _)| s.scene.world.get::<&NetworkManager>(e).is_ok());
     if !has_manager {
-        let msg = "Multiplayer Play Mode: the scene has no Network Manager (Add Component ▸ \
+        let msg = "Multiplayer Play Mode: the scene has no Network Manager (Archetype ▸ \
                    Netcode ▸ Network Manager), so no players were started";
         s.console.warn(msg);
         s.multiplayer.problem = Some("The scene has no Network Manager.".into());
@@ -292,7 +292,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
     ui.add_space(4.0);
     ui.checkbox(
         &mut s.multiplayer.settings.show_stats,
-        "Network stats in the Game view",
+        "Network stats in the Scene Viewer",
     );
     if s.multiplayer.settings != before {
         s.multiplayer.save(&root);

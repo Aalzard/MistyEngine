@@ -145,13 +145,13 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         use crate::vgeo_convert::Command;
         let (label, cmd, tip) = match models::is_virtual(mesh) {
             false => (
-                "Enable Virtual Geometry",
+                "Enable Misty Mesh",
                 Command::EnableSelected,
                 "Draw this model's dense meshes as clusters with per-cluster level of detail \
-                 (turns on its Virtual Geometry import setting)",
+                 (turns on its Misty Mesh import setting)",
             ),
             true => (
-                "Disable Virtual Geometry",
+                "Disable Misty Mesh",
                 Command::DisableSelected,
                 "Draw this model's meshes the ordinary way again",
             ),

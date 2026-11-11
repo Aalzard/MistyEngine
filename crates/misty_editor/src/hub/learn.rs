@@ -84,6 +84,10 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            if guide_card(ui, &p) {
+                hub.guide = Some(Default::default());
+            }
+            ui.add_space(4.0);
             for t in tutorials::list() {
                 let done = hub.tutorials_done.contains(t.id);
                 if row(ui, &p, &t, done) {
@@ -108,6 +112,56 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
         hub.start_tutorial(id);
     }
     pick_project(ui, hub, &p);
+    guide_window(ui.ctx(), hub);
+}
+
+/// The User Guide card at the top of the Learn page; true when Read is clicked.
+fn guide_card(ui: &mut egui::Ui, p: &style::Palette) -> bool {
+    let mut clicked = false;
+    egui::Frame::new()
+        .fill(p.card)
+        .stroke(egui::Stroke::new(1.0, p.border))
+        .corner_radius(8.0)
+        .inner_margin(egui::Margin::symmetric(16, 12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 3.0;
+                    let title = format!("{} {}", crate::panels::guide::ICON, tr!("User Guide"));
+                    ui.label(RichText::new(title).size(15.0).strong());
+                    ui.label(
+                        RichText::new(tr!(
+                            "The editor's layout, finding what is slow, quality settings and Script Graphs, with four step-by-step guides."
+                        ))
+                        .color(p.dim),
+                    );
+                });
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    clicked = ui.add(style::primary(&tr!("Read"))).clicked();
+                });
+            });
+        });
+    clicked
+}
+
+/// The guide over the Hub (examples open from inside a project, so they are left out here).
+fn guide_window(ctx: &egui::Context, hub: &mut Hub) {
+    let Some(view) = hub.guide.as_mut() else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new(tr!("User Guide"))
+        .id(egui::Id::new("hub_guide"))
+        .open(&mut open)
+        .default_size([900.0, 620.0])
+        .collapsible(false)
+        .show(ctx, |ui| {
+            let _ = crate::panels::guide::view::show(ui, view, false);
+        });
+    if !open {
+        hub.guide = None;
+    }
 }
 
 /// One tutorial card; true when Start (or Again) is clicked.

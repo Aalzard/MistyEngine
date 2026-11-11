@@ -7,8 +7,8 @@
   "steps": [
     {
       "title": "Select the sun",
-      "text": "Click Directional Light in the Hierarchy. This is the sun. The fog is already on, but there are no rays yet.",
-      "targets": ["hierarchy.Directional Light", "panel.Hierarchy"],
+      "text": "Click Directional Light in the Scene Tree. This is the sun. The fog is already on, but there are no rays yet.",
+      "targets": ["hierarchy.Directional Light", "panel.Scene Tree"],
       "done_when": "selected:Directional Light",
       "demo": "select:Directional Light"
     },
@@ -35,22 +35,22 @@
     },
     {
       "title": "Block the light",
-      "text": "Add GameObject ▸ 3D Object ▸ Cube. Move it between the camera and the sun and make it big with the Scale tool (R). Rays appear around its edges.",
-      "targets": ["menu.GameObject/3D Object/Cube", "menu.GameObject/3D Object", "menu.GameObject"],
+      "text": "Add Object ▸ 3D Object ▸ Cube. Move it between the camera and the sun and make it big with the Scale tool (R). Rays appear around its edges.",
+      "targets": ["menu.Object/3D Object/Cube", "menu.Object/3D Object", "menu.Object"],
       "done_when": "undo:Create Cube",
       "demo": "god_rays:wall"
     },
     {
       "title": "Add a fog box",
-      "text": "Add GameObject ▸ Rendering ▸ Local Volumetric Fog. It is a box of thicker fog. Put it where the rays should be brightest.",
-      "targets": ["menu.GameObject/Rendering/Local Volumetric Fog", "menu.GameObject/Rendering", "menu.GameObject"],
+      "text": "Add Object ▸ Rendering ▸ Local Volumetric Fog. It is a box of thicker fog. Put it where the rays should be brightest.",
+      "targets": ["menu.Object/Rendering/Local Volumetric Fog", "menu.Object/Rendering", "menu.Object"],
       "done_when": "has:Fog Volume",
       "demo": "create:Local Volumetric Fog"
     },
     {
       "title": "Look toward the sun",
-      "text": "Rays show best with the sun in front of you. Hold the right mouse button in the Scene view and turn to face it.",
-      "targets": ["panel.Scene"]
+      "text": "Rays show best with the sun in front of you. Hold the right mouse button in the Editor Scene and turn to face it.",
+      "targets": ["panel.Editor Scene"]
     }
   ]
 }

@@ -29,10 +29,10 @@ pub const DRAW_MODES: [&str; 18] = [
     "Virtual Shadow Levels",
     "Virtual Shadow Cache",
     "Virtual Shadow Pages",
-    "Virtual Geometry Clusters",
-    "Virtual Geometry Levels",
-    "Virtual Geometry Overdraw",
-    "Virtual Geometry Materials",
+    "Misty Mesh Clusters",
+    "Misty Mesh Levels",
+    "Misty Mesh Overdraw",
+    "Misty Mesh Materials",
     "Physics Debug",
 ];
 /// Wireframe only, no shading.
@@ -337,8 +337,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.
-            let stats = gpu.renderer.stats();
-            if stats.grass_pending > 0 || stats.loading > 0 {
+            if gpu.renderer.stats().busy() {
                 ui.ctx().request_repaint();
             }
             ui.painter().image(
@@ -774,7 +773,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 ui.checkbox(&mut fx.post_processing, tr!("Post Processing"));
             })
             .0
-            .on_hover_text(tr!("Scene view effects"));
+            .on_hover_text(tr!("Editor Scene effects"));
             crate::tutorials::targets::mark_response(ui, "scene.effects_menu", &fx_menu);
             let fx_toggle = toggle_button(
                 ui,
@@ -808,6 +807,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             .on_hover_text(tr!(
                 "Quality level, anti-aliasing, render scale and upscale filter"
             ));
+            crate::tutorials::targets::mark_response(ui, "scene.quality", &quality_menu);
             if std::mem::take(&mut sv.open_quality_menu) {
                 crate::widgets::open_dropdown(ui.ctx(), &quality_menu);
             }

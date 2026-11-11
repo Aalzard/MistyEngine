@@ -551,6 +551,9 @@ fn input_system_demo_plays_with_actions() {
     use misty_engine::settings::ProjectSettings;
 
     // No saved rebinds: a fresh prefs file.
+    let _prefs = crate::test_util::PREFS_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     misty_engine::prefs::open(&std::env::temp_dir().join(format!(
         "misty_input_system_demo_prefs_{}.json",
         std::process::id()

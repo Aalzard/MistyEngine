@@ -1,14 +1,14 @@
 # Debug tools: Frame Debugger and Memory Profiler
 
-Both windows live under **Window ▸ Analysis**, next to the Profiler, and dock beside the
-Project window so the Game view stays visible.
+Both windows live under **Window ▸ Analysis**, next to the Profiler, and dock beside
+Asset Files so the Scene Viewer stays visible.
 
 ## Frame Debugger
 
-Shows how the Game view's frame is built, one render event at a time.
+Shows how the Scene Viewer's frame is built, one render event at a time.
 
 1. Open **Window ▸ Analysis ▸ Frame Debugger** and press **Enable**. Play mode pauses (it
-   resumes when you press **Disable**); in Edit mode the Game view simply shows the same frame.
+   resumes when you press **Disable**); in Edit mode the Scene Viewer simply shows the same frame.
 2. The left side lists the frame's events grouped by pass, in the order they run:
    `Shadows ▸ Cascade N` / `Local Light Layer N`, `Ambient Occlusion`, `Depth Prepass`,
    `Clouds`, `Volumetric Fog`, `Sky`, `Opaque`, `Terrain`, `Scene Copy`, `Water`,
@@ -17,7 +17,7 @@ Shows how the Game view's frame is built, one render event at a time.
    Each group shows its event count; click the arrow to fold it. The search field filters
    events by name, object, mesh or material.
 3. Select an event (click, the slider, ◀ ▶, or **←/→** while the pointer is over the window).
-   The Game view replays the frame **up to that event** and shows the render target it wrote:
+   The Scene Viewer replays the frame **up to that event** and shows the render target it wrote:
    the HDR scene colour (tonemapped) for main-pass draws, the depth of the shadow map layer for
    shadow casters, the bloom mip for bloom steps, the final image for the last events. Compute
    passes have no colour target and show a dark image.
@@ -46,7 +46,7 @@ Press **Capture** to take a snapshot. Each snapshot lists items with an estimate
 |---|---|
 | Textures | Loaded material/particle/terrain textures (full mip chain, by format), reflection probe atlas, HDRI sky cubemaps |
 | Meshes | Built-in primitives, imported meshes, combined static batches, skinned poses, terrain meshes and layers |
-| Render Targets | Scene / Game view targets (MSAA colour, emission, depth, resolves, bloom chain), shadow cascades and local shadow layers, fog and cloud volumes |
+| Render Targets | Editor Scene / Scene Viewer targets (MSAA colour, emission, depth, resolves, bloom chain), shadow cascades and local shadow layers, fog and cloud volumes |
 | Buffers | Per-draw values, draw slots, lines, uniforms, LTC table |
 | Audio | Clips used by Audio Sources at their decoded size (WAV: frames × 8 bytes; compressed formats ≈ 10× file size) |
 | Scripts | The Lua heap (Play mode) |

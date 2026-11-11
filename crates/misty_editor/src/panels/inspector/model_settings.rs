@@ -187,8 +187,8 @@ fn meshes_section(ui: &mut Ui, s: &mut ModelImporter) {
     sub_header(ui, "Meshes");
     PropertyGrid::new("model_import_meshes").show(ui, |ui| {
         ui.label("Read/Write").on_hover_text(
-            "Unity parity: Misty keeps imported meshes readable on the CPU either way (physics, \
-            picking and lightmap baking read them).",
+            "Kept for imported settings: Misty keeps imported meshes readable on the CPU either \
+            way (physics, picking and lightmap baking read them).",
         );
         ui.checkbox(&mut s.read_write, "");
         ui.end_row();
@@ -197,12 +197,12 @@ fn meshes_section(ui: &mut Ui, s: &mut ModelImporter) {
         );
         ui.checkbox(&mut s.generate_lightmap_uvs, "");
         ui.end_row();
-        ui.label("Virtual Geometry").on_hover_text(
-            "Build the meshes into clusters with per-cluster level of detail (Misty Virtual \
-            Geometry, prototype): dense rocks, cliffs and props then draw about as many \
-            triangles as they cover pixels. Needs Virtual Geometry on in the Quality level. \
-            Opaque, non-skinned meshes; not for alpha-tested foliage. (GameObject ▸ Enable \
-            Virtual Geometry and Tools ▸ Rendering ▸ Convert Scene to Virtual Geometry set it \
+        ui.label("Misty Mesh").on_hover_text(
+            "Build the meshes into clusters with per-cluster level of detail (virtual \
+            geometry, prototype): dense rocks, cliffs and props then draw about as many \
+            triangles as they cover pixels. Needs Misty Mesh on in the Quality level. \
+            Opaque, non-skinned meshes; not for alpha-tested foliage. (Object ▸ Enable \
+            Misty Mesh and Tools ▸ Rendering ▸ Convert Scene to Misty Mesh set it \
             for you.)",
         );
         ui.checkbox(&mut s.virtual_geometry, "");

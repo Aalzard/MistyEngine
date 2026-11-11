@@ -1,6 +1,46 @@
 Misty Engine changelog
 ======================
 
+Unreleased
+----------
+
+Misty's own names
+- Windows: Inspector is now Properties, Hierarchy is Scene Tree, Project is Asset Files,
+  Scene is Editor Scene and Game is Scene Viewer. Menus: GameObject is Object, Component is
+  Archetype (Add Archetype), World Partition is World Streaming, Virtual Geometry is
+  Misty Mesh. Turkish and Arabic follow.
+- Nothing to redo: saved layouts, scenes, Lua scripts (GetComponent, AddComponent) and MCP
+  tools work as before, and old menu paths such as "GameObject/3D Object/Cube" still run.
+
+0.3.2 - Turkish and Arabic, Project window fixes (November 2026)
+-----------------------------------------------------------------
+
+Languages
+- The editor speaks Turkce and Arabic: Edit > Preferences > General > Language, or the Hub's
+  Settings page. Applies at once, no restart. Menus, toolbar, Hierarchy, Project, Console,
+  the common Inspector components, Preferences and the Hub are translated; the rest falls
+  back to English.
+- Arabic letters join and read right to left; the editor layout mirrors (window buttons,
+  menus, Inspector and Hierarchy sides).
+- Games: built-in Arabic font for UI Text, brackets mirrored in right-to-left text (fixes
+  ")2x("), Turkish-aware upper/lower case (istanbul -> ISTANBUL with the dotted I) in String
+  Tables and Lua (Localization.ToUpper / ToLower). LocalizationDemo2 sample.
+
+Project window
+- Right-click on empty space opens the folder menu everywhere (grid, list, empty folders,
+  the folder tree); right-click on empty space in the Hierarchy opens Create.
+- New folders and assets start renaming at once with the name selected; Rename no longer
+  loses its field after half a second.
+- Files and folders dragged in from the desktop are imported into the folder under the
+  pointer.
+- Show in Explorer opens the right folder (paths with spaces opened Documents before).
+- Files added outside the editor appear and import right away, even while the editor idles.
+- Press and hold an item for 1.5 s in the Project window or Hierarchy to rename it.
+
+Fixes
+- Timeline track, Shader Graph and Script Graph group, and Input Actions renames end on
+  Enter or clicking away. Right-click on the Timeline's empty track headers opens Add.
+
 0.3.1 - templates, world streaming and visual scripting (November 2026)
 ----------------------------------------------------------------------
 

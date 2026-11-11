@@ -472,6 +472,10 @@ fn glb_diff(actual: &[u8], expected: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// PlayerPrefs are one store per process: tests that open a prefs file hold this so they don't
+/// swap each other's file mid-test.
+pub static PREFS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;

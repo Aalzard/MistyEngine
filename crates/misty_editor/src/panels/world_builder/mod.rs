@@ -483,7 +483,7 @@ fn stamps_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
     targets::header(ui, "Add", add_row.response.rect);
     let list = world_gen::stamps_of(&state.scene, builder);
     if list.is_empty() {
-        ui.weak("No stamps yet. Added stamps go under the World Builder object at the Scene view's centre.");
+        ui.weak("No stamps yet. Added stamps go under the World Builder object at the Editor Scene's centre.");
         return;
     }
     let active = state.selection.active();

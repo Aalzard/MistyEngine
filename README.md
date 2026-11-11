@@ -6,11 +6,11 @@
 
 # Misty Engine
 
-Misty Engine is a free, open source game engine and editor written in Rust. If you have used Unity, it
-will feel familiar: a Hierarchy, a Scene view, an Inspector, a Project window, Play mode, prefabs and
-scripts on your objects. The goal is to bring the best of several engines into one: the Unity
-workflow, high-end visuals, open source, and lots of tools built in. It is built on wgpu, egui, hecs,
-rapier and Lua.
+Misty Engine is a free, open source game engine and editor written in Rust. You build scenes in the
+Editor Scene, arrange objects in the Scene Tree, tune them in the Properties panel, keep your files in
+Asset Files and try your game in the Scene Viewer with Play mode, prefabs and scripts on your objects.
+The goal is a friendly editor workflow, high-end visuals, open source, and lots of tools built in. It
+is built on wgpu, egui, hecs, rapier and Lua.
 
 > **Early test version (0.3.1).** Things will change and some things will break. Please try it, and
 > tell us what you find.
@@ -51,41 +51,45 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
   - **Racing:** an arcade racer on a 1.2 km circuit: a car with three bodies to pick from, boost,
     reset to the track, a chase camera, a lap timer and live settings (gravity, mass, grip, top
     speed). The car, camera, timer and settings are Lua scripts you can edit.
+  - **2D Platformer:** a pixel-art player that runs and jumps (A/D or the arrows, Space) through a
+    tilemap level painted with a Rule Tile, coins to collect, a camera that follows the player,
+    torches with 2D lights and shadows, and a Tile Palette ready to paint more. The Scene view
+    starts in 2D.
   - **Floating Platform:** a platform floating in the sky, to start from scratch.
 
-  Every template starts with post-processing on: bloom, tonemapping, volumetric clouds and sun
-  shafts.
+  Every 3D template starts with post-processing on: bloom, tonemapping, volumetric clouds and sun
+  shafts; the 2D Platformer has bloom.
 
   You can also include all the sample scenes.
 - **Editor:**
   - Frameless window with its own title bar, and dockable windows with saved layouts.
-  - Inspector cards with clear titles; a Hierarchy with tree lines and colour-coded folders.
+  - Properties cards with clear titles; a Scene Tree with tree lines and colour-coded folders.
   - Undo history, Ctrl+K search for anything, multiple scenes open at once, prefabs and presets.
   - A built-in code editor, so you don't need Visual Studio.
   - A smooth Scene camera (gliding fly, orbit and zoom to the cursor), and **editor scripting in
-    Lua**: your own menu items, tool windows, custom Inspectors and gizmos.
+    Lua**: your own menu items, tool windows, custom Properties views and gizmos.
 - **Next-generation rendering** (experimental, switch them on in Quality settings):
-  - **Misty GI, Lumen-like real-time global illumination:** bounce light, colour bleeding and sky
+  - **Misty GI, real-time global illumination:** bounce light, colour bleeding and sky
     occlusion that update live as lights and objects move, with nothing baked. It traces a
     distance-field version of the scene and gathers light through probes; in our test room it lands
     within 1–2 brightness levels of an offline path-traced bake, in about 1.1 ms on High.
-  - **Virtual geometry, Nanite-like:** dense meshes are cut into small clusters with a hierarchy of
+  - **Misty Mesh (virtual geometry):** dense meshes are cut into small clusters with a hierarchy of
     simpler versions, and the GPU picks the detail per cluster every frame, so thousands of
     high-poly rocks draw as fast as a hand-made LOD chain, with no LODs to make. One click turns
-    it on: **GameObject ▸ Enable Virtual Geometry** on the selection, or **Tools ▸ Rendering ▸
-    Convert Scene to Virtual Geometry** for every dense mesh in the scene.
+    it on: **Object ▸ Enable Misty Mesh** on the selection, or **Tools ▸ Rendering ▸
+    Convert Scene to Misty Mesh** for every dense mesh in the scene.
   - **Virtual shadow maps:** sharp sun shadows from a cached page system, with grass and swaying
     trees in a near layer.
   - **Upscaling** (Off / Quality / Balanced / Performance): render below full resolution and rebuild
     a sharp image.
 - **Grass and trees:** dense, thin field grass drawn with a visibility buffer (each grass pixel is
   shaded once), soft shadows from trees on the turf, and procedural trees (oak, linden, birch) with
-  PBR bark, wind, LODs and far impostors, painted onto terrains like in Unity.
+  PBR bark, wind, LODs and far impostors, painted onto terrains.
 - **Rendering:**
   - Physically based materials, soft shadows, area lights and reflection probes.
   - **Baked global illumination** (a lightmapper), **light probes** and **occlusion culling**.
   - Ambient occlusion, bloom and other post-processing, HDRI skies, light halos and lens flares.
-  - Quality settings, FXAA and render scale right in the Scene view.
+  - Quality settings, FXAA and render scale right in the Editor Scene.
 - **Atmosphere:** volumetric fog with sharp sun shafts, volumetric clouds, an ocean and lakes with
   waves, foam and fog.
 - **Content tools:**
@@ -123,7 +127,7 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
 | ![GPU particles](docs/screenshots/round13/vfx_play.png) | ![Shader Graph](docs/screenshots/round12/shadergraph_dissolve.png) |
 | ![Timeline](docs/screenshots/round11/timeline_window.png) | ![Virtual cameras](docs/screenshots/round11/vcam_follow_collider.png) |
 | ![Tilemap with 2D lights](docs/screenshots/round12/tilemap_game.png) | ![Vehicles](docs/screenshots/round11/vehicles_play.png) |
-| ![Inspector cards](docs/screenshots/ui-round/inspector_light.png) | ![Hierarchy folders](docs/screenshots/ui-round/trees_folder_picker.png) |
+| ![Properties cards](docs/screenshots/ui-round/inspector_light.png) | ![Scene Tree folders](docs/screenshots/ui-round/trees_folder_picker.png) |
 | ![Frame Debugger](docs/screenshots/round14/debug_frame_debugger_opaque.png) | ![Sun shafts in volumetric fog](docs/screenshots/round10/merged_godrays.png) |
 
 ## Build from source

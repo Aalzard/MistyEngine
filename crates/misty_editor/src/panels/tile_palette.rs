@@ -57,7 +57,7 @@ fn target_row(ui: &mut Ui, state: &mut EditorState) {
             state.tile_palette.target = Some(e);
         }
         if maps.is_empty() {
-            ui.weak("No Tilemap: GameObject ▸ 2D Object ▸ Tilemap");
+            ui.weak("No Tilemap: Object ▸ 2D Object ▸ Tilemap");
             if ui.button("Create Tilemap").clicked() {
                 crate::tile_palette::create_tilemap(
                     state,

@@ -15,6 +15,12 @@ pub struct Requests {
     pub rename: Option<PathBuf>,
     pub delete: Option<PathBuf>,
     pub copy_path: Option<String>,
+    /// The rename was started by press and hold (the button is still down).
+    pub rename_by_hold: bool,
+    /// The rename was asked for on a folder tree row (its field goes there).
+    pub rename_in_tree: bool,
+    /// Create ▸ was chosen in this folder's menu: it opens first, so the asset is made there.
+    pub create_in: Option<PathBuf>,
 }
 
 /// Create ▸ entries (Project "+" button, Assets ▸ Create and the context menus).
@@ -84,7 +90,7 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
     if ui
         .button(tr(AssetKind::MaterialFromShader.label()))
         .on_hover_text(tr!(
-            "A new material using the shader selected in the Project window"
+            "A new material using the shader selected in Asset Files"
         ))
         .clicked()
     {
@@ -169,7 +175,11 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
 
 /// Right-click menu of the empty area of a folder.
 pub fn folder_menu(ui: &mut Ui, folder: &Path, req: &mut Requests) {
+    let before = req.actions.len();
     ui.menu_button(tr!("Create"), |ui| create_items(ui, &mut req.actions));
+    if req.actions.len() > before {
+        req.create_in = Some(folder.to_path_buf());
+    }
     if ui.button(explorer_label()).clicked() {
         req.actions
             .push(Action::ShowInExplorer(folder.to_path_buf()));
@@ -199,12 +209,29 @@ pub fn rename_field(ui: &mut Ui, rect: Rect, browser: &mut ProjectBrowser, req: 
     let Some((path, text)) = browser.renaming.as_mut() else {
         return;
     };
-    let edit = ui.put(
+    // Its own id (an automatic one moves when the folder's items change), placed over the item
+    // without moving the tiles after it (`put` advanced the layout: the next tiles jumped).
+    let id = egui::Id::new(("project_rename", &*path));
+    let edit = ui.place(
         rect,
-        egui::TextEdit::singleline(text).margin(egui::vec2(2.0, 0.0)),
+        egui::TextEdit::singleline(text)
+            .id(id)
+            .margin(egui::vec2(2.0, 0.0)),
     );
+    let guarded = crate::hold_rename::keep_focus(ui, &edit, &mut browser.rename_hold_guard);
     if !edit.has_focus() && !edit.lost_focus() {
         edit.request_focus();
+    }
+    // A rename that just started: the whole name selected (typing replaces it) and the item
+    // scrolled into view.
+    if std::mem::take(&mut browser.rename_fresh) {
+        select_all(ui.ctx(), id, text);
+        ui.scroll_to_rect(rect, None);
+    }
+    // Lost without a click elsewhere or a key: taken back, the rename goes on.
+    if guarded || crate::hold_rename::focus_dropped(ui, &edit) {
+        edit.request_focus();
+        return;
     }
     let (enter, escape) = ui.input(|i| {
         (
@@ -227,6 +254,17 @@ pub fn rename_field(ui: &mut Ui, rect: Rect, browser: &mut ProjectBrowser, req: 
             req.actions.push(Action::RenameAsset { path, name });
         }
     }
+}
+
+/// Select all of `text` in the text field `id` (shown next frame).
+pub(crate) fn select_all(ctx: &egui::Context, id: egui::Id, text: &str) {
+    use egui::text::{CCursor, CCursorRange};
+    let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+    let end = CCursor::new(text.chars().count());
+    state
+        .cursor
+        .set_char_range(Some(CCursorRange::two(CCursor::new(0), end)));
+    state.store(ctx, id);
 }
 
 /// "Delete selected asset?" dialog; Delete moves the asset to the OS trash.

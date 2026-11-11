@@ -1,8 +1,9 @@
 Misty Engine {VERSION} - early test version
 ===========================================
 
-Misty Engine is a free game engine and editor. If you know Unity, it will feel familiar: a
-Hierarchy, a Scene view, an Inspector, a Project window, Play mode and Lua scripts.
+Misty Engine is a free game engine and editor: build scenes in the Editor Scene, arrange objects in
+the Scene Tree, tune them in the Properties panel, keep your files in Asset Files, and try your game
+in the Scene Viewer with Play mode and Lua scripts.
 
 This is an early test version. Things will change and some things will break.
 
@@ -21,7 +22,7 @@ How to start
    - Learn: step-by-step tutorials. Click Start and the editor shows you where to click.
    - Settings: the folder for new projects, and the Hub's look.
 4. Try the example project: click "Open..." and pick Examples\SampleProject. Open the scenes in
-   Assets\Scenes (double-click them in the Project window) to see what the engine can do.
+   Assets\Scenes (double-click them in Asset Files) to see what the engine can do.
 
 Windows may warn that the program is from an unknown publisher. Click "More info", then
 "Run anyway".

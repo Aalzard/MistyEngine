@@ -1,0 +1,754 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnTriggerEnter",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        250.0,
+        132.0
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Branch",
+      "position": [
+        500.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        0.0
+      ],
+      "params": {
+        "name": "Player Inside"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        154.0
+      ],
+      "params": {
+        "name": "Auto Open"
+      }
+    },
+    {
+      "id": 6,
+      "type": "Branch",
+      "position": [
+        1000.0,
+        0.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "SetVariable",
+      "position": [
+        1250.0,
+        0.0
+      ],
+      "params": {
+        "name": "Is Open"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "OnTriggerExit",
+      "position": [
+        0.0,
+        330.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        250.0,
+        461.99997
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "Branch",
+      "position": [
+        500.0,
+        330.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        330.0
+      ],
+      "params": {
+        "name": "Player Inside"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        484.0
+      ],
+      "params": {
+        "name": "Auto Open"
+      }
+    },
+    {
+      "id": 13,
+      "type": "Branch",
+      "position": [
+        1000.0,
+        330.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "SetVariable",
+      "position": [
+        1250.0,
+        330.0
+      ],
+      "params": {
+        "name": "Is Open"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        660.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        660.0
+      ],
+      "params": {
+        "count": "2"
+      }
+    },
+    {
+      "id": 17,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        814.0
+      ],
+      "params": {
+        "name": "Player Inside"
+      }
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        250.0,
+        923.99994
+      ],
+      "params": {
+        "member": "GetKeyDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "e"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "And",
+      "position": [
+        500.0,
+        858.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Branch",
+      "position": [
+        750.0,
+        660.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        836.0
+      ],
+      "params": {
+        "name": "Is Open"
+      }
+    },
+    {
+      "id": 22,
+      "type": "Not",
+      "position": [
+        1000.0,
+        836.0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "SetVariable",
+      "position": [
+        1250.0,
+        660.0
+      ],
+      "params": {
+        "name": "Is Open"
+      }
+    },
+    {
+      "id": 24,
+      "type": "GetVariable",
+      "position": [
+        1250.0,
+        836.0
+      ],
+      "params": {
+        "name": "Is Open"
+      }
+    },
+    {
+      "id": 25,
+      "type": "Select",
+      "position": [
+        1500.0,
+        814.0
+      ],
+      "values": {
+        "False": {
+          "String": "Door closed"
+        },
+        "True": {
+          "String": "Door opened"
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        1750.0,
+        660.0
+      ],
+      "params": {
+        "member": "Log",
+        "mode": "call",
+        "owner": "Debug"
+      }
+    },
+    {
+      "id": 27,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1210.0
+      ],
+      "params": {
+        "name": "Is Open"
+      }
+    },
+    {
+      "id": 28,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1320.0
+      ],
+      "params": {
+        "name": "Open Angle"
+      }
+    },
+    {
+      "id": 29,
+      "type": "Select",
+      "position": [
+        500.0,
+        1210.0
+      ],
+      "values": {
+        "False": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1474.0
+      ],
+      "params": {
+        "name": "Turn Speed"
+      }
+    },
+    {
+      "id": 31,
+      "type": "MultiplyFloat",
+      "position": [
+        500.0,
+        1474.0
+      ]
+    },
+    {
+      "id": 32,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        1100.0
+      ],
+      "params": {
+        "name": "Angle"
+      }
+    },
+    {
+      "id": 33,
+      "type": "MoveTowards",
+      "position": [
+        750.0,
+        1232.0
+      ]
+    },
+    {
+      "id": 34,
+      "type": "SetVariable",
+      "position": [
+        1000.0,
+        1034.0
+      ],
+      "params": {
+        "name": "Angle"
+      }
+    },
+    {
+      "id": 35,
+      "type": "GetVariable",
+      "position": [
+        1000.0,
+        1276.0
+      ],
+      "params": {
+        "name": "Door Name"
+      }
+    },
+    {
+      "id": 36,
+      "type": "Api",
+      "position": [
+        1250.0,
+        1276.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      }
+    },
+    {
+      "id": 37,
+      "type": "GetVariable",
+      "position": [
+        1250.0,
+        1166.0
+      ],
+      "params": {
+        "name": "Angle"
+      }
+    },
+    {
+      "id": 38,
+      "type": "MakeVector3",
+      "position": [
+        1500.0,
+        1166.0
+      ]
+    },
+    {
+      "id": 39,
+      "type": "Api",
+      "position": [
+        1750.0,
+        1034.0
+      ],
+      "params": {
+        "member": "localEulerAngles",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 2,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "True",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 6,
+      "input": "Condition"
+    },
+    {
+      "from": 6,
+      "output": "True",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Other",
+      "to": 9,
+      "input": "Target"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 10,
+      "input": "Condition"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "True",
+      "to": 11,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "Condition"
+    },
+    {
+      "from": 13,
+      "output": "True",
+      "to": 14,
+      "input": "In"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 17,
+      "output": "Value",
+      "to": 19,
+      "input": "A"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "B"
+    },
+    {
+      "from": 16,
+      "output": "Then 0",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 22,
+      "input": "Value"
+    },
+    {
+      "from": 20,
+      "output": "True",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Value"
+    },
+    {
+      "from": 24,
+      "output": "Value",
+      "to": 25,
+      "input": "Condition"
+    },
+    {
+      "from": 23,
+      "output": "Out",
+      "to": 26,
+      "input": "In"
+    },
+    {
+      "from": 25,
+      "output": "Result",
+      "to": 26,
+      "input": "Message"
+    },
+    {
+      "from": 27,
+      "output": "Value",
+      "to": 29,
+      "input": "Condition"
+    },
+    {
+      "from": 28,
+      "output": "Value",
+      "to": 29,
+      "input": "True"
+    },
+    {
+      "from": 30,
+      "output": "Value",
+      "to": 31,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Delta Time",
+      "to": 31,
+      "input": "B"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 33,
+      "input": "Current"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 33,
+      "input": "Target"
+    },
+    {
+      "from": 31,
+      "output": "Result",
+      "to": 33,
+      "input": "Max Delta"
+    },
+    {
+      "from": 16,
+      "output": "Then 1",
+      "to": 34,
+      "input": "In"
+    },
+    {
+      "from": 33,
+      "output": "Result",
+      "to": 34,
+      "input": "Value"
+    },
+    {
+      "from": 35,
+      "output": "Value",
+      "to": 36,
+      "input": "Name"
+    },
+    {
+      "from": 37,
+      "output": "Value",
+      "to": 38,
+      "input": "Y"
+    },
+    {
+      "from": 34,
+      "output": "Out",
+      "to": 39,
+      "input": "In"
+    },
+    {
+      "from": 36,
+      "output": "Result",
+      "to": 39,
+      "input": "Target"
+    },
+    {
+      "from": 38,
+      "output": "Vector",
+      "to": 39,
+      "input": "Value"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Door Name",
+      "type": "string",
+      "value": {
+        "String": "Door Hinge"
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Open Angle",
+      "type": "float",
+      "value": {
+        "Float": 90.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Turn Speed",
+      "type": "float",
+      "value": {
+        "Float": 180.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Auto Open",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Is Open",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "Player Inside",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "Angle",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -154.0
+      ],
+      "size": [
+        460.0,
+        70.0
+      ],
+      "text": "Door zone: remember whether the player is inside; E (or walking in, with Auto Open) opens and closes the door; every frame the hinge turns towards its target angle."
+    }
+  ]
+}

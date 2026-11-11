@@ -83,7 +83,7 @@ fn menu_and_settings_matching() {
     let s = state();
     let h = first(&s, "create cube", Provider::Menu);
     assert_eq!(h.label, "Create Cube");
-    assert_eq!(h.detail, "GameObject/3D Object/Cube");
+    assert_eq!(h.detail, "Object/3D Object/Cube");
     assert!(!h.indices.is_empty());
     assert_eq!(first(&s, "lighting", Provider::Menu).label, "Lighting");
     assert_eq!(

@@ -37,6 +37,10 @@ pub struct EditorSettings {
     pub active_scene: Option<String>,
     /// Where the Scene view camera was when the project closed.
     pub scene_view: Option<SavedView>,
+    /// The Scene view was in 2D mode, showing this part of the XY plane (`scene_view` is then
+    /// the 3D view that turning 2D off returns to).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene_view_2d: Option<SavedView2D>,
     /// Scene view icon gizmo size and tint.
     pub scene_icons: crate::scene_icons::IconSettings,
     /// Scene camera settings (field of view, clipping, speed, easing).
@@ -50,27 +54,43 @@ pub struct SavedView {
     pub rotation: [f32; 4],
 }
 
-/// Open the Scene view where it was when the project closed; a project that never saved one
-/// (a new project) starts looking through its Main Camera.
+/// A Scene view in 2D mode: the point in the middle (x, y) and half the view's height in world
+/// units (like an orthographic camera's size).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedView2D {
+    pub center: [f32; 2],
+    pub size: f32,
+}
+
+/// Open the Scene view where it was when the project closed (in 2D mode if it was; a 2D
+/// template starts that way); a project that never saved one (a new 3D project) starts
+/// looking through its Main Camera.
 pub fn restore_scene_view(s: &mut EditorState) {
     let settings = EditorSettings::load(&s.project.root);
     s.scene_view.icons = settings.scene_icons;
     s.scene_view.camera.settings = settings.scene_camera;
-    let (position, rotation) = match settings.scene_view {
-        Some(v) => (
+    let view = match settings.scene_view {
+        Some(v) => Some((
             glam::Vec3::from(v.position),
             glam::Quat::from_array(v.rotation).normalize(),
-        ),
-        None => {
-            let Some(cam) = s.scene.find_by_name("Main Camera") else {
-                return;
-            };
+        )),
+        None => s.scene.find_by_name("Main Camera").map(|cam| {
             let (_, r, p) = s.scene.world_matrix(cam).to_scale_rotation_translation();
             (p, r)
-        }
+        }),
     };
-    if position.is_finite() && rotation.is_finite() {
+    if let Some((position, rotation)) = view
+        && position.is_finite()
+        && rotation.is_finite()
+    {
         s.scene_view.camera.set_view(position, rotation);
+    }
+    if let Some(v) = settings.scene_view_2d {
+        let [x, y] = v.center;
+        s.scene_view
+            .camera
+            .set_2d_view(glam::Vec3::new(x, y, 0.0), v.size);
+        s.scene_view.is_2d = s.scene_view.camera.is_2d();
     }
     keep_view_above_ground(s);
 }
@@ -146,14 +166,21 @@ pub(crate) fn keep_view_above_ground(s: &mut EditorState) {
         .set_view(glam::Vec3::new(eye.x, ground + 2.0, eye.z), rotation);
 }
 
-/// Remember the Scene view camera (3D views only), its settings and the icon settings for the
-/// next launch.
+/// Remember the Scene view camera (a 3D view, or the 2D view when in 2D mode), its settings
+/// and the icon settings for the next launch.
 pub fn remember_scene_view(s: &EditorState) {
     let cam = &s.scene_view.camera;
     let mut settings = EditorSettings::load(&s.project.root);
     settings.scene_icons = s.scene_view.icons;
     settings.scene_camera = cam.settings;
-    if !cam.is_2d() {
+    if cam.is_2d() {
+        let (center, size) = cam.view_2d();
+        settings.scene_view_2d = Some(SavedView2D {
+            center: [center.x, center.y],
+            size,
+        });
+    } else {
+        settings.scene_view_2d = None;
         settings.scene_view = Some(SavedView {
             position: cam.position().to_array(),
             rotation: cam.rotation().to_array(),

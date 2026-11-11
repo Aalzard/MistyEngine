@@ -256,9 +256,53 @@ pub fn fill(d: &mut TerrainData, which: DetailTarget, value: f32) {
     }
 }
 
+/// What a species blade keeps in `shape.z`: below zero, -1 - 2 × layer - jitter (0..1);
+/// the terrain grass's dry mix (0..1) and the flowers' cards (2 and up) stay positive.
+pub fn species_mark(layer: usize, jitter: f32) -> f32 {
+    -1.0 - 2.0 * layer.min(MAX_DETAIL_LAYERS - 1) as f32 - jitter.clamp(0.0, 0.999)
+}
+
+/// A species blade's dry mix and tint from its layer's look (grass_blade.wgsl
+/// `grass_dry_mix` / `grass_tint` do the same on the GPU from the species table).
+pub fn species_look(b: &Blade, layers: &[DetailLayer]) -> Option<(f32, f32)> {
+    if b.shape[2] >= 0.0 {
+        return None;
+    }
+    let s = -b.shape[2] - 1.0;
+    let li = (s * 0.5).floor();
+    let jitter = s - 2.0 * li;
+    let l = layers.get(li as usize)?;
+    Some((
+        (l.dryness + (jitter - 0.5) * 0.25).clamp(0.0, 1.0),
+        (l.tint + b.extra[3]).clamp(-1.0, 1.0),
+    ))
+}
+
+/// The species table of the grass uniform: (dryness, tint) of each layer, two per vec4.
+pub fn species_table(layers: &[DetailLayer]) -> [[f32; 4]; MAX_DETAIL_LAYERS / 2] {
+    let mut out = [[0.0; 4]; MAX_DETAIL_LAYERS / 2];
+    for (i, l) in layers.iter().take(MAX_DETAIL_LAYERS).enumerate() {
+        out[i / 2][(i % 2) * 2] = l.dryness;
+        out[i / 2][(i % 2) * 2 + 1] = l.tint;
+    }
+    out
+}
+
 /// Blades of the grass species rooted in `[lo, hi)` (terrain-local metres), kept at the
 /// density level's share `keep`, with their drop-out keys (see `details::scatter_level`).
 pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f32, Blade)> {
+    species_blades_in(d, lo, hi, keep, false)
+}
+
+/// [`species_blades`], the rows of texels in parallel when `parallel` (the same blades in the
+/// same order).
+pub(super) fn species_blades_in(
+    d: &TerrainData,
+    lo: Vec2,
+    hi: Vec2,
+    keep: f32,
+    parallel: bool,
+) -> Vec<(f32, Blade)> {
     let n = d.alphamap_resolution;
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let (t0, t1) = (
@@ -278,7 +322,8 @@ pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f3
             l.height[0].max(0.01),
             l.height[1].max(l.height[0]).max(0.01),
         );
-        for tz in t0.y as usize..t1.y as usize {
+        let rows = details::rows_of(t0.y as usize..t1.y as usize, parallel, |tz| {
+            let mut row = Vec::new();
             for tx in t0.x as usize..t1.x as usize {
                 let density = l.map[tz * n + tx];
                 if density == 0 {
@@ -319,22 +364,27 @@ pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f3
                         shape: [
                             r(4) * std::f32::consts::TAU,
                             width,
-                            (l.dryness + (r(6) - 0.5) * 0.25).clamp(0.0, 1.0),
+                            // The layer and the blade's own jitter: its Healthy↔Dry and
+                            // Brightness come from the species table at draw time, so
+                            // colour edits need no scatter (`species_look`).
+                            species_mark(li, r(6)),
                             r(7),
                         ],
                         extra: [
                             key + if seed_head { 2.0 } else { 0.0 },
                             bend,
                             r(8) * std::f32::consts::TAU,
-                            (l.tint + (r(14) - 0.5) * 0.3).clamp(-1.0, 1.0),
+                            (r(14) - 0.5) * 0.3,
                         ],
                         field: [lush, dry, swathe(p, patch), shade],
                         slope: slope.into(),
                     };
-                    out.push((key, blade));
+                    row.push((key, blade));
                 }
             }
-        }
+            row
+        });
+        out.extend(rows);
     }
     out
 }
@@ -586,6 +636,43 @@ mod tests {
         }
         let left = species_blades(&d, Vec2::ZERO, Vec2::new(32.0, 64.0), 1.0);
         assert!(left.is_empty());
+    }
+
+    #[test]
+    fn species_colour_is_looked_up_not_baked() {
+        let mut d = flat();
+        d.detail_layers = vec![DetailLayer::grass("A"), DetailLayer::grass("B")];
+        d.detail_layers[1].dryness = 0.8;
+        d.detail_layers[1].tint = -0.4;
+        fill(&mut d, DetailTarget::Layer(1), 1.0);
+        let before = species_blades(&d, Vec2::ZERO, Vec2::splat(16.0), 1.0);
+        assert!(before.len() > 100);
+        for (_, b) in &before {
+            let (dry, tint) = species_look(b, &d.detail_layers).expect("a species blade");
+            assert!((dry - 0.8).abs() <= 0.125 + 1e-4, "{dry}");
+            assert!((tint + 0.4).abs() <= 0.15 + 1e-4, "{tint}");
+        }
+        // A colour edit changes no blade: the table carries it.
+        d.detail_layers[1].dryness = 0.1;
+        d.detail_layers[1].tint = 0.5;
+        let after = species_blades(&d, Vec2::ZERO, Vec2::splat(16.0), 1.0);
+        assert_eq!(before, after);
+        let (dry, _) = species_look(&after[0].1, &d.detail_layers).unwrap();
+        assert!(dry <= 0.1 + 0.125 + 1e-4);
+        let table = species_table(&d.detail_layers);
+        assert_eq!(table[0][2..], [0.1, 0.5]);
+        // The marks keep the layer and the jitter apart.
+        for li in [0, 3, 15] {
+            for j in [0.0, 0.37, 0.999] {
+                let b = Blade {
+                    shape: [0.0, 0.0, species_mark(li, j), 0.0],
+                    ..bytemuck::Zeroable::zeroed()
+                };
+                let s = -b.shape[2] - 1.0;
+                assert_eq!((s * 0.5).floor() as usize, li);
+                assert!((s - 2.0 * (s * 0.5).floor() - j).abs() < 1e-4);
+            }
+        }
     }
 
     #[test]

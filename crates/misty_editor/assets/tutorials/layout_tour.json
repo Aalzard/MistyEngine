@@ -1,0 +1,61 @@
+{
+  "id": "layout-tour",
+  "title": "Editor Layout tour",
+  "description": "A two-minute look at the main areas of the editor: what each panel is for and where to find things.",
+  "minutes": 2,
+  "keep_scene": true,
+  "steps": [
+    {
+      "title": "Scene Tree",
+      "text": "Every object in the open scene is listed here. Click one to select it, and drag it onto another to make it a child.",
+      "targets": ["tab.hierarchy"],
+      "focus": "hierarchy"
+    },
+    {
+      "title": "Properties",
+      "text": "This panel shows everything about the selected object. Add Archetype at the bottom gives it new abilities, such as a light, a collider or a Script Graph.",
+      "targets": ["tab.inspector"],
+      "focus": "inspector"
+    },
+    {
+      "title": "Asset Files",
+      "text": "Your project's files: scenes, models, materials, sounds, scripts and Script Graphs. Drag them into the scene to use them.",
+      "targets": ["tab.project"],
+      "focus": "project"
+    },
+    {
+      "title": "Editor Scene",
+      "text": "Your workshop. Hold the right mouse button and use W A S D to fly around, and press F to frame the selected object.",
+      "targets": ["tab.scene"],
+      "focus": "scene"
+    },
+    {
+      "title": "The Quality menu",
+      "text": "Preview a quality level and change anti-aliasing, upscaling and render scale. The full settings are in Project Settings, Quality.",
+      "targets": ["scene.quality", "tab.scene"],
+      "focus": "scene"
+    },
+    {
+      "title": "Scene Viewer",
+      "text": "The game as the player sees it, through the scene's camera. Stats shows how fast it runs.",
+      "targets": ["tab.game"],
+      "focus": "game"
+    },
+    {
+      "title": "Console",
+      "text": "Messages, warnings and errors from the editor and your game appear here. Double-click one to see where it came from.",
+      "targets": ["tab.console"],
+      "focus": "console"
+    },
+    {
+      "title": "Play, Pause and Step",
+      "text": "Play runs your game in the Scene Viewer, Pause freezes it and Step runs a single frame. Changes made while playing are undone when you stop.",
+      "targets": ["toolbar.play"]
+    },
+    {
+      "title": "Help is always here",
+      "text": "The Help menu has the full User Guide, this tour and more tutorials. Enjoy making your game!",
+      "targets": ["menu.Help"]
+    }
+  ]
+}

@@ -267,7 +267,7 @@ fn hint(kind: &StampKind) -> &'static str {
         }
         StampKind::Flatten(_) => "Flattens to the object's height (or the ground under it).",
         StampKind::River(_) => {
-            "Drag the points in the Scene view. The river flows from the first point to the last."
+            "Drag the points in the Editor Scene. The river flows from the first point to the last."
         }
         StampKind::Water(_) => {
             "Lake: fills the basin under the object up to its height. Sea: everything below it."

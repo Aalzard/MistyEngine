@@ -1844,7 +1844,7 @@ impl Renderer {
             .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views(), &|v| {
                 self.vgeo_cull_event(v)
             });
-        self.mark(&mut encoder, "Virtual geometry: shadow culling");
+        self.mark(&mut encoder, "Misty Mesh: shadow culling");
         {
             crate::profile_scope!("Render.Encode.Shadows");
             self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
@@ -1885,7 +1885,7 @@ impl Renderer {
         // The first phase's clusters (also drawn by the screen-space prepass below).
         self.vgeo
             .cull(&mut encoder, 0, 1, &|v| self.vgeo_cull_event(v));
-        self.mark(&mut encoder, "Virtual geometry: culling (first phase)");
+        self.mark(&mut encoder, "Misty Mesh: culling (first phase)");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
         // `gpu_culling_active`), so it always sees the CPU-culled opaque batches.
@@ -3044,7 +3044,7 @@ impl Renderer {
                         &material,
                         &self.vgeo_gate(frame),
                     );
-                    self.mark(encoder, "Virtual geometry: visibility raster");
+                    self.mark(encoder, "Misty Mesh: visibility raster");
                     pass = self.begin_main(
                         encoder,
                         target,

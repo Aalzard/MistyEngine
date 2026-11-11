@@ -59,6 +59,9 @@ pub struct HubConfig {
     /// English.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_language: Option<String>,
+    /// The editor has offered the Editor Layout tour (once, on the first launch).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub layout_tour_offered: bool,
 }
 
 impl HubConfig {
@@ -170,6 +173,20 @@ pub fn set_editor_language(code: &str) -> Result<(), String> {
     let path = config_path().ok_or("no config folder")?;
     let mut c = HubConfig::load(&path);
     c.editor_language = (code != "en").then(|| code.to_owned());
+    c.save(&path)
+}
+
+/// The Editor Layout tour was offered already (or there is nowhere to remember it, so never
+/// offer it).
+pub fn layout_tour_offered() -> bool {
+    config_path().is_none_or(|p| HubConfig::load(&p).layout_tour_offered)
+}
+
+/// Remember that the Editor Layout tour was offered.
+pub fn set_layout_tour_offered() -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.layout_tour_offered = true;
     c.save(&path)
 }
 

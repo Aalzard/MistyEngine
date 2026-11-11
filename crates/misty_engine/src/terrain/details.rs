@@ -4,6 +4,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::auto_paint::{AutoPaintRules, par_rows, rule_mask, surface_at};
@@ -398,6 +399,54 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
 /// Like [`scatter`] but only the blades kept at density `level` (see [`level_keep`]),
 /// sorted by drop-out key so any prefix of the result is an even thinning.
 pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
+    scatter_level_in(d, (lo, hi), (lo, hi), level, false)
+}
+
+/// [`scatter_level`] with the rows of texels spread over the current rayon pool's threads
+/// (the same blades in the same order): a chunk being painted at a few hundred blades per
+/// square metre holds a quarter of a million of them.
+pub fn scatter_level_parallel(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
+    scatter_level_in(d, (lo, hi), (lo, hi), level, true)
+}
+
+/// The blades of [`scatter_level`] over the chunk `[chunk, chunk + size)` whose roots lie in
+/// the tile `[lo, hi)` inside it: the same blades (positions, shapes, keys) the chunk's
+/// scatter gives there, sorted by drop-out key. A painted chunk is scattered tile by tile, so
+/// a dab re-scatters only the tiles under the brush.
+pub fn scatter_tile(
+    d: &TerrainData,
+    chunk: (Vec2, Vec2),
+    lo: Vec2,
+    hi: Vec2,
+    level: u32,
+) -> Vec<Blade> {
+    scatter_level_in(d, (lo, hi), chunk, level, false)
+}
+
+/// What `row(r)` makes for every row of `rows`, in order: the rows in parallel (on the
+/// current rayon pool) when `parallel`.
+pub(super) fn rows_of<T: Send>(
+    rows: std::ops::Range<usize>,
+    parallel: bool,
+    row: impl Fn(usize) -> Vec<T> + Send + Sync,
+) -> Vec<T> {
+    if parallel {
+        rows.into_par_iter().flat_map_iter(row).collect()
+    } else {
+        rows.flat_map(row).collect()
+    }
+}
+
+/// Blades rooted in `[lo, hi)` (`roots`); tufts pull blades only within `chunk` (the
+/// rectangle a chunk's scatter covers, so tiles of a chunk add up to the chunk's blades).
+fn scatter_level_in(
+    d: &TerrainData,
+    roots: (Vec2, Vec2),
+    chunk: (Vec2, Vec2),
+    level: u32,
+    parallel: bool,
+) -> Vec<Blade> {
+    let (lo, hi) = roots;
     let s = &d.details;
     let n = d.alphamap_resolution;
     if !super::detail_layers::draws_grass(d) {
@@ -405,10 +454,10 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
     }
     let keep = level_keep(level);
     // Grass species painted on the terrain (terrain/detail_layers.rs).
-    let mut out: Vec<(f32, Blade)> = super::detail_layers::species_blades(d, lo, hi, keep);
+    let mut out: Vec<(f32, Blade)> =
+        super::detail_layers::species_blades_in(d, lo, hi, keep, parallel);
     if d.detail_map.len() != n * n {
-        out.sort_by(|a, b| a.0.total_cmp(&b.0));
-        return out.into_iter().map(|(_, b)| b).collect();
+        return by_key(out, parallel);
     }
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let per_texel = s.density.clamp(0.0, MAX_DENSITY) * texel.x * texel.y;
@@ -423,7 +472,8 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
     let dv = s.density_variation.clamp(0.0, 1.0);
     // Tufts a little closer together than the tallest blades.
     let cell = (s.height[1].max(0.05) * 0.8).max(0.25);
-    for tz in t0.y as usize..t1.y as usize {
+    let rows = rows_of(t0.y as usize..t1.y as usize, parallel, |tz| {
+        let mut row = Vec::new();
         for tx in t0.x as usize..t1.x as usize {
             let density = d.detail_map[tz * n + tx];
             if density == 0 {
@@ -459,7 +509,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let under = r(17) < 0.68;
                 let pull = if under { 0.08 } else { 0.45 };
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
-                let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
+                let inside = pulled.cmpge(chunk.0).all() && pulled.cmplt(chunk.1).all();
                 let p = if inside { pulled } else { root };
                 // Nothing grows over a hole.
                 if holes && d.hole_at(p.x, p.y) {
@@ -524,7 +574,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                     };
                 let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.2;
                 let (shade_relief, slope) = canopy_slope(p);
-                out.push((
+                row.push((
                     key,
                     Blade {
                         position: [p.x, d.sample_height(p.x, p.y), p.y, tall],
@@ -548,15 +598,38 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 ));
             }
         }
-    }
+        row
+    });
+    out.extend(rows);
     // Wildflowers ride along as blades of their own kind (their keys sort them first).
     out.extend(
         super::flowers::scatter(d, lo, hi)
             .into_iter()
             .map(|b| (b.key(), b)),
     );
-    out.sort_by(|a, b| a.0.total_cmp(&b.0));
-    out.into_iter().map(|(_, b)| b).collect()
+    by_key(out, parallel)
+}
+
+/// The blades in drop-out key order (stable: equal keys keep the scatter's order; sorted in
+/// parallel when `parallel`). Sorts 8-byte (key, index) words rather than the 76-byte
+/// blades: the order of a stable sort by `total_cmp`, a few times quicker.
+fn by_key(out: Vec<(f32, Blade)>, parallel: bool) -> Vec<Blade> {
+    // The key's bits made to sort like `total_cmp`, above the index (ties keep their order).
+    let word = |(i, (k, _)): (usize, &(f32, Blade))| {
+        let b = k.to_bits();
+        let ordered = if b >> 31 == 1 { !b } else { b | 0x8000_0000 };
+        (u64::from(ordered) << 32) | i as u64
+    };
+    let at = |w: &u64| out[(*w & 0xffff_ffff) as usize].1;
+    if parallel {
+        let mut order: Vec<u64> = out.par_iter().enumerate().map(word).collect();
+        order.par_sort_unstable();
+        order.par_iter().map(at).collect()
+    } else {
+        let mut order: Vec<u64> = out.iter().enumerate().map(word).collect();
+        order.sort_unstable();
+        order.iter().map(at).collect()
+    }
 }
 
 #[cfg(test)]
@@ -623,6 +696,48 @@ mod tests {
         generate(&mut d);
         assert_eq!(d.detail_map[5 * n + 10], 0, "layer 1 here");
         assert_eq!(d.detail_map[5 * n + 40], 255);
+    }
+
+    #[test]
+    fn tiles_hold_the_chunks_blades() {
+        let mut d = cliff();
+        d.details.density = 60.0;
+        d.details.clumping = 1.0;
+        generate(&mut d);
+        let (lo, hi) = (Vec2::new(48.0, 16.0), Vec2::new(64.0, 32.0));
+        let whole = scatter_level(&d, lo, hi, 1);
+        let mut tiles = Vec::new();
+        for tz in 0..4 {
+            for tx in 0..4 {
+                let t = lo + Vec2::new(tx as f32, tz as f32) * 4.0;
+                tiles.extend(scatter_tile(&d, (lo, hi), t, t + 4.0, 1));
+            }
+        }
+        assert!(whole.len() > 1000, "{}", whole.len());
+        assert_eq!(tiles.len(), whole.len());
+        let key = |b: &Blade| (b.key().to_bits(), b.position.map(f32::to_bits));
+        let mut a: Vec<_> = whole.iter().map(key).collect();
+        let mut b: Vec<_> = tiles.iter().map(key).collect();
+        a.sort_unstable();
+        b.sort_unstable();
+        assert!(a == b, "the very same blades");
+    }
+
+    #[test]
+    fn blades_sort_like_a_stable_sort_by_key() {
+        let blade = |x: f32| Blade {
+            position: [x, 0.0, 0.0, 1.0],
+            ..Zeroable::zeroed()
+        };
+        let keys = [0.5, 0.25, 0.5, 0.0, 1.5, 0.25, 0.999, 0.0];
+        let out: Vec<(f32, Blade)> = (keys.iter().enumerate())
+            .map(|(i, k)| (*k, blade(i as f32)))
+            .collect();
+        let mut want = out.clone();
+        want.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let want: Vec<Blade> = want.into_iter().map(|(_, b)| b).collect();
+        assert_eq!(by_key(out.clone(), false), want);
+        assert_eq!(by_key(out, true), want);
     }
 
     #[test]

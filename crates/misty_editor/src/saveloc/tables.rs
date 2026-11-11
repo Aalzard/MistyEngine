@@ -185,7 +185,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
     if s.saveloc.tables.table.is_none() {
         ui.add_space(8.0);
         ui.label("No String Table open.");
-        ui.weak("Create one above, or double-click a .strings file in the Project window.");
+        ui.weak("Create one above, or double-click a .strings file in Asset Files.");
         return;
     }
     edit_row(ui, s);

@@ -19,6 +19,7 @@ pub(crate) use inspector::slots::mesh_choices;
 pub(crate) use inspector::slots::texture_slot;
 pub mod effect_graph;
 pub mod frame_debugger;
+pub mod guide;
 pub mod input_actions;
 mod lighting;
 mod lighting_hdri;
@@ -93,11 +94,22 @@ impl TabViewer for PanelViewer<'_> {
         if crate::tutorials::targets::enabled() {
             let id = format!("panel.{}", tab.title());
             crate::tutorials::targets::mark(ui, &id, ui.max_rect());
+            // The stable id: the same in every language and after a rename.
+            let key = format!("tab.{}", tab.key());
+            crate::tutorials::targets::mark(ui, &key, ui.max_rect());
         }
         match tab {
-            Tab::Scene => scene::show(ui, self.state, self.gpu.as_deref_mut()),
+            Tab::Scene => {
+                let rect = ui.max_rect();
+                scene::show(ui, self.state, self.gpu.as_deref_mut());
+                crate::os_drop::scene_target(ui, self.state, rect);
+            }
             Tab::Game => game::show(ui, self.state, self.gpu.as_deref_mut()),
-            Tab::Hierarchy => hierarchy::show(ui, self.state),
+            Tab::Hierarchy => {
+                let rect = ui.max_rect();
+                hierarchy::show(ui, self.state);
+                crate::os_drop::scene_target(ui, self.state, rect);
+            }
             Tab::Inspector => inspector::show(ui, self.state),
             Tab::Project => project::show(ui, self.state),
             Tab::Console => console::show(ui, self.state),
@@ -123,6 +135,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::AssetGroups => asset_groups::show(ui, self.state),
             Tab::PackageManager => packages::show(ui, self.state),
             Tab::InputActions => input_actions::show(ui, self.state),
+            Tab::Guide => guide::show(ui, self.state),
             Tab::Tool(id) => crate::editor_scripts::windows::show(ui, self.state, *id),
         }
     }

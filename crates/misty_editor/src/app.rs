@@ -50,6 +50,10 @@ impl EditorApp {
         updater: crate::updater::Updater,
     ) -> Self {
         theme::apply(ctx);
+        // The file watch thread wakes the window when a watched file or folder changes, so an
+        // idle editor still shows files added by other programs (see `ProjectBrowser::poll_disk`).
+        let waker = ctx.clone();
+        misty_engine::file_watch::set_waker(move || waker.request_repaint());
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
         let guids = {
             misty_engine::profile_scope!(
@@ -623,6 +627,11 @@ impl EditorApp {
                 s.refresh_assets();
             }
             drop(guids_scope);
+            // Files and folders added, removed or renamed in the folders the Project window
+            // lists (Explorer, other apps): re-list and import them now, not on the next visit.
+            if s.project.poll_disk() {
+                s.refresh_assets();
+            }
             // Open scenes and editor-held assets follow their files (see `live_reload`).
             let live_scope =
                 misty_engine::profiler::Scope::begin_lazy(|| "Editor.LiveReload", None);
@@ -899,6 +908,8 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Files dropped from the OS where no panel took them: into the open Project folder.
+        crate::os_drop::fallback(&ctx, &mut self.state);
         // Shader variants compile the first time a view needs them (a new scene, a material
         // or effect first seen): say so, since that frame takes longer.
         let shaders = misty_engine::render::pipelines_built();
@@ -939,6 +950,11 @@ impl eframe::App for EditorApp {
             let previews = &mut self.state.project.thumbnails.materials;
             crate::material_preview::render(gpu, previews);
             if previews.pending() {
+                ctx.request_repaint();
+            }
+            let terrain = &mut self.state.project.thumbnails.terrain;
+            crate::terrain_previews::render(gpu, terrain);
+            if terrain.pending() {
                 ctx.request_repaint();
             }
         }

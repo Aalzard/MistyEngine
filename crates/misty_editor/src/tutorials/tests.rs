@@ -105,7 +105,7 @@ fn isolate_terrains(s: &mut EditorState) {
 #[test]
 fn tutorial_data_loads_and_is_complete() {
     let all = data::all();
-    assert_eq!(all.len(), 4);
+    assert_eq!(all.len(), 5);
     let mut ids: Vec<&str> = all.iter().map(|t| t.id.as_str()).collect();
     ids.dedup();
     assert_eq!(ids.len(), all.len(), "unique ids");
@@ -118,11 +118,22 @@ fn tutorial_data_loads_and_is_complete() {
             t.id,
             t.steps.len()
         );
-        assert!(scenes::NAMES.contains(&t.scene.as_str()), "{}: scene", t.id);
+        assert!(
+            t.keep_scene || scenes::NAMES.contains(&t.scene.as_str()),
+            "{}: scene",
+            t.id
+        );
         assert!(t.minutes > 0 && !t.description.is_empty());
         for (i, step) in t.steps.iter().enumerate() {
             assert!(!step.title.is_empty() && !step.text.is_empty());
             assert!(!step.targets.is_empty(), "{} step {i}: no target", t.id);
+            if let Some(tab) = &step.focus {
+                assert!(
+                    crate::layout::Tab::from_key(tab).is_some(),
+                    "{} step {i}: no tab {tab}",
+                    t.id
+                );
+            }
             // Short texts: one to three sentences.
             let chars: Vec<char> = step.text.chars().collect();
             let sentences = (0..chars.len())
@@ -160,12 +171,18 @@ fn tutorial_data_loads_and_is_complete() {
 #[test]
 fn list_is_for_the_hub() {
     let list = list();
-    assert_eq!(list[0].id, "post-processing");
-    assert_eq!(list[0].title, "Make it beautiful: Post-processing");
+    assert_eq!(list[0].id, LAYOUT_TOUR);
+    assert_eq!(list[1].title, "Make it beautiful: Post-processing");
     assert!(list.iter().all(|t| t.minutes > 0));
     assert_eq!(
         list.iter().map(|t| t.id).collect::<Vec<_>>(),
-        ["post-processing", "god-rays", "terrain", "world-builder"]
+        [
+            "layout-tour",
+            "post-processing",
+            "god-rays",
+            "terrain",
+            "world-builder"
+        ]
     );
 }
 
@@ -347,6 +364,9 @@ fn run_end_to_end(name: &str, id: &str) {
                 && seen.iter().any(|t| t == parent)
             {
                 let header = parent.rsplit('/').next().unwrap();
+                // Scrolled into view first: long Inspectors put it below the window.
+                h.get_by_label(header).scroll_to_me();
+                h.run_steps(3);
                 h.get_by_label(header).click();
                 h.run_steps(3);
                 seen.extend(targets::recorded(&h.ctx));
@@ -388,6 +408,36 @@ fn terrain_runs_end_to_end() {
     run_end_to_end("e2e_terrain", "terrain");
 }
 
+/// The layout tour points at every main area (by the stable `tab.<key>` ids, which stay the
+/// same when the panels are renamed or translated), keeps the open scene and brings hidden tabs
+/// (the Scene Viewer, the Console) forward for their steps.
+#[test]
+fn layout_tour_runs_end_to_end() {
+    run_end_to_end("e2e_tour", LAYOUT_TOUR);
+}
+
+#[test]
+fn layout_tour_keeps_the_open_scene() {
+    let mut s = state("tour_keep");
+    let cube = s.scene.spawn("My Cube", None);
+    s.scene_dirty = true;
+    assert!(start(&mut s, LAYOUT_TOUR));
+    assert!(s.tutorials.run.is_some(), "started without a save prompt");
+    assert!(s.files.prompt.is_none());
+    assert!(s.scene.contains(cube), "the scene was kept");
+    assert!(s.scene_dirty, "unsaved changes stay unsaved");
+    // Every step targets ids that don't depend on the panels' titles.
+    let t = data::find(LAYOUT_TOUR).unwrap();
+    for step in &t.steps {
+        for id in &step.targets {
+            assert!(
+                !id.starts_with("panel."),
+                "{id}: use tab.<key>, titles change"
+            );
+        }
+    }
+}
+
 #[test]
 fn world_builder_runs_end_to_end() {
     run_end_to_end("e2e_world", "world-builder");
@@ -404,7 +454,7 @@ fn clicking_the_real_ui_advances_steps() {
     h.get_by_label("Effects").click();
     h.run_steps(12);
     assert_eq!(step_index(&h), Some(1), "selecting Effects finished step 1");
-    h.get_by_label("Add Component").click();
+    h.get_by_label("Add Archetype").click();
     h.run_steps(2);
     h.event(egui::Event::Text("Post".into()));
     h.run_steps(2);

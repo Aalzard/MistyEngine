@@ -22,6 +22,7 @@ pub(crate) mod search;
 #[cfg(test)]
 mod tests;
 
+use crate::i18n::tr;
 use std::collections::{BTreeSet, HashMap};
 
 use egui::{Align2, FontId, Rect, RichText, Sense, Ui, UiBuilder, Vec2, pos2, vec2};
@@ -930,7 +931,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                 {
                     save(s);
                 }
-                if ui.button("Show In Project").clicked()
+                if ui.button(tr!("Show in Asset Files")).clicked()
                     && let Some(rel) = s.script_graph.path.clone()
                 {
                     let abs = s.assets.absolute(&rel);
@@ -1000,7 +1001,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     None => {}
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.toggle_value(&mut s.script_graph.show_inspector, "Graph Inspector");
+                    ui.toggle_value(&mut s.script_graph.show_inspector, "Graph Properties");
                     ui.toggle_value(&mut s.script_graph.show_blackboard, "Blackboard");
                     if let Some(live) = s.script_graph.live.clone() {
                         ui.separator();

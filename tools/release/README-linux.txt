@@ -1,8 +1,9 @@
 Misty Engine {VERSION} for Linux - early test version
 ====================================================
 
-Misty Engine is a free game engine and editor. If you know Unity, it will feel familiar: a
-Hierarchy, a Scene view, an Inspector, a Project window, Play mode and Lua scripts.
+Misty Engine is a free game engine and editor: build scenes in the Editor Scene, arrange objects in
+the Scene Tree, tune them in the Properties panel, keep your files in Asset Files, and try your game
+in the Scene Viewer with Play mode and Lua scripts.
 
 This is an early test version. Things will change and some things will break. The Linux build
 is newer than the Windows one and has had less testing.
@@ -31,7 +32,7 @@ How to start
    - Learn: step-by-step tutorials. Click Start and the editor shows you where to click.
    - Settings: the folder for new projects, and the Hub's look.
 4. Try the example project: click "Open..." and pick Examples/SampleProject. Open the scenes in
-   Assets/Scenes (double-click them in the Project window) to see what the engine can do.
+   Assets/Scenes (double-click them in Asset Files) to see what the engine can do.
 
 If your file manager lost the executable bit (for example after copying the folder from a
 Windows drive), run: chmod +x MistyEngine misty_player

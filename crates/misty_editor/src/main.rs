@@ -27,10 +27,12 @@ mod commands;
 mod component_ops;
 mod console;
 mod editor_scripts;
+mod explorer;
 mod fps_player;
 mod game_input;
 mod gizmos;
 mod handles;
+mod hold_rename;
 mod hub;
 mod i18n;
 mod launcher;
@@ -47,6 +49,7 @@ mod model_import;
 mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
+mod os_drop;
 mod packages;
 mod panels;
 mod particle_preview;
@@ -68,6 +71,7 @@ mod project_settings_quality;
 mod project_settings_tags;
 mod project_thumbnail;
 mod ragdoll_wizard;
+mod renames;
 mod render_scene;
 #[cfg(test)]
 mod sample_2d;
@@ -97,6 +101,8 @@ mod sample_cutscene;
 mod sample_cycles_room;
 #[cfg(test)]
 mod sample_foliage_lighting;
+#[cfg(test)]
+mod sample_guides;
 #[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
@@ -223,10 +229,14 @@ mod string_literal_lint;
 mod templates;
 mod terrain_details_ui;
 mod terrain_flowers_ui;
+mod terrain_kit;
 mod terrain_place_ui;
+mod terrain_previews;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;
+#[cfg(test)]
+mod terrain_ui_tests;
 #[cfg(test)]
 mod test_util;
 mod theme;

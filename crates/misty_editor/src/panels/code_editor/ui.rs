@@ -109,10 +109,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         ce.ui.focused = false;
         ui.centered_and_justified(|ui| {
             ui.label(
-                RichText::new(tr!(
-                    "Double-click a script in the Project window to edit it here."
-                ))
-                .weak(),
+                RichText::new(tr!("Double-click a script in Asset Files to edit it here.")).weak(),
             );
         });
         restore_zoom(ui.ctx(), &mut ce.ui);
@@ -425,7 +422,7 @@ fn file_tabs(ui: &mut Ui, s: &mut EditorState) {
                                 ui.ctx().copy_text(d.path.clone());
                                 ui.close();
                             }
-                            if ui.button(tr!("Select in Project")).clicked() {
+                            if ui.button(tr!("Select in Asset Files")).clicked() {
                                 reveal = Some(d.path.clone());
                                 ui.close();
                             }

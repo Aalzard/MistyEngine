@@ -13,7 +13,7 @@
 
 mod card;
 mod conditions;
-mod data;
+pub(crate) mod data;
 mod demos;
 mod progress;
 mod scenes;
@@ -67,6 +67,8 @@ pub struct Tutorials {
     pub progress: Progress,
     /// Waiting for the save prompt before starting this tutorial.
     pending: Option<String>,
+    /// The first-launch offer of the Editor Layout tour: `None` = not decided yet.
+    offer: Option<bool>,
 }
 
 impl Default for Tutorials {
@@ -82,6 +84,8 @@ impl Default for Tutorials {
             run: None,
             progress,
             pending: None,
+            // Tests and capture runs never see the offer.
+            offer: (cfg!(test) || std::env::var_os("MISTY_SCREENSHOT").is_some()).then_some(false),
         }
     }
 }
@@ -106,6 +110,9 @@ impl Run {
     }
 }
 
+/// The Editor Layout tour (Help ▸ Layout Tour, offered on the first launch).
+pub const LAYOUT_TOUR: &str = "layout-tour";
+
 /// Seconds between a step's condition coming true and the next step.
 const ADVANCE_DELAY: f64 = 0.7;
 
@@ -115,6 +122,10 @@ pub fn start(s: &mut EditorState, id: &str) -> bool {
         return false;
     };
     s.tutorials.pending = None;
+    if t.keep_scene {
+        begin(s, t);
+        return true;
+    }
     match scene_files::guard(s, AfterPrompt::NewScene) {
         Some(a) => {
             scene_files::perform(s, a);
@@ -129,17 +140,9 @@ pub fn start(s: &mut EditorState, id: &str) -> bool {
 
 /// Set up the starting scene and show the first step.
 fn begin(s: &mut EditorState, t: &'static Tutorial) {
-    if !scenes::setup(s, &t.scene) {
-        s.console
-            .warn(format!("Tutorial '{}': unknown scene '{}'.", t.id, t.scene));
+    if !t.keep_scene {
+        new_scene_setup(s, t);
     }
-    // The setup is part of the new scene, not an edit.
-    scene_files::reset_after_load(s);
-    if !s.world_builder.busy() {
-        s.world_builder = Default::default();
-    }
-    s.terrain_tools.layer = 0;
-    s.push(crate::actions::Action::FocusTab(crate::layout::Tab::Scene));
     s.tutorials.window_open = false;
     s.tutorials.run = Some(Run {
         tutorial: t,
@@ -151,6 +154,21 @@ fn begin(s: &mut EditorState, t: &'static Tutorial) {
     });
     enter_step(s, 0);
     targets::set_enabled(true);
+}
+
+/// The starting scene of a tutorial that begins in a new scene.
+fn new_scene_setup(s: &mut EditorState, t: &'static Tutorial) {
+    if !scenes::setup(s, &t.scene) {
+        s.console
+            .warn(format!("Tutorial '{}': unknown scene '{}'.", t.id, t.scene));
+    }
+    // The setup is part of the new scene, not an edit.
+    scene_files::reset_after_load(s);
+    if !s.world_builder.busy() {
+        s.world_builder = Default::default();
+    }
+    s.terrain_tools.layer = 0;
+    s.push(crate::actions::Action::FocusTab(crate::layout::Tab::Scene));
 }
 
 /// Show step `i` of the running tutorial.
@@ -165,6 +183,14 @@ fn enter_step(s: &mut EditorState, i: usize) {
     run.done_at = None;
     run.started_at = None;
     targets::request_scroll(run.step().targets.first().map(String::as_str));
+    if let Some(tab) = run
+        .step()
+        .focus
+        .as_deref()
+        .and_then(crate::layout::Tab::from_key)
+    {
+        s.push(crate::actions::Action::FocusTab(tab));
+    }
 }
 
 /// Go to the next step, or finish after the last one.
@@ -230,8 +256,10 @@ pub fn fast_forward(s: &mut EditorState, i: usize) {
 /// Learn page): the scene the project opened on is replaced without asking, since nothing was
 /// changed yet. False if there is no such tutorial.
 pub fn launch(s: &mut EditorState, id: &str) -> bool {
-    s.scene_dirty = false;
-    s.files.dirty.clear();
+    if data::find(id).is_some_and(|t| !t.keep_scene) {
+        s.scene_dirty = false;
+        s.files.dirty.clear();
+    }
     start(s, id)
 }
 
@@ -269,6 +297,7 @@ pub fn frame(ctx: &egui::Context, s: &mut EditorState) {
             begin(s, t);
         }
     }
+    offer_tour(ctx, s);
     let now = ctx.input(|i| i.time);
     update(ctx, s, now);
     if let Some(nav) = card::show(ctx, s, now) {
@@ -281,6 +310,52 @@ pub fn frame(ctx: &egui::Context, s: &mut EditorState) {
     }
     window::show(ctx, s);
     targets::set_enabled(s.tutorials.run.is_some());
+}
+
+/// The first time the editor opens (for this user), offer the Editor Layout tour once, in a small
+/// box that doesn't block anything. Remembered in `hub.json` as soon as it shows.
+fn offer_tour(ctx: &egui::Context, s: &mut EditorState) {
+    if s.tutorials.offer.is_none() {
+        let busy = s.tutorials.run.is_some() || s.tutorials.pending.is_some();
+        let show = !busy && !crate::hub::config::layout_tour_offered();
+        if show && let Err(e) = crate::hub::config::set_layout_tour_offered() {
+            s.console
+                .warn(format!("Could not save the tour offer: {e}"));
+        }
+        s.tutorials.offer = Some(show);
+    }
+    if s.tutorials.offer != Some(true) || s.tutorials.run.is_some() {
+        return;
+    }
+    let mut choice = None;
+    egui::Window::new(crate::i18n::tr("New to Misty Engine?"))
+        .id(egui::Id::new("layout_tour_offer"))
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -60.0])
+        .show(ctx, |ui| {
+            ui.set_max_width(340.0);
+            ui.label(crate::i18n::tr_wrapped(
+                ui,
+                "Take a two-minute tour of the editor's main areas. You can start it any time from Help ▸ Layout Tour.",
+                340.0,
+            ));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button(crate::i18n::tr("Start the tour")).clicked() {
+                    choice = Some(true);
+                }
+                if ui.button(crate::i18n::tr("Not now")).clicked() {
+                    choice = Some(false);
+                }
+            });
+        });
+    if let Some(go) = choice {
+        s.tutorials.offer = Some(false);
+        if go {
+            start(s, LAYOUT_TOUR);
+        }
+    }
 }
 
 /// Check the step's condition and advance a moment after it comes true.

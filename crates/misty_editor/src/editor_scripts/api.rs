@@ -334,7 +334,7 @@ fn custom_inspector(lua: &Lua, script: String) -> Result<Table> {
         && old.file != entry.file
     {
         let msg = format!(
-            "{}: replaces the custom Inspector of {name} from {}",
+            "{}: replaces the custom Properties view of {name} from {}",
             entry.file, old.file
         );
         drop(r);

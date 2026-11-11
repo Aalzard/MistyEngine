@@ -10,6 +10,7 @@ use misty_engine::preset;
 use crate::actions::{Action, AssetKind, Create, SceneOp};
 use crate::layout::{BuiltinLayout, Tab};
 use crate::layouts::LayoutRef;
+use crate::renames::shown_name;
 use crate::state::EditorState;
 
 /// What running a menu command does.
@@ -20,22 +21,24 @@ pub enum MenuRun {
     Preferences,
     /// Assets ▸ Refresh.
     RefreshAssets,
-    /// GameObject ▸ Light ▸ Reflection Probe / Generate Reflection Probes.
+    /// Object ▸ Light ▸ Reflection Probe / Generate Reflection Probes.
     CreateProbe,
     GenerateProbes,
-    /// GameObject ▸ First Person Player.
+    /// Object ▸ First Person Player.
     CreateFirstPersonPlayer,
     /// Help ▸ About.
     About,
     /// Help ▸ Tutorials.
     Tutorials,
+    /// Help ▸ Layout Tour.
+    LayoutTour,
 }
 
 #[derive(Clone, Debug)]
 pub struct MenuCommand {
     /// Searchable name ("Create Cube").
     pub title: String,
-    /// Menu bar path ("GameObject/3D Object/Cube").
+    /// Menu bar path ("Object/3D Object/Cube").
     pub path: String,
     pub shortcut: &'static str,
     pub run: MenuRun,
@@ -66,7 +69,7 @@ impl List {
     fn create(&mut self, what: Create, menu: &str) {
         let name = what.default_name();
         let action = Action::Create { what, parent: None };
-        let path = format!("GameObject/{menu}{name}");
+        let path = format!("Object/{menu}{name}");
         self.0.push(MenuCommand {
             title: format!("Create {name}"),
             path,
@@ -84,9 +87,10 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
     assets(&mut l);
     gameobject(&mut l);
     for info in registry::components().iter().filter(|c| c.user_visible()) {
-        let path = format!("Component/{}/{}", info.category, info.name);
+        let (category, name) = (shown_name(info.category), shown_name(info.name));
+        let path = format!("Archetype/{category}/{name}");
         l.action(
-            &format!("Add {}", info.name),
+            &format!("Add {name}"),
             &path,
             "",
             Action::AddComponent(info.name),
@@ -99,8 +103,17 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
     for m in &s.editor_scripts.menus {
         let title = m.path.rsplit('/').next().unwrap_or(&m.path);
         let shortcut = crate::editor_scripts::menus::intern(&m.shortcut);
-        l.action(title, &m.path, shortcut, Action::EditorMenu(m.path.clone()));
+        // Listed where the menu bar shows it ("GameObject/…" is under Object).
+        let path = crate::renames::menu_path(&m.path);
+        l.action(title, &path, shortcut, Action::EditorMenu(m.path.clone()));
     }
+    l.action(
+        "User Guide",
+        "Help/User Guide",
+        "",
+        Action::FocusTab(Tab::Guide),
+    );
+    l.add("Layout Tour", "Help/Layout Tour", MenuRun::LayoutTour);
     l.add("Tutorials", "Help/Tutorials...", MenuRun::Tutorials);
     l.add(
         "About Misty Engine",
@@ -175,14 +188,14 @@ fn file(l: &mut List, s: &EditorState) {
     l.action("Exit", "File/Exit", "", Action::Quit);
 }
 
-/// The Hierarchy scene header menu of every open scene ("Set Active Scene Lighting").
+/// The Scene Tree scene header menu of every open scene ("Set Active Scene Lighting").
 fn open_scenes(l: &mut List, s: &EditorState) {
     let scene = &s.scene;
     let several = scene.scenes().len() > 1;
     for entry in scene.scenes() {
         let id = entry.id;
         let name = scene.scene_name(id);
-        let header = format!("Hierarchy/{name}");
+        let header = format!("Scene Tree/{name}");
         let mut op = |title: &str, item: &str, op: SceneOp| {
             let path = format!("{header}/{item}");
             l.action(&format!("{title} {name}"), &path, "", Action::Scene(id, op));
@@ -221,7 +234,7 @@ fn presets(l: &mut List, s: &EditorState) {
             continue;
         }
         let name = crate::presets::preset_name(rel);
-        let path = format!("Component/Presets/{}/{name}", p.target);
+        let path = format!("Archetype/Presets/{}/{name}", p.target);
         let action = Action::ApplyPreset {
             entities: entities.clone(),
             preset: rel.clone(),
@@ -263,12 +276,12 @@ fn edit(l: &mut List) {
         ("Toggle Active State", "Alt+Shift+A", Action::ToggleActive),
     ];
     for (title, shortcut, action) in rows {
-        // The last three live in the GameObject menu.
+        // The last three live in the Object menu.
         let menu = if matches!(
             action,
             Action::MoveToView | Action::AlignViewToSelected | Action::ToggleActive
         ) {
-            "GameObject"
+            "Object"
         } else {
             "Edit"
         };
@@ -327,13 +340,13 @@ fn gameobject(l: &mut List) {
     l.create(Create::Empty, "");
     if let Some(empty) = l.0.last_mut() {
         empty.title = "Create Empty".into();
-        empty.path = "GameObject/Create Empty".into();
+        empty.path = "Object/Create Empty".into();
         empty.shortcut = "Ctrl+Shift+N";
     }
     l.create(Create::Folder, "");
     if let Some(folder) = l.0.last_mut() {
         folder.title = "Create Folder".into();
-        folder.path = "GameObject/Create Folder".into();
+        folder.path = "Object/Create Folder".into();
     }
     for p in PrimitiveMesh::ALL {
         l.create(Create::Primitive(p), "3D Object/");
@@ -341,7 +354,7 @@ fn gameobject(l: &mut List) {
     l.create(Create::Terrain, "3D Object/");
     l.add(
         "Create First Person Player",
-        "GameObject/First Person Player",
+        "Object/First Person Player",
         MenuRun::CreateFirstPersonPlayer,
     );
     l.create(Create::Sprite(None), "2D Object/");
@@ -353,9 +366,9 @@ fn gameobject(l: &mut List) {
     for kind in LightType::ALL {
         l.create(Create::Light(kind), "Light/");
     }
-    let probe = "GameObject/Light/Reflection Probe";
+    let probe = "Object/Light/Reflection Probe";
     l.add("Create Reflection Probe", probe, MenuRun::CreateProbe);
-    let generate = "GameObject/Light/Generate Reflection Probes";
+    let generate = "Object/Light/Generate Reflection Probes";
     l.add(
         "Generate Reflection Probes",
         generate,
@@ -374,13 +387,13 @@ fn gameobject(l: &mut List) {
     let parent = Action::CreateEmptyParent;
     l.action(
         "Create Empty Parent",
-        "GameObject/Create Empty Parent",
+        "Object/Create Empty Parent",
         "Ctrl+Shift+G",
         parent,
     );
     l.action(
         "Clear Parent",
-        "GameObject/Clear Parent",
+        "Object/Clear Parent",
         "",
         Action::ClearParent,
     );
@@ -394,18 +407,18 @@ fn tools(l: &mut List) {
         l.action(scope.title(), &path, "", action);
     }
     let selected = [
-        ("Enable Virtual Geometry", Command::EnableSelected),
-        ("Disable Virtual Geometry", Command::DisableSelected),
+        ("Enable Misty Mesh", Command::EnableSelected),
+        ("Disable Misty Mesh", Command::DisableSelected),
     ];
     for (title, cmd) in selected {
-        let path = format!("GameObject/{title}");
+        let path = format!("Object/{title}");
         l.action(title, &path, "", Action::VirtualGeometry(cmd));
     }
 }
 
 fn window(l: &mut List, s: &EditorState) {
-    // Undo History lives in the Edit menu (listed by `edit`).
-    for tab in Tab::every().filter(|t| *t != Tab::UndoHistory) {
+    // Undo History is in the Edit menu, the User Guide in Help.
+    for tab in Tab::every().filter(|t| !matches!(t, Tab::UndoHistory | Tab::Guide)) {
         let menu = match tab {
             Tab::Animation | Tab::Animator => "Animation",
             Tab::AudioMixer => "Audio",
@@ -459,6 +472,9 @@ pub fn run(s: &mut EditorState, run: &MenuRun) {
         MenuRun::CreateFirstPersonPlayer => crate::fps_player::create(s, None),
         MenuRun::GenerateProbes => crate::probe_tools::generate(s),
         MenuRun::Tutorials => s.tutorials.window_open = true,
+        MenuRun::LayoutTour => {
+            crate::tutorials::start(s, crate::tutorials::LAYOUT_TOUR);
+        }
         MenuRun::About => s
             .console
             .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION"))),

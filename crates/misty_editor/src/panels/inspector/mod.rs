@@ -185,7 +185,7 @@ fn lock_row(ui: &mut Ui, state: &mut EditorState) {
             };
             if ui
                 .add(egui::Button::new(lock).frame(false))
-                .on_hover_text(tr!("Lock Inspector"))
+                .on_hover_text(tr!("Lock Properties"))
                 .clicked()
             {
                 state.inspector_locked = !state.inspector_locked;
@@ -506,7 +506,7 @@ fn component_menu(
         entities: all.clone(),
         name: n.clone(),
     };
-    act(ui, state, &tr!("Remove Component"), removable, remove);
+    act(ui, state, &tr!("Remove Archetype"), removable, remove);
     for (label, dir) in [(tr!("Move Up"), -1), (tr!("Move Down"), 1)] {
         let enabled = single && can_move(state, e, name, dir);
         let entity = e;
@@ -524,12 +524,12 @@ fn component_menu(
         entity: e,
         name: n.clone(),
     };
-    act(ui, state, &tr!("Copy Component"), true, copy);
+    act(ui, state, &tr!("Copy Archetype"), true, copy);
     let as_new = targets.iter().any(|t| can_paste_as_new(state, *t));
     let paste_new = Action::PasteComponentAsNew {
         entities: all.clone(),
     };
-    act(ui, state, &tr!("Paste Component As New"), as_new, paste_new);
+    act(ui, state, &tr!("Paste Archetype As New"), as_new, paste_new);
     let can_paste = state
         .component_clipboard
         .as_ref()
@@ -538,7 +538,7 @@ fn component_menu(
         entities: all,
         name: n,
     };
-    act(ui, state, &tr!("Paste Component Values"), can_paste, paste);
+    act(ui, state, &tr!("Paste Archetype Values"), can_paste, paste);
     if single {
         prefab_overrides::component_menu(ui, state, name);
     }
@@ -821,13 +821,13 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                     }
                 });
             ui.add_space(6.0);
-            ui.label(crate::theme::bold(ui.ctx(), tr!("Root components")));
+            ui.label(crate::theme::bold(ui.ctx(), tr!("Root archetypes")));
             for c in prefab.root_components() {
                 ui.label(format!("{} {c}", editors::icon(&c)));
             }
             ui.add_space(6.0);
             ui.weak(tr!(
-                "Drag into the Scene view or Hierarchy to create an instance."
+                "Drag into the Editor Scene or Scene Tree to create an instance."
             ));
         }
         Err(err) => {
@@ -913,7 +913,7 @@ mod tests {
             .with_size([400.0, 1000.0])
             .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
         h.run();
-        h.get_by_label("Add Component").click();
+        h.get_by_label("Add Archetype").click();
         h.run();
         // The search field has focus; the list itself scrolls.
         h.event(egui::Event::Text("Light".into()));
@@ -968,7 +968,7 @@ mod tests {
         h.run();
         h.get_by_label("Overrides (1) ▾").click();
         h.run();
-        h.get_by_label("Camera (added component)");
+        h.get_by_label("Camera (added archetype)");
         h.get_by_label("Apply All").click();
         h.run();
         apply_actions(h.state_mut());
@@ -1021,7 +1021,7 @@ mod tests {
         h.get_by_label("Overrides (2) ▾").click();
         h.run();
         h.get_by_label("Transform ▸ Scale");
-        h.get_by_label("Light (added component)");
+        h.get_by_label("Light (added archetype)");
         // Rows are grouped by object: the root's light first, then the lid's scale.
         let reverts: Vec<_> = h.get_all_by_label("Revert").collect();
         assert_eq!(reverts.len(), 2);
@@ -1212,7 +1212,7 @@ mod tests {
         // Copy from A through the Camera header's ⋮ menu.
         h.get_all_by_label("⋮").last().unwrap().click();
         h.run();
-        h.get_by_label("Copy Component").click();
+        h.get_by_label("Copy Archetype").click();
         h.run();
         apply_actions(h.state_mut());
         // Paste onto B.
@@ -1220,7 +1220,7 @@ mod tests {
         h.run();
         h.get_all_by_label("⋮").last().unwrap().click();
         h.run();
-        h.get_by_label("Paste Component Values").click();
+        h.get_by_label("Paste Archetype Values").click();
         h.run();
         let s = h.state_mut();
         apply_actions(s);
