@@ -119,12 +119,12 @@ fn terrace(h: f32, step: f32) -> f32 {
 /// (nearer ones hide behind the slope's own flank): (right, ahead) of the camera and radius
 /// (metres). Ledges step the slope there, the faces between them too steep for trees.
 const CLIFFS: &[(f32, f32, f32)] = &[
-    (150.0, 800.0, 90.0),
-    (260.0, 950.0, 110.0),
-    (60.0, 1000.0, 80.0),
-    (330.0, 700.0, 90.0),
-    (200.0, 1200.0, 120.0),
-    (420.0, 420.0, 90.0),
+    (150.0, 800.0, 140.0),
+    (280.0, 980.0, 170.0),
+    (40.0, 1020.0, 120.0),
+    (340.0, 700.0, 130.0),
+    (200.0, 1250.0, 180.0),
+    (430.0, 430.0, 120.0),
 ];
 
 /// 0..1 inside the [`CLIFFS`] (ragged outlines, none at the hill's foot).
@@ -252,10 +252,12 @@ fn grass() -> details::DetailSettings {
             ..Default::default()
         },
         on_layer: Some(0),
-        density: 800.0,
+        // (Fewer, wider cards than MeadowDemo's 800 of 4 cm: the blades are 2.5 times taller,
+        // so they cover the ground as well at two thirds of the cost.)
+        density: 520.0,
         draw_distance: 160.0,
         height: [0.16, 0.5],
-        width: 0.04,
+        width: 0.05,
         healthy_color: [0.54, 0.64, 0.2],
         dry_color: [0.66, 0.66, 0.36],
         wind_strength: 0.18,
@@ -925,7 +927,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             // (Few trees in the middle of a cliff site at all: tall crowns on the ledges
             // would hide the faces from the meadow.)
             let site = cliff_site(p.x, p.y);
-            if site > 0.25 && (slope > 30.0 || (site > 0.4 && noise::hash(ix, iz, 0xc11f) > 0.15)) {
+            if site > 0.25 && (slope > 30.0 || noise::hash(ix, iz, 0xc11f) > 0.12) {
                 continue;
             }
             // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
@@ -1069,7 +1071,7 @@ fn terrain_data() -> TerrainData {
             tile_size: [2.0, 2.0],
             smoothness: 0.1,
             // Sky light reaching the floor (1 = open ground).
-            occlusion: 1.0,
+            occlusion: 0.7,
             ..Default::default()
         },
     ];
@@ -1102,7 +1104,7 @@ fn terrain_data() -> TerrainData {
         let face = if site > 0.0 {
             // (Stony ground on the ledges too.)
             smooth(0.2, 0.5, site)
-                * (0.45 + 0.55 * smooth(18.0, 32.0, misty_engine::terrain::trees::slope_at(&d, x, z)))
+                * (0.7 + 0.3 * smooth(18.0, 32.0, misty_engine::terrain::trees::slope_at(&d, x, z)))
         } else {
             0.0
         };
@@ -1343,7 +1345,14 @@ fn demo_scene(d: &TerrainData) -> Scene {
     // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
     // the Forest Floor layer's Occlusion sets the shade instead.)
     rs.realtime_gi = false;
-    rs.environment_lighting.intensity = 1.3;
+    // Ambient light as a gradient: the sky with its clouds overhead, light bounced off the
+    // sunlit leaves and ground from the sides and below (the skybox's deep blue alone left
+    // the forest's shade near black and blue).
+    rs.environment_lighting.source = misty_engine::scene::render_settings::AmbientSource::Gradient;
+    rs.environment_lighting.sky_color = [0.5, 0.6, 0.8];
+    rs.environment_lighting.equator_color = [0.46, 0.5, 0.44];
+    rs.environment_lighting.ground_color = [0.3, 0.29, 0.2];
+    rs.environment_lighting.intensity = 1.0;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));
