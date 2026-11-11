@@ -46,8 +46,37 @@ loop (`editor_vsync` is off, 165-200 FPS).
 time of a selection plus a move must stay under 25 ms (release). Also: the collider material
 list comes from the GUID database.
 
+5. The file watch keeps its paths while the editor draws no frames (they were all forgotten
+   after 30 s, so the first frame after a quiet spell called `stat` for each on the main thread).
+
+## Measured after the fix (build of this branch, same runs)
+
+- SampleScene on C:, Plane selected: `Panel: Properties` worst frame 108.8 ms -> 0.3 ms; no
+  frame over 100 ms.
+- SampleScene on a copy of the project on D: while builds ran, three rounds of 75 s without a
+  selection, then select the Plane and move it (through the MCP bridge): the select call took
+  4 ms / 6.3 s / 38 s before and 3 / 7 / 2 ms after; the `Panel: Scene Tree` frames of 0.7, 25,
+  5, 1 and 55.7 s are gone.
+- Still seen in that D: run after the fix: `Panel: Properties` 25 s, 9.8 s, 5.8 s and 0.9 s
+  (source not found: the profiler has no scope below the panel), `Editor.LiveReload` 32 s,
+  `Editor.PollGuids` 2 s and 0.2 s, frames of 3-10 s outside every scope, and shader pipelines
+  compiled on the main thread at 1.3-2.5 s each (first use of a material preview; also on C:).
+  None of these showed on C:. The project should not live on D: while builds run there.
+
+## Checks
+
+- `cargo fmt --all --check`: clean.
+- `cargo test --release -p misty_editor -- edit_stall physics_material prefab thumbnail`:
+  29 passed (select + move: 1.7-2.5 ms per round against the 25 ms budget).
+- Not run yet: clippy for the workspace, the full test run (the engine's `file_watch` tests
+  among them), golden shots (stamp checks under `render/` changed, no drawing code). The new
+  timing test was not run against the old code.
+
 ## Left
 
+- Find what the Inspector, live reload and the unscoped part of the frame still read from disk
+  on the main thread (add profiler scopes per component card and around `save_layout`,
+  `vcs.frame`, `mcp::live::frame`, then repeat the D: run).
 - A path's first `file_watch::cached_*` call still `stat`s on the calling thread (once per
   path, again after 30 s unused).
 - `asset_db::poll` rescans (reads every meta file) on the main thread when files appear.
