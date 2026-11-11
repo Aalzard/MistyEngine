@@ -1526,6 +1526,16 @@ impl TerrainCache {
         }
     }
 
+    /// Per terrain (by key): what its grass holds (tests).
+    #[cfg(test)]
+    pub fn grass_load(&self) -> Vec<(String, super::terrain_grass::GrassLoad)> {
+        let mut out: Vec<_> = (self.entries.iter())
+            .map(|(k, g)| (k.clone(), g.grass.load()))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
     /// Per terrain: grass chunks and blades held (tests).
     #[cfg(test)]
     pub fn grass_resident(&self) -> Vec<(usize, u64)> {
@@ -1724,6 +1734,11 @@ impl TerrainCache {
             out.upload_piece_ms = out.upload_piece_ms.max(s.upload_piece_ms);
             out.upload_alloc_ms = out.upload_alloc_ms.max(s.upload_alloc_ms);
             out.scatter_ms = out.scatter_ms.max(s.scatter_ms);
+            out.trimmed += s.trimmed;
+            out.refused += s.refused;
+            out.coarser = out.coarser.max(s.coarser);
+            out.chunks += s.chunks;
+            out.blades += s.blades;
         }
         out
     }

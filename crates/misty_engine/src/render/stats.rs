@@ -44,6 +44,13 @@ pub struct RenderStats {
     pub grass_upload_piece_ms: f32,
     /// Of that, the longest wait for room in the grass blade pages and cull arena.
     pub grass_upload_alloc_ms: f32,
+    /// Grass chunks and blades held on the GPU for the terrains of the view (bounded however
+    /// far the camera travels: chunks left behind give their blades back).
+    pub grass_chunks: u32,
+    pub grass_blades: u64,
+    /// Density levels the grass is coarser by because its blades did not fit in the blade
+    /// pages (0 = none; each level halves the blades).
+    pub grass_coarser: u32,
     /// Misty Virtual Geometry (GPU counters read back without waiting: a frame or two old):
     /// objects, clusters and triangles drawn by the main camera, triangles of every shadow
     /// map, and the GPU memory of the cluster pool and the per-view lists.

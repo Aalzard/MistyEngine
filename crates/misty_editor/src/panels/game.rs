@@ -196,6 +196,15 @@ pub fn stats_lines(
             render.grass_upload_ms,
             misty_engine::render::pipelines_built()
         ),
+        format!(
+            "  Grass: {} chunks  {:.2}M blades{}",
+            render.grass_chunks,
+            render.grass_blades as f64 / 1e6,
+            match render.grass_coarser {
+                0 => String::new(),
+                n => format!("  (thinned {n}x: out of room)"),
+            }
+        ),
         match runtime {
             Some(r) => format!(
                 "Physics: {} bodies, {} colliders   Scripts: {}",

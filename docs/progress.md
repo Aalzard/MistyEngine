@@ -3577,3 +3577,98 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Menu labels the guide already writes with new names: Assets ▸ Create ▸ Script Graph (now
   "Visual Script Graph") and Window ▸ Script Graphs (now "Visual Scripting").
 
+## Round 35 — FPS drops after walking through the grass (branch r35-grass-fps)
+
+Report: playing MeadowDemo is smooth, then after walking forwards through the grass the frame
+rate falls from 60 to 20 and stays there until the scene is reopened; looking back does it
+too.
+
+### Cause
+- A grass chunk kept the finest density level it ever had until it was one and a half draw
+  distances away. Walking left a trail of full-density chunks behind the camera: in
+  MeadowDemo (800 blades/m², full density up to 6.5 m, drawn to 160 m) a chunk near the camera
+  holds 204 800 blades where one 37 m away needs 3 200, and it stayed that big for 240 m.
+- Standing still holds 3.0 M blades. The four blade pages (1.86 M blades each) were full
+  after 70 m of walking. From 115 m on, new chunks got buffers of their own, which the grass
+  visibility buffer can't name, so the lit grass fell back to the old lit pass whenever one
+  was in view (also when looking back at the trail). From 150 m on the cull records ran out
+  too, and one chunk without records sent every grass pass to the CPU path.
+- Measured with the new harness (below): GPU 17 ms → 40 ms ("Main: grass lit" 27–30 ms where
+  visibility + shading + composite took 5 ms), 16 M blades and 1.4 GB of grass on the GPU at
+  the peak, and it never recovered. v0.3.2 has the same code and does the same.
+- Everything else stayed flat over the 2.8 km walk (terrain, shadow maps, Misty GI, clouds,
+  TAA, trees, textures 294 MB, CPU render 4 ms): those were measured, not assumed.
+
+### Fix
+- **Chunks left behind give their blades back** (`Grass::trim`): a chunk more than one level
+  finer than its nearest remembered camera needs keeps the prefix of the level it needs (a
+  chunk's blades are in drop-out key order, so a coarser level is a prefix: `level_counts`,
+  worked out on the scatter worker). The blades kept are copied on the GPU into a smaller run
+  and the old run is freed whole; at most 128 k blades move per frame. Nothing drawn changes
+  (a pass draws at most the prefix a chunk's distance keeps).
+- **Nothing outside the blade pages.** A chunk the pages have no room for is refused and
+  scattered again one level coarser (`Pressure`); the same happens when the blades held pass
+  75 % of the pages. The grass goes finer again after ten seconds with room for it, waiting
+  longer after each failed try. So a field too dense for the pages gets thinner grass at
+  full speed instead of full grass at a third of the speed. `Store::Own` is gone.
+- **Pages by kind**: short runs (far chunks) and long runs (chunks near the camera) live in
+  pages of their own, best fit, so a short run never lands in the room the next long run
+  needs. A page left empty for ten seconds gives its memory back; no grass, no pages.
+- **Cull records mirror the pages** (`BladePool::record_at`): one free list instead of two,
+  and the records can't run out before the pages.
+- Stats: `RenderStats::grass_chunks`, `grass_blades`, `grass_coarser`, and a "Grass: N chunks
+  X M blades" line in the Stats overlay (it says so when the grass was thinned for room).
+
+### Numbers
+MeadowDemo, High, 1920×1080, headless, one frame per 1/60 s, walking 5 m/s (the machine was
+shared with other builds, so absolute times are high; `grass_walk_report`):
+
+| | start | 500 m | 500 m, looking back | 2 km | 2 km, looking back | end (2.8 km) |
+|---|---|---|---|---|---|---|
+| Before: frame ms (FPS) | 22.3 (45) | 55.7 (18) | 49.0 (20) | 52.0 (19) | 44.8 (22) | 37.6 (27) |
+| After: frame ms (FPS) | 18.6 (54) | 20.2 (49) | 18.7 (54) | 19.0 (53) | 19.1 (52) | 19.1 (52) |
+| Before: GPU ms | 16.5 | 40.7 | 39.9 | 40.6 | 36.3 | 34.1 |
+| After: GPU ms | 15.0 | 15.3 | 14.2 | 15.2 | 14.1 | 14.4 |
+| Before: blades held | 2.96 M | 10.2 M | 10.2 M | 10.2 M | 10.2 M | 13.5 M |
+| After: blades held | 2.96 M | 3.85 M | 3.85 M | 3.85 M | 3.85 M | 4.21 M |
+| Before: grass on the GPU | 354 MB | 953 MB | 953 MB | 967 MB | 967 MB | 1163 MB |
+| After: grass on the GPU | 354 MB | 592 MB | 592 MB | 628 MB | 628 MB | 628 MB |
+| Before: device allocator | 1441 MB | 2041 MB | 2041 MB | 2055 MB | 2055 MB | 2251 MB |
+| After: device allocator | 1441 MB | 1679 MB | 1679 MB | 1715 MB | 1715 MB | 1715 MB |
+| Before: process private | 2370 MB | 2893 MB | 2895 MB | 3138 MB | 3138 MB | 3138 MB |
+| After: process private | 2348 MB | 2614 MB | 2614 MB | 2610 MB | 2610 MB | 2609 MB |
+
+v0.3.2 (tag, same harness, the walk at 0.4 scale: 200 m out, 800 m at the "2 km" mark):
+GPU 15.1 ms at the start, 41.3 ms after 200 m, 40.7 ms after 800 m, 39.9 ms at the end
+(1.1 km); first chunk in a buffer of its own at 115 m, first without cull records at 150 m,
+as on main; 21.7 M blades held at the end with 127 chunks outside the pages.
+
+While walking (median per second): GPU 15.5 ms in every stretch after the fix (before: 17.0
+for the first 100 m, then 38–41); the peak is 4.6 M blades and 628 MB (before 16.0 M and
+1382 MB). The visibility buffer and GPU culling stay on throughout, nothing is refused or
+thinned.
+
+### Tests
+- `grass_walk_tests.rs`: the harness (`grass_walk_report`, ignored: minutes long) and its
+  script (`poses_follow_the_script`).
+- `grass_trim_tests.rs`: coarser levels are prefixes of a chunk; the trim rule; a moving
+  camera's trail counts as a few places; pressure rises at once and falls slowly; a long walk
+  over a synthetic meadow holds no more than 1.5 × standing still, every chunk at least as
+  fine as a fresh look needs; trimmed chunks hold exactly their first blades and cull records
+  on the GPU (read back); a field too dense for its budget goes coarser and recovers; full
+  pages refuse a chunk and the grass goes coarser with every chunk still culled; a 400 m walk
+  through MeadowDemo itself stays under 1.5 × standing still with nothing refused.
+- `grass_pool.rs`, `grass_cull.rs`: best fit, pages by kind, trimming moves a run out of the
+  way, full pages refuse, an empty page gives its memory back, records mirror the pages, the
+  arena grows to cover and moves runs.
+
+### Not done
+- The pages still grow to four (456 MB of pages for 4 M blades): two kinds of page, each a
+  little over one page's worth. Bounded, but there is room to pack tighter.
+- Each finer level of a chunk is still scattered and uploaded whole; holding a chunk as one
+  run per level would upload each blade once and make trimming a plain free.
+- The editor Console keeps every message and lays out every row each frame
+  (`panels/console.rs`): a script that prints every frame slows the editor the longer it
+  plays. Not what this report was about (MeadowDemo's scripts don't print), not fixed here.
+- NoonValley (branches r26-*) has the same grass numbers (800 blades/m², 160 m, 5.8–6.5 m)
+  plus a species and more flowers: same fault before, same fix; not measured there.

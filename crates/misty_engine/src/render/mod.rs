@@ -2120,6 +2120,9 @@ impl Renderer {
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
         stats.grass_upload_alloc_ms = grass.upload_alloc_ms;
+        stats.grass_chunks = grass.chunks;
+        stats.grass_blades = grass.blades;
+        stats.grass_coarser = grass.coarser;
         self.motion
             .end(target.id, std::mem::take(&mut lists.prep.motion));
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
@@ -4019,6 +4022,8 @@ pub(crate) mod gpu_tests;
 mod grass_study;
 #[cfg(test)]
 mod grass_vis_tests;
+#[cfg(test)]
+mod grass_walk_tests;
 #[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]
