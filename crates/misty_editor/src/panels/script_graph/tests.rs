@@ -423,7 +423,7 @@ fn a_breakpoint_pauses_play_and_step_and_continue_drive_the_flow() {
     );
     let logged = |s: &EditorState, text: &str| {
         s.console
-            .entries
+            .entries()
             .iter()
             .filter(|l| l.message == text)
             .count()

@@ -1,12 +1,21 @@
 //! Console panel: toolbar with Clear/Collapse/Error Pause, type counters, list and detail pane.
+//!
+//! The list draws only the rows in view (`ScrollArea::show_rows`), from the rows the console
+//! keeps ([`crate::console::Console::rows`]), so a frame costs the same however much was
+//! logged.
 
 use egui::{RichText, Ui};
 
-use crate::console::LogLevel;
+use crate::console::{Console, LogLevel};
 use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
+
+/// Size of the level icon at the start of a row.
+const ICON_SIZE: f32 = 18.0;
+/// Space around a row's text (left/right, top/bottom).
+const ROW_MARGIN: egui::Vec2 = egui::vec2(4.0, 3.0);
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     // A message naming a script line opens it in the Code Editor (link or double-click).
@@ -58,95 +67,126 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
-                    if let Some(e) = c.selected.and_then(|i| c.entries.get(i)) {
+                    if let Some(e) = c.selected.and_then(|i| c.get(i)) {
                         ui.add(egui::Label::new(&e.message).selectable(true));
                     }
                 });
         });
 
     egui::CentralPanel::default().show(ui, |ui| {
+        // Filtered (and collapsed) rows: kept by the console, not rebuilt here every frame.
+        let total = c.rows().len();
+        let mut select = None;
+        let row_height = row_height(ui);
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .stick_to_bottom(true)
-            .show(ui, |ui| {
-                // Rows: (index of first occurrence, repeat count).
-                let mut rows: Vec<(usize, usize)> = Vec::new();
-                for (i, e) in c.entries.iter().enumerate() {
-                    if !c.is_visible(e) {
-                        continue;
-                    }
-                    if c.collapse
-                        && let Some(r) = rows.iter_mut().find(|(j, _)| {
-                            let o = &c.entries[*j];
-                            o.level == e.level && o.message == e.message
-                        })
-                    {
-                        r.1 += 1;
-                        continue;
-                    }
-                    rows.push((i, 1));
-                }
-
-                for (n, (i, count)) in rows.into_iter().enumerate() {
-                    let e = &c.entries[i];
-                    let selected = c.selected == Some(i);
-                    let bg = if selected {
-                        theme::SELECTION
-                    } else if n % 2 == 0 {
-                        egui::Color32::from_rgb(56, 56, 56)
-                    } else {
-                        egui::Color32::from_rgb(60, 60, 60)
-                    };
-                    let mut link_rect = None;
-                    let resp = egui::Frame::new()
-                        .fill(bg)
-                        .inner_margin(egui::Margin::symmetric(4, 3))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new(e.level.icon())
-                                        .size(18.0)
-                                        .color(e.level.color()),
-                                );
-                                let first = e.message.lines().next().unwrap_or("");
-                                ui.label(format!("[{}] {first}", e.time));
-                                if let Some(link) =
-                                    crate::panels::code_editor::console_link(&e.message)
-                                {
-                                    link_rect = Some(
-                                        ui.link(link)
-                                            .on_hover_text(tr!("Open in the Code Editor"))
-                                            .rect,
-                                    );
-                                }
-                                if c.collapse {
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            ui.label(
-                                                RichText::new(count.to_string()).small().strong(),
-                                            );
-                                        },
-                                    );
-                                }
-                            });
-                        })
-                        .response
-                        .interact(egui::Sense::click());
-                    if resp.clicked() {
-                        c.selected = Some(i);
-                    }
-                    let on_link = resp
-                        .interact_pointer_pos()
-                        .is_some_and(|p| link_rect.is_some_and(|r: egui::Rect| r.contains(p)));
-                    if resp.double_clicked() || (resp.clicked() && on_link) {
-                        open_script = Some(e.message.clone());
-                    }
+            .show_rows(ui, row_height, total, |ui, range| {
+                for n in range {
+                    let (clicked, open) = row(ui, c, n, row_height);
+                    select = clicked.or(select);
+                    open_script = open.or(open_script.take());
                 }
             });
+        if select.is_some() {
+            c.selected = select;
+        }
     });
     if let Some(msg) = open_script {
         crate::panels::code_editor::open_console_location(state, &msg);
     }
 }
+
+/// Preferences ▸ General: how many lines the Console keeps; the size picked this frame, if
+/// any.
+pub fn capacity_row(ui: &mut Ui, now: usize) -> Option<usize> {
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        let label = ui.label(tr!("Console Lines"));
+        let r = egui::ComboBox::from_id_salt("pref_console_lines")
+            .selected_text(now.to_string())
+            .show_ui(ui, |ui| {
+                for lines in crate::console::CAPACITIES {
+                    if ui
+                        .selectable_label(now == lines, lines.to_string())
+                        .clicked()
+                    {
+                        picked = Some(lines);
+                    }
+                }
+            });
+        r.response.labelled_by(label.id).on_hover_text(tr!(
+            "How many messages the Console keeps. Older ones are dropped; the counters \
+             still count them"
+        ));
+    });
+    picked
+}
+
+/// Every row has this height, whatever its text (the list shows first lines only).
+fn row_height(ui: &Ui) -> f32 {
+    let icon = ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(ICON_SIZE)));
+    icon.max(ui.spacing().interact_size.y) + 2.0 * ROW_MARGIN.y
+}
+
+/// Draw the `n`th row. Returns the line to select (clicked) and the message whose script to
+/// open (double-click, or a click on its link).
+fn row(ui: &mut Ui, c: &Console, n: usize, height: f32) -> (Option<u64>, Option<String>) {
+    let size = egui::vec2(ui.available_width(), height);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let Some((row, e)) = c
+        .built_rows()
+        .get(n)
+        .and_then(|r| Some((*r, c.get(r.index)?)))
+    else {
+        return (None, None);
+    };
+    let bg = if c.selected == Some(row.index) {
+        theme::SELECTION
+    } else if n.is_multiple_of(2) {
+        egui::Color32::from_rgb(56, 56, 56)
+    } else {
+        egui::Color32::from_rgb(60, 60, 60)
+    };
+    ui.painter().rect_filled(rect, 0.0, bg);
+    let mut link_rect = None;
+    let mut inner = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("console_row", row.index))
+            .max_rect(rect.shrink2(ROW_MARGIN)),
+    );
+    inner.set_clip_rect(rect.intersect(ui.clip_rect()));
+    inner.horizontal(|ui| {
+        ui.label(
+            RichText::new(e.level.icon())
+                .size(ICON_SIZE)
+                .color(e.level.color()),
+        );
+        let first = e.message.lines().next().unwrap_or("");
+        ui.label(format!("[{}] {first}", e.time));
+        if let Some(link) = crate::panels::code_editor::console_link(&e.message) {
+            link_rect = Some(
+                ui.link(link)
+                    .on_hover_text(tr!("Open in the Code Editor"))
+                    .rect,
+            );
+        }
+        if c.collapse {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new(row.count.to_string()).small().strong());
+            });
+        }
+    });
+    // After the labels, so the row gets the clicks.
+    let id = ui.id().with(("console_row_click", row.index));
+    let resp = ui.interact(rect, id, egui::Sense::click());
+    let on_link = resp
+        .interact_pointer_pos()
+        .is_some_and(|p| link_rect.is_some_and(|r: egui::Rect| r.contains(p)));
+    let open = (resp.double_clicked() || (resp.clicked() && on_link)).then(|| e.message.clone());
+    (resp.clicked().then_some(row.index), open)
+}
+
+#[cfg(test)]
+#[path = "console_tests.rs"]
+mod tests;

@@ -63,6 +63,10 @@ pub struct HubConfig {
     /// editor and the Hub make no network request when they start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub startup_update_check: Option<bool>,
+    /// Edit ▸ Preferences ▸ Console Lines: how many lines the Console keeps; `None` = the
+    /// default ([`crate::console::DEFAULT_CAPACITY`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub console_lines: Option<usize>,
     /// The editor has offered the Editor Layout tour (once, on the first launch).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub layout_tour_offered: bool,
@@ -200,6 +204,21 @@ pub fn set_check_updates_at_startup(on: bool) -> Result<(), String> {
     let path = config_path().ok_or("no config folder")?;
     let mut c = HubConfig::load(&path);
     c.set_check_updates_at_startup(on);
+    c.save(&path)
+}
+
+/// How many lines the Console keeps (Preferences).
+pub fn console_lines() -> usize {
+    config_path()
+        .and_then(|p| HubConfig::load(&p).console_lines)
+        .unwrap_or(crate::console::DEFAULT_CAPACITY)
+}
+
+/// Save how many lines the Console keeps (the default is not stored).
+pub fn set_console_lines(lines: usize) -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.console_lines = (lines != crate::console::DEFAULT_CAPACITY).then_some(lines);
     c.save(&path)
 }
 

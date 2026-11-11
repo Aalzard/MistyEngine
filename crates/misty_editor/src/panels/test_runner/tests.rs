@@ -105,7 +105,7 @@ fn run_all_filter_and_failure_link_open_the_code_editor() {
     assert!(
         h.state()
             .console
-            .entries
+            .entries()
             .iter()
             .any(|e| e.message.starts_with("Test Runner: 2 passed, 1 failed"))
     );

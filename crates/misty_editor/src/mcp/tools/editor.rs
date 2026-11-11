@@ -76,7 +76,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "editor.read_console",
         title: "Read Console",
-        description: "Console log lines (newest last) with their index. Pass \"since\" (the \"next\" of an earlier call) to read only new lines; \"level\" keeps that level and above.",
+        description: "Console log lines (newest last) with their index. Pass \"since\" (the \"next\" of an earlier call) to read only new lines; \"level\" keeps that level and above. The Console keeps the newest lines only: \"dropped\" says how many lines from \"since\" on are gone, \"first\" is the oldest index still kept.",
         kind: Kind::Read,
         idempotent: true,
         schema: console_schema,
@@ -221,7 +221,7 @@ fn console_counts(s: &EditorState) -> Value {
         "info": s.console.count(LogLevel::Info),
         "warning": s.console.count(LogLevel::Warning),
         "error": s.console.count(LogLevel::Error),
-        "total": s.console.entries.len(),
+        "total": s.console.total(),
     })
 }
 
@@ -391,7 +391,7 @@ fn run_menu_item(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
         _ => Gate::Run,
     };
     let run = move |cx: &mut Cx<'_>| -> Outcome {
-        let from = cx.s.console.entries.len();
+        let from = cx.s.console.next_index();
         let mut note = None;
         match item.run.clone() {
             MenuRun::Action(a) => {
@@ -427,17 +427,18 @@ fn run_menu_item(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     }
 }
 
-fn menu_result(s: &EditorState, path: &str, from: usize, note: Option<String>) -> ToolResult {
-    let logged: Vec<String> = s.console.entries[from.min(s.console.entries.len())..]
-        .iter()
-        .map(|e| e.message.clone())
+fn menu_result(s: &EditorState, path: &str, from: u64, note: Option<String>) -> ToolResult {
+    let logged: Vec<String> = s
+        .console
+        .since(from)
+        .map(|(_, e)| e.message.clone())
         .collect();
     ToolResult::json(json!({ "ran": path, "console": logged, "note": note }))
 }
 
 struct MenuJob {
     path: String,
-    from: usize,
+    from: u64,
     frames: u32,
 }
 
@@ -524,14 +525,14 @@ fn read_console(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     };
     let search = opt_str(args, "search").unwrap_or("").to_lowercase();
     let limit = opt_u64(args, "limit").unwrap_or(100).max(1) as usize;
-    let since = opt_u64(args, "since").map(|n| n as usize);
-    let total = s.console.entries.len();
-    let picked: Vec<(usize, &crate::console::LogEntry)> = s
+    let since = opt_u64(args, "since");
+    // Indices never change: lines dropped (the Console keeps the newest only) or cleared
+    // since the client's last read are counted, and it gets what is left.
+    let (first, total) = (s.console.first_index(), s.console.next_index());
+    let dropped = since.map_or(0, |n| first.saturating_sub(n));
+    let picked: Vec<(u64, &crate::console::LogEntry)> = s
         .console
-        .entries
-        .iter()
-        .enumerate()
-        .skip(since.unwrap_or(0).min(total))
+        .since(since.unwrap_or(0))
         .filter(|(_, e)| rank(e.level) >= min)
         .filter(|(_, e)| search.is_empty() || e.message.to_lowercase().contains(&search))
         .collect();
@@ -565,6 +566,8 @@ fn read_console(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     Ok(Outcome::ok(json!({
         "entries": entries,
         "next": next,
+        "first": first,
+        "dropped": dropped,
         "counts": console_counts(s),
     })))
 }

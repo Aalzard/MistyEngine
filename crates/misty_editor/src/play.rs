@@ -352,7 +352,7 @@ return N
         );
         assert!(
             s.console
-                .entries
+                .entries()
                 .iter()
                 .any(|l| l.message == "Application.Quit() ignored in the editor")
         );
