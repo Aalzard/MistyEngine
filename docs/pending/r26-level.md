@@ -25,6 +25,21 @@ Forked from `r26-noon-meadow` at 80e185bb.
   ≥ 1.35 and no golden scene uses Cumulus, but this is unverified. New `tr!()` strings have
   Turkish and Arabic entries (Occlusion, Shadow Detail, Intensity from Sun Height).
 
+### Check results (finished 2026-11-12, after the hand-over; nothing fixed yet)
+- Golden shots: pass (`golden.log`, exit 0): the two engine changes leave MeadowDemo unchanged.
+- Clippy: did not run (`clippy.log` ends "exit 127": the command was not found in that shell);
+  run `cargo clippy --workspace --all-targets --release -j 4` again.
+- Workspace tests: 6 failures (`test.log`). `misty_editor`:
+  `sample_noon_valley::noon_valley_matches_its_generator` (line 1515, an `assert_eq`: look at
+  this first, the committed files should match r20's generator),
+  `live_reload::tests::prefab_instances_follow_and_keep_their_overrides`,
+  `search::asset_index::tests::background_build_and_types`,
+  `updater::tests::offline_check_is_silent`, `tutorials::tests::world_builder_runs_end_to_end`
+  (these four are outside this branch's changes: check them on `main` and alone, the machine
+  was loaded). `misty_engine`:
+  `scene::sun_height::tests::overhead_sun_is_unchanged_and_low_sun_is_dimmer_and_warmer`
+  (sun_height.rs:91, from the engine branch).
+
 ### Next three changes
 1. Read the three check logs; fix clippy warnings and failing tests (regenerate `docs/api`
    with `misty.exe --api-docs <worktree>/docs/api` if that test fails); commit.
