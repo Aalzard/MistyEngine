@@ -126,10 +126,7 @@ fn materials() -> [(&'static str, Material); 7] {
         ..Default::default()
     };
     [
-        (
-            ASPHALT,
-            m([0.2, 0.2, 0.21, 1.0], 0.0, 0.14),
-        ),
+        (ASPHALT, m([0.2, 0.2, 0.21, 1.0], 0.0, 0.14)),
         (
             WOOD,
             Material {
@@ -496,12 +493,14 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
     ];
     SPOTS
         .into_iter()
-        .map(|(rock, x, z, scale, yaw, sink)| crate::sample_rocks::Placed {
-            rock,
-            position: Vec3::new(x, ground(d, x, z) - sink * scale, z),
-            rotation: Quat::from_rotation_y(yaw.to_radians()),
-            scale,
-        })
+        .map(
+            |(rock, x, z, scale, yaw, sink)| crate::sample_rocks::Placed {
+                rock,
+                position: Vec3::new(x, ground(d, x, z) - sink * scale, z),
+                rotation: Quat::from_rotation_y(yaw.to_radians()),
+                scale,
+            },
+        )
         .collect()
 }
 
@@ -574,8 +573,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
         ("Shelter Roof Front", 2.55, -24.0),
         ("Shelter Roof Back", 5.45, 24.0),
     ] {
-        let mut t = Transform::from_position(Vec3::new(0.0, 3.3, z))
-            .with_euler(Vec3::new(tilt, 0.0, 0.0));
+        let mut t =
+            Transform::from_position(Vec3::new(0.0, 3.3, z)).with_euler(Vec3::new(tilt, 0.0, 0.0));
         t.scale = Vec3::new(7.4, 0.1, 3.5);
         mesh(&mut s, name, PrimitiveMesh::Cube, t, WOOD);
     }
@@ -656,7 +655,10 @@ fn weather_demo_matches_its_generator() {
         assert!(root.join(rel).exists(), "{rel}");
     }
     for rel in TREES {
-        assert!(root.join(rel).exists(), "{rel} (written by write_meadow_demo)");
+        assert!(
+            root.join(rel).exists(),
+            "{rel} (written by write_meadow_demo)"
+        );
     }
     for (path, m) in materials() {
         crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);

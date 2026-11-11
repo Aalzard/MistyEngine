@@ -1274,8 +1274,11 @@ mod tests {
         validate("weather occlusion", OCCLUSION_SRC);
         validate(
             "weather scene blur",
-            &format!("{COMMON}
-{}", include_str!("shaders/scene_blur.wgsl")),
+            &format!(
+                "{COMMON}
+{}",
+                include_str!("shaders/scene_blur.wgsl")
+            ),
         );
         // The lit shaders with the surface hook.
         validate("mesh", &format!("{COMMON}\n{MESH_SRC}"));

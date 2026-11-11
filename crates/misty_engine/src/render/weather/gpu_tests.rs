@@ -358,19 +358,14 @@ fn weather_screenshots() {
     let out = std::env::var("MISTY_WEATHER_OUT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../docs/screenshots/r38")
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r38")
         });
     std::fs::create_dir_all(&out).unwrap();
     let only = std::env::var("MISTY_WEATHER_SHOTS").unwrap_or_default();
     type Setup = fn(&mut Scene);
     // Standing under the lamp looking along the lane.
     let lamp_view: Setup = |s| {
-        move_camera(
-            s,
-            Vec3::new(-6.5, 1.6, -3.2),
-            Vec3::new(-12.0, 62.0, 0.0),
-        );
+        move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
     };
     let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 18] = [
         ("clear", WeatherPreset::Clear, 0.0, 0.0, None),
@@ -398,14 +393,16 @@ fn weather_screenshots() {
             0.0,
             Some(|s: &mut Scene| {
                 night(s);
-                move_camera(
-                    s,
-                    Vec3::new(-6.5, 1.6, -3.2),
-                    Vec3::new(-12.0, 62.0, 0.0),
-                );
+                move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
             }),
         ),
-        ("rain_lamp_day", WeatherPreset::HeavyRain, 1.0, 0.0, Some(lamp_view)),
+        (
+            "rain_lamp_day",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(lamp_view),
+        ),
         (
             // Standing on the lane looking down at the ground ahead.
             "rain_looking_down",
@@ -425,7 +422,13 @@ fn weather_screenshots() {
                 move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(30.0, -20.0, 0.0));
             }),
         ),
-        ("thunderstorm_day", WeatherPreset::Thunderstorm, 1.0, 0.0, None),
+        (
+            "thunderstorm_day",
+            WeatherPreset::Thunderstorm,
+            1.0,
+            0.0,
+            None,
+        ),
         ("sleet", WeatherPreset::Sleet, 0.8, 0.1, None),
         (
             "rain_lens_drops",
@@ -444,11 +447,7 @@ fn weather_screenshots() {
             1.0,
             0.0,
             Some(|s: &mut Scene| {
-                move_camera(
-                    s,
-                    Vec3::new(-2.0, 1.2, -6.5),
-                    Vec3::new(14.0, 55.0, 0.0),
-                );
+                move_camera(s, Vec3::new(-2.0, 1.2, -6.5), Vec3::new(14.0, 55.0, 0.0));
             }),
         ),
         ("snow_falling", WeatherPreset::Snow, 0.0, 0.35, None),
@@ -461,11 +460,7 @@ fn weather_screenshots() {
             0.6,
             Some(|s: &mut Scene| {
                 night(s);
-                move_camera(
-                    s,
-                    Vec3::new(-6.5, 1.6, -3.2),
-                    Vec3::new(-12.0, 62.0, 0.0),
-                );
+                move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
             }),
         ),
     ];
