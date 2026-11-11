@@ -103,6 +103,9 @@ impl EditorApp {
         }
         crate::tutorials::from_env(&mut state);
         state.ui_scale = crate::a11y::UiScale::load();
+        state
+            .console
+            .set_capacity(crate::hub::config::console_lines());
         // Version control badges: poll the project's git repository (if any).
         let root = state.project.root.clone();
         state.vcs.start(&root);

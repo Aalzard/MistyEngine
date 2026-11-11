@@ -778,6 +778,8 @@
 "Show warnings" = "إظهار التحذيرات"
 "Show messages" = "إظهار الرسائل"
 "Open in the Code Editor" = "فتح في محرر الشيفرة"
+"Console Lines" = "أسطر وحدة التحكم"
+"How many messages the Console keeps. Older ones are dropped; the counters still count them" = "عدد الرسائل التي تحتفظ بها وحدة التحكم. تُحذف الرسائل الأقدم، وتبقى محسوبة في العدّادات"
 
 [dialogs]
 "Scene Has Been Modified" = "تم تعديل المشهد"

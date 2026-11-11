@@ -1084,3 +1084,109 @@ fn headless_screenshot_renders_a_png() {
     assert!(e.contains("Camera"), "{e}");
     cleanup(s);
 }
+
+#[test]
+fn read_console_keeps_its_indices_when_lines_are_dropped() {
+    let mut s = project("console_ring");
+    s.console.set_capacity(100);
+    for i in 0..50 {
+        s.console.info(format!("line {i}"));
+    }
+    let r = ok(&mut s, "editor.read_console", json!({}));
+    let base = r["next"].as_u64().unwrap();
+    assert_eq!(base, s.console.next_index());
+    assert_eq!(r["dropped"], 0);
+    // A client that keeps up misses nothing.
+    for i in 0..30 {
+        s.console.warn(format!("new {i}"));
+    }
+    let r = ok(&mut s, "editor.read_console", json!({"since": base}));
+    let lines = r["entries"].as_array().unwrap();
+    assert_eq!(lines.len(), 30);
+    assert_eq!(lines[0]["index"], base);
+    assert_eq!(lines[29]["message"], "new 29");
+    assert_eq!(
+        (r["next"].as_u64(), r["dropped"].as_u64()),
+        (Some(base + 30), Some(0))
+    );
+    // One that falls behind gets what is left and is told how much is gone.
+    for i in 0..500 {
+        s.console
+            .log(crate::console::LogLevel::Error, format!("flood {i}"));
+    }
+    let r = ok(
+        &mut s,
+        "editor.read_console",
+        json!({"since": base + 30, "limit": 1000}),
+    );
+    let lines = r["entries"].as_array().unwrap();
+    let first = base + 30 + 400;
+    assert_eq!(r["first"], first);
+    assert_eq!(r["dropped"], 400);
+    assert_eq!(lines.len(), 100);
+    for (n, l) in lines.iter().enumerate() {
+        assert_eq!(l["index"], first + n as u64, "indices stay in step");
+        assert_eq!(l["message"], format!("flood {}", 400 + n));
+    }
+    assert_eq!(r["next"], base + 530);
+    // The counts cover the dropped lines too.
+    assert_eq!(r["counts"]["error"], 500);
+    assert_eq!(r["counts"]["warning"], 30);
+    assert_eq!(r["counts"]["total"], base + 530);
+    // In pages: "next" carries on from the last line returned.
+    let page = ok(
+        &mut s,
+        "editor.read_console",
+        json!({"since": 0, "limit": 10}),
+    );
+    assert_eq!(page["dropped"], first);
+    assert_eq!(page["next"], first + 10);
+    let page = ok(
+        &mut s,
+        "editor.read_console",
+        json!({"since": first + 10, "limit": 10}),
+    );
+    assert_eq!(page["dropped"], 0);
+    assert_eq!(page["entries"][0]["message"], "flood 410");
+    // Without "since": the newest lines, nothing reported as dropped.
+    let newest = ok(&mut s, "editor.read_console", json!({"limit": 5}));
+    assert_eq!(newest["dropped"], 0);
+    assert_eq!(newest["entries"][4]["message"], "flood 499");
+    assert_eq!(newest["next"], base + 530);
+    // Nothing new: nothing returned.
+    let none = ok(&mut s, "editor.read_console", json!({"since": base + 530}));
+    assert!(none["entries"].as_array().unwrap().is_empty());
+    assert_eq!(
+        (none["next"].as_u64(), none["dropped"].as_u64()),
+        (Some(base + 530), Some(0))
+    );
+    // Clear (or Clear on Play) does not start the indices again.
+    s.console.clear();
+    s.console.info("fresh");
+    let r = ok(&mut s, "editor.read_console", json!({"since": base + 530}));
+    assert_eq!(r["entries"][0]["index"], base + 530);
+    assert_eq!(r["entries"][0]["message"], "fresh");
+    assert_eq!(r["dropped"], 0);
+    let r = ok(&mut s, "editor.read_console", json!({"since": base + 500}));
+    assert_eq!(r["dropped"], 30);
+    assert_eq!(r["entries"].as_array().unwrap().len(), 1);
+    let state = ok(&mut s, "editor.get_state", json!({}));
+    assert_eq!(state["console"]["total"], 1);
+    // A menu command still reports its own lines when the Console is full.
+    for i in 0..200 {
+        s.console.info(format!("filler {i}"));
+    }
+    let r = ok(
+        &mut s,
+        "editor.run_menu_item",
+        json!({"path": "Object > 3D Object > Cube"}),
+    );
+    let logged = r["console"].as_array().unwrap();
+    assert!(!logged.is_empty() && logged.len() < 10, "{logged:?}");
+    assert!(
+        logged
+            .iter()
+            .any(|l| l.as_str().unwrap().contains("Created 'Cube'"))
+    );
+    cleanup(s);
+}

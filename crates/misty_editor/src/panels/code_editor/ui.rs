@@ -1007,6 +1007,12 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
             {
                 console.warn(format!("Update check setting not saved: {e}"));
             }
+            if let Some(lines) = crate::panels::console::capacity_row(ui, console.capacity()) {
+                console.set_capacity(lines);
+                if let Err(e) = crate::hub::config::set_console_lines(lines) {
+                    console.warn(format!("Console size not saved: {e}"));
+                }
+            }
             ui.separator();
             ui.strong(tr!("External Tools"));
             ui.horizontal(|ui| {

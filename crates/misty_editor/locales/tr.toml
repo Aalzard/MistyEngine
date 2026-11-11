@@ -780,6 +780,8 @@
 "Show warnings" = "Uyarıları göster"
 "Show messages" = "İletileri göster"
 "Open in the Code Editor" = "Kod Düzenleyici'de aç"
+"Console Lines" = "Konsol Satırları"
+"How many messages the Console keeps. Older ones are dropped; the counters still count them" = "Konsolun kaç ileti tutacağı. Daha eskileri atılır; sayaçlar onları saymayı sürdürür"
 
 [dialogs]
 "Scene Has Been Modified" = "Sahne Değiştirildi"
