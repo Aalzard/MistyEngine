@@ -531,6 +531,12 @@ fn row(
         drop_prefab(state, &payload.0, Some(e));
         drop_scene(state, &payload.0);
     }
+    // A material or texture dragged over the row: outlined, it lands on this object.
+    if resp.contains_pointer() && crate::texture_drop::dragged_onto_objects(ui.ctx()) {
+        let stroke = Stroke::new(2.0, Color32::from_rgb(90, 150, 230));
+        ui.painter()
+            .rect_stroke(rect.shrink(1.0), 2.0, stroke, egui::StrokeKind::Inside);
+    }
 
     // Start dragging once the pointer moves: carry the selection (or just this row). (Holding
     // still is press and hold to rename.)
@@ -594,6 +600,9 @@ fn drop_scene(state: &mut EditorState, path: &str) {
 pub fn drop_asset(state: &mut EditorState, e: Entity, path: &str) {
     if path.ends_with(".mat") {
         state.assign_material(e, path);
+    } else if misty_engine::assets::is_texture(path) {
+        // A texture becomes a material on the object (see `texture_drop` for the rule).
+        crate::texture_drop::drop_on_object(state, e, path);
     } else if path.ends_with(".lua") || misty_engine::visual_script::is_graph_path(path) {
         state.push(Action::AddScript {
             entity: e,

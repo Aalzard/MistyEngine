@@ -72,6 +72,10 @@ scripts and Script Graphs. Folders on the left, the files of the chosen folder o
   Code Editor.
 - Drag files from Asset Files into the Editor Scene or the Scene Tree to use them. Drag
   objects from the Scene Tree into Asset Files to make prefabs.
+- Drag a texture onto an object (in the Editor Scene or on its Scene Tree row) and the editor
+  makes a material for it in `Assets/Materials` and puts it on the object. A normal map
+  (a name ending in `_Normal` or `_N`, or Texture Type: Normal Map) goes into the Normal Map
+  slot of the material the object already has.
 - Drop files from your computer onto the panel to import them.
 - The slider at the bottom changes the icon size; all the way left gives a list.
 

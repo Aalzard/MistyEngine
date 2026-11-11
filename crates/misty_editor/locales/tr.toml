@@ -1327,3 +1327,10 @@
 "Scene Light" = "Sahne Işığı"
 "Meteors" = "Kayan Yıldızlar"
 "Per Minute" = "Dakikada"
+
+# Round 41: a texture dropped on an object becomes its material
+"Created material {name}" = "{name} malzemesi oluşturuldu"
+"Assigned material {name}" = "{name} malzemesi atandı"
+"Could not create the material" = "Malzeme oluşturulamadı"
+"Set the normal map of {name}" = "{name} malzemesinin normal haritası ayarlandı"
+"{name} has no renderer to put a texture on" = "{name} nesnesinde doku uygulanacak bir işleyici yok"

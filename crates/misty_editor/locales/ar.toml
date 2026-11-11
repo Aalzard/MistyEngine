@@ -1325,3 +1325,10 @@
 "Scene Light" = "ضوء المشهد"
 "Meteors" = "الشهب"
 "Per Minute" = "في الدقيقة"
+
+# Round 41: a texture dropped on an object becomes its material
+"Created material {name}" = "تم إنشاء المادة {name}"
+"Assigned material {name}" = "تم تعيين المادة {name}"
+"Could not create the material" = "تعذّر إنشاء المادة"
+"Set the normal map of {name}" = "تم تعيين خريطة العموديات للمادة {name}"
+"{name} has no renderer to put a texture on" = "لا يحتوي {name} على عارض لوضع الخامة عليه"
