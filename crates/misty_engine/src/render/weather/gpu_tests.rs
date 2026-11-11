@@ -367,7 +367,7 @@ fn weather_screenshots() {
     let lamp_view: Setup = |s| {
         move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
     };
-    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 18] = [
+    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 19] = [
         ("clear", WeatherPreset::Clear, 0.0, 0.0, None),
         ("light_rain", WeatherPreset::LightRain, 0.5, 0.0, None),
         ("rain", WeatherPreset::Rain, 0.8, 0.0, None),
@@ -430,6 +430,16 @@ fn weather_screenshots() {
             None,
         ),
         ("sleet", WeatherPreset::Sleet, 0.8, 0.1, None),
+        (
+            // Looking up along the lane: rain against the bright overcast sky.
+            "rain_against_sky",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(-14.0, 25.0, 0.0));
+            }),
+        ),
         (
             "rain_lens_drops",
             WeatherPreset::HeavyRain,

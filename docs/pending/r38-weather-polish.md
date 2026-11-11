@@ -68,6 +68,22 @@ says exactly where it stands.
   (run before the last commit, `4f03492c`, which touched only shaders and
   `sample_weather.rs`: run it again).
 
+## Second agent (resumed 2026-11-11 23:00)
+- Terrain tree crowns are now in the occlusion map (`occlusion_crowns.wgsl`, `terrain_crowns`
+  in `render/weather/mod.rs`: each crown near the camera is the upper half of its ellipsoid,
+  the GI's crown shape, at 0.8 of its size; up to 4096 crowns, 180 vertices each).
+- Streaks bend: `vs_rain` widens the quad and `fs_rain` measures across from a bowed or
+  S-shaped middle line (`bend_curve`); a few % of the streak length, more in turbulent wind,
+  less for big drops and blurred ones.
+- Drops in front of a bright sky are darker than it (a lens shows the ground below).
+- Splash crowns are low, wide, smooth coronas that last half as long (tall ragged cups read
+  as grass tufts).
+- Presets: Sleet thicker (rain 22 drops/m³ 1.3 mm, snow 11 flakes/m³), Thunderstorm by day
+  lighter (sun dimming 0.78, ambient 0.48).
+- New shot `rain_against_sky`.
+- Note: a `cargo.sh … build8.log` chain left by the first agent was still queued for a slot
+  and ran at 23:30 (engine test build): harmless, it builds the current worktree.
+
 ## State at hand-over (HEAD = the commit that adds this file, on top of `4f03492c`)
 - Nothing is running; no build slot and no GPU lock is held.
 - **`4f03492c` is not built or rendered**: it holds the coordinator's three review fixes

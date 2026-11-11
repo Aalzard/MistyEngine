@@ -193,7 +193,7 @@ impl WeatherPreset {
             }
             Self::Thunderstorm => {
                 rain(&mut p, 0.85, 38.0, 2.4, 8.5, 0.7);
-                sky(&mut p, 0.97, 1.4, 0.85, 0.6, 650.0);
+                sky(&mut p, 0.97, 1.4, 0.78, 0.48, 650.0);
                 p.wind_speed = 9.0;
                 p.wind_turbulence = 0.45;
                 p.gusts = 0.8;
@@ -202,8 +202,8 @@ impl WeatherPreset {
                 p.lightning_frequency = 6.0;
             }
             Self::Sleet => {
-                rain(&mut p, 0.4, 14.0, 1.2, 5.5, 0.5);
-                snow(&mut p, 0.4, 6.0, 0.5, 2.2, 0.3);
+                rain(&mut p, 0.45, 22.0, 1.3, 5.5, 0.55);
+                snow(&mut p, 0.45, 11.0, 0.6, 2.2, 0.3);
                 sky(&mut p, 0.9, 0.9, 0.7, 0.4, 1500.0);
                 p.wind_speed = 5.0;
                 p.gusts = 0.4;

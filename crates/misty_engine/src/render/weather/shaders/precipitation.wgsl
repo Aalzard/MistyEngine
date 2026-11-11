@@ -471,6 +471,10 @@ struct DropOut {
     // x = blur level of the scene seen through the drop, y = bead phase, z = beads along the
     // streak, w = thickness 0 (hairline) .. 1 (a drop wide enough to see through).
     @location(4) @interpolate(flat) look: vec4<f32>,
+    // The streak's bend: x = drawn width / drop width (the quad is widened to hold the
+    // curve), y = how far the middle of the streak swings off its chord (in drop half-widths),
+    // z = curve shape 0 (a bow) .. 1 (an S).
+    @location(5) @interpolate(flat) bend: vec4<f32>,
 };
 
 fn culled_drop() -> DropOut {
@@ -481,7 +485,14 @@ fn culled_drop() -> DropOut {
     out.world = vec3<f32>(0.0);
     out.perp = vec2<f32>(0.0);
     out.look = vec4<f32>(0.0);
+    out.bend = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     return out;
+}
+
+// Where the middle line of a bent streak sits across it at `y` (0 head .. 1 tail), as a share
+// of the bend: 0 at both ends.
+fn bend_curve(y: f32, shape: f32) -> f32 {
+    return mix(sin(y * PI_W), sin(y * PI_W * 2.0) * 0.8, shape);
 }
 
 // Circle of confusion (px) of a point `dist` metres away for a lens focused far off.
@@ -572,7 +583,13 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     // near drops still read as water).
     let soft = coc / max(width_px, 1e-3);
     let spread_out = mix(drop_px / max(width_px, 1e-3), 1.0, 0.45);
-    let s = mix(sh, st, corner.y) + perp * corner.x * w * 0.5 + d * (corner.y * 2.0 - 1.0) * w * 0.5;
+    // A drop's path through one exposure is not a ruled line: it wobbles, the eddies and the
+    // sway turn it, so the streak bows or snakes a little (most in turbulent wind, least for
+    // the big heavy drops). Out of focus the bend is lost in the blur.
+    let bend_share = (0.012 + 0.03 * r2.x * r2.x) * (1.0 - big * 0.5) * (0.8 + pr.rain3.x * 1.0) * (1.0 - soft * 0.8);
+    let bend_px = min(len * bend_share, 2.0 + w * 0.6) * select(-1.0, 1.0, r.y > 0.5);
+    let w_draw = w + 2.0 * abs(bend_px);
+    let s = mix(sh, st, corner.y) + perp * corner.x * w_draw * 0.5 + d * (corner.y * 2.0 - 1.0) * w * 0.5;
     var out: DropOut;
     out.clip = from_screen(s, mix(ch, ct, corner.y));
     out.quad = corner;
@@ -590,6 +607,7 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     // Blur level: texels of the half-size level 0 are two pixels wide.
     let lod = clamp(log2(max(max(coc, w * 0.6), 2.0) * 0.5), 0.0, pr.rain3.z);
     out.look = vec4<f32>(lod, r.w * 6.2831853, 1.0 + r2.z * 3.0, clamp((w - 1.5) / 4.0, 0.0, 1.0));
+    out.bend = vec4<f32>(w_draw / w, bend_px / (w * 0.5), smoothstep(0.55, 0.9, r2.z), 0.0);
     return out;
 }
 
@@ -636,8 +654,12 @@ fn haze_behind(axial: f32, dir: vec3<f32>) -> f32 {
 
 @fragment
 fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
-    let x = in.quad.x;
     let y = in.quad.y;
+    // Across the drop, measured from the bent middle line (-1..1 inside the drop).
+    let x = in.quad.x * in.bend.x - in.bend.y * bend_curve(y, in.bend.z);
+    if (abs(x) >= 1.0) {
+        discard;
+    }
     let scene_at = scene_distance(in.clip.xy);
     let behind = scene_at - in.params.z;
     if (behind <= 0.0) {
@@ -663,12 +685,13 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     let v = normalize(pr.camera.xyz - in.world);
     let haze_col = haze_light(-v);
     let hazed = haze_behind(scene_at, -v);
-    // In front of the sky a drop is a touch darker than it (half of what it gathers is the
-    // ground), and it lights up with the clouds in a flash.
+    // In front of the sky a drop is darker than it: a lens flips the view, so what shows
+    // through it is the darker ground below the horizon (a grey streak on a bright sky). It
+    // lights up with the clouds in a flash.
     let over_sky = smoothstep(0.88, 0.95, hazed);
     let lit_sky = sky_flash(-v) * over_sky;
-    let seen = mix(through_water(uv + offset, in.look.x), haze_col, hazed) + lit_sky;
-    let around = light_around(uv, hazed, haze_col) * (1.0 - 0.35 * over_sky) + lit_sky;
+    let seen = mix(through_water(uv + offset, in.look.x), haze_col, hazed) * (1.0 - 0.42 * over_sky) + lit_sky;
+    let around = light_around(uv, hazed, haze_col) * (1.0 - 0.45 * over_sky) + lit_sky;
     // Fresnel: the middle of a drop is clear, its rim mirrors the light around it.
     let ndv = sqrt(max(1.0 - x * x, 0.0));
     let fresnel = 0.03 + 0.97 * pow(1.0 - ndv, 4.0);
@@ -942,9 +965,11 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         if (c0.w < pr.forward.w + 0.05 || own.x < 0.8) {
             return culled_splash();
         }
-        let grow = 1.0 - (1.0 - min(t * 2.5, 1.0)) * (1.0 - min(t * 2.5, 1.0));
-        let h = size * (0.9 + own.y * 1.3) * grow * (1.0 - smoothstep(0.55, 1.0, t) * 0.6);
-        let w = size * (0.6 + t * 1.0);
+        // A low, wide corona that opens in a blink and sinks back: tall and narrow it would
+        // read as a tuft of grass standing on the road.
+        let grow = 1.0 - (1.0 - min(t * 4.0, 1.0)) * (1.0 - min(t * 4.0, 1.0));
+        let h = size * (0.45 + own.y * 0.45) * grow * (1.0 - smoothstep(0.3, 0.6, t));
+        let w = size * (0.9 + t * 1.6);
         // Upright on the surface, turned to the camera.
         let to_eye = normalize(pr.camera.xyz - sp.pos.xyz);
         var side = cross(n, to_eye);
@@ -961,7 +986,7 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         let p = sp.pos.xyz + side * corner.x * w + n * (corner.y * 0.5 + 0.5) * h;
         let c = pr.view_proj * vec4<f32>(p, 1.0);
         out.clip = c;
-        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(3.0, 8.0, w * ppm) * 0.3, 3.0, c.w, t);
+        out.params = vec4<f32>((1.0 - smoothstep(0.25, 0.55, t)) * smoothstep(3.0, 8.0, w * ppm) * 0.22, 3.0, c.w, t);
         out.world = sp.pos.xyz;
         return out;
     }
@@ -1024,16 +1049,18 @@ fn fs_splash(in: SplashOut) -> @location(0) vec4<f32> {
         let along = in.quad.y * 2.0 - 1.0;
         shape = exp(-(in.quad.x * in.quad.x + along * along) * 2.2);
     } else if (kind == 3u) {
-        // The cup in profile: thin walls leaning out, brightest at the two edges where the
-        // sheet of water is seen edge-on, a ragged rim breaking into points.
+        // The corona in profile: a thin sheet of water leaning out, seen edge-on at its two
+        // sides (brightest there), with a smooth rounded rim beaded by a few droplets. No
+        // points: a spiky rim is what made crowns read as grass.
         let hgt = in.quad.y * 0.5 + 0.5;
-        let half = 0.45 + 0.5 * hgt;
+        let half = 0.55 + 0.45 * hgt;
         let x = in.quad.x / half;
         let ax = abs(x);
-        let rim = 0.84 + 0.16 * sin(x * 5.0 + in.own.x * 30.0) * sin(x * 2.0 + in.own.y * 11.0);
-        let inside = (1.0 - smoothstep(0.85, 1.0, ax)) * (1.0 - smoothstep(rim - 0.25, rim, hgt));
-        let wall = 0.4 + 0.6 * smoothstep(0.45, 0.95, ax);
-        shape = inside * wall * (0.5 + 0.5 * hgt) * 0.75;
+        let rim = 1.0 - 0.35 * ax * ax;
+        let inside = (1.0 - smoothstep(0.8, 1.0, ax)) * (1.0 - smoothstep(rim - 0.35, rim, hgt));
+        let wall = 0.25 + 0.75 * smoothstep(0.5, 0.95, ax);
+        let beads = 0.7 + 0.3 * sin(x * 9.0 + in.own.x * 30.0);
+        shape = inside * wall * mix(1.0, beads, smoothstep(0.5, 0.9, hgt)) * 0.7;
     } else {
         shape = exp(-dot(in.quad, in.quad) * 2.2);
     }
