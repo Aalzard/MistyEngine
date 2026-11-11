@@ -26,6 +26,8 @@ mod cloth_tools;
 mod commands;
 mod component_ops;
 mod console;
+#[cfg(test)]
+mod edit_stall_tests;
 mod editor_scripts;
 mod explorer;
 mod fps_player;
