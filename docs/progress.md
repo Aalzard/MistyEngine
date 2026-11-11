@@ -3337,6 +3337,22 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   (colours, height, thickness, curtains, waviness, rays, direction, distance, speed, pulse,
   scene light); meteors. Stars and Milky Way turn with sidereal time. Lua for all of it, sample
   `Scenes/NightSkyDemo.scene`, GPU test.
+- GPU cost of the night sky (`render::moon::gpu_tests::moon_gpu_cost`, whole frame, 1080p, GPU
+  median ms, RTX 4060, two rounds):
+
+  | Night sky | High, round 0 | High, round 1 |
+  |-----------|---------------|---------------|
+  | nothing | 0.848 | 0.800 |
+  | stars | 0.836 | 0.842 |
+  | moon | 0.804 | 0.807 |
+  | Milky Way | 1.194 | 1.198 |
+  | aurora (4 curtains) | 2.982 | 2.983 |
+  | everything | 3.530 | 3.531 |
+  | Low path: nothing | 0.800 | 0.801 |
+  | Low path: everything | 2.224 | 2.219 |
+
+  Stars and the moon are free within the noise, the Milky Way costs ~0.4 ms, the aurora ~2.2 ms
+  on High (the Low path takes fewer steps and octaves: everything for ~1.4 ms).
 
 ### Not done yet
 - No moon shafts or flare; no star catalogue; aurora not in water reflections;
