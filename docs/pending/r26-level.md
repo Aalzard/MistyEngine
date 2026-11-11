@@ -5,6 +5,38 @@ Scene content only (generator `crates/misty_editor/src/sample_noon_valley.rs`,
 Engine code stays on `r26-noon-meadow` (merge it in now and then: `git merge r26-noon-meadow`).
 Forked from `r26-noon-meadow` at 80e185bb.
 
+## Hand-over (2026-11-11 23:10): where this stands
+
+- **Committed:** everything. Scene r20 = fd57acf6 (regenerated, final shots in
+  `docs/screenshots/r26/level_r20_*.jpg`), docs bb5ac6f0. `main` (d1703eb3) is merged in
+  (3a4a83ba). `cargo fmt --all --check` passes.
+- **Running when handed over:** `D:/MistyTargets/r26-level-scratch/checks.sh` (started 23:04):
+  clippy for the workspace, then `cargo test --workspace --release --no-fail-fast`, then the
+  golden shots under the GPU lock. It holds build slot `r26` only while cargo runs and drops
+  it itself; logs `clippy.log`, `test.log`, `golden.log` in that folder, each ending in an
+  "exit N" line, and `checks.out` ends with "== checks done". **None of these checks has a
+  result yet.** If the process is gone and a slot owned by `r26` remains, remove that slot.
+- **Not run yet:** the API docs check (`committed_api_docs_are_up_to_date`, part of the test
+  run), and `noon_valley_matches_its_generator` on the final files (also part of it; the
+  files were written by r20's generator, nothing changed since).
+- **Known risks for the checks:** the engine change in `misty_gi/scene.rs` (crown proxies
+  shrink for trees with Leaf Density under 1.3) and `cloud_common.wgsl` (Cumulus evens the
+  weather map) must leave the golden shots unchanged: the sample trees have Leaf Density
+  ≥ 1.35 and no golden scene uses Cumulus, but this is unverified. New `tr!()` strings have
+  Turkish and Arabic entries (Occlusion, Shadow Detail, Intensity from Sun Height).
+
+### Next three changes
+1. Read the three check logs; fix clippy warnings and failing tests (regenerate `docs/api`
+   with `misty.exe --api-docs <worktree>/docs/api` if that test fails); commit.
+2. Forest floor against the reference: far more groundcover (the carpets of `wood_cell` are
+   still sparse in the `inside` view: the floor is bare litter between separate ferns), and
+   the sunlit litter is too pale (lower `ForestFloor.png`'s tint in
+   `tools/noon_valley_textures.py`, last line of `forest_floor`, or the sun patches' exposure).
+3. Limestone cliffs: the `CLIFFS` sites show as small pale patches; make faces tens of metres
+   high that stay visible from the meadow (taller terrace steps inside the sites, no trees
+   below the face, heavy trees on the ledge above), then the first view's GPU time (18.6 ms
+   against 12 ms: grass ~7 ms; grass engine work is in `r35-grass-fps`).
+
 ## Third agent (from 2026-11-11): scene and engine on this branch
 
 `r26-noon-meadow` is fully merged (24abc5b6) and finished; scene **and** engine changes for the
