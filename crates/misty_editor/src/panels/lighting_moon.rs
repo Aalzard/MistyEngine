@@ -7,8 +7,9 @@ use misty_engine::moon::night_sky::NightSkySettings;
 use misty_engine::moon::{self, MoonMode, MoonSettings};
 
 use super::lighting::{color, row};
+use crate::i18n::tr;
 
-/// Phase name for a 0..1 phase (0 = new, 0.5 = full).
+/// English phase name for a 0..1 phase (0 = new, 0.5 = full); shown through `tr`.
 pub(super) fn phase_name(p: f32) -> &'static str {
     let p = p.rem_euclid(1.0);
     match p {
@@ -20,6 +21,15 @@ pub(super) fn phase_name(p: f32) -> &'static str {
         _ if p < 0.72 => "Waning Gibbous",
         _ if p < 0.78 => "Last Quarter",
         _ => "Waning Crescent",
+    }
+}
+
+/// The Position dropdown's entry for `mode`, translated.
+fn mode_label(mode: MoonMode) -> String {
+    match mode {
+        MoonMode::FollowSun => tr!("Follow Sun"),
+        MoonMode::Manual => tr!("Manual#moon"),
+        MoonMode::DateTime => tr!("Date and Time"),
     }
 }
 
@@ -55,43 +65,43 @@ fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>, suffix
 /// The Moon section; true when something changed.
 pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bool {
     ui.add_space(4.0);
-    ui.label(RichText::new("Moon").strong());
+    ui.label(RichText::new(tr!("Moon")).strong());
     super::lighting::grid(ui, "lighting_moon", |ui| {
-        let mut ch = ui.checkbox(&mut m.enabled, "Moon").changed();
+        let mut ch = ui.checkbox(&mut m.enabled, tr!("Moon")).changed();
         ui.end_row();
         if !m.enabled {
             return ch;
         }
-        ch |= row(ui, "Position", |ui| {
+        ch |= row(ui, &tr!("Position"), |ui| {
             let mut changed = false;
             egui::ComboBox::from_id_salt("moon_mode")
-                .selected_text(m.mode.label())
+                .selected_text(mode_label(m.mode))
                 .width(160.0)
                 .show_ui(ui, |ui| {
                     for o in MoonMode::ALL {
-                        changed |= ui.selectable_value(&mut m.mode, o, o.label()).changed();
+                        changed |= ui.selectable_value(&mut m.mode, o, mode_label(o)).changed();
                     }
                 });
             changed
         });
         match m.mode {
             MoonMode::FollowSun | MoonMode::Manual => {
-                ch |= row(ui, "Phase", |ui| {
+                ch |= row(ui, &tr!("Phase#moon"), |ui| {
                     let c = slider(ui, &mut m.phase, 0.0..=1.0, "");
-                    ui.weak(phase_name(m.phase));
+                    ui.weak(tr(phase_name(m.phase)));
                     c
                 });
                 if m.mode == MoonMode::Manual {
-                    ch |= row(ui, "Azimuth", |ui| {
+                    ch |= row(ui, &tr!("Azimuth"), |ui| {
                         slider(ui, &mut m.azimuth, 0.0..=360.0, "°")
                     });
-                    ch |= row(ui, "Altitude", |ui| {
+                    ch |= row(ui, &tr!("Altitude"), |ui| {
                         slider(ui, &mut m.altitude, -10.0..=90.0, "°")
                     });
                 }
             }
             MoonMode::DateTime => {
-                ch |= row(ui, "Date", |ui| {
+                ch |= row(ui, &tr!("Date"), |ui| {
                     let mut c = ui
                         .add(egui::DragValue::new(&mut m.year).range(1800..=2200))
                         .changed();
@@ -103,42 +113,51 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
                         .changed();
                     c
                 });
-                ch |= row(ui, "Time", |ui| slider(ui, &mut m.time, 0.0..=24.0, " h"));
-                ch |= row(ui, "UTC Offset", |ui| {
+                ch |= row(ui, &tr!("Time#clock"), |ui| {
+                    slider(ui, &mut m.time, 0.0..=24.0, " h")
+                });
+                ch |= row(ui, &tr!("UTC Offset"), |ui| {
                     slider(ui, &mut m.utc_offset, -12.0..=14.0, " h")
                 });
                 if let Some(sky) = &cx.sky {
-                    row(ui, "Phase", |ui| {
+                    row(ui, &tr!("Phase#moon"), |ui| {
                         let name = match (sky.illumination, sky.waxing) {
-                            (k, _) if k < 0.02 => "New Moon",
-                            (k, _) if k > 0.98 => "Full Moon",
-                            (_, true) => "Waxing",
-                            (_, false) => "Waning",
+                            (k, _) if k < 0.02 => tr!("New Moon"),
+                            (k, _) if k > 0.98 => tr!("Full Moon"),
+                            (_, true) => tr!("Waxing"),
+                            (_, false) => tr!("Waning"),
                         };
-                        ui.weak(format!("{name}, {:.0}% lit", sky.illumination * 100.0));
+                        let percent = format!("{:.0}", sky.illumination * 100.0);
+                        ui.weak(tr!(
+                            "{phase}, {percent}% lit",
+                            phase = name,
+                            percent = percent
+                        ));
                         false
                     });
                 }
             }
         }
         if m.mode != MoonMode::Manual {
-            ch |= row(ui, "Latitude", |ui| {
+            ch |= row(ui, &tr!("Latitude"), |ui| {
                 slider(ui, &mut m.latitude, -90.0..=90.0, "°")
             });
         }
         if m.mode == MoonMode::DateTime {
-            ch |= row(ui, "Longitude", |ui| {
+            ch |= row(ui, &tr!("Longitude"), |ui| {
                 slider(ui, &mut m.longitude, -180.0..=180.0, "°")
             });
         }
-        ch |= row(ui, "Size", |ui| slider(ui, &mut m.size, 0.5..=12.0, "×"));
-        ch |= row(ui, "Brightness", |ui| {
+        ch |= row(ui, &tr!("Size"), |ui| {
+            slider(ui, &mut m.size, 0.5..=12.0, "×")
+        });
+        ch |= row(ui, &tr!("Brightness"), |ui| {
             slider(ui, &mut m.brightness, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Earthshine", |ui| {
+        ch |= row(ui, &tr!("Earthshine"), |ui| {
             slider(ui, &mut m.earthshine, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Texture", |ui| {
+        ch |= row(ui, &tr!("Texture"), |ui| {
             let c = crate::panels::inspector::slots::texture_slot(
                 ui,
                 "moon_texture",
@@ -146,26 +165,29 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
                 &cx.textures,
             );
             if m.texture.is_none() {
-                ui.weak("Built-in").on_hover_text(
-                    "Albedo only, evenly lit. 2:1 = whole moon, square = near-side photo.",
-                );
+                ui.weak(tr!("Built-in")).on_hover_text(tr!(
+                    "Albedo only, evenly lit. 2:1 = whole moon, square = near-side photo."
+                ));
             }
             c
         });
-        ch |= row(ui, "Moonlight", |ui| {
+        ch |= row(ui, &tr!("Moonlight"), |ui| {
             slider(ui, &mut m.light_intensity, 0.0..=2.0, "")
         });
-        ch |= row(ui, "Moonlight Color", |ui| color(ui, &mut m.light_color));
+        ch |= row(ui, &tr!("Moonlight Color"), |ui| {
+            color(ui, &mut m.light_color)
+        });
         ch
     })
 }
 
-/// One collapsible group of Night Sky rows.
-fn group(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+/// One collapsible group of Night Sky rows; `id` is its English title, `title` what is shown.
+fn group(ui: &mut Ui, id: &str, title: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     egui::CollapsingHeader::new(title)
-        .id_salt(("night_sky", title))
+        .id_salt(("night_sky", id))
+        .default_open(crate::capture::lighting_scroll().is_some())
         .show(ui, |ui| {
-            super::lighting::grid(ui, &format!("night_{title}"), body)
+            super::lighting::grid(ui, &format!("night_{id}"), body)
         })
         .body_returned
         .unwrap_or(false)
@@ -175,16 +197,16 @@ fn group(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
 /// the moon's Date and Time mode sets the sky's turn. True when something changed.
 pub(super) fn night_section(ui: &mut Ui, n: &mut NightSkySettings, date_time: bool) -> bool {
     ui.add_space(4.0);
-    ui.label(RichText::new("Night Sky").strong());
+    ui.label(RichText::new(tr!("Night Sky")).strong());
     let mut ch = super::lighting::grid(ui, "lighting_night", |ui| {
-        let mut ch = ui.checkbox(&mut n.enabled, "Night Sky").changed();
+        let mut ch = ui.checkbox(&mut n.enabled, tr!("Night Sky")).changed();
         ui.end_row();
         if n.enabled {
-            ch |= row(ui, "Night Sky Darkness", |ui| {
+            ch |= row(ui, &tr!("Night Sky Darkness"), |ui| {
                 slider(ui, &mut n.darkness, 0.0..=1.0, "")
             });
             if !date_time {
-                ch |= row(ui, "Sky Time", |ui| {
+                ch |= row(ui, &tr!("Sky Time"), |ui| {
                     slider(ui, &mut n.sky_time, 0.0..=24.0, " h")
                 });
             }
@@ -194,98 +216,104 @@ pub(super) fn night_section(ui: &mut Ui, n: &mut NightSkySettings, date_time: bo
     if !n.enabled {
         return ch;
     }
-    ch |= group(ui, "Stars", |ui| {
-        let mut ch = row(ui, "Brightness", |ui| {
+    ch |= group(ui, "Stars", &tr!("Stars"), |ui| {
+        let mut ch = row(ui, &tr!("Brightness"), |ui| {
             slider(ui, &mut n.star_brightness, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Density", |ui| {
+        ch |= row(ui, &tr!("Density"), |ui| {
             slider(ui, &mut n.star_density, 0.0..=3.0, "")
         });
-        ch |= row(ui, "Magnitude Spread", |ui| {
+        ch |= row(ui, &tr!("Magnitude Spread"), |ui| {
             slider(ui, &mut n.star_magnitude_spread, 0.0..=1.0, "")
         });
-        ch |= row(ui, "Glow", |ui| slider(ui, &mut n.star_glow, 0.0..=4.0, ""));
-        ch |= row(ui, "Color Variation", |ui| {
+        ch |= row(ui, &tr!("Glow"), |ui| {
+            slider(ui, &mut n.star_glow, 0.0..=4.0, "")
+        });
+        ch |= row(ui, &tr!("Color Variation"), |ui| {
             slider(ui, &mut n.star_color_variation, 0.0..=1.0, "")
         });
-        ch |= row(ui, "Twinkle", |ui| {
+        ch |= row(ui, &tr!("Twinkle"), |ui| {
             slider(ui, &mut n.star_twinkle, 0.0..=2.0, "")
         });
-        ch |= row(ui, "Twinkle Speed", |ui| {
+        ch |= row(ui, &tr!("Twinkle Speed"), |ui| {
             slider(ui, &mut n.star_twinkle_speed, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Fade in Bright Sky", |ui| {
+        ch |= row(ui, &tr!("Fade in Bright Sky"), |ui| {
             slider(ui, &mut n.star_fade, 0.0..=4.0, "")
         });
         ch
     });
-    ch |= group(ui, "Milky Way", |ui| {
-        let mut ch = row(ui, "Visibility", |ui| {
+    ch |= group(ui, "Milky Way", &tr!("Milky Way"), |ui| {
+        let mut ch = row(ui, &tr!("Visibility"), |ui| {
             slider(ui, &mut n.milky_way, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Core", |ui| {
+        ch |= row(ui, &tr!("Core#galaxy"), |ui| {
             slider(ui, &mut n.milky_way_core, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Dust Lanes", |ui| {
+        ch |= row(ui, &tr!("Dust Lanes"), |ui| {
             slider(ui, &mut n.milky_way_dust, 0.0..=2.0, "")
         });
-        ch |= row(ui, "Width", |ui| {
+        ch |= row(ui, &tr!("Width"), |ui| {
             slider(ui, &mut n.milky_way_width, 0.2..=3.0, "×")
         });
-        ch |= row(ui, "Tint", |ui| color(ui, &mut n.milky_way_tint));
+        ch |= row(ui, &tr!("Tint"), |ui| color(ui, &mut n.milky_way_tint));
         ch
     });
-    ch |= group(ui, "Light Pollution", |ui| {
-        let mut ch = row(ui, "Amount", |ui| {
+    ch |= group(ui, "Light Pollution", &tr!("Light Pollution"), |ui| {
+        let mut ch = row(ui, &tr!("Amount"), |ui| {
             slider(ui, &mut n.light_pollution, 0.0..=2.0, "")
         });
-        ch |= row(ui, "Color", |ui| color(ui, &mut n.light_pollution_color));
+        ch |= row(ui, &tr!("Color"), |ui| {
+            color(ui, &mut n.light_pollution_color)
+        });
         ch
     });
-    ch |= group(ui, "Aurora", |ui| {
-        let mut ch = row(ui, "Visibility", |ui| {
+    ch |= group(ui, "Aurora", &tr!("Aurora"), |ui| {
+        let mut ch = row(ui, &tr!("Visibility"), |ui| {
             slider(ui, &mut n.aurora, 0.0..=4.0, "")
         });
-        ch |= row(ui, "Color", |ui| color(ui, &mut n.aurora_color));
-        ch |= row(ui, "Top Color", |ui| color(ui, &mut n.aurora_top_color));
-        ch |= row(ui, "Height", |ui| {
+        ch |= row(ui, &tr!("Color"), |ui| color(ui, &mut n.aurora_color));
+        ch |= row(ui, &tr!("Top Color"), |ui| {
+            color(ui, &mut n.aurora_top_color)
+        });
+        ch |= row(ui, &tr!("Height"), |ui| {
             slider(ui, &mut n.aurora_height, 60.0..=300.0, " km")
         });
-        ch |= row(ui, "Thickness", |ui| {
+        ch |= row(ui, &tr!("Thickness"), |ui| {
             slider(ui, &mut n.aurora_thickness, 20.0..=500.0, " km")
         });
-        ch |= row(ui, "Curtains", |ui| {
+        ch |= row(ui, &tr!("Curtains"), |ui| {
             ui.add(egui::Slider::new(&mut n.aurora_curtains, 1..=6))
                 .changed()
         });
-        ch |= row(ui, "Waviness", |ui| {
+        ch |= row(ui, &tr!("Waviness"), |ui| {
             slider(ui, &mut n.aurora_waviness, 0.0..=3.0, "")
         });
-        ch |= row(ui, "Ray Detail", |ui| {
+        ch |= row(ui, &tr!("Ray Detail"), |ui| {
             slider(ui, &mut n.aurora_rays, 0.0..=3.0, "")
         });
-        ch |= row(ui, "Direction", |ui| {
+        ch |= row(ui, &tr!("Direction"), |ui| {
             slider(ui, &mut n.aurora_azimuth, 0.0..=360.0, "°")
         });
-        ch |= row(ui, "Distance", |ui| {
+        ch |= row(ui, &tr!("Distance"), |ui| {
             slider(ui, &mut n.aurora_distance, 0.0..=1500.0, " km")
         });
-        ch |= row(ui, "Speed", |ui| {
+        ch |= row(ui, &tr!("Speed"), |ui| {
             slider(ui, &mut n.aurora_speed, 0.0..=5.0, "")
         });
-        ch |= row(ui, "Pulse", |ui| {
+        ch |= row(ui, &tr!("Pulse#aurora"), |ui| {
             slider(ui, &mut n.aurora_pulse, 0.0..=2.0, "")
         });
-        ch |= row(ui, "Scene Light", |ui| {
+        ch |= row(ui, &tr!("Scene Light"), |ui| {
             slider(ui, &mut n.aurora_ambient, 0.0..=4.0, "")
         });
         ch
     });
-    ch |= group(ui, "Meteors", |ui| {
-        let mut ch = row(ui, "Per Minute", |ui| {
+    ch |= group(ui, "Meteors", &tr!("Meteors"), |ui| {
+        let mut ch = row(ui, &tr!("Per Minute"), |ui| {
             slider(ui, &mut n.meteor_rate, 0.0..=60.0, "")
         });
-        ch |= row(ui, "Brightness", |ui| {
+        ch |= row(ui, &tr!("Brightness"), |ui| {
             slider(ui, &mut n.meteor_brightness, 0.0..=4.0, "")
         });
         ch

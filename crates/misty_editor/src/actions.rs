@@ -30,7 +30,7 @@ pub enum Create {
     FogVolume,
     /// GameObject ▸ Rendering ▸ Decal Projector.
     DecalProjector,
-    /// GameObject ▸ Rendering ▸ Weather (a global Weather volume showing Rain).
+    /// Object ▸ Rendering ▸ Weather (a global Weather volume showing Rain).
     Weather,
     /// GameObject ▸ Water ▸ Ocean / Lake / River.
     Water(misty_engine::water::WaterKind),

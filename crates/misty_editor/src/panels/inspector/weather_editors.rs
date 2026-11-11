@@ -125,7 +125,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
     ch |= ui
         .checkbox(&mut w.preview_in_edit_mode, tr("Preview in Edit Mode"))
         .on_hover_text(tr(
-            "Show the weather in the Scene and Game views without entering Play.",
+            "Show the weather in the Editor Scene and the Scene Viewer without entering Play.",
         ))
         .changed();
     status(ui, state, e, &w);
