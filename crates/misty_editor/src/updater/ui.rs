@@ -3,6 +3,8 @@
 
 use egui::{Align2, Color32, CornerRadius, RichText};
 
+use crate::i18n::tr;
+
 use super::{Phase, Update, Updater, VERSION};
 
 /// The update button's green.
@@ -27,6 +29,19 @@ pub fn update_button(ui: &mut egui::Ui, up: &Updater) -> bool {
         ))
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .clicked()
+}
+
+/// Preferences / Hub Settings: the "Check for updates at startup" checkbox. Returns true when
+/// it was changed this frame.
+pub fn startup_check_row(ui: &mut egui::Ui, on: &mut bool) -> bool {
+    ui.checkbox(on, tr!("Check for updates at startup"))
+        .on_hover_text(tr!(
+            "Asks GitHub for the newest Misty Engine release ({repo}) when the editor or the Hub \
+             starts. Nothing else is contacted and nothing about you or your projects is sent. \
+             Help ▸ Check for Updates… works either way.",
+            repo = super::REPO
+        ))
+        .changed()
 }
 
 /// The message box and progress windows; call once per frame. Returns true when the user

@@ -68,19 +68,21 @@ workflow files count as source code and are reviewed like it.
 ## Privacy policy
 
 Misty Engine has no accounts, no analytics, no telemetry and no crash reporting. Apart from the
-update check described first, this program will not transfer any information to other networked
-systems unless specifically requested by the user or the person installing or operating it.
+update check described first (which you can turn off), this program will not transfer any
+information to other networked systems unless specifically requested by the user or the person
+installing or operating it.
 
 What the editor and the Hub (`MistyEngine.exe`) do on the network:
 
-- **Update check (automatic).** When the editor or the Hub starts, and at most once every 6
+- **Update check (automatic, can be turned off).** When the editor or the Hub starts, and at most once every 6
   hours, it asks GitHub for the newest release:
   `https://api.github.com/repos/Aalzard/MistyEngine/releases/latest`. The request carries the
   User-Agent `MistyEngine-Updater/<version>` and nothing about you or your projects. As with any
   web request, GitHub sees your IP address;
   [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)
-  applies. There is no setting to turn the check off yet; blocking `api.github.com` for the
-  program, or being offline, has the same effect, and the program works without it.
+  applies. To turn it off, untick **Check for updates at startup** in Edit ▸ Preferences ▸
+  General (or in the Hub: Settings ▸ Updates). The choice is saved per user, and from then on
+  no request is made at startup; Help ▸ Check for Updates… still checks when you click it.
 - **Update download (only when you click Update now).** The Windows zip or Linux tarball and its
   SHA-256 file are downloaded from GitHub (`github.com`, `objects.githubusercontent.com`,
   `release-assets.githubusercontent.com`) over HTTPS and checked before anything is installed.

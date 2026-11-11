@@ -22,7 +22,7 @@ From <https://signpath.org/terms> (the page calls itself a draft code of conduct
 | "functionality must be described on its download page" | README (the repository home page) describes it; release notes come from the CHANGELOG. |
 | Sign only your own project and binaries built from your own source | The two exes are built from this repository. The installer is made by Inno Setup from them. |
 | No hacking tools | Fine. |
-| Software that "collects user data and transfers it to systems not specified by the user" needs a privacy policy shown during installation and an option to turn it off | Misty Engine collects no user data. The one automatic request is the update check to GitHub (no data about the user; see the policy page). It has **no off switch yet**; adding one in Preferences is recommended before applying (follow-up, not done here). |
+| Software that "collects user data and transfers it to systems not specified by the user" needs a privacy policy shown during installation and an option to turn it off | Misty Engine collects no user data. The one automatic request is the update check to GitHub (no data about the user; see the policy page). It can be turned off: Edit ▸ Preferences ▸ General ▸ **Check for updates at startup** (also Hub ▸ Settings ▸ Updates; on by default, saved per user). Off, no request is made at startup; Help ▸ Check for Updates… still works on request. |
 | "must not modify the user's system configuration without proper warnings" | The installer is per-user: files, Start menu entry, optional desktop shortcut. |
 | Installation must come with uninstallation | Inno Setup uninstaller; described on the policy page. |
 | "All team members must use multi-factor authentication for both SignPath and source code repository access" | **You:** turn on 2FA on GitHub (and on SignPath after approval). |
@@ -78,8 +78,8 @@ pushed), and no signing request has ever been made.
 2. [ ] Read `docs/code-signing-policy.md`. Confirm the team roles and the privacy section; fix
        anything that is not true.
 3. [ ] Confirm every bundled asset is under an open license (see the table above).
-4. [ ] Recommended: a Preferences switch for the automatic update check (ask for it as a
-       follow-up round), then say so on the policy page.
+4. [x] A Preferences switch for the automatic update check: done in round 37 (Edit ▸
+       Preferences ▸ General ▸ Check for updates at startup), and the policy page says so.
 5. [ ] Merge `r36-signing` into main and push, so SignPath can see the policy page, the README
        link and the workflow.
 6. [ ] Optional but useful: Actions ▸ **Release (Windows)** ▸ Run workflow on `main`. It builds

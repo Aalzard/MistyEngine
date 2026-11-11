@@ -37,6 +37,30 @@ fn config_round_trips_and_tolerates_missing_or_broken_files() {
 }
 
 #[test]
+fn startup_update_check_round_trips_and_is_on_by_default() {
+    let dir = temp("update_check");
+    let path = dir.join("hub.json");
+    let mut c = HubConfig::load(&path);
+    assert!(c.check_updates_at_startup(), "on by default");
+    c.set_check_updates_at_startup(false);
+    c.save(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains(r#""startup_update_check": false"#), "{text}");
+    let mut c = HubConfig::load(&path);
+    assert!(!c.check_updates_at_startup());
+    // Back on: the default is not written to the file.
+    c.set_check_updates_at_startup(true);
+    c.save(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("startup_update_check"), "{text}");
+    assert!(HubConfig::load(&path).check_updates_at_startup());
+    // A file from before the setting existed: on.
+    std::fs::write(&path, r#"{"theme":"Light"}"#).unwrap();
+    assert!(HubConfig::load(&path).check_updates_at_startup());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn recent_list_moves_to_front_removes_relocates_and_caps() {
     let mut c = HubConfig::default();
     c.touch(Path::new("C:/P/A"), 1);
@@ -391,6 +415,11 @@ fn learn_and_settings_pages_show() {
     h.get_by_label("Light").click();
     h.run();
     assert_eq!(HubConfig::load(&path).theme, HubTheme::Light);
+    // Settings ▸ Updates: the startup check's switch, saved in hub.json.
+    assert!(HubConfig::load(&path).check_updates_at_startup());
+    h.get_by_label("Check for updates at startup").click();
+    h.run();
+    assert!(!HubConfig::load(&path).check_updates_at_startup());
     h.get_by_label(&format!("v{}", super::VERSION));
     let _ = std::fs::remove_dir_all(dir);
 }
