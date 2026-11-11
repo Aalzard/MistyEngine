@@ -3,7 +3,8 @@
 //!
 //! - A texture dragged from Asset Files and dropped on the square (or on the name beside it) is
 //!   assigned; the square is outlined while a texture is dragged and brighter under the pointer.
-//! - A click opens a searchable picker (with "None"); a right-click clears the slot.
+//! - A click opens a searchable picker (with "None"); a right-click, or the small × shown in the
+//!   corner of a filled slot under the pointer, clears it.
 //! - Ctrl+click or a double-click shows the texture in Asset Files (the Properties view stays
 //!   on the material).
 //! - Hovering shows a larger preview with the texture's name and path.
@@ -33,6 +34,8 @@ pub const SLOT_SIZE: f32 = 18.0;
 pub const SLOT_GAP: f32 = 4.0;
 /// Indent of a row nested under a property (its label starts where texture names start).
 pub const INDENT: f32 = SLOT_SIZE + SLOT_GAP;
+/// Side of the × that clears a filled slot (shown in its top-right corner on hover).
+const CLEAR_SIZE: f32 = 8.0;
 /// Longest side of the tooltip preview.
 const PREVIEW: f32 = 96.0;
 const PICKER_WIDTH: f32 = 240.0;
@@ -184,7 +187,20 @@ pub fn texture_square(
     if show && let Some(rel) = value.as_deref() {
         show_in_asset_files(state, rel);
     }
-    let clear = resp.secondary_clicked();
+    // The small × in the corner while the pointer is over a filled slot (registered after the
+    // square, so it takes the click).
+    let x_rect = Rect::from_min_size(
+        rect.right_top() + vec2(-CLEAR_SIZE, 0.0),
+        vec2(CLEAR_SIZE, CLEAR_SIZE),
+    );
+    let x_resp = (value.is_some() && !dragging && resp.enabled() && ui.rect_contains_pointer(rect))
+        .then(|| {
+            let r = ui.interact(x_rect, Id::new(("misty_texture_clear", id)), Sense::click());
+            let label = tr!("Clear {name} texture", name = name);
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+            r
+        });
+    let clear = resp.secondary_clicked() || x_resp.as_ref().is_some_and(|r| r.clicked());
     if clear && value.is_some() {
         *value = None;
         changed = true;
@@ -230,6 +246,21 @@ pub fn texture_square(
         Stroke::new(1.0, Color32::from_rgb(30, 30, 30))
     };
     painter.rect_stroke(rect, 2.0, stroke, StrokeKind::Inside);
+    if let Some(x) = &x_resp
+        && value.is_some()
+    {
+        let fill = if x.hovered() {
+            theme::WARN
+        } else {
+            Color32::from_black_alpha(200)
+        };
+        painter.rect_filled(x_rect, 2.0, fill);
+        let c = x_rect.center();
+        let d = CLEAR_SIZE * 0.22;
+        let line = Stroke::new(1.2, Color32::WHITE);
+        painter.line_segment([c + vec2(-d, -d), c + vec2(d, d)], line);
+        painter.line_segment([c + vec2(-d, d), c + vec2(d, -d)], line);
+    }
 
     let enabled = resp.enabled();
     let label = tr!("{name} texture", name = name);
@@ -241,6 +272,9 @@ pub fn texture_square(
         .width(PICKER_WIDTH)
         .show(|ui| changed |= picker(ui, state, popup_id, value));
 
+    if let Some(x) = x_resp {
+        x.on_hover_text(tr!("Clear texture"));
+    }
     if !open && !dragging {
         resp.on_hover_ui(|ui| tooltip(ui, name, value.as_deref(), tex.as_ref()));
     }

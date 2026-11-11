@@ -1385,6 +1385,8 @@
 "⚠ Not a normal map" = "⚠ ليست خريطة عموديات"
 "This texture is not imported as a normal map, so it may be read as a colour image" = "هذه الخامة لم تُستورد كخريطة عموديات، فقد تُقرأ كصورة ملوّنة"
 "{name} texture" = "خامة {name}"
+"Clear {name} texture" = "مسح خامة {name}"
+"Clear texture" = "مسح الخامة"
 "None (Texture)" = "لا شيء (خامة)"
 "Click to choose a texture, or drop one here" = "انقر لاختيار خامة، أو أفلت واحدة هنا"
 "Missing texture" = "خامة مفقودة"

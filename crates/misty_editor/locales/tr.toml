@@ -1387,6 +1387,8 @@
 "⚠ Not a normal map" = "⚠ Normal haritası değil"
 "This texture is not imported as a normal map, so it may be read as a colour image" = "Bu doku normal haritası olarak içe aktarılmamış; renk görüntüsü olarak okunabilir"
 "{name} texture" = "{name} dokusu"
+"Clear {name} texture" = "{name} dokusunu temizle"
+"Clear texture" = "Dokuyu temizle"
 "None (Texture)" = "Yok (Doku)"
 "Click to choose a texture, or drop one here" = "Doku seçmek için tıklayın ya da buraya bir doku bırakın"
 "Missing texture" = "Eksik doku"

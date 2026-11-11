@@ -134,6 +134,29 @@ fn right_click_clears_a_slot_as_one_undo_step() {
 }
 
 #[test]
+fn the_corner_x_shows_on_hover_and_clears_the_slot() {
+    let m = Material {
+        albedo_map: Some(BRICK.to_owned()),
+        ..Default::default()
+    };
+    let (mut h, root) = project("clear_x", m);
+    assert!(!has(&h, "Clear Albedo texture"), "no × until hovered");
+    let slot = h.get_by_label("Albedo texture").rect();
+    h.hover_at(slot.center());
+    h.run();
+    let x = h.get_by_label("Clear Albedo texture").rect();
+    assert!(slot.contains_rect(x), "the × sits inside the square");
+    h.hover_at(x.center());
+    h.run();
+    h.get_by_label("Clear Albedo texture").click();
+    h.run();
+    assert_eq!(material(&h).albedo_map, None);
+    assert!(!has(&h, "None"), "the × does not open the picker");
+    assert!(!has(&h, "Clear Albedo texture"), "an empty slot has no ×");
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
 fn the_picker_searches_assigns_and_clears() {
     let (mut h, root) = project("picker", Material::default());
     h.get_by_label("Albedo texture").click();
