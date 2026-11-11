@@ -533,7 +533,7 @@
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Materials/Weather Wood.mat",
+          "material": "Assets/Materials/Weather Roof.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -582,7 +582,7 @@
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Materials/Weather Wood.mat",
+          "material": "Assets/Materials/Weather Roof.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -3719,6 +3719,7 @@
     "Assets/Materials/Weather Asphalt.mat": "2302c8d970d27e979b3f30bb765a1961",
     "Assets/Materials/Weather Iron.mat": "b126657cbd409c48f77f077776530fff",
     "Assets/Materials/Weather Lamp.mat": "a919b2c756b0d75b83fcd5b09f03fa33",
+    "Assets/Materials/Weather Roof.mat": "e299cfa6065f51e593860065942a0661",
     "Assets/Materials/Weather Wood.mat": "f4b7d839a4cb4666daa01b088734e5fe",
     "Assets/Rocks/Materials/Boulder Large.mat": "1de11fe26fbd821c63a0ac4bec6b83c0",
     "Assets/Rocks/Materials/Boulder Round.mat": "2c707f2c606e8442563453c540a9b385",
