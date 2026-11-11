@@ -28,12 +28,32 @@ use crate::weather::frame::MAX_REGIONS;
 
 #[cfg(test)]
 mod gpu_tests;
+mod scene_blur;
 
 const PRECIP_SRC: &str = concat!(
     include_str!("shaders/weather_common.wgsl"),
     "\n",
     include_str!("shaders/precipitation.wgsl")
 );
+/// The composite shader. Tests can read the two files from disk instead (`MISTY_WEATHER_SHADERS`
+/// = the shaders folder), to tune the look of the weather without rebuilding.
+fn precip_src() -> std::borrow::Cow<'static, str> {
+    #[cfg(test)]
+    if let Ok(dir) = std::env::var("MISTY_WEATHER_SHADERS") {
+        let read = |name: &str| {
+            std::fs::read_to_string(std::path::Path::new(&dir).join(name))
+                .unwrap_or_else(|e| panic!("{name}: {e}"))
+        };
+        return format!(
+            "{}
+{}",
+            read("weather_common.wgsl"),
+            read("precipitation.wgsl")
+        )
+        .into();
+    }
+    PRECIP_SRC.into()
+}
 const SPLASH_SRC: &str = concat!(
     include_str!("shaders/weather_common.wgsl"),
     "\n",
@@ -57,6 +77,21 @@ const FAR_VOLUME: f32 = 64.0 * 32.0 * 64.0;
 pub const MAX_PARTICLES: u32 = 700_000;
 /// Base exposure of a streak (s) at Streak Length 1: a film camera's shutter.
 const SHUTTER: f32 = 1.0 / 25.0;
+/// Depth of field of the drops: the blur disc of a drop 1 m from the lens as a share of the
+/// picture height (the lens is focused far away, so only drops within a few metres blur).
+const DEFOCUS: f32 = 0.014;
+
+/// 0 by day .. 1 at night: how little light the sun (or moon) and the sky give this frame.
+/// At night the rain, the haze and the sheets take their light from lamps and lightning.
+fn night_factor(frame: &Frame) -> f32 {
+    let sun = frame
+        .lights
+        .iter()
+        .filter(|l| l.kind == crate::scene::LightType::Directional)
+        .map(|l| l.color.iter().copied().fold(0.0, f32::max) * l.intensity)
+        .fold(0.0, f32::max);
+    1.0 - ((sun - 0.05) / 0.5).clamp(0.0, 1.0)
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
@@ -104,6 +139,8 @@ struct PrecipGpu {
     haze: [f32; 4],
     misc: [f32; 4],
     bolt: [f32; 4],
+    rain3: [f32; 4],
+    look: [f32; 4],
 }
 
 /// `SplashSim` in splash_sim.wgsl.
@@ -266,6 +303,8 @@ pub(super) struct WeatherGpu {
     dummy: wgpu::TextureView,
     occlusion: Option<Occlusion>,
     passes: Option<Passes>,
+    /// The blurred scene the rain is seen through (made with the passes).
+    blur: Option<scene_blur::SceneBlur>,
     precip: wgpu::Buffer,
     precip_glow: wgpu::Buffer,
     sim_uniform: wgpu::Buffer,
@@ -319,6 +358,7 @@ impl WeatherGpu {
             dummy: depth_texture(device, 1, "misty weather occlusion (none)"),
             occlusion: None,
             passes: None,
+            blur: None,
             precip: buffer(
                 "misty weather precip",
                 std::mem::size_of::<PrecipGpu>() as u64,
@@ -597,6 +637,10 @@ impl Renderer {
                 || w.effects.lens_drops)
         {
             self.weather.passes = Some(make_passes(device, &self.pipelines.view_layout));
+            self.weather.blur = Some(scene_blur::SceneBlur::new(
+                device,
+                &self.pipelines.view_layout,
+            ));
         }
     }
 
@@ -692,6 +736,27 @@ impl Renderer {
         let Some(copy) = self.scene_copies.current(target.size()) else {
             return;
         };
+        let Some(blur) = self.weather.blur.as_mut() else {
+            return;
+        };
+        // Rain, splashes and lens drops show the scene through water: the blurred chain.
+        let wet = now.counts[0] + now.counts[1] > 0
+            || now.frame.effects.lens_drops
+            || (now.frame.max_rain > 0.0 && now.frame.effects.splashes);
+        if wet {
+            blur.record(
+                device,
+                encoder,
+                &self.view_bind_group,
+                &copy.color_view,
+                target.size(),
+            );
+        }
+        let blur = self.weather.blur.as_ref().unwrap();
+        let blur_view = blur
+            .current(target.size())
+            .filter(|_| wet)
+            .map_or(&copy.color_view, |c| &c.view);
         let w = &now.frame;
         let cam = frame.camera;
         let out = target.output_size();
@@ -774,6 +839,17 @@ impl Renderer {
                 if w.effects.splashes { 1.0 } else { 0.0 },
                 if w.effects.mist { 1.0 } else { 0.0 },
             ],
+            rain3: [
+                p.wind_turbulence,
+                DEFOCUS,
+                (scene_blur::LEVELS - 1) as f32,
+                if w.effects.haze {
+                    p.rain_intensity
+                } else {
+                    0.0
+                },
+            ],
+            look: [night_factor(frame), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.weather.precip, 0, bytemuck::bytes_of(&u));
         u.sizes[0] = internal.0 as f32;
@@ -879,6 +955,14 @@ impl Renderer {
                     wgpu::BindGroupEntry {
                         binding: 6,
                         resource: self.weather.bolts.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(blur_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: wgpu::BindingResource::Sampler(&blur.sampler),
                     },
                 ],
             })
@@ -1083,6 +1167,12 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
             entry(4, vf, uniform),
             entry(5, S::VERTEX, read),
             entry(6, S::VERTEX, read),
+            entry(7, S::FRAGMENT, tex(true)),
+            entry(
+                8,
+                S::FRAGMENT,
+                wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            ),
         ],
     });
     let premultiplied = wgpu::BlendState {
@@ -1106,6 +1196,7 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
         alpha: premultiplied.alpha,
     };
     let layouts = [view_layout, &layout];
+    let source = precip_src();
     let build = |name: &'static str, vs: &'static str, fs: &'static str, blend| {
         pipelines::build(
             device,
@@ -1117,7 +1208,7 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
                 blend: Some(blend),
                 samples: 1,
                 glow: None,
-                ..Spec::new(name, PRECIP_SRC, &layouts)
+                ..Spec::new(name, &source, &layouts)
             },
         )
     };
@@ -1195,6 +1286,11 @@ mod tests {
         validate("weather composite", &format!("{COMMON}\n{PRECIP_SRC}"));
         validate("weather splashes", SPLASH_SRC);
         validate("weather occlusion", OCCLUSION_SRC);
+        validate(
+            "weather scene blur",
+            &format!("{COMMON}
+{}", include_str!("shaders/scene_blur.wgsl")),
+        );
         // The lit shaders with the surface hook.
         validate("mesh", &format!("{COMMON}\n{MESH_SRC}"));
         validate("terrain", &format!("{COMMON}\n{TERRAIN_SRC}"));
@@ -1208,8 +1304,8 @@ mod tests {
             std::mem::size_of::<GlobalsGpu>(),
             9 * 16 + 4 * (64 + 4 * 16)
         );
-        // Precip: 2 matrices + 14 vec4s.
-        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 14 * 16);
+        // Precip: 2 matrices + 16 vec4s.
+        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 16 * 16);
         assert_eq!(std::mem::size_of::<SplashSimGpu>(), 64 + 4 * 16);
     }
 

@@ -56,7 +56,10 @@ fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
         // Water fills the pores of rough materials (darker); a film makes everything glossy.
         let porous = clamp(1.0 - s.smoothness, 0.0, 1.0) * (1.0 - s.metallic);
         s.albedo *= mix(1.0, 0.42, wet * porous);
-        s.smoothness = mix(s.smoothness, max(s.smoothness, 0.88), wet);
+        // The film is never even: it stands thick in the hollows of a surface and thin on
+        // its high spots, so a wet road shines in patches, not like one mirror.
+        let film = weather_noise(world.xz * 2.7) * 0.6 + weather_noise(world.xz * 9.3 + 5.0) * 0.4;
+        s.smoothness = mix(s.smoothness, max(s.smoothness, mix(0.62, 0.93, film)), wet);
         // Puddles on flat open ground.
         let flatness = smoothstep(0.94, 0.99, n.y);
         let fill = a.y * weather.snow_line.z;
