@@ -3672,3 +3672,58 @@ thinned.
   plays. Not what this report was about (MeadowDemo's scripts don't print), not fixed here.
 - NoonValley (branches r26-*) has the same grass numbers (800 blades/m², 160 m, 5.8–6.5 m)
   plus a species and more flowers: same fault before, same fix; not measured there.
+
+## Round 39 — The Console no longer slows the editor (branch r39-console)
+
+A script that printed every frame made the editor slower the longer Play ran: the Console kept
+every message, and each frame it went through all of them and laid out every row (with Collapse
+on, it compared every message with every row before it).
+
+### Fix
+- **A bounded store** (`console.rs`): the newest 10,000 lines in a ring; older ones are dropped.
+  Edit ▸ Preferences ▸ **Console Lines** picks 1,000 to 100,000 (saved per user in `hub.json`,
+  Turkish and Arabic labels).
+- **Counters count everything** logged since the last Clear, dropped lines included (the ⛔ ⚠ ℹ
+  buttons, Error Pause, `editor.get_state`); they are kept as numbers, not counted each frame.
+- **Rows are kept, not rebuilt**: the filtered (and collapsed) rows live with the store and
+  follow it line by line as lines are logged and dropped. They are built again only when a
+  level toggle, the search or Collapse changes. Collapse still merges every identical message
+  (same level and text) into one row with a count, now through a hash table.
+- **Only the rows in view are drawn** (`ScrollArea::show_rows`, rows of one fixed height).
+- **Indices never change** (MCP `editor.read_console`): a line keeps its index when older lines
+  are dropped and across Clear. A client that asks `since` an index that is gone gets what is
+  left, with `dropped` (how many lines it missed) and `first` (the oldest index kept).
+  `counts.total` is now everything logged since Clear. `docs/mcp.md` has the details.
+- The selection is a line index: it stays on its line as others come and go, and ends when the
+  line is dropped.
+
+### Numbers
+`console_flood_report` (release, 900×400 panel, the egui test harness; "no a11y" is the same
+frame without the harness's accessibility tree). Lines of about 45 characters.
+
+| Lines logged | Before: kept | Before: ms a frame (no a11y) | After: kept | After: ms a frame (no a11y) |
+|---|---|---|---|---|
+| 1,000 | 1,000 (0.15 MB) | 5.1 (2.9) | 1,000 (0.15 MB) | 0.19 (0.15) |
+| 10,000 | 10,000 (1.8 MB) | 118 (61) | 10,000 (1.8 MB) | 0.17 (0.13) |
+| 50,000 | 50,000 (8.1 MB) | 430 (244) | 10,000 (1.8 MB) | 0.15 (0.12) |
+| 200,000 | 200,000 (32.3 MB) | 2,466 (1,205) | 10,000 (1.8 MB) | 0.17 (0.12) |
+
+- Collapse on, 10,000 different messages (no a11y): 299 ms a frame before, 0.17 ms after.
+- A script printing two lines every frame: before, a frame cost 2.7 ms around frame 150 and
+  91 ms around frame 2,950 (and kept growing); after, 0.28 ms and 0.16 ms, and 0.28 ms around
+  frame 29,950 (0.21 ms with Collapse on), the store steady at 1.5 MB.
+
+### Tests
+- `console_tests.rs`: memory bounded after 200,000 lines; counters after dropped lines and
+  after Clear; indices across dropped lines; level toggles and search; Collapse; the rows are
+  not rebuilt while lines stream in (either mode); 20,000 random steps (log, toggle, search,
+  Collapse, Clear, resize) where the kept rows equal rows worked out from scratch.
+- `panels/console_tests.rs` (egui harness): as many rows drawn of 60,000 lines as of 500; a
+  frame after 200,000 lines costs no more than after 1,000; 15,000 frames of a printing script
+  do not slow down; counters, search, toggles, Collapse and Clear after lines were dropped;
+  click selects, the detail pane shows the whole message, the selection ends with its line.
+- `mcp/tests.rs`: `since` across dropped lines and Clear, paging, counts, menu commands.
+
+### Not done
+- A single huge message is kept whole: the store bounds the number of lines, not their bytes.
+- The Console page of the User Guide does not mention the limit yet.

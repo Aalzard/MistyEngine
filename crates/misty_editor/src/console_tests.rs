@@ -191,8 +191,10 @@ fn level_toggles_and_search_pick_the_rows() {
 
 #[test]
 fn collapse_merges_identical_messages() {
-    let mut c = Console::default();
-    c.collapse = true;
+    let mut c = Console {
+        collapse: true,
+        ..Default::default()
+    };
     c.info("tick");
     c.warn("tick");
     c.info("tock");

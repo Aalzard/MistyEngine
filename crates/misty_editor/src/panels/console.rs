@@ -143,7 +143,7 @@ fn row(ui: &mut Ui, c: &Console, n: usize, height: f32) -> (Option<u64>, Option<
     };
     let bg = if c.selected == Some(row.index) {
         theme::SELECTION
-    } else if n % 2 == 0 {
+    } else if n.is_multiple_of(2) {
         egui::Color32::from_rgb(56, 56, 56)
     } else {
         egui::Color32::from_rgb(60, 60, 60)
