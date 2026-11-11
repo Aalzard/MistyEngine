@@ -1,6 +1,12 @@
 //! Weather Inspector: Preview in Edit Mode and a status line, Coverage, the preset dropdown,
 //! then collapsible sections of sliders for every value (Rain, Snow, Wind, Ground, Lightning,
 //! Sky, Surfaces, Effects), the Timeline and Audio.
+//!
+//! What you set here is what you see. Two things can stand between the values and the sky:
+//! the volume's own Timeline and a script holding the weather (`Weather.SetState`). Both are
+//! named in a notice with a button that turns them off, and picking a preset or moving a
+//! weather slider turns them off by itself ([`commit`]), so an edit always shows at once, in
+//! the Edit Mode preview and in Play.
 
 use std::ops::RangeInclusive;
 
@@ -9,6 +15,8 @@ use misty_engine::hecs::Entity;
 use misty_engine::weather::{
     Coverage, TimelineEntry, TimelineMode, Weather, WeatherPreset, WeatherTimeline,
 };
+
+use misty_engine::scene::Scene;
 
 use super::editors::{color_rgb, combo, grid};
 use crate::i18n::tr;
@@ -117,10 +125,111 @@ fn status(ui: &mut Ui, state: &EditorState, e: Entity, w: &Weather) {
     ui.weak(line);
 }
 
+/// What is driving the weather instead of the volume's own values.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Drivers {
+    /// The volume's timeline is on: the entry it shows or blends to ("" while not running).
+    pub timeline: Option<String>,
+    /// A script holds the weather in this state.
+    pub script: Option<WeatherPreset>,
+}
+
+/// The timeline and script override standing between volume `e`'s values and the weather.
+pub(crate) fn drivers(scene: &Scene, e: Entity, w: &Weather) -> Drivers {
+    let world = &scene.weather;
+    Drivers {
+        timeline: w.timeline.is_on().then(|| {
+            world
+                .volume(e)
+                .filter(|_| world.live)
+                .and_then(|v| w.timeline.entries.get(v.timeline.index))
+                .map_or(String::new(), |entry| entry.label().to_owned())
+        }),
+        script: world.script_state(),
+    }
+}
+
+/// The notice lines for `d`, translated.
+pub(crate) fn notice_lines(d: &Drivers) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(entry) = &d.timeline {
+        lines.push(if entry.is_empty() {
+            tr("Timeline is driving the weather.")
+        } else {
+            tr!(
+                "Timeline is driving the weather (now: {entry}).",
+                entry = tr(entry)
+            )
+        });
+    }
+    if let Some(p) = d.script {
+        lines.push(tr!("Script override: {state}", state = tr(p.label())));
+    }
+    lines
+}
+
+/// Store the edited volume. Changing its weather (a preset or any weather value) is a wish
+/// to see it: the timeline goes off (manual; its states are kept) and a script's hold on
+/// the weather is cleared, so the new values show at once.
+pub(crate) fn commit(scene: &mut Scene, e: Entity, before: &Weather, mut after: Weather) {
+    if after.state != before.state {
+        if after.timeline.is_on() {
+            after.timeline.mode = TimelineMode::Off;
+        }
+        if scene.weather.scripted() {
+            scene.weather.release(0.0);
+        }
+    }
+    let _ = scene.world.insert_one(e, after);
+}
+
+/// The notices with their buttons. Returns true when the volume changed.
+fn driver_notices(ui: &mut Ui, state: &mut EditorState, e: Entity, w: &mut Weather) -> bool {
+    let d = drivers(&state.scene, e, w);
+    let lines = notice_lines(&d);
+    if lines.is_empty() {
+        return false;
+    }
+    let mut ch = false;
+    let warn = ui.visuals().warn_fg_color;
+    let mut lines = lines.into_iter();
+    if d.timeline.is_some() {
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(warn, lines.next().unwrap_or_default());
+            if ui
+                .button(tr("Turn Timeline Off"))
+                .on_hover_text(tr(
+                    "Show this volume's own values. Its states are kept: turn it on again under Timeline, Mode. Picking a preset or changing a value below does the same.",
+                ))
+                .clicked()
+            {
+                w.timeline.mode = TimelineMode::Off;
+                ch = true;
+            }
+        });
+    }
+    if d.script.is_some() {
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(warn, lines.next().unwrap_or_default());
+            if ui
+                .button(tr("Clear Override"))
+                .on_hover_text(tr(
+                    "A script called Weather.SetState (in WeatherDemo: keys 1 to 8) and holds the weather until Weather.ClearState (key 0). Picking a preset or changing a value below clears it too.",
+                ))
+                .clicked()
+            {
+                state.scene.weather.release(0.0);
+            }
+        });
+    }
+    ch
+}
+
 pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> bool {
     let Ok(mut w) = state.scene.world.get::<&Weather>(e).map(|c| (*c).clone()) else {
         return false;
     };
+    let before = w.clone();
     let mut ch = false;
     ch |= ui
         .checkbox(&mut w.preview_in_edit_mode, tr("Preview in Edit Mode"))
@@ -129,6 +238,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         ))
         .changed();
     status(ui, state, e, &w);
+    ch |= driver_notices(ui, state, e, &mut w);
     ch |= grid(ui, "weather_top", |ui| {
         let mut ch = false;
         ui.label(tr("Coverage")).on_hover_text(tr(
@@ -211,11 +321,6 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         ui.end_row();
         ch
     });
-    if w.timeline.is_on() {
-        ui.weak(tr(
-            "The timeline is on: it sets these values while the weather runs.",
-        ));
-    }
     let s = &mut w.state;
     ch |= section(ui, "Rain", true, |ui| {
         let mut ch = false;
@@ -644,7 +749,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         );
     }
     if ch {
-        let _ = state.scene.world.insert_one(e, w);
+        commit(&mut state.scene, e, &before, w);
     }
     ch
 }
@@ -747,4 +852,166 @@ fn timeline(ui: &mut Ui, t: &mut WeatherTimeline) -> bool {
             });
         });
     ch
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec3;
+    use misty_engine::weather::update_scene;
+
+    use super::*;
+
+    const EYE: Vec3 = Vec3::new(0.0, 1.7, 0.0);
+
+    /// A scene with one global Weather volume, running (as in Play or the Edit Mode preview).
+    fn scene_with(w: Weather) -> (Scene, Entity) {
+        let mut s = Scene::default_3d("WeatherInspector");
+        let e = s.spawn("Weather", None);
+        s.add(e, w);
+        update_scene(&mut s, 0.1, EYE);
+        (s, e)
+    }
+
+    fn volume(s: &Scene, e: Entity) -> Weather {
+        (*s.world.get::<&Weather>(e).unwrap()).clone()
+    }
+
+    /// What the Properties panel does when the user picks `preset` in the dropdown.
+    fn pick(s: &mut Scene, e: Entity, preset: WeatherPreset) {
+        let before = volume(s, e);
+        let mut after = before.clone();
+        preset.apply(&mut after.state);
+        commit(s, e, &before, after);
+    }
+
+    fn run(s: &mut Scene, seconds: f32) {
+        for _ in 0..(seconds * 30.0) as usize {
+            update_scene(s, 1.0 / 30.0, EYE);
+        }
+    }
+
+    #[test]
+    fn edits_reach_the_running_weather_without_a_timeline() {
+        let (mut s, e) = scene_with(Weather::with_preset(WeatherPreset::Rain));
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::Rain);
+        assert_eq!(drivers(&s, e, &volume(&s, e)), Drivers::default());
+        // A preset: on the very next frame.
+        pick(&mut s, e, WeatherPreset::Blizzard);
+        update_scene(&mut s, 1.0 / 30.0, EYE);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::Blizzard);
+        // A slider: the preset reads Custom and the value is live.
+        let before = volume(&s, e);
+        let mut after = before.clone();
+        after.state.snow_density = 3.0;
+        commit(&mut s, e, &before, after);
+        update_scene(&mut s, 1.0 / 30.0, EYE);
+        assert_eq!(s.weather.current.snow_density, 3.0);
+        assert_eq!(WeatherPreset::matching(&volume(&s, e).state), None);
+    }
+
+    #[test]
+    fn editing_a_value_takes_over_from_the_timeline() {
+        let mut w = Weather::with_preset(WeatherPreset::LightRain);
+        w.timeline = WeatherTimeline::demo_cycle();
+        let (mut s, e) = scene_with(w);
+        // The timeline drives: its first state (Clear), not the volume's Light Rain.
+        assert_eq!(s.weather.current.rain_density, 0.0);
+        let d = drivers(&s, e, &volume(&s, e));
+        assert_eq!(d.timeline.as_deref(), Some("Clear"));
+        let lines = notice_lines(&d);
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].contains("Timeline") && lines[0].contains("Clear"),
+            "{lines:?}"
+        );
+        // Picking a preset: the timeline goes off (its states kept) and the preset shows.
+        pick(&mut s, e, WeatherPreset::HeavySnow);
+        update_scene(&mut s, 1.0 / 30.0, EYE);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::HeavySnow);
+        let w = volume(&s, e);
+        assert_eq!(w.timeline.mode, TimelineMode::Off);
+        assert_eq!(w.timeline.entries.len(), 4);
+        assert!(notice_lines(&drivers(&s, e, &w)).is_empty());
+        // And it stays: the timeline no longer moves it.
+        run(&mut s, 60.0);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::HeavySnow);
+        // A slider does the same.
+        let mut w2 = Weather::with_preset(WeatherPreset::Rain);
+        w2.timeline = WeatherTimeline::demo_cycle();
+        let (mut s2, e2) = scene_with(w2);
+        let before = volume(&s2, e2);
+        let mut after = before.clone();
+        after.state.rain_density = 77.0;
+        commit(&mut s2, e2, &before, after);
+        update_scene(&mut s2, 1.0 / 30.0, EYE);
+        assert_eq!(s2.weather.current.rain_density, 77.0);
+        // An edit of something else (surfaces, effects) leaves a running timeline alone.
+        let mut w3 = Weather::with_preset(WeatherPreset::Rain);
+        w3.timeline = WeatherTimeline::demo_cycle();
+        let (mut s3, e3) = scene_with(w3);
+        let before = volume(&s3, e3);
+        let mut after = before.clone();
+        after.surfaces.puddles = 0.9;
+        commit(&mut s3, e3, &before, after);
+        assert!(volume(&s3, e3).timeline.is_on());
+    }
+
+    /// The user's report: a Blizzard set by the demo's key 7 (a script), then Clear picked
+    /// in Properties, and the weather stayed a blizzard.
+    #[test]
+    fn clear_picked_after_a_script_blizzard_becomes_clear() {
+        let mut w = Weather::with_preset(WeatherPreset::LightRain);
+        w.timeline = WeatherTimeline::demo_cycle();
+        let (mut s, e) = scene_with(w);
+        // Weather.SetState("Blizzard", 4), as WeatherDemo.lua does.
+        s.weather
+            .set_state(WeatherPreset::Blizzard.params(), 4.0, "Blizzard");
+        run(&mut s, 5.0);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::Blizzard);
+        // The override is named in the panel.
+        let d = drivers(&s, e, &volume(&s, e));
+        assert_eq!(d.script, Some(WeatherPreset::Blizzard));
+        let lines = notice_lines(&d);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Script override") && l.contains("Blizzard")),
+            "{lines:?}"
+        );
+        // Clear picked in Properties: clear weather on the next frame, and it stays clear.
+        pick(&mut s, e, WeatherPreset::Clear);
+        update_scene(&mut s, 1.0 / 30.0, EYE);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::Clear);
+        assert_eq!(s.weather.current.snow_density, 0.0);
+        assert!(!s.weather.scripted());
+        run(&mut s, 30.0);
+        assert_eq!(s.weather.current.snow_density, 0.0);
+        assert!(notice_lines(&drivers(&s, e, &volume(&s, e))).is_empty());
+    }
+
+    #[test]
+    fn presets_apply_after_a_script_override_is_cleared() {
+        let (mut s, e) = scene_with(Weather::with_preset(WeatherPreset::Rain));
+        s.weather
+            .set_state(WeatherPreset::Thunderstorm.params(), 0.0, "Thunderstorm");
+        run(&mut s, 1.0);
+        assert_eq!(
+            s.weather.current.nearest_preset(),
+            WeatherPreset::Thunderstorm
+        );
+        // The Clear Override button.
+        s.weather.release(0.0);
+        update_scene(&mut s, 1.0 / 30.0, EYE);
+        assert_eq!(s.weather.current.nearest_preset(), WeatherPreset::Rain);
+        assert_eq!(s.weather.script_state(), None);
+        for p in [
+            WeatherPreset::Snow,
+            WeatherPreset::HeavySnow,
+            WeatherPreset::Flurries,
+        ] {
+            pick(&mut s, e, p);
+            update_scene(&mut s, 1.0 / 30.0, EYE);
+            assert_eq!(s.weather.current.nearest_preset(), p);
+        }
+    }
 }
