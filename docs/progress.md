@@ -3937,7 +3937,9 @@ a small square texture slot in front of every map's name.
   is dragged every slot gets a thin outline; the one under the pointer a bright one.
 - **Click** opens a picker: a search field (focused, Enter takes the first match), "None", and
   the project's textures with thumbnails. Only the rows in view are drawn.
-- **Right-click** clears the slot. **Ctrl+click** or a **double-click** shows the texture in
+- **Right-click** clears the slot, and so does the small **×** shown in the top-right corner
+  of a filled slot under the pointer (8 px, so a click in the middle still opens the picker).
+  **Ctrl+click** or a **double-click** shows the texture in
   Asset Files; the Properties view stays on the material.
 - **Hover** shows a 96 px preview with the texture's name and path.
 - A **normal-map slot** whose texture is not imported as a normal map gets a row under it:
@@ -3974,7 +3976,7 @@ a small square texture slot in front of every map's name.
 
 ### Tests
 `panels/inspector/material_tests.rs` (egui harness): a texture dropped on a slot or on its name
-is assigned and other assets are ignored; right-click clears and undo brings the texture back;
+is assigned and other assets are ignored; right-click clears and undo brings the texture back; the × shows on hover only and clears;
 the picker searches, assigns and clears; Ctrl+click shows the texture in Asset Files; Alpha
 Cutoff only for Cutout; Emission opens its rows; strength rows only with a map; a detail map
 turns the detail maps on; the normal-map warning and Fix Now; Advanced Surface checkboxes.
