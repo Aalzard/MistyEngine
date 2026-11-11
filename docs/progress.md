@@ -3980,4 +3980,18 @@ Cutoff only for Cutout; Emission opens its rows; strength rows only with a map; 
 turns the detail maps on; the normal-map warning and Fix Now; Advanced Surface checkboxes.
 
 ### Screenshots
-`docs/screenshots/r42/`: `before_*.png` and `after_*.png` of the same two materials.
+`docs/screenshots/r42/` (the Properties view cut out of the editor window; a temp copy of the
+sample project):
+- `compare_demo.png`, `compare_demo_scrolled.png`, `compare_bumpy.png`: before on the left,
+  after on the right, for a material with most features on and for a plain one.
+- `before_*.png` / `after_*.png`: the halves on their own; `after_window.png`: the whole editor.
+- `after_picker.png`: the texture picker (`MISTY_TEXTURE_PICKER=Albedo` keeps that slot's
+  picker open for a capture).
+- `after_demo_tr.png`, `after_demo_ar.png`: Turkish and Arabic (right to left).
+
+### Notes
+- Section headers are as tall as the other rows. With taller headers the rows under a new row
+  (Alpha Cutoff appearing, say) took several frames to settle: the grid lays a row out against
+  the height the row at that index had the frame before.
+- The sample project's `Bumps.png` is not imported as a normal map, so materials that use it
+  show the warning until Fix Now is pressed.
