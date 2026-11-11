@@ -385,6 +385,41 @@ pub struct GrassStats {
     pub scatter_ms: f32,
 }
 
+/// What a terrain's grass holds (tests, the long-walk harness).
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct GrassLoad {
+    /// Pieces held (whole chunks and tiles) and their blades.
+    pub pieces: u32,
+    pub blades: u64,
+    /// Pieces per density level.
+    pub by_level: [u32; details::MAX_LEVEL as usize + 1],
+    /// Blade pages, the blades they have room for, the free ones and the longest free run.
+    pub pages: u32,
+    pub page_blades: u64,
+    pub page_free: u64,
+    pub page_longest_free: u32,
+    /// Pieces in a buffer of their own (no page could take them).
+    pub own: u32,
+    /// Pieces without cull records (the arena was full).
+    pub unculled: u32,
+    /// Cull records the arena has room for and the free ones.
+    pub records: u64,
+    pub records_free: u64,
+    /// Jobs on the workers, results waiting for upload, cameras remembered, dirty pieces.
+    pub in_flight: u32,
+    pub ready: u32,
+    pub cameras: u32,
+    pub dirty: u32,
+    /// The last frame's blades were culled on the GPU.
+    pub culled: bool,
+    /// Blades the last frame's passes tested (the prefixes of their chunks), per pass.
+    pub drawn: [u64; KINDS],
+    /// GPU bytes of the blades, the cull records and the frame's cull buffers.
+    pub bytes: u64,
+    pub cull_bytes: u64,
+}
+
 pub(super) struct Grass {
     /// This terrain's number among the grass of the process (its jobs in the tile queue).
     id: u64,
@@ -1405,6 +1440,41 @@ impl Grass {
     /// The blade pages (the visibility resolve reads blades by id from them).
     pub fn pages(&self) -> Option<&BladePool> {
         self.pool.as_ref()
+    }
+
+    /// What the grass holds now (tests, the long-walk harness).
+    #[cfg(test)]
+    pub fn load(&self) -> GrassLoad {
+        let mut out = GrassLoad {
+            pieces: self.chunks.len() as u32,
+            in_flight: self.in_flight.len() as u32,
+            ready: self.ready.len() as u32,
+            cameras: self.cameras.len() as u32,
+            dirty: self.dirty.len() as u32,
+            culled: self.indirect(),
+            bytes: self.bytes(),
+            ..Default::default()
+        };
+        for c in self.chunks.values() {
+            out.blades += c.count as u64;
+            out.by_level[(c.level as usize).min(out.by_level.len() - 1)] += 1;
+            out.own += u32::from(matches!(c.store, Some(Store::Own(_))));
+            out.unculled += u32::from(c.store.is_some() && c.arena.is_none());
+        }
+        if let Some(p) = &self.pool {
+            out.pages = p.pages() as u32;
+            (out.page_blades, out.page_free, out.page_longest_free) = p.room();
+        }
+        if let Some(a) = &self.arena {
+            (out.records, out.records_free) = a.room();
+        }
+        if let Some(c) = &self.cull {
+            for (k, draws) in c.per_kind.iter().enumerate() {
+                out.drawn[k] = draws.iter().map(|d| d.count as u64).sum();
+            }
+            out.cull_bytes = c.bytes();
+        }
+        out
     }
 
     /// Blades held (chunks, total) (tests).

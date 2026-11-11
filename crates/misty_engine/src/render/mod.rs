@@ -4020,6 +4020,8 @@ mod grass_study;
 #[cfg(test)]
 mod grass_vis_tests;
 #[cfg(test)]
+mod grass_walk_tests;
+#[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]
 mod made_textures_tests;

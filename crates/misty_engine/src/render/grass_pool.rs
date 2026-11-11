@@ -94,6 +94,21 @@ impl BladePool {
         self.pages.len()
     }
 
+    /// Blades the pages hold room for, how many of them are free and the longest free run.
+    pub fn room(&self) -> (u64, u64, u32) {
+        let capacity = self.pages.iter().map(|p| p.capacity as u64).sum();
+        let free = (self.pages.iter())
+            .flat_map(|p| p.free.values())
+            .map(|n| *n as u64)
+            .sum();
+        let longest = (self.pages.iter())
+            .flat_map(|p| p.free.values())
+            .copied()
+            .max()
+            .unwrap_or(0);
+        (capacity, free, longest)
+    }
+
     pub fn buffer(&self, page: u32) -> &wgpu::Buffer {
         &self.pages[page as usize].buffer
     }

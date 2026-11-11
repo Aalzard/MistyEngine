@@ -215,6 +215,12 @@ impl Arena {
         self.capacity as u64 * RECORD
     }
 
+    /// Records the buffer holds room for and how many of them are free.
+    pub fn room(&self) -> (u64, u64) {
+        let free = self.free.values().map(|n| *n as u64).sum();
+        (self.capacity as u64, free)
+    }
+
     /// Room for `n` records (rounded up to the grain); grows the buffer when nothing fits.
     /// None when the device can't hold a buffer that big.
     fn alloc(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
