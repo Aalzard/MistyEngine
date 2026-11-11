@@ -89,9 +89,58 @@ through the MCP bridge, with `MISTY_PROFILE`.
   `render/pipelines.rs`; building them on a thread with a placeholder draw is a renderer-wide
   change, not done here.
 
-## Checks
+## Checks (state at the hand-over, 2026-11-11 23:15)
 
-See the end of this file (filled in when the runs finish).
+Nothing of r40 is running and no build slot is held. HEAD builds (release editor built at
+0296451d; the commit after it only changes a test constant and these notes).
+
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets --release`: 0 warnings (at 43346d46, log
+  `D:\MistyTargets40-logs\clippy.log`).
+- Targeted tests at 0296451d: `cargo test --release -p misty_editor -p misty_engine --
+  edit_stall physics_material file_watch saver live_reload material`: 34 + 48 passed
+  (`D:\MistyTargets40-logs	1.log`).
+- **Full test run: NOT finished, and it needs a look before merging.**
+  `cargo test --workspace --release --no-fail-fast` (log `D:\MistyTargets40-logs	est.log`)
+  passed 441 of the editor's 956 tests in 7 minutes, then printed nothing for an hour with 16
+  tests "running for over 60 seconds" and never finishing; I stopped it. No failure or panic in
+  the log. The 16: `panels::code_editor::tests::` clicking_a_console_error_opens_the_line,
+  closing_a_modified_file_asks_to_save, double_click_in_project_opens_the_script,
+  f5_plays_and_completion_accepts_with_tab, new_scripts_open_and_follow_renames,
+  syntax_errors_show_after_a_pause, typing_marks_dirty_and_ctrl_s_saves;
+  `panels::project::tests::` create_duplicate_and_delete_from_the_context_menu,
+  moving_and_renaming_scenes_updates_build_settings,
+  renaming_a_material_updates_scenes_and_the_open_scene; `panels::world_builder::tests::`
+  live_in_scene_view_pushes_the_preview_and_reverts, preview_card_shows_modes_and_live_toggle,
+  preview_follows_edits_coarse_then_sharp, stamp_inspector_edits_the_component,
+  template_picker_applies_a_template_as_one_undo_step,
+  terrain_inspector_button_opens_the_world_builder.
+  Not known which it is:
+  1. A deadlock from this branch. First suspect: `edit_stall_tests` call
+     `asset_db::install` (a write lock on the global GUID database) while other tests read it;
+     a test thread that takes the read lock twice (`with_project` -> `guid_of`...) deadlocks
+     when a writer queues between the two. The background saver and file watch are off in
+     tests.
+  2. The disk: TEMP was on D: (1.5-3 s per read at the time) and every asset save calls
+     `sync_all` again since the revert.
+  Next step: run those 16 tests alone, with TEMP on C:, on this branch and on main; if they
+  hang only here, give `edit_stall_tests` their own database handling (or drop the `install`
+  loop) and rerun.
+- Golden shots: not run (`cargo test --release -p misty_engine --lib golden_shots -- --ignored
+  --nocapture --test-threads=1` under `MistyWork/gpu-timing.lock`). The `render/` changes are
+  file stamp checks in `terrain_layers.rs`, `probes/store.rs`, `decals/mod.rs`.
+- The new timing test was not run against the old code.
+
+## Next steps
+
+1. The hung test run above.
+2. Golden shots.
+3. Full `cargo test --workspace --release --no-fail-fast` to the end.
+4. Optional: asynchronous pipeline builds; `model_settings` reading the importer every frame.
+
+Use only `/d/MistyTargets/build-slot.sh` for slots. Target `D:\MistyTargets40-freeze`, a
+built editor at `C:\MistyTry40\misty-r40.exe` (0296451d), run automated editors with
+`MISTY_WINDOW_SIZE=1100x650`.
 
 ## Left
 
