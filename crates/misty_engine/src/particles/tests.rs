@@ -896,3 +896,16 @@ fn fast_particles_dont_tunnel_through_thin_boxes() {
             .is_none()
     );
 }
+
+/// `Emit` with a huge count stops at Max Particles at once (it used to try every one of the
+/// 4 billion particles of `Emit(4294967295)`).
+#[test]
+fn emitting_a_huge_count_stops_at_max_particles() {
+    let mut s = system();
+    s.main.max_particles = 100;
+    let mut e = started(&s);
+    let start = std::time::Instant::now();
+    e.emit(&s, &Mat4::IDENTITY, u32::MAX);
+    assert_eq!(e.count(), 100);
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+}

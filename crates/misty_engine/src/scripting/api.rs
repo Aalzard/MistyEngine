@@ -128,16 +128,17 @@ pub struct LTransform(pub Entity);
 /// After a script moves an object with a Rigidbody, move its body too.
 pub(crate) fn sync_body(w: &mut World, e: Entity) {
     if w.physics.has_body(e) {
-        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
     if w.physics2d.has_body(e) {
-        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        let (_, rot, pos) = w.scene.world_parts(e);
         w.physics2d.teleport(e, pos, rot);
     }
 }
 
-fn alive(w: &World, e: Entity) -> Result<()> {
+/// `Err("object was destroyed")` when `e` is gone (a handle kept after `Destroy`).
+pub(super) fn alive(w: &World, e: Entity) -> Result<()> {
     if w.scene.contains(e) {
         Ok(())
     } else {
@@ -576,10 +577,13 @@ impl UserData for LRigidbody {
         f.add_field_method_get("gameObject", |_, r| Ok(LGameObject(r.0)));
         // Pose in the physics world (the Transform may be interpolated).
         f.add_field_method_get("position", |lua, r| {
-            with_world(lua, |w| match w.physics.body_pose(r.0) {
-                Some((p, _)) => LVec3(p),
-                None => LVec3(w.scene.world_position(r.0)),
-            })
+            with_world(lua, |w| {
+                alive(w, r.0)?;
+                Ok(match w.physics.body_pose(r.0) {
+                    Some((p, _)) => LVec3(p),
+                    None => LVec3(w.scene.world_position(r.0)),
+                })
+            })?
         });
         f.add_field_method_get("isKinematic", |lua, r| {
             rigidbody_get(lua, r.0, |b| b.is_kinematic)
@@ -610,19 +614,23 @@ impl UserData for LRigidbody {
         m.add_method("MovePosition", |lua, r, args: Variadic<Value>| {
             let p = vec_args(lua, &args)?;
             with_world(lua, |w| {
+                alive(w, r.0)?;
                 let rot = w.scene.world_rotation(r.0);
                 let World { physics, scene, .. } = w;
                 physics.move_body(scene, r.0, p, rot);
-            })
+                Ok(())
+            })?
         });
         // MoveRotation(euler): Euler angles in degrees (there is no Quaternion type).
         m.add_method("MoveRotation", |lua, r, args: Variadic<Value>| {
             let euler = vec_args(lua, &args)?;
             with_world(lua, |w| {
+                alive(w, r.0)?;
                 let pos = w.scene.world_position(r.0);
                 let World { physics, scene, .. } = w;
                 physics.move_body(scene, r.0, pos, euler_to_quat(euler));
-            })
+                Ok(())
+            })?
         });
         m.add_method("AddForce", |lua, r, args: Variadic<Value>| {
             let (v, mode) = force_args(lua, &args)?;
@@ -787,6 +795,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::physics2d_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
+    super::weather_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;

@@ -445,8 +445,9 @@ impl TerrainData {
         self.size = sanitize_size(size);
     }
 
-    /// Fix sizes and channels after loading (wrong lengths are padded or cut).
-    pub(super) fn sanitize(&mut self) {
+    /// Fix sizes and channels after loading (wrong lengths are padded or cut), or after
+    /// putting maps and settings together from different versions of the data (an undo).
+    pub fn sanitize(&mut self) {
         self.heightmap_resolution = closest(&HEIGHTMAP_RESOLUTIONS, self.heightmap_resolution);
         self.alphamap_resolution = closest(&ALPHAMAP_RESOLUTIONS, self.alphamap_resolution);
         let r = self.heightmap_resolution;

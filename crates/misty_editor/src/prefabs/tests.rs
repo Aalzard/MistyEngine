@@ -492,3 +492,77 @@ fn prefab_mode_auto_save_writes_each_change() {
         "the instance followed"
     );
 }
+
+/// Renaming the prefab being edited while Prefab Mode is open: the stage, the stashed scene
+/// and its undo history follow the new path, so saving doesn't recreate the old file and
+/// leaving returns a scene whose instance links to the new file.
+#[test]
+fn renaming_the_prefab_in_prefab_mode_follows_the_stage_and_the_stashed_scene() {
+    let mut s = state("rename_stage");
+    let e = s.scene.spawn("Lamp", None);
+    let rel = make_prefab(&mut s, e);
+    assert!(crate::prefab_mode::open(&mut s, &rel, None));
+    let from = s.project.root.join(&rel);
+    crate::commands::apply(
+        &mut s,
+        Action::RenameAsset {
+            path: from.clone(),
+            name: "Torch".into(),
+        },
+    );
+    let new_rel = rel.replace("Lamp.prefab", "Torch.prefab");
+    assert_ne!(new_rel, rel);
+    assert!(!from.exists());
+    assert_eq!(
+        crate::prefab_mode::open_path(&s).as_deref(),
+        Some(new_rel.as_str())
+    );
+    let root = s.selection.active().unwrap();
+    s.record("Add Light");
+    s.scene.add(root, Light::default());
+    assert!(crate::prefab_mode::save(&mut s));
+    assert!(!from.exists(), "the old file is not written again");
+    apply(&mut s, Action::ClosePrefab { levels: usize::MAX });
+    assert!(!crate::prefab_mode::active(&s));
+    assert_eq!(s.scene.prefab_link(e).as_deref(), Some(new_rel.as_str()));
+    assert!(
+        s.scene.world.get::<&Light>(e).is_ok(),
+        "the instance followed"
+    );
+}
+
+/// A prefab with a component this version doesn't know (a newer file, a removed package):
+/// the warning reaches the Console and the prefab is not written back, which would delete
+/// that component from the file (Prefab Mode save, Apply, updates from nested prefabs).
+#[test]
+fn prefabs_with_unknown_components_are_not_written_back() {
+    let mut s = state("unknown_comp");
+    let e = s.scene.spawn("Lamp", None);
+    let rel = make_prefab(&mut s, e);
+    let abs = s.project.root.join(&rel);
+    let mut json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&abs).unwrap()).unwrap();
+    json["objects"][0]["components"]["Teleporter"] = serde_json::json!({ "range": 5 });
+    std::fs::write(&abs, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    s.assets.forget_prefabs();
+    s.assets.messages.clear();
+    assert!(crate::prefab_mode::open(&mut s, &rel, None));
+    assert!(
+        s.assets
+            .messages
+            .iter()
+            .any(|m| m.contains("unknown component 'Teleporter'")),
+        "{:?}",
+        s.assets.messages
+    );
+    let root = s.selection.active().unwrap();
+    s.record("Add Light");
+    s.scene.add(root, Light::default());
+    assert!(!crate::prefab_mode::save(&mut s), "refused");
+    assert!(
+        std::fs::read_to_string(&abs)
+            .unwrap()
+            .contains("Teleporter"),
+        "the file keeps the component"
+    );
+}

@@ -173,13 +173,17 @@ fn grass_out(v: BladeVertex, prev: vec3<f32>, b: BladeIn) -> GrassOut {
 // grass the full `shade` cost several times the rest of the frame and changed little.
 fn shade_grass(
     world: vec3<f32>,
-    albedo: vec3<f32>,
+    albedo_in: vec3<f32>,
     n: vec3<f32>,
     occlusion: f32,
     transmission: vec3<f32>,
-    smoothness: f32,
+    smoothness_in: f32,
     alpha: f32,
 ) -> MeshTargets {
+    // Wet and snowy blades (render/weather).
+    let weathered = weather_foliage(world, n, albedo_in, smoothness_in);
+    let albedo = weathered.rgb;
+    let smoothness = weathered.a;
     let v = normalize(view.camera_pos.xyz - world);
     var ambient: vec3<f32>;
     if (n.y >= 0.0) {

@@ -441,3 +441,82 @@ fn colliders_attach_to_a_parent_body_and_layers_filter() {
     assert!(scene.world_position(parent).y < 0.0);
     p.set_layer(child, 0);
 }
+
+/// A 2D body with a zero Z (or X) scale: the angle and position stay finite (the matrix
+/// decomposition divided by zero and wrote NaN into the Transform).
+#[test]
+fn zero_scale_bodies_keep_finite_poses() {
+    let mut scene = Scene::new("t");
+    let a = crate_box(&mut scene, Vec2::new(0.0, 3.0));
+    let mut t = scene.transform(a);
+    t.scale = Vec3::new(1.0, 1.0, 0.0);
+    scene.set_transform(a, t);
+    let b = crate_box(&mut scene, Vec2::new(3.0, 3.0));
+    let mut t = scene.transform(b);
+    t.scale = Vec3::new(0.0, 1.0, 1.0);
+    scene.set_transform(b, t);
+    let mut p = build(&scene);
+    run(&mut p, &mut scene, 30);
+    for e in [a, b] {
+        let (pos, angle) = p.body_pose(e).unwrap();
+        assert!(pos.is_finite() && angle.is_finite(), "{pos} {angle}");
+        let t = scene.transform(e);
+        assert!(t.position.is_finite() && t.rotation.is_finite(), "{t:?}");
+    }
+    assert!(scene.world_position(a).y < 3.0, "still falls");
+}
+
+/// A Polygon Collider 2D with a NaN point (or only repeated points) builds without the
+/// convex decomposition asserting: the bad points are dropped, and too few left is a
+/// warning.
+#[test]
+fn polygon_with_nan_or_repeated_points_builds() {
+    let mut scene = Scene::new("t");
+    let a = object(&mut scene, "Nan", Vec2::ZERO);
+    scene.add(
+        a,
+        PolygonCollider2D {
+            points: vec![
+                Vec2::new(0.0, 0.0),
+                Vec2::new(2.0, 0.0),
+                Vec2::new(f32::NAN, 1.0),
+                Vec2::new(1.0, 1.0),
+                Vec2::new(1.0, 2.0),
+                Vec2::new(0.0, 2.0),
+            ],
+            ..Default::default()
+        },
+    );
+    let b = object(&mut scene, "Same", Vec2::new(5.0, 0.0));
+    scene.add(
+        b,
+        PolygonCollider2D {
+            points: vec![Vec2::ONE; 5],
+            ..Default::default()
+        },
+    );
+    let c = object(&mut scene, "Line", Vec2::new(9.0, 0.0));
+    scene.add(
+        c,
+        PolygonCollider2D {
+            points: vec![
+                Vec2::ZERO,
+                Vec2::X,
+                Vec2::new(2.0, 0.0),
+                Vec2::new(3.0, 0.0),
+            ],
+            ..Default::default()
+        },
+    );
+    let p = build(&scene);
+    assert!(
+        p.warnings.iter().any(|w| w.contains("'Same'")),
+        "{:?}",
+        p.warnings
+    );
+    assert!(
+        !p.warnings.iter().any(|w| w.contains("'Nan'")),
+        "{:?}",
+        p.warnings
+    );
+}

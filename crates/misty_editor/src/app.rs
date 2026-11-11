@@ -613,6 +613,10 @@ impl EditorApp {
             if crate::vfx_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
+            // Weather volumes with Preview in Edit Mode run in the Scene and Game views.
+            if crate::weather_preview::tick(s, ctx.input(|i| i.stable_dt)) {
+                ctx.request_repaint();
+            }
             // Scripts reload when their files change; syntax errors go to the Console.
             let scripts_scope =
                 misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollScripts", None);

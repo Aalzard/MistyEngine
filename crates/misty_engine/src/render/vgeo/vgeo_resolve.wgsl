@@ -199,6 +199,7 @@ fn fs_cluster_resolve(in: VgResolveIn) -> VgResolveTargets {
     );
     let uv = vr_mix2(b.l, v0.uv, v1.uv, v2.uv);
     m.uv = draw_uv(d, uv);
+    m.uv_centroid = m.uv;
     let uv_dx = draw_uv(d, uv + vr_mix2(b.ddx, v0.uv, v1.uv, v2.uv)) - m.uv;
     let uv_dy = draw_uv(d, uv + vr_mix2(b.ddy, v0.uv, v1.uv, v2.uv)) - m.uv;
     m.draw = draw;

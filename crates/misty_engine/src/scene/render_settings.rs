@@ -258,6 +258,14 @@ pub struct RenderSettings {
     /// (at Quality ▸ Global Illumination; a Post-process Volume's override takes precedence).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub realtime_gi: bool,
+    /// Lighting window ▸ Environment ▸ Moon: the moon disc, stars and moonlight at night (see
+    /// [`crate::moon`]). Left out of the file while default.
+    #[serde(skip_serializing_if = "crate::moon::MoonSettings::is_default")]
+    pub moon: crate::moon::MoonSettings,
+    /// Lighting window ▸ Environment ▸ Night Sky: stars, Milky Way, light pollution, aurora,
+    /// meteors (see [`crate::moon::night_sky`]). Left out of the file while default.
+    #[serde(skip_serializing_if = "crate::moon::night_sky::NightSkySettings::is_default")]
+    pub night_sky: crate::moon::night_sky::NightSkySettings,
 }
 
 impl Default for RenderSettings {
@@ -271,6 +279,8 @@ impl Default for RenderSettings {
             light_probes: None,
             occlusion: Default::default(),
             realtime_gi: false,
+            moon: Default::default(),
+            night_sky: Default::default(),
         }
     }
 }

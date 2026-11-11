@@ -255,7 +255,9 @@ fn run_impl<const DEBUG: bool>(
                 }
             }
             Op::Incr { slot } => {
-                let v = st.regs[slot as usize].as_int() + 1;
+                // Saturating: a For loop up to i64::MAX overflowed here (the op budget still
+                // stops a loop that never ends).
+                let v = st.regs[slot as usize].as_int().saturating_add(1);
                 st.regs[slot as usize] = Value::Int(v);
             }
             Op::ForEachInit {

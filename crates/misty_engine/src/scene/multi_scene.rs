@@ -421,7 +421,7 @@ impl Scene {
         }
         // With a project open, the asset GUID table goes in too (like `Scene::save`).
         let text = crate::asset_db::embed_json(&self.scene_to_json(id));
-        std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
+        crate::asset_db::write_atomic(path, text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// References from objects of `id` to objects in other scenes (not allowed: they are

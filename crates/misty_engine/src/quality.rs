@@ -398,6 +398,9 @@ pub struct QualityLevel {
     pub lens_flares: bool,
     /// Volumetric clouds: trace resolution and step counts (Off = no clouds).
     pub volumetric_clouds: Tier,
+    /// Weather (rain, snow): particle counts, splashes and the occlusion map's resolution
+    /// (Off = no particles; wet and snowy surfaces and lightning stay).
+    pub weather: Tier,
     /// Sharp volumetric sun shafts: resolution and steps of the per-pixel sun march (Off =
     /// the sun stays in the froxel fog).
     pub sun_shafts: Tier,
@@ -460,6 +463,7 @@ impl QualityLevel {
             reflection_probes: Tier::Low,
             lens_flares: false,
             volumetric_clouds: Tier::Low,
+            weather: Tier::Low,
             sun_shafts: Tier::Off,
             grass_shadows: Tier::Off,
             grass_shadow_map: Tier::Off,
@@ -503,6 +507,7 @@ impl QualityLevel {
             reflection_probes: Tier::Medium,
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
+            weather: Tier::Medium,
             sun_shafts: Tier::Medium,
             grass_shadows: Tier::Low,
             grass_shadow_map: Tier::Low,
@@ -546,6 +551,7 @@ impl QualityLevel {
             reflection_probes: Tier::High,
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
+            weather: Tier::High,
             sun_shafts: Tier::Medium,
             grass_shadows: Tier::Medium,
             grass_shadow_map: Tier::Medium,
@@ -568,6 +574,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
             volumetric_clouds: Tier::High,
+            weather: Tier::High,
             sun_shafts: Tier::High,
             grass_shadows: Tier::High,
             grass_shadow_map: Tier::High,

@@ -383,6 +383,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::FogVolume>(),
             ComponentInfo::of::<super::DecalProjector>(),
             ComponentInfo::of::<super::WindZone>(),
+            ComponentInfo::of::<crate::weather::Weather>(),
             ComponentInfo::of::<super::OcclusionArea>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),

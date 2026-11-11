@@ -98,6 +98,25 @@ struct SkyEnv {
     color: vec4<f32>,
     // Diffuse SH (irradiance / π, world space, intensity applied) for surfaces no probe covers.
     sh: array<vec4<f32>, 9>,
+    // ---- Moon and night sky (render/moon.rs) ----
+    // xyz = towards the moon, w = angular radius (0 = no moon).
+    moon_dir: vec4<f32>,
+    // xyz = east on the disc, w = texels across the moon's diameter.
+    moon_right: vec4<f32>,
+    // xyz = north on the disc, w = flags (1 = height in alpha, 2 = square near-side image).
+    moon_up: vec4<f32>,
+    // xyz = towards the sun that lights it, w = earthshine.
+    moon_light: vec4<f32>,
+    // rgb = linear radiance of the lit disc.
+    moon_color: vec4<f32>,
+    // rgb = night zenith colour, w = night share (0 = day).
+    night_zenith: vec4<f32>,
+    // rgb = night horizon colour, w = star brightness.
+    night_horizon: vec4<f32>,
+    // rgb = night ground colour.
+    night_ground: vec4<f32>,
+    // Stars, Milky Way, aurora, meteors (layout: render/moon.rs `night_params`).
+    night: array<vec4<f32>, 14>,
 };
 
 @group(0) @binding(4) var<uniform> sky_env: SkyEnv;
@@ -159,6 +178,22 @@ fn sky_daylight() -> f32 {
     return 0.04 + 0.96 * smoothstep(-0.3, 0.05, view.sun_dir.y);
 }
 
+// The procedural sky colour `day` blended towards the night sky as the sun goes down (dark
+// blue, lit by the moon; render/moon.rs `night_mix` on the CPU). Unchanged by day.
+fn sky_night(dir: vec3<f32>, day: vec3<f32>) -> vec3<f32> {
+    let share = sky_env.night_zenith.w;
+    if (share <= 0.0) {
+        return day;
+    }
+    var night: vec3<f32>;
+    if (dir.y >= 0.0) {
+        night = mix(sky_env.night_horizon.rgb, sky_env.night_zenith.rgb, sqrt(dir.y));
+    } else {
+        night = mix(sky_env.night_horizon.rgb, sky_env.night_ground.rgb, sqrt(min(-dir.y * 6.0, 1.0)));
+    }
+    return mix(day, night, share);
+}
+
 // Linear sky colour for a direction, without the sun disc: zenith, horizon (warm at sunset),
 // ground. Used by the skybox, reflections and (on the CPU, environment.rs) ambient light.
 fn sky_color(dir: vec3<f32>) -> vec3<f32> {
@@ -190,7 +225,7 @@ fn sky_color(dir: vec3<f32>) -> vec3<f32> {
     } else {
         c = mix(horizon, ground, pow(min(-dir.y * 6.0, 1.0), 0.5));
     }
-    return c * sky_daylight() * view.sky_ground.w;
+    return sky_night(dir, c * sky_daylight() * view.sky_ground.w);
 }
 
 // Fraction of a surface still visible through fog at distance `d` (1 = no fog).

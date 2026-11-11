@@ -162,11 +162,16 @@ impl TerrainData {
                 .map(|b| u16::from_le_bytes(*b) as f32 / 65535.0)
                 .collect(),
         };
-        if !f.holes.is_empty() {
-            let cells = f.heightmap_resolution.saturating_sub(1);
-            d.holes = unpack_bits(&decode(&f.holes)?, cells * cells);
-        }
         d.sanitize();
+        if !f.holes.is_empty() {
+            // After `sanitize`: the file's resolution may be garbage (a huge value would
+            // overflow or allocate gigabytes here).
+            let cells = d.cells();
+            d.holes = unpack_bits(&decode(&f.holes)?, cells * cells);
+            if !d.has_holes() {
+                d.holes.clear();
+            }
+        }
         Ok(d)
     }
 
@@ -180,7 +185,7 @@ impl TerrainData {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, crate::asset_db::embed_json(&self.to_file_string()))
+        crate::asset_db::write_atomic(path, crate::asset_db::embed_json(&self.to_file_string()))
             .map_err(|e| e.to_string())
     }
 }

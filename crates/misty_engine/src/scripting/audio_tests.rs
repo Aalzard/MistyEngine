@@ -269,3 +269,59 @@ fn snapshot_blends_effect_parameters_and_nested_output_from_lua() {
     assert!((specs[0].wet - 0.4).abs() < 1e-6);
     assert_eq!(log.lock().unwrap().tracks[&master].parent, Some(music));
 }
+
+/// A snapshot handle whose snapshot was deleted (in the Audio Mixer window during Play):
+/// `name` is nil instead of an index panic.
+#[test]
+fn a_deleted_snapshot_has_no_name() {
+    let (root, ..) = project();
+    let src = r#"
+local K = { frames = 0 }
+function K:Start()
+    self.snap = AudioMixer.Find("Main"):FindSnapshot("Muffled")
+    Debug.Log("found", self.snap.name)
+end
+function K:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local snap = self.snap
+        local ok, name = pcall(function() return snap.name end)
+        Debug.Log("after", ok, name)
+        snap:TransitionTo(0.5)
+    end
+end
+return K
+"#;
+    std::fs::write(root.join("Assets/Scripts/K.lua"), src).unwrap();
+    let mut scene = Scene::default_3d("t");
+    let e = scene.spawn("Keeper", None);
+    scene.add(
+        e,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/K.lua".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    let (audio, _log) = Audio::null(root.clone());
+    let mut rt =
+        Runtime::start_with_audio(&mut scene, root.clone(), &ProjectSettings::default(), audio);
+    let mut time = Time::default();
+    let mut logs = Vec::new();
+    for frame in 0..5 {
+        time.advance(1.0 / 60.0);
+        rt.update(&mut scene, &time, Input::default());
+        logs.extend(rt.take_logs());
+        if frame == 0 {
+            rt.with_audio(|a| {
+                let i = a.find_mixer("Main").unwrap();
+                a.mixer_mut(i).unwrap().asset.remove_snapshot(1);
+            });
+        }
+    }
+    let text: Vec<&str> = logs.iter().map(|(_, t)| t.as_str()).collect();
+    assert!(text.contains(&"found Muffled"), "{logs:?}");
+    assert!(text.contains(&"after true nil"), "{logs:?}");
+    assert!(logs.iter().all(|(k, _)| *k != LogKind::Error), "{logs:?}");
+}

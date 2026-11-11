@@ -688,10 +688,23 @@ impl<'a> Compiler<'a> {
         let s = self.node(src);
         match s.node.kind.as_str() {
             "Self" => return SELF,
-            "Float" | "Int" | "Bool" | "String" | "Vector3" | "Quaternion" => {
-                return self.pull(src, "Value");
+            // Constants and tunnels forward their own input: guard them like pure nodes, or
+            // two of them wired into each other recurse until the stack overflows.
+            "Float" | "Int" | "Bool" | "String" | "Vector3" | "Quaternion" | "Tunnel" => {
+                if !self.visiting.insert(src) {
+                    self.error(src, "data wires loop back into this node");
+                    return self.alloc(Value::Nil);
+                }
+                let pin = if s.node.kind == "Tunnel" {
+                    out
+                } else {
+                    "Value"
+                }
+                .to_owned();
+                let slot = self.pull(src, &pin);
+                self.visiting.remove(&src);
+                return slot;
             }
-            "Tunnel" => return self.pull(src, out),
             // A Graph variable lives in a register: read it there.
             "GetVariable" => {
                 if let Some((VarScope::Graph, var)) =

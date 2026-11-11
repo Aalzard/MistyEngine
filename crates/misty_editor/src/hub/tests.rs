@@ -374,7 +374,10 @@ fn new_project_page_shows_the_meadow_demo_card() {
     h.state_mut().hub.new_project.as_mut().unwrap().name = "Meadow".into();
     h.run();
     h.get_by_label("Create project").click();
-    for _ in 0..1500 {
+    // Copying the meadow project takes a while under load: wait by the clock, not a count
+    // of frames.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+    while std::time::Instant::now() < deadline {
         // The spinner keeps repainting: step instead of run.
         h.step();
         if h.state().opened.is_some() {

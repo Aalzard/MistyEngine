@@ -3302,6 +3302,62 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+## Round 27 — The moon, moonlight and stars (branch r27-moon)
+
+### Done (docs/pending/r27-moon.md)
+- Lighting ▸ Environment ▸ **Moon** (Procedural and HDRI skies; on by default, left out of scene
+  files while default): Position Follow Sun (Phase × 360° east of the sun on its daily circle),
+  Manual (azimuth, altitude, Phase) or Date and Time (real sun and moon from a date, local time,
+  UTC offset, latitude and longitude: Meeus low-precision ephemerides with the moon's
+  parallax); Size, Brightness, Earthshine, Texture, Moonlight intensity / colour, Stars.
+- The disc is a sphere lit from the sun's direction: correct terminator, waxing / waning,
+  crescent to full from one texture; earthshine on the dark side; crater relief near the
+  terminator from the built-in height map. Drawn in the skybox before clouds and fog are
+  blended over it (clouds in front hide it, haze dims it), reddened low by the air mass, hidden
+  below the horizon, over HDRI skies too.
+- Night sky: below −1° the procedural sky blends to a dark blue night sky that brightens under a
+  high full moon; sky ambient, reflections and the clouds' sky light follow. A fixed star field
+  fades in behind the moon. Daytime skies are unchanged.
+- Moonlight reuses the main Directional Light and its shadows: below the horizon the sun fades
+  out (0° to −3.4°), then the light turns to the moon and fades in (to −11.5°), cool, scaled by
+  Allen's phase law (dark at new moon) and the air mass. No pop, no second shadow map. The
+  volumetric clouds and their shadow map take the moon as their light at night.
+- Built-in texture made by `moon::texture_gen` (2048 × 1024, albedo + height: the real maria,
+  power-law craters with rims, peaks, ejecta and rays, named landmarks), regenerate test; project
+  images (2:1 equirectangular or a square near-side photo) override it.
+- Lua: `RenderSettings.moon*`, `stars`, read-only `moonIllumination` / `moonDirection`.
+- Sample `Scenes/MoonDemo.scene` (moonlit valley, standing stones, cabin, `MoonCycle.lua` runs the
+  phases), generator + `matches_its_generator` + play test.
+- Tests: phase fraction vs angle, phase law, Follow Sun placement, moonlight new vs full,
+  smooth twilight, Meeus reference values and the 2024 Dallas eclipse, GPU disc phases.
+
+- Night Sky section: star density, magnitude spread, glow, colour variation, twinkle, fade in a
+  bright sky, Night Sky Darkness; a procedural Milky Way placed from the galactic pole and
+  centre (core, dust lanes, width, tint); light pollution; an animated ray-marched aurora
+  (colours, height, thickness, curtains, waviness, rays, direction, distance, speed, pulse,
+  scene light); meteors. Stars and Milky Way turn with sidereal time. Lua for all of it, sample
+  `Scenes/NightSkyDemo.scene`, GPU test.
+- GPU cost of the night sky (`render::moon::gpu_tests::moon_gpu_cost`, whole frame, 1080p, GPU
+  median ms, RTX 4060, two rounds):
+
+  | Night sky | High, round 0 | High, round 1 |
+  |-----------|---------------|---------------|
+  | nothing | 0.848 | 0.800 |
+  | stars | 0.836 | 0.842 |
+  | moon | 0.804 | 0.807 |
+  | Milky Way | 1.194 | 1.198 |
+  | aurora (4 curtains) | 2.982 | 2.983 |
+  | everything | 3.530 | 3.531 |
+  | Low path: nothing | 0.800 | 0.801 |
+  | Low path: everything | 2.224 | 2.219 |
+
+  Stars and the moon are free within the noise, the Milky Way costs ~0.4 ms, the aurora ~2.2 ms
+  on High (the Low path takes fewer steps and octaves: everything for ~1.4 ms).
+
+### Not done yet
+- No moon shafts or flare; no star catalogue; aurora not in water reflections;
+  the air-mass code should merge with r26's sun-height intensity once both land.
+
 ## Round 28 — 2D Platformer template (branch r28-template2d)
 
 ### Done
@@ -3672,3 +3728,143 @@ thinned.
   plays. Not what this report was about (MeadowDemo's scripts don't print), not fixed here.
 - NoonValley (branches r26-*) has the same grass numbers (800 blades/m², 160 m, 5.8–6.5 m)
   plus a species and more flowers: same fault before, same fix; not measured there.
+## Round 33 — Engine-wide QA (branch r33-qa)
+
+Review of terrain, scenes/prefabs/assets, Lua and Script Graphs, tilemaps/2D, physics, audio,
+MCP and the renderer; the bug list, routing and status per bug are in
+`docs/pending/r33-qa.md`. Each fix comes with a regression test.
+
+- Crashes: Script Graph constants or pass-through subgraphs wired in a loop (stack overflow
+  while wiring); Lua tables that hold themselves passed to a graph or returned from `OnSave`
+  (overflow / exponential save); Lua handles kept after `Destroy` (Rigidbody, Rigidbody2D,
+  Collider2D, Tilemap, Terrain, Network, Ragdoll) raise "object was destroyed" instead of
+  aborting; a deleted mixer snapshot; zero world scale (NaN physics poses, 3D and 2D); a NaN
+  point in a Polygon Collider 2D; corrupt pak indexes; terrain blade counts on huge texels;
+  terrain undo after an outside resize; garbage terrain resolutions with holes; MCP clients
+  sending endless lines.
+- Data loss: asset saves (scenes, prefabs, terrains, materials, meta files) are atomic (temp
+  file + rename); renaming the prefab open in Prefab Mode no longer recreates the old file;
+  prefabs with components this version doesn't know are not written back (the components
+  would be deleted); a rename whose meta can't follow is rolled back; terrain Inspector edits
+  in Play mode are reverted on Stop like the scene instead of being saved without an undo step.
+- Wrong behaviour: tile seams with MSAA in the 2D Platformer template (unlit draws sample at
+  the centroid of the covered samples); renames with a dot in the name; World Partition tiles
+  got the whole flower mask; terrain undo memory ignored maps kept whole.
+- Flaky tests: frame-count waits replaced by clock deadlines (package registry, meadow
+  project creation); the terrain view test retries only when another test moved the project
+  root (`assets::root_generation`); MCP info file removal retried; shader graph demo render
+  reloads its shaders and uses absolute texture paths.
+
+## Round 34 — Weather: rain, snow, storms (branch r34-weather)
+
+### Done
+- **Weather component** (GameObject ▸ Rendering ▸ Weather; `misty_engine::weather`): a weather
+  volume, **Global** (everywhere: the precipitation is spawned round the camera) or an **Area**
+  box / sphere with a blend distance (a rainy valley, a storm cell). Volumes blend by priority
+  and weight like Post-process Volumes; an implicit clear layer lies under them all.
+- **Every value is free** (`WeatherParams`): rain intensity, drops/m³, drop size, fall speed,
+  streak length, opacity, refraction; snow intensity, flakes/m³, flake size, fall speed,
+  swirl, opacity; wind direction, speed, turbulence, gusts; splashes, mist, visibility;
+  lightning rate, distances, brightness; cloud cover and density, sun and sky dimming.
+  13 presets fill them: Clear, Drizzle, Light Rain, Rain, Heavy Rain, Downpour, Thunderstorm,
+  Sleet, Flurries, Light Snow, Snow, Heavy Snow, Blizzard.
+- **Timeline** per volume: Sequence (looping or not) or weighted Random states with min / max
+  holds and a blend time each; every value interpolates (wind along the short arc, visibility
+  by extinction, rain → snow passes through sleet). "Demo Cycle" = clear → light rain →
+  thunderstorm → snow → clear.
+- **Runtime** (`Scene.weather`, not saved): runs in Play and in Edit mode while a volume has
+  Preview in Edit Mode on. Wetness, puddles and snow cover build up and dry / melt per volume
+  (speeds in seconds; rain melts snow faster; meltwater keeps the ground wet).
+- **Renderer** (`render::weather`):
+  - A top-down **occlusion map** of the shadow casters within 48 m (after the shadow maps): rain
+    and snow stop at roofs and tree crowns, splashes land on roofs, floors under cover stay dry.
+  - **Rain**: procedural GPU streaks in two boxes round the camera (anchored to the world,
+    moved by the accumulated wind drift and fall; no CPU work per drop), refracting the opaque
+    scene copy, with a Fresnel sky rim, sun forward scattering and point / spot light glints
+    (rain shines in street lamps at night); thin far drops fade instead of aliasing; distant
+    rain sheets so density reads far away; curtains under far area volumes.
+  - **Snow**: flakes of three shapes (soft, star, clump) that tumble, swirl and drift; big soft
+    flakes near the lens (depth of field); streaks in blizzard wind.
+  - **Splashes** spawned on the GPU from the depth buffer where it rains, the surface faces up
+    and is open to the sky (crown droplets and a ring), plus ground mist in heavy rain.
+  - **Surfaces** (`weather_surface.wgsl` in `shade`, foliage in `shade_grass` / `shade_tree`):
+    porous materials darken, everything gets glossy, puddles on flat open ground with raindrop
+    ripples, snow on upward faces (patchy while thin, optional snow line), nothing under cover.
+  - **Lightning**: Poisson strikes with 1–4 return strokes; the flash lights every surface open
+    to the sky and the clouds; branching bolts drawn into the HDR and glow images (they
+    bloom); thunder after distance / 343 m/s.
+  - **Haze** lowers visibility (and thickens volumetric fog); **Drive Clouds** moves the
+    volumetric clouds towards the weather's cover (turning overcast clouds on) and dims the
+    sun / moon and sky light; optional **lens drops**.
+  - Quality ▸ Weather (Off / Low / Medium / High) scales particles, splash slots and the
+    occlusion map; Off keeps wet / snowy surfaces and lightning.
+- **Audio**: rain loops (light and heavy, crossfaded by intensity), a wind loop and near /
+  far thunder, generated once into `Library/Weather/` when the volume has no clips of its own;
+  they play through the volume's Audio Mixer group.
+- **Lua `Weather`**: SetState(name, seconds), ClearState, SetRain / SetSnow / SetIntensity /
+  SetWind / SetLightning, Strike, GetState / GetRain / GetSnow / GetWind / GetVisibility /
+  GetWetness / GetPuddles / GetSnowCover, SetWetness / SetSnowCover, IsScripted, `states`.
+  Events OnLightning(distance, position, intensity), OnThunder(distance, volume),
+  OnWeatherChanged(state, seconds) reach Lua scripts and Script Graphs (Custom Event nodes) as
+  broadcast custom events; the API table lists the members as graph nodes.
+- **Editor**: Inspector with Preview in Edit Mode, a live status line, Coverage, the preset
+  dropdown and sections (Rain, Snow, Wind, Ground, Lightning with Strike Now, Sky, Surfaces,
+  Effects, Timeline, Audio); Turkish and Arabic strings.
+- **WeatherDemo** sample (`sample_weather.rs`): asphalt square, shelter, trees, stone wall,
+  street lamp, the demo cycle; keys 1–8 switch states, L strikes, 0 returns to the timeline.
+- **GPU cost** (WeatherDemo, 1920×1080, Quality High, `weather_gpu_timings`; the machine was
+  busy with other agents' builds):
+
+  | Case | Frame | Weather composite | Occlusion map | Main pass |
+  |---|---|---|---|---|
+  | No weather | 3.11 ms | — | — | 0.82 ms |
+  | Heavy Rain + splashes + wetness | 3.86 ms (+0.75) | 0.91 ms | 0.007 ms | 1.09 ms |
+  | Downpour | 4.42 ms (+1.31) | 1.48 ms | 0.007 ms | 1.09 ms |
+  | Thunderstorm | 4.06 ms (+0.95) | 1.11 ms | 0.007 ms | 1.09 ms |
+  | Blizzard + snow cover | 3.86 ms (+0.75) | 0.94 ms | 0.007 ms | 1.07 ms |
+
+  The main pass grows ~0.27 ms with wet / snowy surfaces (the scene copy for refraction is in
+  it too). Target was under ~2 ms for the heavy cases: all are.
+- Screenshots (`weather_screenshots`, 1600×900 JPEG): `docs/screenshots/r34/light_rain.jpg`,
+  `downpour_mist_splashes.jpg`, `thunderstorm_night.jpg`, `wet_street_puddles.jpg`,
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`.
+- Tests: presets, transitions (endpoints exact, rain → snow through sleet, visibility by
+  extinction), the timeline state machine (sequence, looping / not, weighted random without
+  repeats), area volume blending by priority, wetness / puddle / snow accumulation and decay,
+  thunder delay from distance, lightning rate and bolts, the script layer, wind gusts, the Lua
+  API with events, generated audio, shader validation (naga) of every lit shader with the
+  hook, GPU: rain and snow draw, a disabled volume changes no pixel, no snow under a roof
+  (and snow there without the occlusion map); WeatherDemo matches its generator and plays.
+
+## Integration 1 — rounds 33, 27 and 34 together (branch integrate-1)
+
+### Done
+- Merged onto main d1703eb3, in this order: `r33-qa` (engine-wide fixes), `r27-moon` (moon,
+  moonlight, stars, Milky Way, aurora, meteors), `r34-weather` (rain, snow, storms, timeline).
+  Conflicts: this file (every section kept), the Turkish and Arabic files (the terrain / guide
+  tables and the weather table both kept) and the view bind group in
+  `render/volumetrics/mod.rs`: it now takes the sky's five entries (the moon texture is binding
+  11) and the weather's two (bindings 24 and 25).
+- Round 27 loose ends: two clippy warnings; the night sky GPU cost table above; the aurora
+  screenshots re-rendered after the white-noise step jitter (no diagonal hatching; a single
+  frame without TAA shows fine grain instead). MoonDemo, NightSkyDemo and WeatherDemo were
+  rewritten by their write tests on the combined engine: byte-identical, nothing to commit.
+- Round 34 loose ends: `api_docs::SOURCES` did not read `scripting/weather_api.rs`
+  (`every_binding_source_is_read` failed); docs/api regenerated (900 members, 107 sections).
+- New names and languages: the Lighting window's Moon and Night Sky sections go through
+  `tr!()` with Turkish and Arabic entries (`[night_sky]` tables; "Manual", "Phase", "Time",
+  "Core" and "Pulse" carry a `#context` so they do not take over other meanings); the Weather
+  component's Preview tooltip says Editor Scene and Scene Viewer.
+- `MISTY_LIGHTING_SCROLL=<px>` scrolls the Lighting window and opens the Night Sky groups
+  (screenshots).
+- Checks on the combined branch: `cargo fmt --all --check` clean; clippy `--workspace
+  --all-targets --release` 0 warnings; `cargo test --workspace --release --no-fail-fast`:
+  editor 868 passed, engine 1466 passed, player 11 passed, 0 failed; golden shots 20/20 with
+  the same numbers as main (mean 0.00–0.39, changed at most 0.03 %): the round 33 shader change
+  (`uv_centroid`, used only by `fs_unlit`) moves no golden shot.
+- Screenshots of the editor on the combined branch: `docs/screenshots/integrate-1/`.
+
+### Not done yet
+- The Lighting window outside the Moon and Night Sky sections is still English only.
+- Weather and the night sky were not tuned together (a storm at night dims the moonlight
+  through the same sun dimming; no look pass was done on it).

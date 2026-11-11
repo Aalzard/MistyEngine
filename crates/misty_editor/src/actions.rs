@@ -30,6 +30,8 @@ pub enum Create {
     FogVolume,
     /// GameObject ▸ Rendering ▸ Decal Projector.
     DecalProjector,
+    /// Object ▸ Rendering ▸ Weather (a global Weather volume showing Rain).
+    Weather,
     /// GameObject ▸ Water ▸ Ocean / Lake / River.
     Water(misty_engine::water::WaterKind),
 }
@@ -54,6 +56,7 @@ impl Create {
             Create::Sprite(Some(shape)) => shape,
             Create::FogVolume => "Local Volumetric Fog",
             Create::DecalProjector => "Decal Projector",
+            Create::Weather => "Weather",
             Create::Water(kind) => kind.label(),
         }
     }

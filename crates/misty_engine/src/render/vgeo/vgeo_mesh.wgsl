@@ -19,6 +19,7 @@ fn vg_mesh_out(v: VgVertex) -> MeshOut {
     out.world = world.xyz;
     out.normal = (d.normal * vec4<f32>(v.normal, 0.0)).xyz;
     out.uv = draw_uv(d, v.uv);
+    out.uv_centroid = out.uv;
     out.draw = v.draw;
     out.tangent = vec4<f32>((d.model * vec4<f32>(v.tangent.xyz, 0.0)).xyz, v.tangent.w * d.emission.w);
     out.lightmap_uv = v.uv2 * d.lightmap_st.xy + d.lightmap_st.zw;

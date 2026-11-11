@@ -103,6 +103,9 @@ pub struct Scene {
     next_scene_id: SceneId,
     /// Scene new root objects go into (`None` = the active scene).
     spawn_into: Option<SceneId>,
+    /// Weather runtime: clocks, timelines, wetness and lightning (not saved, see
+    /// [`crate::weather`]).
+    pub weather: crate::weather::WeatherWorld,
 }
 
 impl Default for Scene {
@@ -133,6 +136,7 @@ impl Clone for Scene {
             active: self.active,
             next_scene_id: self.next_scene_id,
             spawn_into: self.spawn_into,
+            weather: self.weather.clone(),
         }
     }
 }
@@ -150,6 +154,7 @@ impl Scene {
             active: 0,
             next_scene_id: 1,
             spawn_into: None,
+            weather: Default::default(),
         }
     }
 
@@ -542,7 +547,35 @@ impl Scene {
     }
 
     pub fn world_rotation(&self, e: Entity) -> glam::Quat {
-        self.world_matrix(e).to_scale_rotation_translation().1
+        self.world_parts(e).1
+    }
+
+    /// World (absolute) scale, rotation and position, like
+    /// `world_matrix(e).to_scale_rotation_translation()` but finite when a scale is zero on
+    /// some axis (the plain decomposition divides by it: the rotation comes out NaN, and
+    /// physics then wrote NaN poses into the Transforms). The rotation is then the product of
+    /// the local rotations up the hierarchy.
+    pub fn world_parts(&self, e: Entity) -> (Vec3, glam::Quat, Vec3) {
+        let m = self.world_matrix(e);
+        let (scale, rot, pos) = m.to_scale_rotation_translation();
+        if rot.is_finite() && scale.is_finite() && scale.abs().min_element() > 1e-12 {
+            return (scale.abs(), rot, pos);
+        }
+        let columns = Vec3::new(
+            m.x_axis.truncate().length(),
+            m.y_axis.truncate().length(),
+            m.z_axis.truncate().length(),
+        );
+        (columns, self.chained_rotation(e), m.w_axis.truncate())
+    }
+
+    /// Product of the local rotations from the root down to `e`.
+    fn chained_rotation(&self, e: Entity) -> glam::Quat {
+        let local = self.transform(e).rotation;
+        match self.parent(e) {
+            Some(p) => (self.chained_rotation(p) * local).normalize(),
+            None => local,
+        }
     }
 
     /// Set the world-space rotation (keeps position and scale).
