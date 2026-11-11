@@ -3923,3 +3923,77 @@ frame without the harness's accessibility tree). Lines of about 45 characters.
 ### Not done
 - A single huge message is kept whole: the store bounds the number of lines, not their bytes.
 - The Console page of the User Guide does not mention the limit yet.
+
+## Round 42 — Material Properties: square texture slots and one aligned list (branch r42-material-ui)
+
+The Standard material's Properties view was a list of texture dropdowns with the colours and
+sliders squeezed in beside them, and five feature sections that each started with their own
+checkbox. It is now one aligned list: names on the left, values in one column on the right, and
+a small square texture slot in front of every map's name.
+
+### The texture slot (`panels/inspector/texture_square.rs`)
+- An 18 px square showing the texture's thumbnail (dark when empty, `?` when the file is gone).
+- **Drop** a texture from Asset Files on the square or on the name beside it. While a texture
+  is dragged every slot gets a thin outline; the one under the pointer a bright one.
+- **Click** opens a picker: a search field (focused, Enter takes the first match), "None", and
+  the project's textures with thumbnails. Only the rows in view are drawn.
+- **Right-click** clears the slot, and so does the small **×** shown in the top-right corner
+  of a filled slot under the pointer (8 px, so a click in the middle still opens the picker).
+  **Ctrl+click** or a **double-click** shows the texture in
+  Asset Files; the Properties view stays on the material.
+- **Hover** shows a 96 px preview with the texture's name and path.
+- A **normal-map slot** whose texture is not imported as a normal map gets a row under it:
+  "Fix Now" and "⚠ Not imported as a normal map". Fix Now sets the texture's import type to
+  Normal Map (as Apply in the texture's own Properties does).
+- Thumbnails come from the existing thumbnail store. The import type is read once per texture
+  and again after import settings are applied, so nothing is read from disk while drawing.
+- `.shader` and Shader Graph materials use the same slot for their texture properties.
+  The other panels (terrain layers, particles, UI images…) keep the dropdown for now.
+
+### The layout (`material.rs`, `material_features.rs`)
+| Section | Rows |
+|---|---|
+| (top) | Shader, Rendering Mode |
+| Main Maps | Albedo (slot + colour), Alpha Cutoff (Cutout only), Metallic (slot + slider; a map replaces the slider), Smoothness, Source, Normal Map (slot + strength when set), Height Map (slot + depth slider when set, then Steps), Occlusion (slot + strength when set), Detail Mask, Emission (checkbox; on: Color slot + colour, Intensity), Tiling, Offset, Rotation |
+| Secondary Maps | Detail Albedo x2, Normal Map (+ strength when set), Tiling, Offset |
+| Advanced Surface | Clear Coat, Translucency, Anisotropy: each a checkbox that opens its rows |
+| Rendering Options | Specular, Specular Tint |
+| Advanced Options | Render Queue (From Shader + number, read only), Double Sided |
+
+- The Height Map and the detail maps have no checkbox any more: assigning a map turns the
+  feature on, clearing it turns it off. A file with maps but the feature off (from the old
+  checkbox) shows an "Enabled" row.
+- Sliders and their number fields fill the value column, so they all line up; lone numbers and
+  the X / Y pairs fill it too.
+- The Unlit shaders use the same rows (slot, Tiling, Offset, Advanced Options).
+- Every change is still one undo step, and the preview (sphere, cube, plane) is unchanged.
+- New texts are in Turkish and Arabic (`[material]` in `locales/tr.toml` and `ar.toml`).
+
+### Not in Misty's material, so not in the list
+- UV Set, Specular Highlights / Reflections switches, GPU instancing and a per-material render
+  queue override. The Render Queue row shows the shader's queue, read only.
+- Editing several materials at once was not possible before and still is not.
+
+### Tests
+`panels/inspector/material_tests.rs` (egui harness): a texture dropped on a slot or on its name
+is assigned and other assets are ignored; right-click clears and undo brings the texture back; the × shows on hover only and clears;
+the picker searches, assigns and clears; Ctrl+click shows the texture in Asset Files; Alpha
+Cutoff only for Cutout; Emission opens its rows; strength rows only with a map; a detail map
+turns the detail maps on; the normal-map warning and Fix Now; Advanced Surface checkboxes.
+
+### Screenshots
+`docs/screenshots/r42/` (the Properties view cut out of the editor window; a temp copy of the
+sample project):
+- `compare_demo.png`, `compare_demo_scrolled.png`, `compare_bumpy.png`: before on the left,
+  after on the right, for a material with most features on and for a plain one.
+- `before_*.png` / `after_*.png`: the halves on their own; `after_window.png`: the whole editor.
+- `after_picker.png`: the texture picker (`MISTY_TEXTURE_PICKER=Albedo` keeps that slot's
+  picker open for a capture).
+- `after_demo_tr.png`, `after_demo_ar.png`: Turkish and Arabic (right to left).
+
+### Notes
+- Section headers are as tall as the other rows. With taller headers the rows under a new row
+  (Alpha Cutoff appearing, say) took several frames to settle: the grid lays a row out against
+  the height the row at that index had the frame before.
+- The sample project's `Bumps.png` is not imported as a normal map, so materials that use it
+  show the warning until Fix Now is pressed.

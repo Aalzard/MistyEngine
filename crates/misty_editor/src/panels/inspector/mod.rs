@@ -25,6 +25,8 @@ mod mask_editor;
 pub use mask_editor::IMPORT_LABEL as MASK_IMPORT_LABEL;
 mod material;
 mod material_features;
+#[cfg(test)]
+mod material_tests;
 mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
@@ -56,6 +58,7 @@ mod sprite_border;
 mod sprite_editors;
 pub(crate) mod terrain;
 mod texture_import;
+pub(crate) mod texture_square;
 mod tilemap_editors;
 mod timeline_editors;
 mod tree_asset;

@@ -109,6 +109,7 @@ pub fn apply(state: &mut EditorState, rel: &str, settings: &TextureImporter) {
     match settings.save(&state.assets.absolute(rel)) {
         Ok(()) => {
             sprites::invalidate(rel);
+            super::texture_square::forget_import_type(&state.assets.absolute(rel));
             state
                 .console
                 .info(format!("Applied import settings of {rel}"));

@@ -1,219 +1,211 @@
-//! The Standard material's optional features in the Inspector (Standard Lit v2): Secondary
-//! Maps (detail), Parallax, Clear Coat, Translucency and Anisotropy sections, each switched on
-//! by a checkbox (off keeps the values and compiles nothing), plus Specular under Advanced.
+//! The Standard material's optional features in the Properties view (Standard Lit v2), folded
+//! into the material's sections:
+//!
+//! - Main Maps gets the Height Map (parallax) and the Detail Mask;
+//! - Secondary Maps holds the detail albedo and normal with their own tiling;
+//! - Advanced Surface holds Clear Coat, Translucency and Anisotropy, each a checkbox that
+//!   opens its rows (off keeps the values and compiles nothing);
+//! - Rendering Options holds the dielectric Specular and its tint.
+//!
+//! The height map and the detail maps have no checkbox: assigning a map turns the feature on
+//! and clearing it turns it off. A file that has maps with the feature switched off (written
+//! by an older editor) shows an "Enabled" row so it can be switched on.
 
 use egui::Ui;
-use misty_engine::material_features::{AnisotropyDirection, Features};
+use misty_engine::material_features::{AnisotropyDirection, DetailMaps, Features, Parallax};
 
 use super::editors::{color_rgb, combo};
-use super::slots::texture_slot;
-
-fn section(ui: &mut Ui, title: &str) {
-    super::card::grid_sub_header(ui, title);
-}
-
-/// Slider over `range` filling the rest of the row.
-fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
-    ui.scope(|ui| {
-        let gap = ui.spacing().item_spacing.x;
-        let mut number = ui.spacing().interact_size.x;
-        let mut w = ui.available_width() - number - gap;
-        if w < 60.0 {
-            number = number.min(44.0);
-            w = ui.available_width() - number - gap;
-        }
-        let s = ui.spacing_mut();
-        s.interact_size.x = number;
-        s.slider_width = w.min(s.slider_width).max(30.0);
-        ui.add(egui::Slider::new(v, range)).changed()
-    })
-    .inner
-}
-
-/// "Enabled" checkbox row; true when the section's fields should show.
-fn toggle(ui: &mut Ui, label: &str, on: &mut bool, ch: &mut bool, tip: &str) -> bool {
-    ui.label(label).on_hover_text(tip);
-    *ch |= ui.checkbox(on, "").on_hover_text(tip).changed();
-    ui.end_row();
-    *on
-}
-
-fn map_row(
-    ui: &mut Ui,
-    label: &str,
-    id: String,
-    map: &mut Option<String>,
-    textures: &[String],
-    extra: impl FnOnce(&mut Ui, bool) -> bool,
-) -> bool {
-    ui.label(label);
-    let mut ch = false;
-    ui.horizontal(|ui| {
-        ch |= texture_slot(ui, &id, map, textures);
-        ch |= extra(ui, map.is_some());
-    });
-    ui.end_row();
-    ch
-}
+use super::material::{number, pair, section, slider, toggle_row};
+use super::texture_square::{map_label, normal_map_fix_row, row_label};
+use crate::i18n::tr;
+use crate::state::EditorState;
 
 fn normal_scale(ui: &mut Ui, v: &mut f32) -> bool {
-    ui.add(egui::DragValue::new(v).speed(0.01).range(-4.0..=4.0))
-        .on_hover_text("Normal map strength")
-        .changed()
+    number(
+        ui,
+        egui::DragValue::new(v).speed(0.01).range(-4.0..=4.0),
+        &tr!("Normal map strength"),
+    )
 }
 
-fn pair(ui: &mut Ui, label: &str, v: &mut [f32; 2]) -> bool {
-    ui.label(label);
+/// "Enabled" row of a feature whose maps are assigned while it is switched off.
+fn enabled_row(ui: &mut Ui, on: &mut bool, tip: &str) -> bool {
+    toggle_row(ui, &tr!("Enabled"), tip, 1, on)
+}
+
+/// Main Maps ▸ Height Map: the slot, the relief depth when a map is set, and the step count.
+pub fn height_rows(ui: &mut Ui, state: &mut EditorState, id: &str, p: &mut Parallax) -> bool {
     let mut ch = false;
-    ui.horizontal(|ui| {
-        for (axis, c) in ["X", "Y"].into_iter().zip(v.iter_mut()) {
-            ui.label(axis);
-            ch |= ui
-                .add(egui::DragValue::new(c).speed(0.01).max_decimals(3))
-                .changed();
-        }
-    });
+    let tip =
+        tr!("Parallax occlusion mapping: the height map (white = high) gives the surface depth");
+    if map_label(
+        ui,
+        state,
+        &format!("{id}_height"),
+        &tr!("Height Map"),
+        &tip,
+        &mut p.height_map,
+    ) {
+        p.enabled = p.height_map.is_some();
+        ch = true;
+    }
+    if p.height_map.is_some() {
+        ch |= slider(ui, &mut p.scale, 0.0..=0.1);
+    }
+    ui.end_row();
+    if p.height_map.is_none() {
+        return ch;
+    }
+    if !p.enabled {
+        ch |= enabled_row(ui, &mut p.enabled, &tip);
+    }
+    row_label(ui, &tr!("Steps"), 1).on_hover_text(tr!(
+        "Most steps along the view ray (more: smoother at grazing angles, costlier)"
+    ));
+    ch |= number(ui, egui::DragValue::new(&mut p.steps).range(4..=64), "");
     ui.end_row();
     ch
 }
 
-/// The feature sections (after Main Maps). Returns true when something changed.
-pub fn feature_sections(ui: &mut Ui, id: &str, f: &mut Features, textures: &[String]) -> bool {
+/// Main Maps ▸ Detail Mask (R masks the Secondary Maps; white where unassigned).
+pub fn detail_mask_row(ui: &mut Ui, state: &mut EditorState, id: &str, d: &mut DetailMaps) -> bool {
+    let ch = map_label(
+        ui,
+        state,
+        &format!("{id}_dmask"),
+        &tr!("Detail Mask"),
+        &tr!("Where the Secondary Maps show (R; everywhere without a mask)"),
+        &mut d.mask,
+    );
+    ui.end_row();
+    ch
+}
+
+/// The Secondary Maps section: detail albedo and normal on their own tiling and offset.
+pub fn secondary_maps(ui: &mut Ui, state: &mut EditorState, id: &str, d: &mut DetailMaps) -> bool {
     let mut ch = false;
-
-    section(ui, "Secondary Maps");
-    let d = &mut f.detail;
-    if toggle(
+    section(ui, &tr!("Secondary Maps"));
+    let tip = tr!("A detail albedo (×2: grey changes nothing) and normal map on their own tiling");
+    let mut maps = map_label(
         ui,
-        "Detail Maps",
-        &mut d.enabled,
-        &mut ch,
-        "A detail albedo (×2: grey changes nothing) and normal map on their own tiling",
-    ) {
-        ch |= map_row(
-            ui,
-            "    Detail Mask",
-            format!("{id}_dmask"),
-            &mut d.mask,
-            textures,
-            |_, _| false,
-        );
-        ch |= map_row(
-            ui,
-            "    Detail Albedo x2",
-            format!("{id}_dalbedo"),
-            &mut d.albedo_map,
-            textures,
-            |_, _| false,
-        );
-        ch |= map_row(
-            ui,
-            "    Normal Map",
-            format!("{id}_dnormal"),
-            &mut d.normal_map,
-            textures,
-            |ui, has| has && normal_scale(ui, &mut d.normal_scale),
-        );
-        ch |= pair(ui, "    Tiling", &mut d.tiling);
-        ch |= pair(ui, "    Offset", &mut d.offset);
-    }
-
-    section(ui, "Parallax");
-    let p = &mut f.parallax;
-    if toggle(
+        state,
+        &format!("{id}_dalbedo"),
+        &tr!("Detail Albedo x2"),
+        &tip,
+        &mut d.albedo_map,
+    );
+    ui.end_row();
+    maps |= map_label(
         ui,
-        "Height Map",
-        &mut p.enabled,
-        &mut ch,
-        "Parallax occlusion mapping: the height map (white = high) gives the surface depth",
-    ) {
-        ch |= map_row(
-            ui,
-            "    Height",
-            format!("{id}_height"),
-            &mut p.height_map,
-            textures,
-            |ui, _| slider(ui, &mut p.scale, 0.0..=0.1),
-        );
-        ui.label("    Steps");
-        ch |= ui
-            .add(egui::DragValue::new(&mut p.steps).range(4..=64))
-            .on_hover_text(
-                "Most steps along the view ray (more: smoother at grazing angles, costlier)",
-            )
-            .changed();
-        ui.end_row();
+        state,
+        &format!("{id}_dnormal"),
+        &tr!("Normal Map"),
+        &tip,
+        &mut d.normal_map,
+    );
+    if d.normal_map.is_some() {
+        ch |= normal_scale(ui, &mut d.normal_scale);
     }
+    ui.end_row();
+    normal_map_fix_row(ui, state, d.normal_map.as_deref());
+    let assigned = d.albedo_map.is_some() || d.normal_map.is_some();
+    if maps {
+        // Assigning a detail map turns the detail maps on; clearing both turns them off.
+        d.enabled = assigned;
+        ch = true;
+    }
+    if assigned && !d.enabled {
+        ch |= enabled_row(ui, &mut d.enabled, &tip);
+    }
+    row_label(ui, &tr!("Tiling"), 0);
+    ch |= pair(ui, &mut d.tiling);
+    ui.end_row();
+    row_label(ui, &tr!("Offset"), 0);
+    ch |= pair(ui, &mut d.offset);
+    ui.end_row();
+    ch
+}
 
-    section(ui, "Clear Coat");
+/// The Advanced Surface section: Clear Coat, Translucency and Anisotropy.
+pub fn advanced_surface(ui: &mut Ui, state: &mut EditorState, id: &str, f: &mut Features) -> bool {
+    let mut ch = false;
+    section(ui, &tr!("Advanced Surface"));
+
     let c = &mut f.clear_coat;
-    if toggle(
+    ch |= toggle_row(
         ui,
-        "Clear Coat",
+        &tr!("Clear Coat"),
+        &tr!("A clear lacquer over the surface (car paint, varnish)"),
+        0,
         &mut c.enabled,
-        &mut ch,
-        "A clear lacquer over the surface (car paint, varnish)",
-    ) {
-        ui.label("    Strength");
+    );
+    if c.enabled {
+        row_label(ui, &tr!("Strength"), 1);
         ch |= slider(ui, &mut c.strength, 0.0..=1.0);
         ui.end_row();
-        ui.label("    Smoothness");
+        row_label(ui, &tr!("Smoothness"), 1);
         ch |= slider(ui, &mut c.smoothness, 0.0..=1.0);
         ui.end_row();
-        ch |= map_row(
+        ch |= map_label(
             ui,
-            "    Normal Map",
-            format!("{id}_coatn"),
+            state,
+            &format!("{id}_coatn"),
+            &tr!("Normal Map"),
+            &tr!("The coat's own normal map (none: the coat follows the geometry)"),
             &mut c.normal_map,
-            textures,
-            |ui, has| has && normal_scale(ui, &mut c.normal_scale),
         );
+        if c.normal_map.is_some() {
+            ch |= normal_scale(ui, &mut c.normal_scale);
+        }
+        ui.end_row();
+        normal_map_fix_row(ui, state, c.normal_map.as_deref());
     }
 
-    section(ui, "Translucency");
     let t = &mut f.translucency;
-    if toggle(
+    ch |= toggle_row(
         ui,
-        "Translucency",
+        &tr!("Translucency"),
+        &tr!("Light through thin or soft surfaces (leaves, skin, wax)"),
+        0,
         &mut t.enabled,
-        &mut ch,
-        "Light through thin or soft surfaces (leaves, skin, wax)",
-    ) {
-        ui.label("    Color");
+    );
+    if t.enabled {
+        row_label(ui, &tr!("Color"), 1);
         ch |= color_rgb(ui, &mut t.color);
         ui.end_row();
-        ui.label("    Strength")
-            .on_hover_text("Light coming through from behind");
+        row_label(ui, &tr!("Strength"), 1).on_hover_text(tr!("Light coming through from behind"));
         ch |= slider(ui, &mut t.strength, 0.0..=1.0);
         ui.end_row();
-        ui.label("    Wrap")
-            .on_hover_text("How far light wraps round the shadow side");
+        row_label(ui, &tr!("Wrap"), 1)
+            .on_hover_text(tr!("How far light wraps round the shadow side"));
         ch |= slider(ui, &mut t.wrap, 0.0..=1.0);
         ui.end_row();
-        ch |= map_row(
+        ch |= map_label(
             ui,
-            "    Thickness",
-            format!("{id}_thick"),
+            state,
+            &format!("{id}_thick"),
+            &tr!("Thickness"),
+            &tr!("Thickness (R, white = thick: no light through), times the slider"),
             &mut t.thickness_map,
-            textures,
-            |ui, _| slider(ui, &mut t.thickness, 0.0..=1.0),
         );
+        ch |= slider(ui, &mut t.thickness, 0.0..=1.0);
+        ui.end_row();
     }
 
-    section(ui, "Anisotropy");
     let a = &mut f.anisotropy;
-    if toggle(
+    ch |= toggle_row(
         ui,
-        "Anisotropy",
+        &tr!("Anisotropy"),
+        &tr!("Highlights stretched along a direction (brushed metal, hair, satin)"),
+        0,
         &mut a.enabled,
-        &mut ch,
-        "Highlights stretched along a direction (brushed metal, hair, satin)",
-    ) {
-        ui.label("    Strength")
-            .on_hover_text("Negative: stretched across the direction");
+    );
+    if a.enabled {
+        row_label(ui, &tr!("Strength"), 1)
+            .on_hover_text(tr!("Negative: stretched across the direction"));
         ch |= slider(ui, &mut a.strength, -1.0..=1.0);
         ui.end_row();
-        ui.label("    Direction");
+        row_label(ui, &tr!("Direction"), 1);
         ch |= combo(
             ui,
             &format!("{id}_aniso_dir"),
@@ -222,42 +214,30 @@ pub fn feature_sections(ui: &mut Ui, id: &str, f: &mut Features, textures: &[Str
             AnisotropyDirection::label,
         );
         ui.end_row();
-        ui.label("    Rotation");
-        ch |= ui
-            .add(
-                egui::DragValue::new(&mut a.rotation)
-                    .speed(1.0)
-                    .range(-180.0..=180.0)
-                    .suffix("°"),
-            )
-            .changed();
+        row_label(ui, &tr!("Rotation"), 1);
+        ch |= number(
+            ui,
+            egui::DragValue::new(&mut a.rotation)
+                .speed(1.0)
+                .range(-180.0..=180.0)
+                .suffix("°"),
+            "",
+        );
         ui.end_row();
     }
     ch
 }
 
-/// Specular row of Advanced Options (dielectric reflectance and its tint).
-pub fn specular_row(ui: &mut Ui, f: &mut Features) -> bool {
+/// Rendering Options ▸ Specular: dielectric reflectance and its tint.
+pub fn specular_rows(ui: &mut Ui, f: &mut Features) -> bool {
     let mut ch = false;
-    ui.label("Specular")
-        .on_hover_text("Reflectance of non-metals (1 = the usual 4%) and its tint");
-    ui.horizontal(|ui| {
-        ch |= ui
-            .add(
-                egui::DragValue::new(&mut f.specular)
-                    .speed(0.01)
-                    .range(0.0..=2.0),
-            )
-            .changed();
-        // A plain swatch (the wide one would run past the number on narrow panels).
-        let mut srgb = f
-            .specular_color
-            .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-        if ui.color_edit_button_srgb(&mut srgb).changed() {
-            f.specular_color = srgb.map(|v| v as f32 / 255.0);
-            ch = true;
-        }
-    });
+    row_label(ui, &tr!("Specular"), 0)
+        .on_hover_text(tr!("Reflectance of non-metals (1 = the usual 4%)"));
+    ch |= slider(ui, &mut f.specular, 0.0..=2.0);
+    ui.end_row();
+    row_label(ui, &tr!("Specular Tint"), 0)
+        .on_hover_text(tr!("Colour of the reflections of non-metals"));
+    ch |= color_rgb(ui, &mut f.specular_color);
     ui.end_row();
     ch
 }
