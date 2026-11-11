@@ -36,7 +36,7 @@ mod occlusion_editors;
 mod overrides;
 pub(in crate::panels) mod particles;
 mod physics_editors;
-mod physics_material_editor;
+pub(crate) mod physics_material_editor;
 mod post_volume;
 mod post_volume_fx;
 mod post_volume_screen;

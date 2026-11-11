@@ -13,12 +13,26 @@ use crate::state::EditorState;
 pub const ICON: &str = "◍";
 
 thread_local! {
-    /// Project Physics Materials, re-listed every couple of seconds.
+    /// Project Physics Materials found by walking `Assets/` (only without a GUID database),
+    /// re-listed every couple of seconds.
     static LIST: RefCell<Option<(Instant, Vec<String>)>> = const { RefCell::new(None) };
 }
 
-/// Every `.physicmat` under Assets (project-relative paths, sorted).
+/// Every `.physicmat` under Assets (project-relative paths, sorted). The open GUID database
+/// already lists every asset, so this touches no disk: every collider's Inspector asks each
+/// frame, and walking `Assets/` here froze the editor every two seconds (100 ms for 1800 files
+/// on an SSD, many seconds on a busy hard disk). Without a database the folder is walked.
 pub fn project_materials() -> Vec<String> {
+    let listed = misty_engine::asset_db::with(|db| {
+        db.paths()
+            .filter(|p| is_physics_material(p))
+            .map(str::to_owned)
+            .collect::<Vec<String>>()
+    });
+    if let Some(mut out) = listed {
+        out.sort();
+        return out;
+    }
     LIST.with(|l| {
         let mut l = l.borrow_mut();
         if let Some((t, list)) = l.as_ref()
@@ -34,7 +48,7 @@ pub fn project_materials() -> Vec<String> {
                 if p.is_dir() {
                     stack.push(p);
                 } else if is_physics_material(&p.to_string_lossy()) {
-                    out.push(misty_engine::assets::relative(&p).replace('\\', "/"));
+                    out.push(misty_engine::assets::relative(&p).replace('\', "/"));
                 }
             }
         }
