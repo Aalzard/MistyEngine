@@ -185,6 +185,8 @@ pub(super) struct Arena {
     free: BTreeMap<u32, u32>,
     /// Bumped when the buffer is replaced (bind groups that use it are rebuilt).
     pub generation: u64,
+    /// Records pass through here when a run moves ([`Arena::trim`]).
+    scratch: Option<wgpu::Buffer>,
 }
 
 const RECORD: u64 = 16;
@@ -208,11 +210,18 @@ impl Arena {
             capacity,
             free: BTreeMap::from([(0, capacity)]),
             generation: 0,
+            scratch: None,
         }
     }
 
     pub fn bytes(&self) -> u64 {
-        self.capacity as u64 * RECORD
+        self.capacity as u64 * RECORD + self.scratch.as_ref().map_or(0, wgpu::Buffer::size)
+    }
+
+    /// Most records the arena of this device can hold.
+    pub fn limit(device: &wgpu::Device) -> u64 {
+        let limits = device.limits();
+        (limits.max_storage_buffer_binding_size).min(limits.max_buffer_size) / RECORD
     }
 
     /// Records the buffer holds room for and how many of them are free.
@@ -229,11 +238,7 @@ impl Arena {
             return Some(at);
         }
         // Grow: at least twice as big, copying what is there.
-        let limit = device
-            .limits()
-            .max_storage_buffer_binding_size
-            .min(device.limits().max_buffer_size)
-            / RECORD;
+        let limit = Self::limit(device);
         let want = (self.capacity as u64 * 2).max(self.capacity as u64 + n as u64);
         if self.capacity as u64 + n as u64 > limit {
             return None;
@@ -277,19 +282,90 @@ impl Arena {
     pub fn free(&mut self, at: u32, n: u32) {
         self.release(at, n);
     }
+
+    /// Keep only the first `keep` records of the run of `n` at `at`: they move into a free
+    /// run that fits them when there is one (the whole old run is given back: nothing is left
+    /// behind in the middle of the room a big chunk needs), else the run's tail is given
+    /// back. The offset they are at now.
+    pub fn trim(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        at: u32,
+        n: u32,
+        keep: u32,
+    ) -> u32 {
+        let old = n.max(1).next_multiple_of(GRAIN);
+        let new = keep.max(1).next_multiple_of(GRAIN);
+        if new >= old {
+            return at;
+        }
+        let Some(to) = take_run(&mut self.free, new) else {
+            release_run(&mut self.free, at + new, old - new);
+            return at;
+        };
+        let (from, to_bytes) = (at as u64 * RECORD, to as u64 * RECORD);
+        copy_run(
+            device,
+            encoder,
+            &mut self.scratch,
+            (&self.buffer, from),
+            (&self.buffer, to_bytes),
+            keep as u64 * RECORD,
+        );
+        release_run(&mut self.free, at, old);
+        to
+    }
 }
 
-/// First fit: the start of a free run of `n` records, taken out of `free`.
+/// The free run `n` records fit best in (the shortest that takes them, the lowest of those):
+/// its start and length. Small runs fill small holes, so the long free runs a big chunk needs
+/// stay whole.
+pub(super) fn best_run(free: &BTreeMap<u32, u32>, n: u32) -> Option<(u32, u32)> {
+    free.iter()
+        .filter(|(_, len)| **len >= n)
+        .min_by_key(|(at, len)| (**len, **at))
+        .map(|(a, l)| (*a, *l))
+}
+
+/// Best fit: the start of a free run of `n` records, taken out of `free`.
 pub(super) fn take_run(free: &mut BTreeMap<u32, u32>, n: u32) -> Option<u32> {
-    let (at, len) = free
-        .iter()
-        .find(|(_, len)| **len >= n)
-        .map(|(a, l)| (*a, *l))?;
+    let (at, len) = best_run(free, n)?;
     free.remove(&at);
     if len > n {
         free.insert(at + n, len - n);
     }
     Some(at)
+}
+
+/// Copy `bytes` from `from` to `to` (offsets in bytes): straight across when they are two
+/// buffers, through `scratch` when they are one (a buffer can't be copied onto itself).
+pub(super) fn copy_run(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    scratch: &mut Option<wgpu::Buffer>,
+    from: (&wgpu::Buffer, u64),
+    to: (&wgpu::Buffer, u64),
+    bytes: u64,
+) {
+    if bytes == 0 {
+        return;
+    }
+    if from.0 != to.0 {
+        encoder.copy_buffer_to_buffer(from.0, from.1, to.0, to.1, bytes);
+        return;
+    }
+    if scratch.as_ref().is_none_or(|b| b.size() < bytes) {
+        *scratch = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty grass move scratch"),
+            size: bytes.next_power_of_two().max(1 << 16),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        }));
+    }
+    let via = scratch.as_ref().expect("just made");
+    encoder.copy_buffer_to_buffer(from.0, from.1, via, 0, bytes);
+    encoder.copy_buffer_to_buffer(via, 0, to.0, to.1, bytes);
 }
 
 /// Put `n` records at `at` back into `free`, merged with the runs either side.
@@ -718,5 +794,48 @@ mod tests {
         release_run(&mut free, x, 128);
         release_run(&mut free, z, 64);
         assert_eq!(free, BTreeMap::from([(0, 1024)]));
+    }
+
+    #[test]
+    fn runs_go_where_they_fit_best() {
+        // Holes of 64, 256 and 128 records, then the open end.
+        let mut free = BTreeMap::from([(0u32, 64u32), (128, 256), (512, 128), (1024, 4096)]);
+        assert_eq!(best_run(&free, 100), Some((512, 128)));
+        assert_eq!(take_run(&mut free, 128), Some(512));
+        assert_eq!(take_run(&mut free, 64), Some(0));
+        // The shortest that takes them; the lowest among equals.
+        assert_eq!(take_run(&mut free, 200), Some(128));
+        assert_eq!(free, BTreeMap::from([(328, 56), (1024, 4096)]));
+        assert_eq!(take_run(&mut free, 64), Some(1024));
+        assert_eq!(take_run(&mut free, 8192), None);
+    }
+
+    #[test]
+    fn arena_trims_into_a_hole_or_in_place() {
+        let Some((device, queue)) = crate::render::gpu_tests::headless() else {
+            return;
+        };
+        let mut arena = Arena::new(&device);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let hole = arena.reserve(&device, &queue, 640).expect("room");
+        let big = arena.reserve(&device, &queue, 32_000).expect("room");
+        arena.free(hole, 640);
+        let (capacity, free) = arena.room();
+        // The records kept move into the hole; the whole run comes free.
+        assert_eq!(arena.trim(&device, &mut encoder, big, 32_000, 600), hole);
+        assert_eq!(arena.room(), (capacity, free + 32_000 - 640));
+        assert_eq!(arena.reserve(&device, &queue, 32_000), Some(big));
+        // No hole: the tail is given back where the run is.
+        let mut full = Arena::new(&device);
+        let (capacity, _) = full.room();
+        let all = full
+            .reserve(&device, &queue, capacity as u32)
+            .expect("room");
+        assert_eq!(
+            full.trim(&device, &mut encoder, all, capacity as u32, 100),
+            all
+        );
+        assert_eq!(full.room(), (capacity, capacity - 128));
+        queue.submit([encoder.finish()]);
     }
 }

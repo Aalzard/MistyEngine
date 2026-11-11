@@ -4,6 +4,12 @@
 //! thread only hands out jobs (nearest chunk first) and uploads finished chunks within a
 //! small time budget per frame, so moving the camera never stalls a frame. A chunk that
 //! needs more blades keeps drawing its coarser blades until the finer scatter arrives.
+//!
+//! What the grass holds stays bounded however far the camera travels: a chunk the camera has
+//! left behind gives back the blades its distance no longer draws ([`Grass::trim`]; a chunk's
+//! blades are in drop-out key order, so a coarser level is a prefix of a finer one), and when
+//! the blades of a very dense field still don't fit in the blade pages, every chunk is
+//! scattered coarser ([`Pressure`]) instead of spilling out of them.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,6 +60,22 @@ const COARSE_FROM: f32 = 1.5;
 const MIN_KEEP: f32 = 0.012;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.
 const MAX_WIDEN: f32 = 3.0;
+/// Density levels of a chunk.
+const LEVELS: usize = details::MAX_LEVEL as usize + 1;
+/// A chunk is trimmed once it is more than this many density levels finer than its cameras
+/// need, down to this many levels finer (the camera can step back and forth without work).
+const TRIM_SLACK: u32 = 1;
+/// Blades trimmed chunks move per frame at most (GPU copies; the first always goes).
+const TRIM_BLADES: u32 = 128 * 1024;
+/// A moving camera's remembered places closer together than this count as one when trimming
+/// (levels are picked this much nearer, so no remembered camera is short of blades).
+const TRIM_APART: f32 = 2.0;
+/// Share of the room for blades (the pages, the cull records) the grass may fill before it
+/// goes coarser: the rest is slack for blades in the wrong place (free runs too short).
+const BUDGET_SHARE: f64 = 0.75;
+/// Updates with room to spare before the grass tries a finer level again (ten seconds at
+/// 60 frames per second), and before a blade page left empty is dropped.
+const RELAX_AFTER: u32 = 600;
 
 /// Stream chunks over frames (the default). Off, [`Grass::update`] waits for every chunk the
 /// camera needs before returning, so a render is complete on its first frame (tests,
@@ -95,20 +117,133 @@ fn level_for(keep: f32) -> u32 {
     l
 }
 
-/// Where a chunk's blades are (storage: the vertex stage fetches them through a draw's list).
-enum Store {
-    /// A run in the terrain's blade pages (grass_pool.rs).
-    Pool(Slot),
-    /// A buffer of its own (no page could take them).
-    Own(wgpu::Buffer),
+/// Blades the grass of a terrain may hold in tests (0 = the device's own room).
+#[cfg(test)]
+static TEST_BUDGET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Hold at most `blades` per terrain (0 = the device's own room) (tests).
+#[cfg(test)]
+pub(super) fn set_grass_budget(blades: u64) {
+    TEST_BUDGET.store(blades, Ordering::Relaxed);
+}
+
+/// Blades a terrain's grass may hold on this device: a share of what the blade pages (and
+/// the cull records, when the GPU culls) have room for.
+fn blade_budget(device: &wgpu::Device) -> u64 {
+    #[cfg(test)]
+    {
+        let forced = TEST_BUDGET.load(Ordering::Relaxed);
+        if forced > 0 {
+            return forced;
+        }
+    }
+    let mut room = BladePool::limit(device);
+    if grass_cull_supported(device) {
+        room = room.min(Arena::limit(device));
+    }
+    (room as f64 * BUDGET_SHARE) as u64
+}
+
+/// How many of `blades` (in drop-out key order, scattered at `level`) each density level
+/// keeps: the first `out[l]` hold every blade level `l` has (all of them up to `level`).
+fn level_counts(blades: &[Blade], level: u32) -> [u32; LEVELS] {
+    let mut out = [0; LEVELS];
+    let first = (level as usize + 1).min(LEVELS);
+    out[..first].fill(blades.len() as u32);
+    let keeps: [f32; LEVELS] = std::array::from_fn(|l| details::level_keep(l as u32));
+    // (Keys of seed heads are stored with less precision than they were sorted by: a blade
+    // may sit a place or two off, so count up to the last blade of each level.)
+    for (i, b) in blades.iter().enumerate() {
+        let key = b.key();
+        for l in first..LEVELS {
+            if key >= keeps[l] {
+                break;
+            }
+            out[l] = i as u32 + 1;
+        }
+    }
+    out
+}
+
+/// The level a chunk at `level` is trimmed to when its cameras want only `want`, keeping
+/// `slack` levels to spare (None: it stays as it is).
+fn trim_level(level: u32, want: u32, slack: u32) -> Option<u32> {
+    (level + slack < want).then(|| want - slack)
+}
+
+/// `cameras` without the ones within `apart` metres of a later one (the latest first).
+fn thin(cameras: &[Vec3], apart: f32) -> Vec<Vec3> {
+    let mut out: Vec<Vec3> = Vec::new();
+    for c in cameras.iter().rev() {
+        if out.iter().all(|o| o.distance(*c) > apart) {
+            out.push(*c);
+        }
+    }
+    out
+}
+
+/// Coarser grass when the blades don't fit: every chunk is scattered `bias` density levels
+/// coarser than its distance asks for (half the blades per level; the ones left grow wider,
+/// as far blades do). It rises at once when a chunk finds no room or the grass holds more
+/// than its budget, and falls again one level at a time after the grass has had room for the
+/// finer level for a while.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Pressure {
+    /// Density levels every chunk is coarser by.
+    pub bias: u32,
+    /// Updates in a row with room to spare.
+    calm: u32,
+    /// Times the grass ran out of room lately: each doubles the wait before a finer level
+    /// is tried again (it would only run out again).
+    strikes: u32,
+}
+
+impl Pressure {
+    /// Out of room: one level coarser from now on. `strike`: a chunk found no room although
+    /// the budget had some (blades in the wrong places); trying the finer level again soon
+    /// would only run out again.
+    fn raise(&mut self, strike: bool) {
+        self.bias = (self.bias + 1).min(details::MAX_LEVEL);
+        self.calm = 0;
+        if strike {
+            self.strikes = (self.strikes + 1).min(5);
+        }
+    }
+
+    /// One update holding `held` blades of `budget`; true when the grass went a level finer.
+    fn settle(&mut self, held: u64, budget: u64) -> bool {
+        // (A level finer holds at most twice the blades; some room is left over.)
+        let roomy = held.saturating_mul(5) <= budget.saturating_mul(2);
+        if !roomy {
+            self.calm = 0;
+            return false;
+        }
+        self.calm += 1;
+        if self.bias == 0 {
+            // Long without trouble: forget the strikes.
+            if self.calm >= RELAX_AFTER * 8 {
+                self.calm = 0;
+                self.strikes = self.strikes.saturating_sub(1);
+            }
+            return false;
+        }
+        if self.calm < RELAX_AFTER << self.strikes {
+            return false;
+        }
+        self.bias -= 1;
+        self.calm = 0;
+        true
+    }
 }
 
 struct Chunk {
-    /// The blades (None: the chunk has none).
-    store: Option<Store>,
+    /// The blades: a run in the terrain's blade pages (None: the chunk has none).
+    store: Option<Slot>,
     count: u32,
-    /// Density level the blades were scattered at.
+    /// Density level the blades were scattered at (or trimmed to).
     level: u32,
+    /// Blades from the start each coarser density level keeps ([`level_counts`]).
+    prefix: [u32; LEVELS],
     /// [`Grass::edits`] the blades were scattered with.
     stamp: u64,
     /// Terrain-local bounds of the blades.
@@ -116,21 +251,12 @@ struct Chunk {
     /// Where the blades' cull records start in the arena (None = not culled on the GPU).
     arena: Option<u32>,
     /// Group 3 of the grass pipelines when the chunk binds its blades on its own (the CPU
-    /// path, or a buffer of its own): these blades and the list of drawn ones (with the
-    /// generations of the list buffer and the pages it was made for).
+    /// path): these blades and the list of drawn ones (with the generations of the list
+    /// buffer and the pages it was made for).
     group: Option<((u64, u64), wgpu::BindGroup)>,
     /// A tile of a chunk switching to tiles: not drawn until all its tiles are up (the whole
     /// run draws meanwhile).
     hidden: bool,
-}
-
-impl Chunk {
-    fn pooled(&self) -> Option<Slot> {
-        match &self.store {
-            Some(Store::Pool(slot)) => Some(*slot),
-            _ => None,
-        }
-    }
 }
 
 /// A chunk's job on the workers: the level and the edits asked for.
@@ -144,7 +270,7 @@ struct Asked {
 /// the chunk is swapped in when the last piece is written.
 struct Upload {
     done: Done,
-    store: Option<Store>,
+    store: Option<Slot>,
     /// Cull records' offset in the arena.
     arena: Option<u32>,
     /// Blades written so far.
@@ -178,6 +304,8 @@ struct Job {
     /// A tile of a chunk switching to tiles: its whole run draws until all 16 are up, so
     /// these go before everything else.
     first: bool,
+    /// [`Pressure::bias`] when handed out.
+    bias: u32,
     reply: mpsc::Sender<Done>,
 }
 
@@ -252,6 +380,10 @@ struct Done {
     generation: u64,
     stamp: u64,
     blades: Vec<Blade>,
+    /// Blades from the start each coarser density level keeps ([`level_counts`]).
+    prefix: [u32; LEVELS],
+    /// [`Pressure::bias`] the level was picked with.
+    bias: u32,
     /// Worker time of the scatter.
     scatter_ms: f32,
 }
@@ -332,6 +464,8 @@ fn scatter_job(job: Job) {
         level: job.level,
         generation: job.generation,
         stamp: job.stamp,
+        prefix: level_counts(&blades, job.level),
+        bias: job.bias,
         blades,
         scatter_ms: started.elapsed().as_secs_f32() * 1000.0,
     };
@@ -383,6 +517,16 @@ pub struct GrassStats {
     pub upload_alloc_ms: f32,
     /// Longest worker scatter among the chunks uploaded this frame.
     pub scatter_ms: f32,
+    /// Chunks trimmed this frame (they held more blades than their distance draws).
+    pub trimmed: u32,
+    /// Scattered chunks turned away this frame: no room in the blade pages (they are
+    /// scattered again a level coarser).
+    pub refused: u32,
+    /// Density levels every chunk is coarser by for lack of room (0 = none).
+    pub coarser: u32,
+    /// Chunks and blades held after this frame's update.
+    pub chunks: u32,
+    pub blades: u64,
 }
 
 /// What a terrain's grass holds (tests, the long-walk harness).
@@ -399,8 +543,8 @@ pub(super) struct GrassLoad {
     pub page_blades: u64,
     pub page_free: u64,
     pub page_longest_free: u32,
-    /// Pieces in a buffer of their own (no page could take them).
-    pub own: u32,
+    /// Density levels every chunk is coarser by for lack of room.
+    pub coarser: u32,
     /// Pieces without cull records (the arena was full).
     pub unculled: u32,
     /// Cull records the arena has room for and the free ones.
@@ -447,6 +591,9 @@ pub(super) struct Grass {
     /// Cameras of recent frames (terrain-local) and when they were last seen: chunks near
     /// any of them stay.
     cameras: Vec<(Vec3, Instant)>,
+    /// How long a camera is remembered ([`CAMERA_MEMORY`]; tests that move the camera
+    /// faster than the clock forget at once).
+    camera_memory: Duration,
     /// Centre of the latest edited region (terrain-local metres): edited chunks nearest the
     /// brush go first.
     brush: Vec2,
@@ -464,6 +611,10 @@ pub(super) struct Grass {
     /// Share of the blades drawn at every distance (Quality ▸ Grass Density; the rest grow
     /// wider to cover the same ground).
     density: f32,
+    /// Coarser levels for lack of room.
+    pressure: Pressure,
+    /// Updates in a row the last blade page has been empty.
+    spare_page: u32,
     /// Cull records of every chunk (grass_cull.rs; made with the first chunk).
     arena: Option<Arena>,
     /// The blades of every chunk (grass_pool.rs; made with the first chunk).
@@ -491,6 +642,7 @@ impl Default for Grass {
             tiled: HashSet::new(),
             brushed: HashSet::new(),
             cameras: Vec::new(),
+            camera_memory: CAMERA_MEMORY,
             brush: Vec2::ZERO,
             results: {
                 let (tx, rx) = mpsc::channel();
@@ -501,6 +653,8 @@ impl Default for Grass {
             piece_ms: 0.0,
             stats: GrassStats::default(),
             density: 1.0,
+            pressure: Pressure::default(),
+            spare_page: 0,
             arena: None,
             pool: None,
             page_groups: Vec::new(),
@@ -574,13 +728,22 @@ fn near(x: u32, z: u32, camera: Vec3, r: f32) -> bool {
     c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
 }
 
-/// Level a chunk needs: from its nearest point to the camera; `density` = the quality
-/// level's share of the blades.
-fn wanted(x: u32, z: u32, camera: Vec3, lod: f32, density: f32) -> u32 {
+/// Distance on the ground from the camera to the nearest point of chunk `(x, z)`.
+fn reach(x: u32, z: u32, camera: Vec3) -> f32 {
     let lo = Vec2::new(x as f32, z as f32) * CHUNK;
-    let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
-    let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
-    level_for(keep_at(dist, lod) * density)
+    let at = Vec2::new(camera.x, camera.z);
+    at.clamp(lo, lo + CHUNK).distance(at)
+}
+
+/// Level blades `dist` metres away need; `density` = the quality level's share of the
+/// blades, `bias` = levels coarser for lack of room ([`Pressure`]).
+fn level_at(dist: f32, lod: f32, density: f32, bias: u32) -> u32 {
+    (level_for(keep_at(dist, lod) * density) + bias).min(details::MAX_LEVEL)
+}
+
+/// Level a chunk needs: from its nearest point to the camera.
+fn wanted(x: u32, z: u32, camera: Vec3, lod: f32, density: f32, bias: u32) -> u32 {
+    level_at(reach(x, z, camera), lod, density, bias)
 }
 
 /// Squared chunk distance from the camera's chunk (ordering key; a tile counts as its chunk).
@@ -725,7 +888,7 @@ impl Grass {
         self.chunks.retain(|k, c| {
             let kept = keep(*k);
             if !kept {
-                free_chunk(arena, pool, c.store.as_ref(), c.arena, c.count);
+                free_chunk(arena, pool, c.store, c.arena, c.count);
             }
             kept
         });
@@ -747,13 +910,7 @@ impl Grass {
     /// Give back the room of an upload that will not finish.
     fn abort_upload(&mut self, up: Upload) {
         let n = up.done.blades.len() as u32;
-        free_chunk(
-            &mut self.arena,
-            &mut self.pool,
-            up.store.as_ref(),
-            up.arena,
-            n,
-        );
+        free_chunk(&mut self.arena, &mut self.pool, up.store, up.arena, n);
     }
 
     /// The edit count piece `k`'s blades are behind (None: up to date).
@@ -799,7 +956,7 @@ impl Grass {
                 if !near(k.0, k.1, camera, range) {
                     continue;
                 }
-                let want = wanted(k.0, k.1, camera, lod, self.density);
+                let want = wanted(k.0, k.1, camera, lod, self.density, self.pressure.bias);
                 if self.tiled.contains(&k) {
                     // Tiles missing or behind an edit, at the level the camera wants then.
                     let mut busy = false;
@@ -867,13 +1024,19 @@ impl Grass {
         if !crate::terrain::detail_layers::draws_grass(d) {
             self.keep_chunks(|_| false);
             self.restart();
+            // No grass, no blade pages (they are made again with the first chunk).
+            self.pool = None;
+            self.arena = None;
+            self.cull = None;
+            self.page_groups.clear();
+            self.pressure = Pressure::default();
             return;
         }
         let range = d.details.draw_distance.max(1.0);
         let lod = d.details.lod_distance;
         let now = Instant::now();
-        (self.cameras)
-            .retain(|(c, t)| now.duration_since(*t) < CAMERA_MEMORY && c.distance(camera) > 1.0);
+        let memory = self.camera_memory;
+        (self.cameras).retain(|(c, t)| now.duration_since(*t) < memory && c.distance(camera) > 1.0);
         self.cameras.push((camera, now));
         let cameras: Vec<Vec3> = self.cameras.iter().map(|c| c.0).collect();
         let near_any = |k: (u32, u32), r: f32| {
@@ -894,6 +1057,27 @@ impl Grass {
         self.dirty.retain(|k, _| near_any(*k, range * 1.5));
         let dirty = &self.dirty;
         self.brushed.retain(|k| dirty.contains_key(k));
+
+        // Chunks left behind give back the blades their distance no longer draws; more than
+        // the budget still held: everything a level coarser.
+        let budget = blade_budget(device);
+        let held = self.trim(device, queue, &cameras, lod, false);
+        if held > budget && self.pressure.bias < details::MAX_LEVEL {
+            self.pressure.raise(false);
+            self.trim(device, queue, &cameras, lod, true);
+        } else {
+            self.pressure.settle(held, budget);
+        }
+        // A last blade page left empty for a while goes back to the GPU.
+        match &mut self.pool {
+            Some(pool) if pool.spare_page() => {
+                self.spare_page += 1;
+                if self.spare_page >= RELAX_AFTER && pool.drop_spare_page() {
+                    self.spare_page = 0;
+                }
+            }
+            _ => self.spare_page = 0,
+        }
 
         // Finished scatters: keep the ones still worth uploading, edits and nearest first.
         self.collect(camera, &cameras, range);
@@ -917,7 +1101,7 @@ impl Grass {
             }
             let (x, z) = chunk_of(k);
             let asked = Asked {
-                level: wanted(x, z, camera, lod, self.density),
+                level: wanted(x, z, camera, lod, self.density, self.pressure.bias),
                 stamp: self.edits,
             };
             let job = Job {
@@ -932,6 +1116,7 @@ impl Grass {
                 first: is_tile(k)
                     && !self.chunks.contains_key(&k)
                     && self.chunks.contains_key(&chunk_of(k)),
+                bias: self.pressure.bias,
                 reply: self.results.0.clone(),
             };
             if is_tile(k) {
@@ -959,18 +1144,100 @@ impl Grass {
                 self.accept(done, &cameras, range);
             }
             self.upload(device, queue, false);
-            if !self.stale_chunks(d, camera).is_empty() {
+            // (Another round only when this one got somewhere: a chunk nothing has room for
+            // at the coarsest level stays out.)
+            let progress = self.stats.uploaded > 0 || self.stats.refused > 0;
+            let coarsest = self.pressure.bias >= details::MAX_LEVEL && self.stats.uploaded == 0;
+            if progress && !coarsest && !self.stale_chunks(d, camera).is_empty() {
                 let stats = self.stats;
                 self.update(device, queue, d, camera, density);
                 self.stats.scheduled += stats.scheduled;
                 self.stats.uploaded += stats.uploaded;
                 self.stats.upload_ms += stats.upload_ms;
+                self.stats.trimmed += stats.trimmed;
+                self.stats.refused += stats.refused;
             }
         }
         // (Edited pieces not handed out yet only wait when the workers are full: then
         // `in_flight` counts.)
         self.stats.pending =
             (self.in_flight.len() + self.ready.len() + self.uploading.is_some() as usize) as u32;
+        self.stats.coarser = self.pressure.bias;
+        self.stats.chunks = self.chunks.len() as u32;
+        self.stats.blades = self.chunks.values().map(|c| c.count as u64).sum();
+    }
+
+    /// Chunks holding more blades than any recent camera draws of them give the rest back:
+    /// a chunk more than [`TRIM_SLACK`] density levels finer than its nearest camera needs
+    /// keeps only the blades of the level one finer than needed (a prefix: the blades are
+    /// in drop-out key order), moved into a smaller run of the pages. Nothing drawn changes:
+    /// the passes draw at most the prefix a chunk's distance keeps. At most [`TRIM_BLADES`]
+    /// are moved per call. `all` (out of room): every chunk down to just what it needs, at
+    /// once. Returns the blades held afterwards.
+    ///
+    /// Without this a chunk kept the finest level it ever had until it was one and a half
+    /// draw distances away: walking left a trail of full-density chunks behind the camera,
+    /// dozens of times the blades of standing still, until the blade pages overflowed.
+    fn trim(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        cameras: &[Vec3],
+        lod: f32,
+        all: bool,
+    ) -> u64 {
+        let cameras = thin(cameras, TRIM_APART);
+        let (density, bias) = (self.density, self.pressure.bias);
+        let (mut held, mut moved) = (0u64, 0u32);
+        let mut encoder: Option<wgpu::CommandEncoder> = None;
+        for (k, c) in self.chunks.iter_mut() {
+            held += c.count as u64;
+            let (Some(slot), Some(pool)) = (c.store, self.pool.as_mut()) else {
+                continue;
+            };
+            // (A tile hidden behind its chunk's whole run is about to replace it.)
+            if c.hidden || c.level >= details::MAX_LEVEL {
+                continue;
+            }
+            let (x, z) = chunk_of(*k);
+            let nearest = (cameras.iter())
+                .map(|cam| reach(x, z, *cam))
+                .fold(f32::MAX, f32::min);
+            let want = level_at((nearest - TRIM_APART).max(0.0), lod, density, bias);
+            let slack = if all { 0 } else { TRIM_SLACK };
+            let Some(to) = trim_level(c.level, want, slack) else {
+                continue;
+            };
+            let keep = c.prefix[to as usize].min(c.count);
+            if keep < c.count {
+                if !all && moved > 0 && moved + keep > TRIM_BLADES {
+                    continue;
+                }
+                let encoder = encoder.get_or_insert_with(|| {
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("misty grass trim"),
+                    })
+                });
+                c.store = Some(pool.trim(device, encoder, slot, c.count, keep));
+                if let (Some(arena), Some(at)) = (self.arena.as_mut(), c.arena) {
+                    c.arena = Some(arena.trim(device, encoder, at, c.count, keep));
+                }
+                held -= (c.count - keep) as u64;
+                moved += keep;
+                c.count = keep;
+                // (The CPU path's group binds the old run.)
+                c.group = None;
+                self.stats.trimmed += 1;
+            }
+            c.level = to;
+            c.prefix[..to as usize].fill(keep);
+        }
+        // The copies run now: before this frame's uploads, which may write over the runs
+        // given back, and before its passes.
+        if let Some(encoder) = encoder {
+            queue.submit([encoder.finish()]);
+        }
+        held
     }
 
     /// Take the workers' results: those of the current generation that still improve a piece
@@ -1025,6 +1292,10 @@ impl Grass {
                 self.in_flight.remove(&done.key);
             }
             Some(_) => {}
+        }
+        // Scattered finer than there is room for now: the piece is asked for again, coarser.
+        if done.bias < self.pressure.bias {
+            return;
         }
         let c = chunk_of(done.key);
         if is_tile(done.key) != self.tiled.contains(&c) {
@@ -1102,7 +1373,16 @@ impl Grass {
                     break;
                 };
                 self.stats.scatter_ms = self.stats.scatter_ms.max(done.scatter_ms);
-                let up = self.begin_upload(device, queue, done);
+                let bias = done.bias;
+                let Some(up) = self.begin_upload(device, queue, done) else {
+                    // No room for it: the piece keeps what it has and is asked for again,
+                    // a level coarser (once for all the pieces picked at this level).
+                    if bias >= self.pressure.bias {
+                        self.pressure.raise(true);
+                    }
+                    self.stats.refused += 1;
+                    continue;
+                };
                 let alloc_ms = piece_start.elapsed().as_secs_f32() * 1000.0;
                 self.stats.upload_alloc_ms = self.stats.upload_alloc_ms.max(alloc_ms);
                 self.uploading = Some(up);
@@ -1111,8 +1391,8 @@ impl Grass {
             let total = up.done.blades.len();
             let end = (up.written + UPLOAD_PIECE).min(total);
             let piece = &up.done.blades[up.written..end];
-            if let (Some(Store::Pool(slot)), Some(pool)) = (&up.store, &self.pool) {
-                pool.write(queue, *slot, up.written as u32, piece);
+            if let (Some(slot), Some(pool)) = (up.store, &self.pool) {
+                pool.write(queue, slot, up.written as u32, piece);
             }
             if let (Some(at), Some(arena)) = (up.arena, &self.arena) {
                 arena.write(queue, at, up.written as u32, piece);
@@ -1136,47 +1416,42 @@ impl Grass {
         self.stats.upload_ms += started.elapsed().as_secs_f32() * 1000.0;
     }
 
-    /// Room for a scattered piece's blades (a run in the pages, else a buffer of its own,
-    /// written whole) and its cull records.
-    fn begin_upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, done: Done) -> Upload {
+    /// Room for a scattered piece's blades (a run in the pages) and its cull records. None
+    /// when there is no room for them: the grass holds only what its pages and its arena
+    /// take (a piece outside them could not go through the culled lists and the visibility
+    /// buffer, and would cost every frame it is in view).
+    fn begin_upload(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        done: Done,
+    ) -> Option<Upload> {
         let n = done.blades.len() as u32;
-        let store = (n > 0).then(|| {
+        let (mut store, mut arena) = (None, None);
+        if n > 0 {
             let pool = self.pool.get_or_insert_with(|| BladePool::new(device));
-            match pool.alloc(device, queue, n) {
-                Some(slot) => Store::Pool(slot),
-                None => Store::Own(
-                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("misty grass blades"),
-                        contents: bytemuck::cast_slice(&done.blades),
-                        usage: wgpu::BufferUsages::STORAGE,
-                    }),
-                ),
+            let slot = pool.alloc(device, queue, n)?;
+            store = Some(slot);
+            if grass_cull_supported(device) {
+                let records = self.arena.get_or_insert_with(|| Arena::new(device));
+                arena = records.reserve(device, queue, n);
+                if arena.is_none() {
+                    pool.free(slot, n);
+                    return None;
+                }
             }
-        });
-        let arena = match (&store, grass_cull_supported(device)) {
-            (Some(_), true) => self
-                .arena
-                .get_or_insert_with(|| Arena::new(device))
-                .reserve(device, queue, n),
-            _ => None,
-        };
-        Upload {
+        }
+        Some(Upload {
             done,
             store,
             arena,
             written: 0,
-        }
+        })
     }
 
     /// Give a dropped piece's blades and cull records back.
     fn free_piece(&mut self, p: Chunk) {
-        free_chunk(
-            &mut self.arena,
-            &mut self.pool,
-            p.store.as_ref(),
-            p.arena,
-            p.count,
-        );
+        free_chunk(&mut self.arena, &mut self.pool, p.store, p.arena, p.count);
     }
 
     /// Swap a fully uploaded piece in (its older version's blades go back). The tiles of a
@@ -1187,13 +1462,7 @@ impl Grass {
         let c = chunk_of(done.key);
         if is_tile(done.key) && !self.tiled.contains(&c) {
             let n = done.blades.len() as u32;
-            free_chunk(
-                &mut self.arena,
-                &mut self.pool,
-                up.store.as_ref(),
-                up.arena,
-                n,
-            );
+            free_chunk(&mut self.arena, &mut self.pool, up.store, up.arena, n);
             return;
         }
         let (lo, side) = piece_rect(done.key);
@@ -1225,6 +1494,7 @@ impl Grass {
                 store: up.store,
                 count: blades.len() as u32,
                 level: done.level,
+                prefix: done.prefix,
                 stamp: done.stamp,
                 bounds,
                 arena: up.arena,
@@ -1277,7 +1547,7 @@ impl Grass {
             .chunks
             .iter()
             .filter_map(|(k, c)| {
-                c.store.as_ref().filter(|_| !c.hidden)?;
+                c.store.filter(|_| !c.hidden)?;
                 let world = Aabb::new(c.bounds.min + origin, c.bounds.max + origin);
                 let dist = camera.clamp(world.min, world.max).distance(camera);
                 let near = limit.is_none_or(|l| dist < l.range);
@@ -1308,7 +1578,7 @@ impl Grass {
                     verts,
                     first_vertex,
                 };
-                let blades = c.pooled().map_or(0, Slot::list_base);
+                let blades = c.store.map_or(0, Slot::list_base);
                 Some((draw, c.arena.unwrap_or(0), blades))
             })
             .collect()
@@ -1388,8 +1658,10 @@ impl Grass {
                 }
             }
         }
-        // The CPU path binds each chunk's run of blades on its own (and a chunk with a buffer
-        // of its own always does).
+        // The CPU path binds each chunk's run of blades on its own.
+        if gpu {
+            return;
+        }
         for d in cull.per_kind.iter().flatten() {
             let Some(c) = self.chunks.get_mut(&d.key) else {
                 continue;
@@ -1397,11 +1669,10 @@ impl Grass {
             if c.group.as_ref().is_some_and(|(g, _)| *g == key) {
                 continue;
             }
-            let blades = match (&c.store, &self.pool) {
-                (Some(Store::Own(buffer)), _) => buffer.as_entire_buffer_binding(),
-                (Some(Store::Pool(slot)), Some(pool)) if !gpu => pool.binding(*slot, c.count),
-                _ => continue,
+            let (Some(slot), Some(pool)) = (c.store, &self.pool) else {
+                continue;
             };
+            let blades = pool.binding(slot, c.count);
             let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("misty grass blades group"),
                 layout,
@@ -1421,20 +1692,13 @@ impl Grass {
     }
 
     /// This frame's lit grass can go through the visibility buffer: it is culled on the GPU
-    /// and every chunk it draws lives in the blade pages (the visibility ids name blades by
+    /// (every chunk lives in the blade pages, which the visibility ids name blades by:
     /// page and index, grass_vis.rs).
     pub fn vis_ready(&self) -> bool {
         let Some(cull) = &self.cull else {
             return true;
         };
-        let lit = &cull.per_kind[grass_cull::LIT];
-        lit.is_empty()
-            || (cull.culled()
-                && lit.iter().all(|d| {
-                    self.chunks
-                        .get(&d.key)
-                        .is_some_and(|c| c.pooled().is_some())
-                }))
+        cull.per_kind[grass_cull::LIT].is_empty() || cull.culled()
     }
 
     /// The blade pages (the visibility resolve reads blades by id from them).
@@ -1453,12 +1717,12 @@ impl Grass {
             dirty: self.dirty.len() as u32,
             culled: self.indirect(),
             bytes: self.bytes(),
+            coarser: self.pressure.bias,
             ..Default::default()
         };
         for c in self.chunks.values() {
             out.blades += c.count as u64;
             out.by_level[(c.level as usize).min(out.by_level.len() - 1)] += 1;
-            out.own += u32::from(matches!(c.store, Some(Store::Own(_))));
             out.unculled += u32::from(c.store.is_some() && c.arena.is_none());
         }
         if let Some(p) = &self.pool {
@@ -1558,7 +1822,7 @@ impl Grass {
             let Some(c) = self.chunks.get(&d.key) else {
                 continue;
             };
-            let group = match c.pooled() {
+            let group = match c.store {
                 Some(slot) if indirect => self.page_groups.get(slot.page as usize).map(|g| &g.1),
                 _ => c.group.as_ref().map(|g| &g.1),
             };
@@ -1579,11 +1843,7 @@ impl Grass {
     }
 
     pub fn bytes(&self) -> u64 {
-        let own: u64 = (self.chunks.values())
-            .filter(|c| matches!(c.store, Some(Store::Own(_))))
-            .map(|c| c.count as u64 * std::mem::size_of::<details::Blade>() as u64)
-            .sum();
-        own + self.pool.as_ref().map_or(0, BladePool::bytes)
+        self.pool.as_ref().map_or(0, BladePool::bytes)
             + self.arena.as_ref().map_or(0, Arena::bytes)
             + self.cull.as_ref().map_or(0, CullFrame::bytes)
     }
@@ -1593,15 +1853,15 @@ impl Grass {
 fn free_chunk(
     arena: &mut Option<Arena>,
     pool: &mut Option<BladePool>,
-    store: Option<&Store>,
+    store: Option<Slot>,
     records: Option<u32>,
     count: u32,
 ) {
     if let (Some(a), Some(at)) = (arena.as_mut(), records) {
         a.free(at, count);
     }
-    if let (Some(p), Some(Store::Pool(slot))) = (pool.as_mut(), store) {
-        p.free(*slot, count);
+    if let (Some(p), Some(slot)) = (pool.as_mut(), store) {
+        p.free(slot, count);
     }
 }
 
@@ -2227,3 +2487,7 @@ mod tests;
 #[cfg(test)]
 #[path = "grass_paint_tests.rs"]
 mod paint_tests;
+
+#[cfg(test)]
+#[path = "grass_trim_tests.rs"]
+mod trim_tests;

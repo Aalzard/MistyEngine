@@ -205,7 +205,7 @@ fn held(r: &Renderer, device: &wgpu::Device, frame: &crate::render::Frame) -> He
         grass.page_blades += g.page_blades;
         grass.page_free += g.page_free;
         grass.page_longest_free = grass.page_longest_free.max(g.page_longest_free);
-        grass.own += g.own;
+        grass.coarser = grass.coarser.max(g.coarser);
         grass.unculled += g.unculled;
         grass.records += g.records;
         grass.records_free += g.records_free;
@@ -444,7 +444,7 @@ fn levels(g: &GrassLoad) -> String {
 fn grass_line(h: &Held) -> String {
     let g = &h.grass;
     format!(
-        "{} pieces (levels {}), {:.2} M blades, {} pages {:.0} MB ({:.2} M free, longest run {:.2} M), {} in own buffers, {} without cull records, culled on the GPU: {}, visibility buffer: {}",
+        "{} pieces (levels {}), {:.2} M blades, {} pages {:.0} MB ({:.2} M free, longest run {:.2} M), {} levels coarser for lack of room, {} without cull records, culled on the GPU: {}, visibility buffer: {}",
         g.pieces,
         levels(g),
         g.blades as f64 / 1e6,
@@ -452,7 +452,7 @@ fn grass_line(h: &Held) -> String {
         mb(g.page_blades * super::grass_pool::BLADE_BYTES),
         g.page_free as f64 / 1e6,
         g.page_longest_free as f64 / 1e6,
-        g.own,
+        g.coarser,
         g.unculled,
         g.culled,
         h.vis,
@@ -557,7 +557,8 @@ fn grass_walk_report() {
     let n = d.alphamap_resolution;
     let mut over = (0usize, 0usize, 0usize);
     for p in &path {
-        let inside = p.at.cmpge(Vec2::ZERO).all() && p.at.cmplt(Vec2::new(d.size.x, d.size.z)).all();
+        let inside =
+            p.at.cmpge(Vec2::ZERO).all() && p.at.cmplt(Vec2::new(d.size.x, d.size.z)).all();
         over.0 += usize::from(!inside);
         if inside && d.detail_map.len() == n * n {
             let tx = ((p.at.x / d.size.x * n as f32) as usize).min(n - 1);
@@ -599,12 +600,20 @@ fn grass_walk_report() {
         timed: 120,
         parts: true,
     };
-    let run = walk(&device, &queue, &view, &quality, setup, &script, (start, yaw));
+    let run = walk(
+        &device,
+        &queue,
+        &view,
+        &quality,
+        setup,
+        &script,
+        (start, yaw),
+    );
     eprintln!("every tenth second of the walk:");
     for s in run.seconds.iter().step_by(10) {
         let g = &s.held.grass;
         eprintln!(
-            "  {:6.0} m: wall {:5.2} (p95 {:5.2}, max {:6.2}) cpu {:5.2} gpu {:5.2} ms | {:4} pieces {:5.2} M blades, {} pages, {:3} own, {:3} unculled, vis {:5} | {:3} pending, {:3} uploaded | grass {:4.0} MB, device {:5.0} MB, private {:5.0} MB",
+            "  {:6.0} m: wall {:5.2} (p95 {:5.2}, max {:6.2}) cpu {:5.2} gpu {:5.2} ms | {:4} pieces {:5.2} M blades, {} pages, {} coarser, {:3} unculled, vis {:5} | {:3} pending, {:3} uploaded | grass {:4.0} MB, device {:5.0} MB, private {:5.0} MB",
             s.walked,
             s.wall.median,
             s.wall.p95,
@@ -614,7 +623,7 @@ fn grass_walk_report() {
             g.pieces,
             g.blades as f64 / 1e6,
             g.pages,
-            g.own,
+            g.coarser,
             g.unculled,
             s.held.vis,
             s.pending,
@@ -629,7 +638,7 @@ fn grass_walk_report() {
     }
     if let Ok(path) = std::env::var("MISTY_WALK_CSV") {
         let mut csv = String::from(
-            "frame,walked_m,wall_ms,wall_p95_ms,wall_max_ms,cpu_ms,gpu_ms,pieces,blades,pages,page_blades,page_free,longest_free,own,unculled,culled,vis,pending,uploaded,in_flight,ready,cameras,grass_bytes,buffers,textures,gpu_allocated,gpu_reserved,private,working,draws,triangles,lit_tested\n",
+            "frame,walked_m,wall_ms,wall_p95_ms,wall_max_ms,cpu_ms,gpu_ms,pieces,blades,pages,page_blades,page_free,longest_free,coarser,unculled,culled,vis,pending,uploaded,in_flight,ready,cameras,grass_bytes,buffers,textures,gpu_allocated,gpu_reserved,private,working,draws,triangles,lit_tested\n",
         );
         for s in &run.seconds {
             let g = &s.held.grass;
@@ -648,7 +657,7 @@ fn grass_walk_report() {
                 g.page_blades,
                 g.page_free,
                 g.page_longest_free,
-                g.own,
+                g.coarser,
                 g.unculled,
                 u8::from(g.culled),
                 u8::from(s.held.vis),

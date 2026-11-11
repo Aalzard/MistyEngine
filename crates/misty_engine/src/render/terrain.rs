@@ -1734,6 +1734,11 @@ impl TerrainCache {
             out.upload_piece_ms = out.upload_piece_ms.max(s.upload_piece_ms);
             out.upload_alloc_ms = out.upload_alloc_ms.max(s.upload_alloc_ms);
             out.scatter_ms = out.scatter_ms.max(s.scatter_ms);
+            out.trimmed += s.trimmed;
+            out.refused += s.refused;
+            out.coarser = out.coarser.max(s.coarser);
+            out.chunks += s.chunks;
+            out.blades += s.blades;
         }
         out
     }
