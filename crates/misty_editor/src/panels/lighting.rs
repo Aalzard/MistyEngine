@@ -36,12 +36,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     });
     ui.data_mut(|d| d.insert_temp(id, page));
     ui.separator();
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| match page {
-            Page::Scene => scene_page(ui, state),
-            Page::Environment => environment_page(ui, state),
-        });
+    let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
+    if let Some(px) = crate::capture::lighting_scroll() {
+        area = area.vertical_scroll_offset(px);
+    }
+    area.show(ui, |ui| match page {
+        Page::Scene => scene_page(ui, state),
+        Page::Environment => environment_page(ui, state),
+    });
 }
 
 /// Lighting Settings of the scene: Mixed Lighting, Lightmapping Settings, Generate Lighting
