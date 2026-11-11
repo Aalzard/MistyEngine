@@ -86,14 +86,16 @@ allocator 1679-1715 MB, 4 pages (456 MB), nothing refused or thinned. The full t
 v0.3.2 (`base-v032-high.log`, walk at 0.4 scale): 15.1 ms at the start, 41.3 ms after 200 m,
 39.9 ms at the end; own buffers from 115 m, no cull records from 150 m: the same fault.
 
-## Status
-- Done: harness, fix, tests, numbers before / after / v0.3.2, clippy (0 warnings), fmt,
-  `docs/progress.md` section.
-- Running or next: golden shots (`golden.log`), full workspace tests (`fulltest.log`) in
-  `D:\MistyTargets35-scratch\`.
-- The worktree `MistyWork35-v032` (v0.3.2 + harness, uncommitted, detached) and
-  `D:\MistyTargets35-v032`, `r35-grass-fps`, `r35-scratch` can be deleted when the round
-  is merged.
+## Status: finished
+- fmt clean, clippy `--workspace --all-targets --release` 0 warnings.
+- Golden shots: all 20 ok (0.00-0.03 % changed).
+- Full workspace tests: 2279 passed, 4 failed in the full run and passed when run alone
+  (machine busy with other builds): `world_partition` frame budgets (2, timing) and the
+  editor's `registry_url_page_in_project_settings` and `saveloc_demo_plays` (the latter read
+  an Arabic string: locale left set by another test in the same run). None touch grass.
+- Logs and CSVs: `D:/MistyTargets/r35-scratch/` (base-main-high, fix2-main-high,
+  fix4-main-high, base-v032-high, golden.log, fulltest.log). The v0.3.2 worktree and its
+  target were removed; the test binaries in the scratch folder too.
 
 ## Found, not fixed
 - The editor Console keeps every message and lays out every row each frame
