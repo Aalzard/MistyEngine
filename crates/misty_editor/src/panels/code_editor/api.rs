@@ -130,6 +130,57 @@ RenderSettings|fogStartDistance|fogStartDistance|Linear fog start
 RenderSettings|fogEndDistance|fogEndDistance|Linear fog end
 RenderSettings|ambientIntensity|ambientIntensity|Environment Lighting intensity
 RenderSettings|reflectionIntensity|reflectionIntensity|Environment Reflections intensity
+RenderSettings|moon|moon|Moon on/off (disc, stars and moonlight at night)
+RenderSettings|moonMode|moonMode|"FollowSun", "Manual" or "DateTime"
+RenderSettings|moonPhase|moonPhase|Phase 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter
+RenderSettings|moonAzimuth|moonAzimuth|Manual: degrees from north towards east
+RenderSettings|moonAltitude|moonAltitude|Manual: degrees above the horizon
+RenderSettings|moonDate|moonDate|DateTime: local date "YYYY-MM-DD"
+RenderSettings|moonTime|moonTime|DateTime: local time in hours
+RenderSettings|moonUtcOffset|moonUtcOffset|DateTime: hours east of UTC
+RenderSettings|moonLatitude|moonLatitude|Observer latitude (degrees north)
+RenderSettings|moonLongitude|moonLongitude|Observer longitude (degrees east)
+RenderSettings|moonSize|moonSize|Moon size, multiple of its real size
+RenderSettings|moonBrightness|moonBrightness|Moon disc brightness
+RenderSettings|moonEarthshine|moonEarthshine|Earthshine on the dark side
+RenderSettings|moonLightIntensity|moonLightIntensity|Moonlight intensity at full moon
+RenderSettings|moonLightColor|moonLightColor|Moonlight colour
+RenderSettings|nightSky|nightSky|Night sky on/off
+RenderSettings|nightSkyDarkness|nightSkyDarkness|Night Sky Darkness: darkens the night sky colour, 0..1, stars stay
+RenderSettings|stars|stars|Star field brightness at night (0 = none)
+RenderSettings|starDensity|starDensity|How many stars, 1 = default, up to 3
+RenderSettings|starMagnitudeSpread|starMagnitudeSpread|0 = stars about equally bright, 1 = a few very bright among many faint
+RenderSettings|starGlow|starGlow|Glow and bloom around the bright stars
+RenderSettings|starColorVariation|starColorVariation|Star colour temperature spread, bluish to orange
+RenderSettings|starTwinkle|starTwinkle|Twinkle strength (stronger near the horizon)
+RenderSettings|starTwinkleSpeed|starTwinkleSpeed|Twinkle speed
+RenderSettings|starFade|starFade|How much a bright sky washes out stars and the Milky Way
+RenderSettings|skyTime|skyTime|Local sidereal time in hours: turns the stars and the Milky Way (not in DateTime mode)
+RenderSettings|milkyWay|milkyWay|Milky Way visibility (0 = none)
+RenderSettings|milkyWayCore|milkyWayCore|Milky Way core brightness
+RenderSettings|milkyWayDust|milkyWayDust|Milky Way dust lane strength
+RenderSettings|milkyWayWidth|milkyWayWidth|Milky Way width multiplier
+RenderSettings|lightPollution|lightPollution|Horizon glow of towns; washes out stars
+RenderSettings|aurora|aurora|Aurora visibility (0 = none)
+RenderSettings|auroraHeight|auroraHeight|Aurora lower edge in km
+RenderSettings|auroraThickness|auroraThickness|Aurora thickness in km
+RenderSettings|auroraWaviness|auroraWaviness|Aurora fold amplitude
+RenderSettings|auroraRays|auroraRays|Aurora vertical ray detail
+RenderSettings|auroraAzimuth|auroraAzimuth|Aurora direction in degrees from north towards east
+RenderSettings|auroraDistance|auroraDistance|Aurora distance over the ground in km (far = low on the sky)
+RenderSettings|auroraSpeed|auroraSpeed|Aurora animation speed
+RenderSettings|auroraPulse|auroraPulse|Aurora pulsing and flicker
+RenderSettings|auroraAmbient|auroraAmbient|How much the aurora tints the scene's sky light
+RenderSettings|meteorRate|meteorRate|Shooting stars per minute (0 = none)
+RenderSettings|meteorBrightness|meteorBrightness|Shooting star brightness
+RenderSettings|milkyWayTint|milkyWayTint|Milky Way tint
+RenderSettings|lightPollutionColor|lightPollutionColor|Light pollution colour
+RenderSettings|auroraColor|auroraColor|Aurora colour low in the curtains
+RenderSettings|auroraTopColor|auroraTopColor|Aurora colour at the curtain tops
+RenderSettings|auroraCurtains|auroraCurtains|Number of aurora curtains, 1..6
+RenderSettings|moonTexture|moonTexture|Moon texture path (nil = built-in)
+RenderSettings|moonIllumination|moonIllumination|Lit fraction of the moon (read-only)
+RenderSettings|moonDirection|moonDirection|Vector3 towards the moon (read-only)
 AudioSource|PlayClipAtPoint|PlayClipAtPoint(clipPath, position [, volume])|A 3D one-shot at a fixed point
 AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil

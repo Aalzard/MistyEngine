@@ -451,6 +451,28 @@ next frame.
 | `fogStartDistance`, `fogEndDistance` | Linear fog range. |
 | `ambientIntensity` | Environment Lighting intensity multiplier. |
 | `reflectionIntensity` | Environment Reflections intensity multiplier. |
+| `moon` | Moon on/off: the disc, the stars and the moonlight at night (boolean). |
+| `moonMode` | `"FollowSun"` (on the sun's path, `moonPhase` × 360° east of it), `"Manual"` or `"DateTime"`. |
+| `moonPhase` | 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter (FollowSun, Manual). |
+| `moonAzimuth`, `moonAltitude` | Manual position in degrees (azimuth from north towards east). |
+| `moonDate`, `moonTime`, `moonUtcOffset` | DateTime: `"YYYY-MM-DD"`, local hours, hours east of UTC. |
+| `moonLatitude`, `moonLongitude` | Observer position in degrees (north / east positive). |
+| `moonSize`, `moonBrightness`, `moonEarthshine` | Disc size (× real), brightness and dark-side earthshine. |
+| `moonLightIntensity`, `moonLightColor` | Moonlight for a full moon high up, and its tint. |
+| `stars` | Star field brightness at night (0 = none). |
+| `moonTexture` | Project path of the moon image, `nil` = built-in. |
+| `moonIllumination` | Lit fraction of the disc, 0..1 (read-only). |
+| `moonDirection` | `Vector3` towards the moon, `nil` when it is off (read-only). |
+| `nightSky`, `nightSkyDarkness` | Night sky on/off; darkening of the sky colour (0..1, the stars stay). |
+| `stars`, `starDensity`, `starMagnitudeSpread`, `starGlow` | Star brightness, count (×), spread of magnitudes (0..1), glow of the bright ones. |
+| `starColorVariation`, `starTwinkle`, `starTwinkleSpeed`, `starFade` | Colour temperature spread, twinkle and its speed, fading in a bright sky. |
+| `skyTime` | Sidereal time in hours (turns the stars and the Milky Way; not in DateTime mode). |
+| `milkyWay`, `milkyWayCore`, `milkyWayDust`, `milkyWayWidth`, `milkyWayTint` | Milky Way visibility, core, dust lanes, width, tint (`Color`). |
+| `lightPollution`, `lightPollutionColor` | Town glow on the horizon and its colour. |
+| `aurora`, `auroraColor`, `auroraTopColor` | Aurora visibility and its lower / top colours. |
+| `auroraHeight`, `auroraThickness`, `auroraCurtains`, `auroraWaviness`, `auroraRays` | Curtain height and thickness (km), count (1–6), folds, ray detail. |
+| `auroraAzimuth`, `auroraDistance`, `auroraSpeed`, `auroraPulse`, `auroraAmbient` | Direction (°), distance (km), animation speed, pulsing, light on the scene. |
+| `meteorRate`, `meteorBrightness` | Shooting stars per minute and their brightness. |
 
 ```lua
 local Dusk = { speed = 0.02 }
@@ -461,7 +483,7 @@ function Dusk:Update()
 end
 return Dusk
 ```
-The fog mode and the skybox are not scriptable yet.
+The fog mode and the skybox are not scriptable yet. `Assets/Scripts/MoonCycle.lua` (MoonDemo) runs `moonPhase` round.
 
 ### Physics queries
 

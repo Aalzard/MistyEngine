@@ -11,7 +11,7 @@ use misty_engine::scene::render_settings::{
     AmbientSource, FogMode, RenderSettings, SkyboxKind, SunDisk,
 };
 
-use super::lighting_hdri;
+use super::{lighting_hdri, lighting_moon};
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -204,7 +204,16 @@ fn environment_page(ui: &mut Ui, state: &mut EditorState) {
         .any(|l| l.kind == misty_engine::scene::LightType::Directional);
     let hdri = (s.skybox.kind == SkyboxKind::Hdri).then(|| lighting_hdri::context(ui, state, sun));
     let mut align_sun = false;
-    if edit_environment(ui, &mut s, sun, hdri.as_ref(), &mut align_sun) {
+    let mut ch = edit_environment(ui, &mut s, sun, hdri.as_ref(), &mut align_sun);
+    if s.skybox.kind != SkyboxKind::SolidColor {
+        let cx = lighting_moon::MoonContext::new(state.assets.textures.clone(), &s.moon);
+        ch |= lighting_moon::section(ui, &mut s.moon, &cx);
+        if s.skybox.kind == SkyboxKind::Procedural {
+            let date_time = s.moon.mode == misty_engine::moon::MoonMode::DateTime;
+            ch |= lighting_moon::night_section(ui, &mut s.night_sky, date_time);
+        }
+    }
+    if ch {
         let label = crate::undo_names::struct_change("", &state.scene.render_settings, &s);
         state.scene.render_settings = s;
         state.mark_edited(&label);
@@ -348,7 +357,7 @@ fn edit_environment(
     ch
 }
 
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     ui.indent(id, |ui| {
         Grid::new(id)
             .num_columns(2)

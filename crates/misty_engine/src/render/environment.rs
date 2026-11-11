@@ -216,7 +216,7 @@ impl Environment {
         } else {
             horizon.lerp(ground, (-dir.y * 6.0).min(1.0).sqrt())
         };
-        c * self.daylight() * sky.exposure
+        super::moon::night_mix(self, dir, c * self.daylight() * sky.exposure)
     }
 
     /// Ambient sky / equator / ground colours (linear, before the intensity multiplier).
