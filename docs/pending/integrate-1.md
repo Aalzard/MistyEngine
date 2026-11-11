@@ -22,17 +22,18 @@ Worktree `MistyWork\integrate`, from main d1703eb3. Cargo target `D:/MistyTarget
   --no-fail-fast`: editor 868 passed / 0 failed / 84 ignored, engine 1466 / 0 / 98 ignored,
   player 11 / 0, doc tests ok; clippy `--workspace --all-targets --release` 0 warnings;
   `cargo fmt --all --check` clean.
-- Golden check: cut by the power loss after 13 of 20 shots, all 13 ok with the same numbers
-  as main (meadow low/medium/high/ultra wide, close, behind; low oak). Run it again whole.
+- Golden check (GPU lock): 20/20 ok, the same numbers as main (mean 0.00-0.39, changed at
+  most 0.03 %). The round 33 shader change moves no shot.
+- Aurora screenshots re-rendered (`MISTY_MOON_SHOTS=night`): the three aurora shots and
+  `night_sky_demo.jpg` changed, the others came out byte-identical.
+- Editor sanity run on a project copy under D: (`shots.py`): `docs/screenshots/integrate-1/`
+  (MoonDemo, NightSkyDemo, WeatherDemo in Play under Light Rain and in Edit mode, the Lighting
+  window's Moon and Night Sky sections). Turkish and Arabic checked by eye (scratch `shots/`).
+- "Integration 1" section in docs/progress.md.
 
-## Left (in order)
-Use `-j 4` (two shared build slots now). `gpu1.sh` in the scratch folder prebuilds, takes the
-GPU lock, runs the golden check and the night screenshots.
-1. Golden check under the GPU lock (`golden_shots`, 20 shots). r33 changed `mesh.wgsl`
-   (`uv_centroid` for `fs_unlit`), `terrain.wgsl`, the vgeo shaders and the custom-shader wrap.
-2. Aurora screenshots: `MISTY_MOON_SHOTS=night`, `sample_moon::render_moon_screenshots`
-   (ignored test, GPU lock).
-3. Editor sanity run on `integrate-scratch/project/SampleProject` with `shots.py` into
-   `docs/screenshots/integrate-1/`.
-4. "Integration 1" section in docs/progress.md.
-5. Delete `SampleProject/Assets/Models/Crate_*` left by the test runs.
+## Left
+- Nothing blocking the merge into main (not pushed, main untouched).
+- Small: in a narrow Lighting tab the phase name after the Phase slider is clipped
+  ("Waxing Cre..."); as in r27, not fixed here.
+- When done with this branch: delete `D:\MistyTargets\integrate`, `integrate-scratch` and
+  `tmp\integrate`.

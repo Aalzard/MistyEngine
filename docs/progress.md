@@ -3740,3 +3740,36 @@ MCP and the renderer; the bug list, routing and status per bug are in
   API with events, generated audio, shader validation (naga) of every lit shader with the
   hook, GPU: rain and snow draw, a disabled volume changes no pixel, no snow under a roof
   (and snow there without the occlusion map); WeatherDemo matches its generator and plays.
+
+## Integration 1 — rounds 33, 27 and 34 together (branch integrate-1)
+
+### Done
+- Merged onto main d1703eb3, in this order: `r33-qa` (engine-wide fixes), `r27-moon` (moon,
+  moonlight, stars, Milky Way, aurora, meteors), `r34-weather` (rain, snow, storms, timeline).
+  Conflicts: this file (every section kept), the Turkish and Arabic files (the terrain / guide
+  tables and the weather table both kept) and the view bind group in
+  `render/volumetrics/mod.rs`: it now takes the sky's five entries (the moon texture is binding
+  11) and the weather's two (bindings 24 and 25).
+- Round 27 loose ends: two clippy warnings; the night sky GPU cost table above; the aurora
+  screenshots re-rendered after the white-noise step jitter (no diagonal hatching; a single
+  frame without TAA shows fine grain instead). MoonDemo, NightSkyDemo and WeatherDemo were
+  rewritten by their write tests on the combined engine: byte-identical, nothing to commit.
+- Round 34 loose ends: `api_docs::SOURCES` did not read `scripting/weather_api.rs`
+  (`every_binding_source_is_read` failed); docs/api regenerated (900 members, 107 sections).
+- New names and languages: the Lighting window's Moon and Night Sky sections go through
+  `tr!()` with Turkish and Arabic entries (`[night_sky]` tables; "Manual", "Phase", "Time",
+  "Core" and "Pulse" carry a `#context` so they do not take over other meanings); the Weather
+  component's Preview tooltip says Editor Scene and Scene Viewer.
+- `MISTY_LIGHTING_SCROLL=<px>` scrolls the Lighting window and opens the Night Sky groups
+  (screenshots).
+- Checks on the combined branch: `cargo fmt --all --check` clean; clippy `--workspace
+  --all-targets --release` 0 warnings; `cargo test --workspace --release --no-fail-fast`:
+  editor 868 passed, engine 1466 passed, player 11 passed, 0 failed; golden shots 20/20 with
+  the same numbers as main (mean 0.00–0.39, changed at most 0.03 %): the round 33 shader change
+  (`uv_centroid`, used only by `fs_unlit`) moves no golden shot.
+- Screenshots of the editor on the combined branch: `docs/screenshots/integrate-1/`.
+
+### Not done yet
+- The Lighting window outside the Moon and Night Sky sections is still English only.
+- Weather and the night sky were not tuned together (a storm at night dims the moonlight
+  through the same sun dimming; no look pass was done on it).
