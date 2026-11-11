@@ -457,6 +457,16 @@ impl WeatherWorld {
         self.script.as_ref().is_some_and(|s| s.weight_target > 0.0)
     }
 
+    /// The state a script is holding the weather in (`Weather.SetState` and friends), as the
+    /// nearest preset; `None` when no script holds it. The Properties panel names it, since
+    /// a held state hides every value of the Weather volumes until it is cleared.
+    pub fn script_state(&self) -> Option<WeatherPreset> {
+        self.script
+            .as_ref()
+            .filter(|s| s.weight_target > 0.0)
+            .map(|s| s.to.nearest_preset())
+    }
+
     /// A strike now at `position` (scripts, the demo's key).
     pub fn strike(&mut self, position: Vec3, intensity: f32) {
         let d = (position - self.camera).length();
