@@ -150,3 +150,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         crate::panels::code_editor::open_console_location(state, &msg);
     }
 }
+
+#[cfg(test)]
+#[path = "console_tests.rs"]
+mod tests;

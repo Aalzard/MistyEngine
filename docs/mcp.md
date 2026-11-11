@@ -144,7 +144,7 @@ unknown or mistyped arguments are refused with the list of expected ones. Client
 | `editor.get_state` | Project, scenes, Play mode, selection, undo/redo, Console counts |
 | `editor.list_menu_items` / `editor.run_menu_item` | Any menu bar command by path (`"Object/3D Object/Cube"`, `"Assets/Refresh"`, editor-script menu items); returns what it logged. Older paths still run: `"GameObject/…"`, `"Component/…"`, `"Hierarchy/…"`, `"Window/General/Inspector"` and the other old window names, and `"… Virtual Geometry"` entries |
 | `editor.play` / `editor.stop` / `editor.pause` | Play mode (live editor only) |
-| `editor.read_console` | Console lines with an index; `since` reads only new ones, `level` filters |
+| `editor.read_console` | Console lines with an index; `since` reads only new ones, `level` filters; says how many lines were dropped (see below) |
 | `editor.screenshot` | A PNG of the Editor Scene or the Scene Viewer, as MCP image content |
 | `editor.run_tests` | The project's Lua tests (EditMode / PlayMode, `filter`), with failures |
 | `editor.build` | Build the player into a folder; returns the executable's path |
@@ -154,6 +154,16 @@ In `--mcp` mode the Editor Scene screenshot uses the camera position saved with 
 renderer starts on the first screenshot (a GPU is needed; the tool says so when there is none).
 In the live editor a screenshot without a size is the view as it is on screen (without the editor
 overlays); with a size, or for a closed view, it is rendered offscreen.
+
+**Console indices.** The Console keeps the newest lines only (10,000 unless Edit ▸ Preferences ▸
+Console Lines says otherwise) and drops older ones. A line's `index` never changes: indices keep
+counting up when old lines are dropped and when the Console is cleared (by the user, or by Clear
+on Play). `editor.read_console` returns `next` (pass it as `since` in the next call), `first` (the
+index of the oldest line still kept) and `dropped`: how many lines from `since` on are gone
+because they were dropped or cleared before you read them (0 when you kept up). With `dropped`
+above 0 you get what is left, from `first` on. The `counts` (also in `editor.get_state`) count
+every line logged since the last Clear, dropped ones included, so `total` can be more than the
+lines you can still read.
 
 ## Security
 
