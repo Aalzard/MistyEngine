@@ -3772,11 +3772,23 @@ MCP and the renderer; the bug list, routing and status per bug are in
     the head of each streak only (frozen drops).
   - Heavy rain pulls distant colour towards grey; an early frustum test skips the occlusion
     lookups of drops outside the picture.
+  - **Streaks bend**: a drop's path through one exposure bows or snakes a little (a few % of
+    its length, more in turbulent wind, less for big drops and out-of-focus ones), drawn in
+    the fragment shader inside a widened quad, so no streak is a ruled line.
+  - **Against a bright sky** a drop is a little darker than the sky (a lens shows the ground
+    below the horizon), so rain reads as grey streaks there instead of vanishing.
+- **Rain stops in terrain tree crowns**: the occlusion map also draws each terrain tree's
+  crown near the camera (the upper half of the ellipsoid the GI uses, at 0.8 of its size,
+  `occlusion_crowns.wgsl`), so it no longer rains through the oaks and the ground under
+  them stays drier.
+- **Presets**: Sleet is thicker (22 drops and 11 flakes per m³), Thunderstorm by day lets
+  more light through (sun dimming 0.78, ambient 0.48; nights stay dark).
 - **Night storms are dark**: the test's night is a real one (sun under the horizon, r27's
   moon and night sky); rain is lit by lamps and lightning. The flash lights the cloud base
   in cloud shapes round the strike instead of whitening the whole sky and the haze.
-- **Splashes**: droplets on real arcs (2–5 per splash), a thin broken ring, a small crown
-  from the biggest drops only; clear water lit by the light around it; every splash differs.
+- **Splashes**: droplets on real arcs (2–5 per splash), a thin broken ring, a low smooth
+  corona from the biggest drops only (tall ragged cups read as grass tufts); clear water lit
+  by the light around it; every splash differs.
 - **Snow**: the same depth of field as the rain (big soft flakes near the lens), flakes
   smeared by wind are soft dashes instead of pills, a faster exposure, far flakes thin into
   the haze in a gale.

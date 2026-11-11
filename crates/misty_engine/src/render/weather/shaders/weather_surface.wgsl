@@ -62,7 +62,7 @@ fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
         // Soil and turf (very rough surfaces) soak the water up: they darken and stay dull,
         // and hold fewer puddles; sealed surfaces (asphalt, stone, wood) carry the film.
         let sealed = smoothstep(0.04, 0.12, s.smoothness + s.metallic);
-        s.smoothness = mix(s.smoothness, max(s.smoothness, mix(0.3, mix(0.6, 0.86, film), sealed)), wet);
+        s.smoothness = mix(s.smoothness, max(s.smoothness, mix(0.3, mix(0.58, 0.8, film), sealed)), wet);
         // Puddles on flat open ground.
         let flatness = smoothstep(0.94, 0.99, n.y);
         let fill = a.y * weather.snow_line.z * mix(0.45, 1.0, sealed);
@@ -73,7 +73,10 @@ fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
             if (puddle > 0.0) {
                 s.albedo = mix(s.albedo, s.albedo * 0.3, puddle);
                 s.metallic = mix(s.metallic, 0.0, puddle);
-                s.smoothness = mix(s.smoothness, 0.985, puddle);
+                // Not a perfect mirror: rain keeps a puddle's surface stirred, so what it
+                // reflects is softened (a sharp mirror also shows every hard edge of the
+                // screen-space reflection and the probes).
+                s.smoothness = mix(s.smoothness, 0.94, puddle);
                 var nn = mix(n, vec3<f32>(0.0, 1.0, 0.0), puddle);
                 let rain = weather_precip_at(world).x;
                 if (weather.surface.w > 0.5 && rain > 0.0) {

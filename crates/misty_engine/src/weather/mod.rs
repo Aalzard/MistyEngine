@@ -203,7 +203,7 @@ impl WeatherPreset {
             }
             Self::Sleet => {
                 rain(&mut p, 0.45, 22.0, 1.3, 5.5, 0.55);
-                snow(&mut p, 0.45, 11.0, 0.6, 2.2, 0.3);
+                snow(&mut p, 0.45, 18.0, 0.6, 2.2, 0.3);
                 sky(&mut p, 0.9, 0.9, 0.7, 0.4, 1500.0);
                 p.wind_speed = 5.0;
                 p.gusts = 0.4;

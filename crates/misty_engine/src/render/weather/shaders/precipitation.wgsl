@@ -706,7 +706,7 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     // thousandth of a second: it freezes the drop where it is (the head of the streak).
     var glint = sun_scatter(in.world, v, 0.8) * 0.8;
     glint += local_scatter(in.world, v, 0.7);
-    glint += flash_scatter(v, 0.6) * 2.0 * (1.0 - smoothstep(0.02, 0.14, y));
+    glint += flash_scatter(v, 0.6) * 0.9 * (1.0 - smoothstep(0.02, 0.1, y));
     // Glints sit in the drop's bright core (a thin line down a thick streak); out of focus
     // the core spreads over the whole blur.
     col += glint * mix(mix(1.0, exp(-x * x * 5.0) * 1.6, thick), 1.0, soft);
