@@ -3625,10 +3625,38 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   metered without the brightest fifth; Forest Floor sky light fixed (the field is the light
   that reaches the layer, 1 = open). 2K fern and groundcover atlases. Fern and groundcover
   recipes within the loader's limits (≥ 1 m, ≤ 2.0 crown width), scaled per instance.
-- Rounds r9–r14 rendered with the 9-view harness; shots in `docs/screenshots/r26/level_*.jpg`.
+- Rounds r9–r14 rendered with the 9-view harness.
+
+### Rounds r15–r20 (scene and engine on this branch, `main` merged in)
+- Treeline wood (`wood_cell`): its own trees (Wood Oak, Wood Beech, Sapling: tall bare trunks,
+  high thin crowns), slim birches between them, pools of sun where a tree is missing, ferns,
+  bushes and carpets of broad-leaved plants; sun Shadow Softness 0.35 (crisp leaf shadows); a
+  Fog Volume of light haze among the trunks. About a third of the floor is sunlit, as in the
+  reference.
+- Light: Misty GI off for this scene (its crown proxies left the open wood's floor with no
+  sky light) and ambient light as a gradient (sky, bounce from the sides and below): the
+  shade is warm and readable instead of black-blue. Forest Floor sky light 0.5.
+- Textures (`tools/noon_valley_textures.py`): new leaf litter (cupped, veined leaves in
+  layers, round sticks, baked shade), darker true-green fern and groundcover atlases, a
+  cream daisy (the sample daisy tinted); limestone without the brick-like joints.
+- Meadow: deeper sky, separate cumulus all over it (engine: Cumulus evens the weather map),
+  cream and yellow flower drifts (coverage 0.22, 14 m patches, LOD 80 m), yellower grass,
+  hillside crowns darker and lumpier with missing trees as dark hollows, cliff sites where
+  the hill crosses the view, far ranges closed woods under bluer haze.
+- Grass 800 cards of 4 cm → 520 of 5 cm (the blades are 2.5× MeadowDemo's height): 45 M → 32 M
+  triangles in the first view.
+- Timings, High 1920 × 1080, r20: first view GPU 18.6 ms / CPU 1.8 ms, inside the wood GPU
+  12.2 ms / CPU 1.7 ms (r14: 20.0 / 2.4 and 14.4 / 2.9).
+- Shots: `docs/screenshots/r26/level_r20_*.jpg` and `level_r20_sheet.jpg`.
 
 ### Not done yet
-- GPU time on High at 1080p: hero ~20 ms, inside ~14 ms (goal 12 ms); grass is ~8 ms of the
-  hero view (engine requests in the pending doc).
-- The cumulus field cannot be placed (no seed/offset), so the hero view's sky does not
-  match the reference's mid-elevation heaps.
+- First view GPU time is 18.6 ms against the 12 ms goal: grass is ~7 ms of it (visibility
+  3.2, shading 2.2, near shadow maps 1.1), trees 3.5. The grass engine is being worked on in
+  another branch (`r35-grass-fps`); only scene settings were changed here.
+- Against the meadow reference: the limestone cliffs are small pale patches, not large faces
+  with trees on top; the cumulus are smaller and more numerous, without grey flat bases; the
+  grass blades are coarser; the hill's crowns are more even.
+- Against the forest reference: the floor has far less groundcover (bare litter between
+  separate ferns), the litter texture is procedural and reads flat close up, trunks have
+  stumpy flared feet and no visible branching, sunlit litter is paler.
+- Hi-Z tree occlusion stays off (the Low golden drift's cause was not found).

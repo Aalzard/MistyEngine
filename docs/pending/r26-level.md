@@ -24,6 +24,37 @@ and **Occlusion** (with `tr!()`, Turkish and Arabic entries).
   and tree rendering settings for a run (cost against look without regenerating); the inside
   views stand 2.5 m from the nearest trunk (was 4 m).
 
+### Rounds r15–r20
+
+- r15 (3f3ca431): `wood_cell` (open treeline wood, new prototypes 9–11), new litter / fern /
+  groundcover textures, `CLIFFS` sites, closed far woods, cream daisies, Forest Haze fog
+  volume, sun Shadow Softness 0.35, sky tint 0.15/0.27/0.42. Result: crisp dapple, but the
+  sky overcast (cumulus coverage 0.4 after the engine change) and the shade black.
+- r16: +0.6 EV and floor sky light 1: everything overexposed (compensation applies in the
+  meadow too). Undone.
+- r17: Misty GI off, coverage 0.3, smaller drifts. Meadow good; shade still black-blue: the
+  skybox ambient under the deep sky tint is dark and blue.
+- r18: cliff sites moved to where the hill crosses the view (ahead 700–1250 m; nearer ones
+  hide behind the hill's own flank), darker litter.
+- r19 (6b1c802b): ambient light as a Gradient (sky 0.5/0.6/0.8, equator 0.46/0.5/0.44, ground
+  0.3/0.29/0.2): the shade warm and readable. Grass 520 cards of 5 cm.
+- r20 (fd57acf6): floor sky light 0.5, wider carpets, barer cliff sites. Final shots.
+
+Lower half of the inside view, linear luminance percentiles 25 / 50 / 75 / 95 and sunlit
+share: reference 0.010 / 0.028 / 0.164 / 0.763, 22 %; r14 0.031 / 0.051 / 0.086 / 0.522, 7 %;
+r20 0.018 / 0.037 / 0.477 / 0.753, 32 % (`D:/MistyTargets/r26-level-scratch/stats.py <round>`).
+
+| round | hero GPU / CPU | inside GPU / CPU | notes |
+|---|---|---|---|
+| r20 | 18.6 / 1.8 ms | 12.2 / 1.7 ms | quiet machine; grass 520 cards, GI off; hero: grass visibility 3.2, shading 2.2, near shadows 1.1, trees 3.5 |
+| r19 | 29.2 / 3.4 ms | 12.6 / 3.1 ms | machine loaded (hero number not comparable) |
+| r17 | 21.5 / 3.7 ms | 12.6 / 3.5 ms | GI off (inside −2.4 ms) |
+| r15 | 21.6 / 4.1 ms | 14.9 / 3.0 ms | 133 k trees |
+
+Two power losses (11 Nov) corrupted the target directory; cleaning crate by crate looped for
+hours (rustc crashed reading metadata without naming a crate), a full `cargo clean --release`
+of this target fixed it (60 + 35 min rebuild at `-j 4`).
+
 ## Progress log (second agent, from 2026-11-10 06:00)
 
 - Merged `r26-noon-meadow` (3a254653 = the regeneration from 80e185bb's generator), so the
