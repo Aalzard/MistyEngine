@@ -17,7 +17,7 @@ Clippy clean; editor tests pass (see below); the live drag in the editor is stil
   (`material_fields`); `custom_fields` is now test-only (the two shader graph tests call it).
 - `texture_import.rs`: `apply` forgets the cached import type (one line).
 - `locales/tr.toml`, `ar.toml`: a `[material]` table, 64 entries each.
-- `material_tests.rs`: 11 egui harness tests.
+- `material_tests.rs`: 12 egui harness tests.
 - `docs/progress.md`: the Round 42 section. `docs/screenshots/r42/`: before / after / compare,
   picker, Turkish, Arabic.
 
@@ -38,7 +38,7 @@ after the square so it takes the click; right-click still clears. Test:
 
 ## Live drag
 Not done. A throwaway build with r40's `MISTY_WINDOW_SIZE` (patched into main.rs, built and
-reverted, not committed: this branch does not have it) opened `C:\MistyTry42\proj` at
+reverted, not committed: this branch does not have it) opened `C:\MistyTry\r42\proj` at
 1100x650, but the user declined computer control, so no real drag was made. The harness tests
 cover the drop (payload set, release over the square or the name) but not the drag starting in
 Asset Files or how the outline looks. Still to look at by hand.
