@@ -21,7 +21,9 @@ pub struct Thumbnails {
 impl Thumbnails {
     /// Preview of an image file (decoded on first request and when the file changes).
     pub fn get(&mut self, ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
-        let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        // The background file watch's stamp: a `stat` per visible thumbnail per frame on the
+        // main thread froze the editor while the project's disk was busy.
+        let modified = misty_engine::file_watch::cached_modified(path);
         if let Some((m, tex)) = self.cache.get(path)
             && *m == modified
         {

@@ -387,12 +387,22 @@ impl AssetDatabase {
     /// the file was saved (through their override records).
     pub fn prefab(&mut self, rel: &str) -> Result<Rc<Prefab>, String> {
         let abs = self.absolute(rel);
+        // The background file watch's stamp first: the Scene Tree asks for every prefab row
+        // every frame, and a `stat` each time on the main thread froze the editor for seconds
+        // while the project's disk was busy. A stamp that differs is checked on disk.
+        let cached = misty_engine::file_watch::cached_modified(&abs);
+        let known = |stamp: Option<SystemTime>| {
+            self.prefabs
+                .get(rel)
+                .filter(|(m, _)| *m == stamp && stamp.is_some())
+                .map(|(_, p)| p.clone())
+        };
+        if let Some(p) = known(cached) {
+            return p;
+        }
         let modified = mtime(&abs);
-        if let Some((m, p)) = self.prefabs.get(rel)
-            && *m == modified
-            && modified.is_some()
-        {
-            return p.clone();
+        if let Some(p) = known(modified) {
+            return p;
         }
         // A prefab that (through others) contains itself would load forever.
         let loading = PREFABS_LOADING.with(|l| l.borrow().contains(rel));
