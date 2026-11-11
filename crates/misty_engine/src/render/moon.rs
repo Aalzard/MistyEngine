@@ -457,8 +457,8 @@ mod tests {
         assert_eq!(p[1][3], 3.0);
         assert_eq!(p[9][3], 0.0, "no aurora by default");
         assert_eq!(p[3][3], 0.0, "no Milky Way by default");
-        for i in 3..9 {
-            let a = Vec3::new(p[i][0], p[i][1], p[i][2]);
+        for (i, row) in p.iter().enumerate().take(9).skip(3) {
+            let a = Vec3::new(row[0], row[1], row[2]);
             assert!((a.length() - 1.0).abs() < 1e-4, "{i}");
         }
     }

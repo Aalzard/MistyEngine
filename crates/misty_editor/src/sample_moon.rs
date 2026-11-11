@@ -677,10 +677,8 @@ fn render_moon_screenshots() {
         misty_engine::image::imageops::replace(&mut pair, &b, 800, 0);
         save_jpeg("stars_flat_vs_varied", &pair);
         // Aurora settings: the default green arcs, red-topped tall curtains, a quiet single arc.
-        let looks: [(
-            &str,
-            fn(&mut misty_engine::moon::night_sky::NightSkySettings),
-        ); 3] = [
+        type Look = fn(&mut misty_engine::moon::night_sky::NightSkySettings);
+        let looks: [(&str, Look); 3] = [
             ("aurora_green", |_| {}),
             ("aurora_red_top_tall", |n| {
                 n.aurora_top_color = [1.0, 0.12, 0.2];
