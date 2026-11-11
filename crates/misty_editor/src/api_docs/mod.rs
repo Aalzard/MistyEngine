@@ -60,6 +60,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "vfx_api.rs",
     "video_api.rs",
     "water_api.rs",
+    "weather_api.rs",
     "world_partition_api.rs",
 );
 
