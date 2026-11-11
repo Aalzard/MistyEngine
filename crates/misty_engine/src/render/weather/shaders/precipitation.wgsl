@@ -557,7 +557,10 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     let perp = vec2<f32>(-d.y, d.x);
     let dist = ch.w;
     // Drawn a little thicker than a real drop (a streak also holds the drop's wobble).
-    let drop_px = pr.rain.w * size * 1.7 * px_per_metre(dist);
+    // The nearest drops are drawn larger still: they are the ones the eye picks out, and
+    // they give the rain its depth (big near, fine far).
+    let near_boost = 1.7 + 2.3 * (1.0 - smoothstep(0.6, 5.0, dist));
+    let drop_px = pr.rain.w * size * near_boost * px_per_metre(dist);
     // Depth: near drops are big; about half of them are out of focus (wide and soft), the
     // rest stay sharp and clearly seen, so the rain has a near, a middle and a far.
     let coc = defocus_px(dist) * mix(0.12, 1.0, smoothstep(0.35, 0.65, r.z));
@@ -939,8 +942,8 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
             return culled_splash();
         }
         let grow = 1.0 - (1.0 - min(t * 2.5, 1.0)) * (1.0 - min(t * 2.5, 1.0));
-        let h = size * (0.7 + own.y * 1.3) * grow * (1.0 - smoothstep(0.55, 1.0, t) * 0.6);
-        let w = size * (0.7 + t * 1.2);
+        let h = size * (1.3 + own.y * 2.0) * grow * (1.0 - smoothstep(0.55, 1.0, t) * 0.6);
+        let w = size * (0.9 + t * 1.5);
         // Upright on the surface, turned to the camera.
         let to_eye = normalize(pr.camera.xyz - sp.pos.xyz);
         var side = cross(n, to_eye);
@@ -951,13 +954,13 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
         side = side / sl;
         let ppm = px_per_metre(c0.w);
         // Too small to see as a shape: leave it to the droplets.
-        if (w * ppm < 2.5) {
+        if (w * ppm < 1.5) {
             return culled_splash();
         }
         let p = sp.pos.xyz + side * corner.x * w + n * (corner.y * 0.5 + 0.5) * h;
         let c = pr.view_proj * vec4<f32>(p, 1.0);
         out.clip = c;
-        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(2.5, 8.0, w * ppm) * 0.6, 3.0, c.w, t);
+        out.params = vec4<f32>((1.0 - smoothstep(0.45, 1.0, t)) * smoothstep(1.5, 5.0, w * ppm) * 0.85, 3.0, c.w, t);
         out.world = sp.pos.xyz;
         return out;
     }
@@ -989,7 +992,7 @@ fn vs_splash(@builtin(vertex_index) vi: u32, @builtin(instance_index) inst: u32)
     let l = length(d);
     d = select(vec2<f32>(0.0, 1.0), d / max(l, 1e-4), l > 1e-3);
     let side = vec2<f32>(-d.y, d.x);
-    let dpx = size * (0.1 + seed.w * 0.14) * px_per_metre(c.w);
+    let dpx = size * (0.18 + seed.w * 0.24) * px_per_metre(c.w);
     let w = max(dpx, 1.2);
     let s = mix(s0, s1, k.y) + side * k.x * w * 0.5 + d * (k.y * 2.0 - 1.0) * w * 0.5;
     out.clip = from_screen(s, c);
@@ -1033,7 +1036,7 @@ fn fs_splash(in: SplashOut) -> @location(0) vec4<f32> {
     } else {
         shape = exp(-dot(in.quad, in.quad) * 2.2);
     }
-    let a = shape * in.params.x * 0.55;
+    let a = shape * in.params.x * 0.75;
     if (a < 0.003) {
         discard;
     }

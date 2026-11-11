@@ -58,7 +58,7 @@ fn weather_surface(world: vec3<f32>, surface: Surface) -> Surface {
         s.albedo *= mix(1.0, 0.42, wet * porous);
         // The film is never even: it stands thick in the hollows of a surface and thin on
         // its high spots, so a wet road shines in patches, not like one mirror.
-        let film = weather_noise(world.xz * 2.7) * 0.6 + weather_noise(world.xz * 9.3 + 5.0) * 0.4;
+        let film = weather_fbm(world.xz * 1.9);
         // Soil and turf (very rough surfaces) soak the water up: they darken and stay dull,
         // and hold fewer puddles; sealed surfaces (asphalt, stone, wood) carry the film.
         let sealed = smoothstep(0.04, 0.12, s.smoothness + s.metallic);

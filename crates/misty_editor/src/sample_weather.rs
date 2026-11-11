@@ -4,10 +4,12 @@
 //! light the rain at night, boulders lie in the grass, and oaks, young oaks and birches (the
 //! sample `Assets/Trees/*.tree` recipes, as terrain trees) close the view with a dark tree
 //! line: rain shows against it. The ground is a small terrain (`WeatherDemo.terrain`: meadow
-//! thatch with grass, a hand-painted gravel path). A global Weather volume loops clear →
-//! light rain → thunderstorm → snow → clear (Preview in Edit Mode on). In Play, keys switch
-//! the weather (`WeatherDemo.lua`): 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour, 5 Thunderstorm,
-//! 6 Snow, 7 Blizzard, 8 Sleet, L a lightning strike, N night / day, 0 back to the timeline.
+//! thatch with grass, a hand-painted gravel path). A global Weather volume shows Rain
+//! (Preview in Edit Mode on); it is in manual, so its values in Properties are what you see
+//! (its timeline holds the clear → light rain → thunderstorm → snow cycle, switched off). In
+//! Play, keys switch the weather (`WeatherDemo.lua`): 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour,
+//! 5 Thunderstorm, 6 Snow, 7 Blizzard, 8 Sleet, L a lightning strike, N night / day, 0 back
+//! to the Weather volume's own values.
 //! Regenerate with `cargo test -p misty_editor -- --ignored write_weather_demo`; the other
 //! tests check the committed files still match and that the scene plays.
 
@@ -56,7 +58,8 @@ const LEVEL: f32 = 0.25;
 
 const LUA: &str = r#"-- WeatherDemo: keys switch the weather (4 s blends), L strikes lightning, N turns day into
 -- night and back (the sun goes under the horizon: the lamps and the lightning light the
--- rain), 0 hands the weather back to the Weather volume's timeline.
+-- rain), 0 hands the weather back to the Weather volume (the values in its Properties).
+-- While a key's weather is held, Properties shows "Script override" with a Clear button.
 local Demo = {}
 
 local keys = {
@@ -78,7 +81,7 @@ function Demo:Start()
         self.sun = sun.transform
         self.day = self.sun.eulerAngles
     end
-    Debug.Log("Weather keys: 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour, 5 Thunderstorm, 6 Snow, 7 Blizzard, 8 Sleet, L lightning, N night / day, 0 timeline")
+    Debug.Log("Weather keys: 1 Clear, 2 Drizzle, 3 Rain, 4 Downpour, 5 Thunderstorm, 6 Snow, 7 Blizzard, 8 Sleet, L lightning, N night / day, 0 back to the volume")
 end
 
 function Demo:Update()
@@ -413,7 +416,7 @@ fn post() -> PostProcessVolume {
     v.bloom.intensity = 0.6;
     v.bloom.threshold = 1.0;
     v.color_adjustments.active = true;
-    v.color_adjustments.post_exposure = 0.5;
+    v.color_adjustments.post_exposure = 1.0;
     v.ambient_occlusion.active = true;
     let c = &mut v.clouds;
     c.active = true;
@@ -422,10 +425,13 @@ fn post() -> PostProcessVolume {
     v
 }
 
-/// The demo's weather volume: global, the looping demo cycle, previewed while editing.
+/// The demo's weather volume: global, Rain, previewed while editing. It starts in manual:
+/// the values in Properties are what you see. The demo cycle's states are there, with the
+/// timeline off: Timeline ▸ Mode ▸ Sequence runs them.
 pub fn weather() -> Weather {
-    let mut w = Weather::with_preset(WeatherPreset::LightRain);
+    let mut w = Weather::with_preset(WeatherPreset::Rain);
     w.timeline = WeatherTimeline::demo_cycle();
+    w.timeline.mode = misty_engine::weather::TimelineMode::Off;
     w.state.wind_direction = 70.0;
     w.surfaces.wet_time = 25.0;
     w.surfaces.snow_time = 40.0;
@@ -513,15 +519,15 @@ fn demo_scene(d: &TerrainData) -> Scene {
             .far = 1500.0;
     }
     if let Some(sun) = s.find_by_name("Directional Light") {
-        // Low evening sun from the side, so rain streaks catch the light.
+        // Afternoon sun from the side (storms dim it; N in Play takes it under the horizon).
         s.set_transform(
             sun,
             Transform::from_position(Vec3::new(0.0, 10.0, 0.0))
-                .with_euler(Vec3::new(18.0, -60.0, 0.0)),
+                .with_euler(Vec3::new(34.0, -60.0, 0.0)),
         );
         let mut l = s.world.get::<&mut Light>(sun).unwrap();
-        l.color = [1.0, 0.85, 0.7];
-        l.intensity = 1.6;
+        l.color = [1.0, 0.9, 0.78];
+        l.intensity = 2.4;
         l.shadows = Shadows::Soft;
     }
     let terrain = s.spawn("Terrain", None);
@@ -769,8 +775,8 @@ fn weather_demo_plays_and_keys_switch_the_weather() {
     for _ in 0..30 {
         step(&mut scene, &mut host, None);
     }
-    // The timeline starts Clear.
-    assert_eq!(scene.weather.current.rain_density, 0.0);
+    // Manual: the volume's own Rain, no timeline running.
+    assert_eq!(scene.weather.current.nearest_preset(), WeatherPreset::Rain);
     step(&mut scene, &mut host, Some("4"));
     for _ in 0..150 {
         step(&mut scene, &mut host, None);

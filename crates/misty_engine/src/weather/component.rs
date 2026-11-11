@@ -115,7 +115,7 @@ impl TimelineEntry {
 }
 
 /// A list of weather states the volume moves through over time.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WeatherTimeline {
     pub mode: TimelineMode,
@@ -129,6 +129,19 @@ pub struct WeatherTimeline {
 
 fn is_one(v: &f32) -> bool {
     *v == 1.0
+}
+
+impl Default for WeatherTimeline {
+    /// Off, no states, real time (a Time Scale of 1 is left out of scene files, so it must
+    /// be the default they load with).
+    fn default() -> Self {
+        Self {
+            mode: TimelineMode::Off,
+            entries: Vec::new(),
+            looping: false,
+            time_scale: 1.0,
+        }
+    }
 }
 
 impl WeatherTimeline {
