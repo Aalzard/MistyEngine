@@ -195,7 +195,7 @@ fn pressure_rises_at_once_and_falls_slowly() {
     assert_eq!(p.bias, 1);
     // Not while a finer level (twice the blades) would not fit with room left over.
     for _ in 0..RELAX_AFTER * 40 {
-        assert!(!p.settle(450_000, budget));
+        assert!(!p.settle(550_000, budget));
     }
     assert_eq!(p.bias, 1);
     // With room: a level finer after a wait (twice as long after one strike).
@@ -231,6 +231,13 @@ fn pressure_rises_at_once_and_falls_slowly() {
         waited += 1;
     }
     assert_eq!(waited + 1, RELAX_AFTER);
+    // Over it again right after going finer: that try failed, the next one waits longer.
+    p.raise(false);
+    let mut again = 0;
+    while !p.settle(300_000, budget) {
+        again += 1;
+    }
+    assert_eq!(again + 1, RELAX_AFTER * 2);
 }
 
 /// Walk `g`'s camera from `from` to `to` (terrain-local) in steps of `step` metres, every
@@ -533,10 +540,8 @@ fn a_walk_through_meadow_demo_stays_in_its_pages() {
         most as f64 <= still.blades as f64 * 1.5,
         "{most} blades held"
     );
-    // The pages have room to spare (short runs in one, long runs in another one or two;
-    // four are the limit), nothing was refused or thinned, and every chunk has its cull
-    // records.
-    assert!(walked.pages <= 3, "{} pages", walked.pages);
+    // The pages (short runs in theirs, long runs in theirs) hold little more than the
+    // blades, nothing was refused or thinned, and every chunk has its cull records.
     assert!(
         walked.page_blades as f64 <= most as f64 * 1.6,
         "pages for {} blades",

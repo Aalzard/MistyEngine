@@ -192,8 +192,9 @@ pub(super) struct Pressure {
     /// Times the grass ran out of room lately: each doubles the wait before a finer level
     /// is tried again (it would only run out again).
     strikes: u32,
-    /// Updates since the grass last went a level finer.
-    finer_ago: u32,
+    /// Updates left in which running out again counts as a strike (set when the grass
+    /// goes a level finer).
+    on_trial: u32,
 }
 
 impl Pressure {
@@ -203,14 +204,14 @@ impl Pressure {
     fn raise(&mut self, refused: bool) {
         self.bias = (self.bias + 1).min(details::MAX_LEVEL);
         self.calm = 0;
-        if refused || self.finer_ago < RELAX_AFTER * 2 {
+        if refused || self.on_trial > 0 {
             self.strikes = (self.strikes + 1).min(5);
         }
     }
 
     /// One update holding `held` blades of `budget`; true when the grass went a level finer.
     fn settle(&mut self, held: u64, budget: u64) -> bool {
-        self.finer_ago = self.finer_ago.saturating_add(1);
+        self.on_trial = self.on_trial.saturating_sub(1);
         // (A level finer holds twice the blades: they must fit.)
         let roomy = held.saturating_mul(2) <= budget;
         if !roomy {
@@ -231,7 +232,7 @@ impl Pressure {
         }
         self.bias -= 1;
         self.calm = 0;
-        self.finer_ago = 0;
+        self.on_trial = RELAX_AFTER * 2;
         true
     }
 }

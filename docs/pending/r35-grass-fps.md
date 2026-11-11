@@ -62,9 +62,31 @@ builds, so absolute times are high; MeadowDemo, High, 1920×1080, 5 m/s):
   clouds, TAA, GTAO, sun shafts unchanged; CPU render 4.0 → 3.7 ms; textures 294 MB throughout.
   So not VSM, Misty GI, trees, TAA history or a CPU leak.
 
-## Status
-- Fix committed (3bafb96c); unit and GPU tests of the trim / pressure / pages pass.
-- Running: v0.3.2 walk (`base-v032-high`), then the walk on the fixed build.
+After, first version of the fix (3bafb96c, `fix2-main-high.log/.csv`), same walk:
+
+| Mark | wall ms (FPS) | GPU ms | blades held | pages | grass GPU MB | device MB |
+|---|---|---|---|---|---|---|
+| start | 19.2 (52) | 14.9 | 2.96 M | 2 | 354 | 1441 |
+| 500 m | 19.5 (51) | 15.4 | 3.85 M | 4 | 592 | 1679 |
+| 500 m, looking back | 18.5 (54) | 14.2 | 3.85 M | 4 | 592 | 1679 |
+| 2 km | 19.0 (53) | 15.2 | 3.85 M | 4 | 684 | 1771 |
+| 2 km, looking back | 18.4 (54) | 14.1 | 3.85 M | 4 | 684 | 1771 |
+| end (2771 m) | 18.9 (53) | 14.5 | 4.21 M | 4 | 684 | 1771 |
+
+- Frame time flat, visibility buffer and GPU culling on throughout, nothing refused or
+  thinned. But all four pages grew to their limit (512 MB for 4 M blades: short runs landed in
+  the room long runs need). Second version (ba5eeea2): short and long runs in pages of their
+  own kind, cull records mirror the pages (one free list).
+
+## Status (after the power loss of 11 Nov, ~10:45)
+- Committed: harness b75e1da0, fix 3bafb96c, pages by kind + mirrored records ba5eeea2 (WIP).
+- `fix3.exe` in the scratch folder = ba5eeea2. Its grass GPU tests pass except two test
+  expectations fixed since (pressure rule, page count of the MeadowDemo walk).
+- Running: walk on fix3 (`fix3-main-high`), rebuild (`build4.log`).
+- Not run yet: v0.3.2 walk (`walk.sh v032-base.exe base-v032-high MISTY_WALK_SCALE=0.4`),
+  clippy on the final code, full workspace tests, golden shots, `docs/progress.md` section.
 
 ## Next steps
-- Run the walk on the fixed build, compare; run fmt, clippy, full tests, golden shots.
+- Compare fix3 walk with the tables above; then fmt, clippy, full tests, golden shots.
+- Found, not fixed: the editor Console keeps every message and lays out every row each frame
+  (`panels/console.rs`): a script printing every frame slows the editor the longer it plays.
