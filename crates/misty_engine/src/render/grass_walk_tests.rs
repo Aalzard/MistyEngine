@@ -208,7 +208,6 @@ fn held(r: &Renderer, device: &wgpu::Device, frame: &crate::render::Frame) -> He
         grass.coarser = grass.coarser.max(g.coarser);
         grass.unculled += g.unculled;
         grass.records += g.records;
-        grass.records_free += g.records_free;
         grass.in_flight += g.in_flight;
         grass.ready += g.ready;
         grass.cameras += g.cameras;

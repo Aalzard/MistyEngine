@@ -70,8 +70,8 @@ const TRIM_BLADES: u32 = 128 * 1024;
 /// A moving camera's remembered places closer together than this count as one when trimming
 /// (levels are picked this much nearer, so no remembered camera is short of blades).
 const TRIM_APART: f32 = 2.0;
-/// Share of the room for blades (the pages, the cull records) the grass may fill before it
-/// goes coarser: the rest is slack for blades in the wrong place (free runs too short).
+/// Share of the blade pages the grass may fill before it goes coarser: the rest is slack for
+/// room in the wrong place (free runs too short for a chunk).
 const BUDGET_SHARE: f64 = 0.75;
 /// Updates with room to spare before the grass tries a finer level again (ten seconds at
 /// 60 frames per second), and before a blade page left empty is dropped.
@@ -127,8 +127,8 @@ pub(super) fn set_grass_budget(blades: u64) {
     TEST_BUDGET.store(blades, Ordering::Relaxed);
 }
 
-/// Blades a terrain's grass may hold on this device: a share of what the blade pages (and
-/// the cull records, when the GPU culls) have room for.
+/// Blades a terrain's grass may hold on this device: a share of what the blade pages have
+/// room for.
 fn blade_budget(device: &wgpu::Device) -> u64 {
     #[cfg(test)]
     {
@@ -137,11 +137,7 @@ fn blade_budget(device: &wgpu::Device) -> u64 {
             return forced;
         }
     }
-    let mut room = BladePool::limit(device);
-    if grass_cull_supported(device) {
-        room = room.min(Arena::limit(device));
-    }
-    (room as f64 * BUDGET_SHARE) as u64
+    (BladePool::limit(device) as f64 * BUDGET_SHARE) as u64
 }
 
 /// How many of `blades` (in drop-out key order, scattered at `level`) each density level
@@ -196,24 +192,27 @@ pub(super) struct Pressure {
     /// Times the grass ran out of room lately: each doubles the wait before a finer level
     /// is tried again (it would only run out again).
     strikes: u32,
+    /// Updates since the grass last went a level finer.
+    finer_ago: u32,
 }
 
 impl Pressure {
-    /// Out of room: one level coarser from now on. `strike`: a chunk found no room although
-    /// the budget had some (blades in the wrong places); trying the finer level again soon
-    /// would only run out again.
-    fn raise(&mut self, strike: bool) {
+    /// Out of room: one level coarser from now on. `refused`: a chunk found no room although
+    /// the budget had some (room in the wrong places). That, or running out soon after
+    /// going finer, is a strike: trying the finer level again soon would only run out again.
+    fn raise(&mut self, refused: bool) {
         self.bias = (self.bias + 1).min(details::MAX_LEVEL);
         self.calm = 0;
-        if strike {
+        if refused || self.finer_ago < RELAX_AFTER * 2 {
             self.strikes = (self.strikes + 1).min(5);
         }
     }
 
     /// One update holding `held` blades of `budget`; true when the grass went a level finer.
     fn settle(&mut self, held: u64, budget: u64) -> bool {
-        // (A level finer holds at most twice the blades; some room is left over.)
-        let roomy = held.saturating_mul(5) <= budget.saturating_mul(2);
+        self.finer_ago = self.finer_ago.saturating_add(1);
+        // (A level finer holds twice the blades: they must fit.)
+        let roomy = held.saturating_mul(2) <= budget;
         if !roomy {
             self.calm = 0;
             return false;
@@ -232,6 +231,7 @@ impl Pressure {
         }
         self.bias -= 1;
         self.calm = 0;
+        self.finer_ago = 0;
         true
     }
 }
@@ -538,7 +538,8 @@ pub(super) struct GrassLoad {
     pub blades: u64,
     /// Pieces per density level.
     pub by_level: [u32; details::MAX_LEVEL as usize + 1],
-    /// Blade pages, the blades they have room for, the free ones and the longest free run.
+    /// Blade pages holding memory, the blades they have room for, the free ones and the
+    /// longest free run.
     pub pages: u32,
     pub page_blades: u64,
     pub page_free: u64,
@@ -547,9 +548,8 @@ pub(super) struct GrassLoad {
     pub coarser: u32,
     /// Pieces without cull records (the arena was full).
     pub unculled: u32,
-    /// Cull records the arena has room for and the free ones.
+    /// Cull records the arena has room for.
     pub records: u64,
-    pub records_free: u64,
     /// Jobs on the workers, results waiting for upload, cameras remembered, dirty pieces.
     pub in_flight: u32,
     pub ready: u32,
@@ -884,11 +884,11 @@ impl Grass {
     /// Drop the pieces `keep` refuses (their blades and cull records go back to the pages
     /// and the arena).
     fn keep_chunks(&mut self, mut keep: impl FnMut((u32, u32)) -> bool) {
-        let (arena, pool) = (&mut self.arena, &mut self.pool);
+        let pool = &mut self.pool;
         self.chunks.retain(|k, c| {
             let kept = keep(*k);
             if !kept {
-                free_chunk(arena, pool, c.store, c.arena, c.count);
+                free_chunk(pool, c.store, c.count);
             }
             kept
         });
@@ -910,7 +910,7 @@ impl Grass {
     /// Give back the room of an upload that will not finish.
     fn abort_upload(&mut self, up: Upload) {
         let n = up.done.blades.len() as u32;
-        free_chunk(&mut self.arena, &mut self.pool, up.store, up.arena, n);
+        free_chunk(&mut self.pool, up.store, n);
     }
 
     /// The edit count piece `k`'s blades are behind (None: up to date).
@@ -1068,11 +1068,11 @@ impl Grass {
         } else {
             self.pressure.settle(held, budget);
         }
-        // A last blade page left empty for a while goes back to the GPU.
+        // A blade page left empty for a while gives its memory back.
         match &mut self.pool {
             Some(pool) if pool.spare_page() => {
                 self.spare_page += 1;
-                if self.spare_page >= RELAX_AFTER && pool.drop_spare_page() {
+                if self.spare_page >= RELAX_AFTER && pool.release_spare_page(device) {
                     self.spare_page = 0;
                 }
             }
@@ -1218,10 +1218,14 @@ impl Grass {
                         label: Some("misty grass trim"),
                     })
                 });
-                c.store = Some(pool.trim(device, encoder, slot, c.count, keep));
-                if let (Some(arena), Some(at)) = (self.arena.as_mut(), c.arena) {
-                    c.arena = Some(arena.trim(device, encoder, at, c.count, keep));
+                let to = pool.trim(device, encoder, slot, c.count, keep);
+                if let (Some(arena), Some(from), true) = (self.arena.as_mut(), c.arena, to != slot)
+                {
+                    let at = pool.record_at(to);
+                    arena.move_run(device, encoder, from, at, keep);
+                    c.arena = Some(at);
                 }
+                c.store = Some(to);
                 held -= (c.count - keep) as u64;
                 moved += keep;
                 c.count = keep;
@@ -1433,12 +1437,14 @@ impl Grass {
             let slot = pool.alloc(device, queue, n)?;
             store = Some(slot);
             if grass_cull_supported(device) {
+                // The records go where the blades went (room for the whole page, so the
+                // runs taken from it later are covered too).
                 let records = self.arena.get_or_insert_with(|| Arena::new(device));
-                arena = records.reserve(device, queue, n);
-                if arena.is_none() {
+                if !records.cover(device, queue, pool.records_end(slot.page)) {
                     pool.free(slot, n);
                     return None;
                 }
+                arena = Some(pool.record_at(slot));
             }
         }
         Some(Upload {
@@ -1451,7 +1457,7 @@ impl Grass {
 
     /// Give a dropped piece's blades and cull records back.
     fn free_piece(&mut self, p: Chunk) {
-        free_chunk(&mut self.arena, &mut self.pool, p.store, p.arena, p.count);
+        free_chunk(&mut self.pool, p.store, p.count);
     }
 
     /// Swap a fully uploaded piece in (its older version's blades go back). The tiles of a
@@ -1462,7 +1468,7 @@ impl Grass {
         let c = chunk_of(done.key);
         if is_tile(done.key) && !self.tiled.contains(&c) {
             let n = done.blades.len() as u32;
-            free_chunk(&mut self.arena, &mut self.pool, up.store, up.arena, n);
+            free_chunk(&mut self.pool, up.store, n);
             return;
         }
         let (lo, side) = piece_rect(done.key);
@@ -1726,11 +1732,11 @@ impl Grass {
             out.unculled += u32::from(c.store.is_some() && c.arena.is_none());
         }
         if let Some(p) = &self.pool {
-            out.pages = p.pages() as u32;
+            out.pages = p.live_pages() as u32;
             (out.page_blades, out.page_free, out.page_longest_free) = p.room();
         }
         if let Some(a) = &self.arena {
-            (out.records, out.records_free) = a.room();
+            out.records = a.capacity();
         }
         if let Some(c) = &self.cull {
             for (k, draws) in c.per_kind.iter().enumerate() {
@@ -1849,17 +1855,8 @@ impl Grass {
     }
 }
 
-/// Give a dropped chunk's blades and cull records back.
-fn free_chunk(
-    arena: &mut Option<Arena>,
-    pool: &mut Option<BladePool>,
-    store: Option<Slot>,
-    records: Option<u32>,
-    count: u32,
-) {
-    if let (Some(a), Some(at)) = (arena.as_mut(), records) {
-        a.free(at, count);
-    }
+/// Give a dropped chunk's blades back (its cull records go with them).
+fn free_chunk(pool: &mut Option<BladePool>, store: Option<Slot>, count: u32) {
     if let (Some(p), Some(slot)) = (pool.as_mut(), store) {
         p.free(slot, count);
     }

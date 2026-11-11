@@ -175,17 +175,18 @@ impl CullPipelines {
     }
 }
 
-/// The cull records of every chunk of a terrain, in one storage buffer (first-fit free list;
-/// grows by copying into a buffer twice as big).
+/// The cull records of every chunk of a terrain, in one storage buffer. A chunk's records
+/// sit where its blades sit in the blade pages (grass_pool.rs `BladePool::record_at`: every
+/// page has the records of a full page set aside), so the records need no free list of
+/// their own, never run out before the pages do, and move with the blades. The buffer grows
+/// (copying) to cover the pages in use.
 pub(super) struct Arena {
     pub buffer: wgpu::Buffer,
     /// In records.
     capacity: u32,
-    /// Free runs: start → length (records).
-    free: BTreeMap<u32, u32>,
     /// Bumped when the buffer is replaced (bind groups that use it are rebuilt).
     pub generation: u64,
-    /// Records pass through here when a run moves ([`Arena::trim`]).
+    /// Records pass through here when a run moves ([`Arena::move_run`]).
     scratch: Option<wgpu::Buffer>,
 }
 
@@ -208,7 +209,6 @@ impl Arena {
         Self {
             buffer: arena_buffer(device, capacity),
             capacity,
-            free: BTreeMap::from([(0, capacity)]),
             generation: 0,
             scratch: None,
         }
@@ -224,48 +224,34 @@ impl Arena {
         (limits.max_storage_buffer_binding_size).min(limits.max_buffer_size) / RECORD
     }
 
-    /// Records the buffer holds room for and how many of them are free.
-    pub fn room(&self) -> (u64, u64) {
-        let free = self.free.values().map(|n| *n as u64).sum();
-        (self.capacity as u64, free)
+    /// Records the buffer has room for (tests).
+    #[cfg(test)]
+    pub fn capacity(&self) -> u64 {
+        self.capacity as u64
     }
 
-    /// Room for `n` records (rounded up to the grain); grows the buffer when nothing fits.
-    /// None when the device can't hold a buffer that big.
-    fn alloc(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
-        let n = n.max(1).next_multiple_of(GRAIN);
-        if let Some(at) = take_run(&mut self.free, n) {
-            return Some(at);
+    /// Room for the records up to `end`: the buffer grows to at least twice its size,
+    /// copying what is there. False when the device can't hold a buffer that big.
+    pub fn cover(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, end: u64) -> bool {
+        if end <= self.capacity as u64 {
+            return true;
         }
-        // Grow: at least twice as big, copying what is there.
         let limit = Self::limit(device);
-        let want = (self.capacity as u64 * 2).max(self.capacity as u64 + n as u64);
-        if self.capacity as u64 + n as u64 > limit {
-            return None;
+        if end > limit {
+            return false;
         }
-        let capacity = (want.min(limit) as u32) / GRAIN * GRAIN;
+        let want = (self.capacity as u64 * 2).max(end).min(limit);
+        let capacity = (want as u32).next_multiple_of(GRAIN).min(limit as u32);
         let buffer = arena_buffer(device, capacity);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty grass cull records grow"),
         });
         encoder.copy_buffer_to_buffer(&self.buffer, 0, &buffer, 0, self.buffer.size());
         queue.submit([encoder.finish()]);
-        let old = self.capacity;
         self.buffer = buffer;
         self.capacity = capacity;
         self.generation += 1;
-        self.release(old, capacity - old);
-        self.alloc(device, queue, n)
-    }
-
-    /// Give back `n` records at `at` (as allocated).
-    fn release(&mut self, at: u32, n: u32) {
-        release_run(&mut self.free, at, n.max(1).next_multiple_of(GRAIN));
-    }
-
-    /// Room for the records of `n` blades; their offset (None: the arena can't grow).
-    pub fn reserve(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
-        self.alloc(device, queue, n)
+        true
     }
 
     /// Write the records of `blades` at record `offset` of the run at `at` (a chunk's
@@ -279,42 +265,24 @@ impl Arena {
         );
     }
 
-    pub fn free(&mut self, at: u32, n: u32) {
-        self.release(at, n);
-    }
-
-    /// Keep only the first `keep` records of the run of `n` at `at`: they move into a free
-    /// run that fits them when there is one (the whole old run is given back: nothing is left
-    /// behind in the middle of the room a big chunk needs), else the run's tail is given
-    /// back. The offset they are at now.
-    pub fn trim(
+    /// The first `n` records at `from` move to `to` (their blades moved in the pages; the
+    /// two runs don't overlap). The copies are recorded into `encoder`.
+    pub fn move_run(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-        at: u32,
+        from: u32,
+        to: u32,
         n: u32,
-        keep: u32,
-    ) -> u32 {
-        let old = n.max(1).next_multiple_of(GRAIN);
-        let new = keep.max(1).next_multiple_of(GRAIN);
-        if new >= old {
-            return at;
-        }
-        let Some(to) = take_run(&mut self.free, new) else {
-            release_run(&mut self.free, at + new, old - new);
-            return at;
-        };
-        let (from, to_bytes) = (at as u64 * RECORD, to as u64 * RECORD);
+    ) {
         copy_run(
             device,
             encoder,
             &mut self.scratch,
-            (&self.buffer, from),
-            (&self.buffer, to_bytes),
-            keep as u64 * RECORD,
+            (&self.buffer, from as u64 * RECORD),
+            (&self.buffer, to as u64 * RECORD),
+            n as u64 * RECORD,
         );
-        release_run(&mut self.free, at, old);
-        to
     }
 }
 
@@ -811,31 +779,51 @@ mod tests {
     }
 
     #[test]
-    fn arena_trims_into_a_hole_or_in_place() {
+    fn arena_grows_to_cover_and_moves_runs() {
         let Some((device, queue)) = crate::render::gpu_tests::headless() else {
             return;
         };
+        let read = |arena: &Arena, at: u64, n: u64| -> Vec<[u32; 4]> {
+            let copy = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: n * RECORD,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            let mut encoder = device.create_command_encoder(&Default::default());
+            encoder.copy_buffer_to_buffer(&arena.buffer, at * RECORD, &copy, 0, n * RECORD);
+            queue.submit([encoder.finish()]);
+            let slice = copy.slice(..);
+            slice.map_async(wgpu::MapMode::Read, |_| {});
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            bytemuck::pod_collect_to_vec(&slice.get_mapped_range().expect("mapped"))
+        };
+        let blades: Vec<Blade> = (0..300)
+            .map(|i| Blade {
+                position: [i as f32, 1.0, 2.0, 0.5],
+                ..Zeroable::zeroed()
+            })
+            .collect();
+        let records: Vec<[u32; 4]> = blades.iter().map(record).collect();
         let mut arena = Arena::new(&device);
+        let capacity = arena.capacity();
+        // Already covered: nothing happens.
+        assert!(arena.cover(&device, &queue, capacity));
+        assert_eq!((arena.capacity(), arena.generation), (capacity, 0));
+        arena.write(&queue, 1000, 0, &blades);
+        // Records past the end: the buffer grows (at least twice as big) and keeps its
+        // records.
+        assert!(arena.cover(&device, &queue, capacity + 1));
+        assert!(arena.capacity() >= capacity * 2 && arena.generation == 1);
+        assert_eq!(read(&arena, 1000, 300), records);
+        // More than the device binds: refused, the buffer stays.
+        assert!(!arena.cover(&device, &queue, Arena::limit(&device) + 1));
+        assert_eq!(arena.generation, 1);
+        // A run moves within the buffer.
         let mut encoder = device.create_command_encoder(&Default::default());
-        let hole = arena.reserve(&device, &queue, 640).expect("room");
-        let big = arena.reserve(&device, &queue, 32_000).expect("room");
-        arena.free(hole, 640);
-        let (capacity, free) = arena.room();
-        // The records kept move into the hole; the whole run comes free.
-        assert_eq!(arena.trim(&device, &mut encoder, big, 32_000, 600), hole);
-        assert_eq!(arena.room(), (capacity, free + 32_000 - 640));
-        assert_eq!(arena.reserve(&device, &queue, 32_000), Some(big));
-        // No hole: the tail is given back where the run is.
-        let mut full = Arena::new(&device);
-        let (capacity, _) = full.room();
-        let all = full
-            .reserve(&device, &queue, capacity as u32)
-            .expect("room");
-        assert_eq!(
-            full.trim(&device, &mut encoder, all, capacity as u32, 100),
-            all
-        );
-        assert_eq!(full.room(), (capacity, capacity - 128));
+        arena.move_run(&device, &mut encoder, 1000, 5000, 200);
         queue.submit([encoder.finish()]);
+        assert_eq!(read(&arena, 5000, 200), records[..200]);
+        assert_eq!(read(&arena, 1000, 300), records);
     }
 }

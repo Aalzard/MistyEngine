@@ -1,6 +1,6 @@
 //! The blades of every grass chunk of a terrain, in a few big storage buffers ("pages")
-//! instead of one small buffer per chunk. A chunk is a run of blades in one page (first-fit
-//! free list per page, like the cull records' arena), so:
+//! instead of one small buffer per chunk. A chunk is a run of blades in one page (best-fit
+//! free list per page), so:
 //!
 //! - a pass binds a page once for all the chunks in it (the culled lists hold page-local
 //!   blade indices, grass_cull.wgsl `cs_write`),
@@ -12,8 +12,14 @@
 //! Pages grow by copying into a buffer twice as big up to the binding limit; past that a new
 //! page starts, up to [`MAX_PAGES`]. That is all the room there is: a chunk no page can take
 //! is refused (terrain_grass.rs scatters it coarser then), so the grass never holds more
-//! than the pages. A run that needs fewer blades than it holds is trimmed ([`BladePool::trim`]),
-//! and a last page left empty is dropped again.
+//! than the pages.
+//!
+//! Short runs (far chunks: a few thousand blades each, held for hundreds of metres) and long
+//! runs (the chunks around the camera: up to a few hundred thousand, replaced every few
+//! metres walked) live in pages of their own kind, so a short run never lands in the middle
+//! of the room the next long run needs. A run that needs fewer blades than it holds is
+//! trimmed ([`BladePool::trim`]), and a page left empty gives its memory back
+//! ([`BladePool::release_spare_page`]).
 
 use std::collections::BTreeMap;
 
@@ -32,13 +38,25 @@ pub(super) const MAX_PAGES: usize = 4;
 const GRAIN: u32 = 64;
 /// Blades of a new page.
 const FIRST_PAGE: u32 = 1 << 18;
+/// Runs shorter than this are short runs (they go to the pages for short runs): the chunks
+/// a camera is not near, at the two or three coarsest density levels.
+const SHORT_RUN: u32 = 8 * 1024;
 
 struct Page {
     buffer: wgpu::Buffer,
-    /// In blades.
+    /// In blades (0: the page gave its memory back and holds a stand-in buffer).
     capacity: u32,
     /// Free runs: start → length (blades).
     free: BTreeMap<u32, u32>,
+    /// A page for short runs (else for long ones).
+    short: bool,
+}
+
+impl Page {
+    /// The page has memory and nothing in it.
+    fn spare(&self) -> bool {
+        self.capacity > 0 && self.free.get(&0) == Some(&self.capacity)
+    }
 }
 
 /// Where a chunk's blades are: page and first blade in it.
@@ -57,10 +75,11 @@ impl Slot {
 }
 
 pub(super) struct BladePool {
+    /// Up to [`MAX_PAGES`]; a page keeps its number for good (runs name their page).
     pages: Vec<Page>,
     /// Largest page this device can bind (blades).
     max_page: u32,
-    /// Bumped whenever a page buffer is replaced, added or dropped (bind groups are rebuilt).
+    /// Bumped whenever a page buffer is replaced or added (bind groups are rebuilt).
     pub generation: u64,
     /// Blades pass through here when a run moves within its page ([`BladePool::trim`]).
     scratch: Option<wgpu::Buffer>,
@@ -106,11 +125,20 @@ impl BladePool {
             + self.scratch.as_ref().map_or(0, wgpu::Buffer::size)
     }
 
+    /// Pages there are buffers for (the passes and the visibility resolve bind each).
     pub fn pages(&self) -> usize {
         self.pages.len()
     }
 
-    /// Blades the pages hold room for, how many of them are free and the longest free run.
+    /// Pages holding memory (tests).
+    #[cfg(test)]
+    pub fn live_pages(&self) -> usize {
+        self.pages.iter().filter(|p| p.capacity > 0).count()
+    }
+
+    /// Blades the pages hold room for, how many of them are free and the longest free run
+    /// (tests).
+    #[cfg(test)]
     pub fn room(&self) -> (u64, u64, u32) {
         let capacity = self.pages.iter().map(|p| p.capacity as u64).sum();
         let free = (self.pages.iter())
@@ -129,10 +157,24 @@ impl BladePool {
         &self.pages[page as usize].buffer
     }
 
+    /// Where the cull record of the first blade at `slot` goes: the records mirror the pages
+    /// (every page has the records of a full page set aside, grass_cull.rs `Arena`).
+    pub fn record_at(&self, slot: Slot) -> u32 {
+        slot.page * self.max_page + slot.at
+    }
+
+    /// The end of the records of page `page` as it is now.
+    pub fn records_end(&self, page: u32) -> u64 {
+        let capacity = self.pages.get(page as usize).map_or(0, |p| p.capacity);
+        page as u64 * self.max_page as u64 + capacity as u64
+    }
+
     /// A free run of `n` blades (a multiple of the grain) in the pages as they are: the run
-    /// they fit best in over every page (the lowest page among equals).
-    fn take_free(&mut self, n: u32) -> Option<Slot> {
+    /// they fit best in over the pages of one kind (`short`; None: of any kind), the lowest
+    /// page among equals.
+    fn take_free(&mut self, n: u32, short: Option<bool>) -> Option<Slot> {
         let (_, page) = (self.pages.iter().enumerate())
+            .filter(|(_, p)| short.is_none_or(|s| p.short == s))
             .filter_map(|(i, p)| best_run(&p.free, n).map(|(_, len)| (len, i)))
             .min()?;
         let at = take_run(&mut self.pages[page].free, n)?;
@@ -142,53 +184,84 @@ impl BladePool {
         })
     }
 
+    /// Grow a page of the kind `short` that is not at its limit yet (copying what is there)
+    /// and take `n` blades from it.
+    fn grow(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        n: u32,
+        short: bool,
+    ) -> Option<Slot> {
+        let max = self.max_page;
+        let page = (self.pages.iter())
+            .position(|p| p.short == short && p.capacity > 0 && p.capacity < max)?;
+        let p = &mut self.pages[page];
+        let want = (p.capacity as u64 * 2).max(p.capacity as u64 + n as u64);
+        let capacity = (want.min(max as u64) as u32) / GRAIN * GRAIN;
+        if capacity < p.capacity + n && capacity < max {
+            return None;
+        }
+        let buffer = page_buffer(device, capacity);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("misty grass blade page grow"),
+        });
+        encoder.copy_buffer_to_buffer(&p.buffer, 0, &buffer, 0, p.buffer.size());
+        queue.submit([encoder.finish()]);
+        let old = p.capacity;
+        p.buffer = buffer;
+        p.capacity = capacity;
+        release_run(&mut p.free, old, capacity - old);
+        self.generation += 1;
+        let at = take_run(&mut self.pages[page].free, n)?;
+        Some(Slot {
+            page: page as u32,
+            at,
+        })
+    }
+
+    /// Start a page for the kind `short` (in the place of one that gave its memory back,
+    /// else a new one while there are fewer than [`MAX_PAGES`]) and take `n` blades from it.
+    fn open(&mut self, device: &wgpu::Device, n: u32, short: bool) -> Option<Slot> {
+        let capacity = FIRST_PAGE.max(n).min(self.max_page);
+        let page = match self.pages.iter().position(|p| p.capacity == 0) {
+            Some(page) => page,
+            None if self.pages.len() < MAX_PAGES => self.pages.len(),
+            None => return None,
+        };
+        let made = Page {
+            buffer: page_buffer(device, capacity),
+            capacity,
+            free: BTreeMap::from([(0, capacity)]),
+            short,
+        };
+        match self.pages.get_mut(page) {
+            Some(p) => *p = made,
+            None => self.pages.push(made),
+        }
+        self.generation += 1;
+        let at = take_run(&mut self.pages[page].free, n)?;
+        Some(Slot {
+            page: page as u32,
+            at,
+        })
+    }
+
     /// Room for `n` blades; None when no page can take them (the caller scatters the chunk
-    /// coarser).
+    /// coarser). In a page of the run's kind when one has or can make room, else wherever
+    /// room is left.
     pub fn alloc(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<Slot> {
         let n = n.max(1).next_multiple_of(GRAIN);
         if n > self.max_page {
             return None;
         }
-        if let Some(slot) = self.take_free(n) {
-            return Some(slot);
-        }
-        // Grow the last page (copying what is there), else start a new one.
-        if let Some(last) = self.pages.last_mut()
-            && last.capacity < self.max_page
-        {
-            let want = (last.capacity as u64 * 2).max(last.capacity as u64 + n as u64);
-            let capacity = (want.min(self.max_page as u64) as u32) / GRAIN * GRAIN;
-            if capacity >= last.capacity + n || capacity == self.max_page {
-                let buffer = page_buffer(device, capacity);
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("misty grass blade page grow"),
-                });
-                encoder.copy_buffer_to_buffer(&last.buffer, 0, &buffer, 0, last.buffer.size());
-                queue.submit([encoder.finish()]);
-                let old = last.capacity;
-                last.buffer = buffer;
-                last.capacity = capacity;
-                release_run(&mut last.free, old, capacity - old);
-                self.generation += 1;
-                let page = self.pages.len() as u32 - 1;
-                if let Some(at) = take_run(&mut self.pages[page as usize].free, n) {
-                    return Some(Slot { page, at });
-                }
-            }
-        }
-        if self.pages.len() >= MAX_PAGES {
-            return None;
-        }
-        let capacity = FIRST_PAGE.max(n).min(self.max_page);
-        self.pages.push(Page {
-            buffer: page_buffer(device, capacity),
-            capacity,
-            free: BTreeMap::from([(0, capacity)]),
-        });
-        self.generation += 1;
-        let page = self.pages.len() as u32 - 1;
-        let at = take_run(&mut self.pages[page as usize].free, n)?;
-        Some(Slot { page, at })
+        let short = n < SHORT_RUN;
+        (self.take_free(n, Some(short)))
+            .or_else(|| self.grow(device, queue, n, short))
+            // (A page grown to its limit may still be short of a run this long.)
+            .or_else(|| self.open(device, n, short))
+            .or_else(|| self.take_free(n, None))
+            .or_else(|| self.grow(device, queue, n, !short))
     }
 
     /// Write `blades` at blade `offset` of the run at `slot`.
@@ -205,9 +278,9 @@ impl BladePool {
     }
 
     /// Keep only the first `keep` blades of the run of `n` at `slot`: they move into a free
-    /// run that fits them when there is one (the whole old run is given back, so the room a
-    /// full chunk needs comes free in one piece), else the run's tail is given back. Where
-    /// they are now. The copies are recorded into `encoder`.
+    /// run that fits them in a page of their kind when there is one (the whole old run is
+    /// given back, so the room a full chunk needs comes free in one piece), else the run's
+    /// tail is given back. Where they are now. The copies are recorded into `encoder`.
     pub fn trim(
         &mut self,
         device: &wgpu::Device,
@@ -221,7 +294,7 @@ impl BladePool {
         if new >= old || slot.page as usize >= self.pages.len() {
             return slot;
         }
-        let Some(to) = self.take_free(new) else {
+        let Some(to) = self.take_free(new, Some(new < SHORT_RUN)) else {
             release_run(
                 &mut self.pages[slot.page as usize].free,
                 slot.at + new,
@@ -245,25 +318,30 @@ impl BladePool {
         to
     }
 
-    /// The last page holds nothing and is not the only one (it can be dropped).
+    /// Some page has memory and nothing in it.
     pub fn spare_page(&self) -> bool {
-        self.pages.len() > 1
-            && (self.pages.last()).is_some_and(|p| p.free.get(&0) == Some(&p.capacity))
+        self.pages.iter().any(Page::spare)
     }
 
-    /// Drop the last page when it is spare; whether it went.
-    pub fn drop_spare_page(&mut self) -> bool {
-        if !self.spare_page() {
+    /// The last page with memory and nothing in it gives the memory back (the page keeps
+    /// its number and a stand-in buffer, and can start again); whether one did.
+    pub fn release_spare_page(&mut self, device: &wgpu::Device) -> bool {
+        let Some(page) = self.pages.iter().rposition(Page::spare) else {
             return false;
-        }
-        self.pages.pop();
+        };
+        let p = &mut self.pages[page];
+        p.buffer = page_buffer(device, GRAIN);
+        p.capacity = 0;
+        p.free.clear();
         self.generation += 1;
         true
     }
 
-    /// Pages of at most `blades` from now on (tests: small pages fill up quickly).
+    /// Pages of at most `blades` (tests: small pages fill up quickly). Before the first run:
+    /// the cull records' places follow the page size.
     #[cfg(test)]
     pub fn set_page_limit(&mut self, blades: u32) {
+        assert!(self.pages.is_empty());
         self.max_page = (blades / GRAIN * GRAIN).max(GRAIN);
     }
 
@@ -300,6 +378,9 @@ mod tests {
         assert_eq!((GRAIN as u64 * BLADE_BYTES) % 256, 0);
     }
 
+    /// A long run's length (blades).
+    const LONG: u32 = 4 * SHORT_RUN;
+
     #[test]
     fn pool_reuses_runs_grows_and_opens_pages() {
         let Some((device, queue)) = crate::render::gpu_tests::headless() else {
@@ -317,21 +398,26 @@ mod tests {
             pool.alloc(&device, &queue, 64),
             Some(Slot { page: 0, at: 0 })
         );
-        // More than the first page holds: the page grows (copying), its runs stay.
+        // A long run starts a page of its own kind.
+        let long = pool.alloc(&device, &queue, LONG).expect("room");
+        assert_eq!((long.page, long.at), (1, 0));
+        // More than that page holds: it grows (copying), its runs stay.
         let generation = pool.generation;
         let big = pool.alloc(&device, &queue, FIRST_PAGE).expect("room");
-        assert_eq!(big.page, 0);
+        assert_eq!((big.page, big.at), (1, LONG));
         assert!(pool.generation > generation);
         // A run bigger than any page can't be held.
         assert_eq!(pool.alloc(&device, &queue, pool.max_page + 1), None);
-        // Fill the first page up: the next run opens a second page.
+        // Fill that page up: the next long run opens another page.
         let rest = pool.max_page - (big.at + FIRST_PAGE);
         if rest >= GRAIN {
             pool.alloc(&device, &queue, rest).expect("room");
         }
-        let next = pool.alloc(&device, &queue, 1000).expect("room");
-        assert_eq!(next.page, 1);
-        assert_eq!(pool.pages(), 2);
+        let next = pool.alloc(&device, &queue, LONG).expect("room");
+        assert_eq!(next.page, 2);
+        assert_eq!((pool.pages(), pool.live_pages()), (3, 3));
+        // Short runs still go to their page.
+        assert_eq!(pool.alloc(&device, &queue, 640).map(|s| s.page), Some(0));
     }
 
     #[test]
@@ -340,16 +426,49 @@ mod tests {
             return;
         };
         let mut pool = BladePool::new(&device);
-        let big = pool.alloc(&device, &queue, 64_000).expect("room");
+        let big = pool.alloc(&device, &queue, 8000).expect("room");
         let _between = pool.alloc(&device, &queue, 64).expect("room");
         let small = pool.alloc(&device, &queue, 640).expect("room");
         let keep = pool.alloc(&device, &queue, 64).expect("room");
-        pool.free(big, 64_000);
+        pool.free(big, 8000);
         pool.free(small, 640);
         // The hole it fits best in, not the first one: the big hole stays whole.
         assert_eq!(pool.alloc(&device, &queue, 600), Some(small));
-        assert_eq!(pool.alloc(&device, &queue, 64_000), Some(big));
-        assert_eq!((keep.page, keep.at), (0, 64_000 + 64 + 640));
+        assert_eq!(pool.alloc(&device, &queue, 8000), Some(big));
+        assert_eq!((keep.page, keep.at), (0, 8000 + 64 + 640));
+    }
+
+    #[test]
+    fn short_and_long_runs_keep_to_their_pages() {
+        let Some((device, queue)) = crate::render::gpu_tests::headless() else {
+            return;
+        };
+        let mut pool = BladePool::new(&device);
+        // A chunk near the camera, then far chunks coming and going around it.
+        let near = pool.alloc(&device, &queue, LONG).expect("room");
+        let far: Vec<Slot> = (0..40)
+            .map(|_| pool.alloc(&device, &queue, 3200).expect("room"))
+            .collect();
+        assert!(far.iter().all(|s| s.page != near.page));
+        // The near chunk goes: its room is whole for the next one, whatever short runs
+        // were asked for meanwhile.
+        pool.free(near, LONG);
+        for _ in 0..40 {
+            let s = pool.alloc(&device, &queue, 3200).expect("room");
+            assert_ne!(s.page, near.page);
+        }
+        assert_eq!(pool.alloc(&device, &queue, LONG), Some(near));
+        // With every page of the other kind full, a run goes wherever room is left.
+        let mut tight = BladePool::new(&device);
+        tight.set_page_limit(LONG);
+        for _ in 0..MAX_PAGES - 1 {
+            tight.alloc(&device, &queue, LONG).expect("room");
+        }
+        let short = tight.alloc(&device, &queue, 640).expect("room");
+        assert_eq!(short.page as usize, MAX_PAGES - 1);
+        let long = tight.alloc(&device, &queue, LONG - 640).expect("room");
+        assert_eq!((long.page, long.at), (short.page, 640));
+        assert_eq!(tight.alloc(&device, &queue, 64), None);
     }
 
     #[test]
@@ -359,71 +478,99 @@ mod tests {
         };
         let mut pool = BladePool::new(&device);
         let mut encoder = device.create_command_encoder(&Default::default());
-        let hole = pool.alloc(&device, &queue, 4096).expect("room");
-        let big = pool.alloc(&device, &queue, 64_000).expect("room");
-        let after = pool.alloc(&device, &queue, 64).expect("room");
-        pool.free(hole, 4096);
+        let hole = pool.alloc(&device, &queue, LONG).expect("room");
+        let big = pool.alloc(&device, &queue, 2 * LONG).expect("room");
+        let after = pool.alloc(&device, &queue, LONG).expect("room");
+        let far = pool.alloc(&device, &queue, 640).expect("room");
+        pool.free(hole, LONG);
         let (capacity, free, _) = pool.room();
-        // Trimmed to a sixteenth: the blades kept move into the small hole and the whole run
-        // comes free, in one piece (with what the hole had left over).
-        let moved = pool.trim(&device, &mut encoder, big, 64_000, 4000);
+        // Trimmed to half: the blades kept move into the hole and the whole run comes free,
+        // in one piece.
+        let moved = pool.trim(&device, &mut encoder, big, 2 * LONG, LONG - 100);
         assert_eq!(moved, hole);
-        let rest = capacity - (4096 + 64_000 + 64);
-        assert_eq!(pool.room(), (capacity, free + 64_000 - 4032, rest as u32));
-        let again = pool.alloc(&device, &queue, 64_000).expect("room");
-        assert_eq!((again.page, again.at), (0, 4032));
+        assert_eq!(pool.room().0, capacity);
+        assert_eq!(pool.room().1, free + 2 * LONG as u64 - (LONG as u64 - 64));
+        let again = pool.alloc(&device, &queue, 2 * LONG).expect("room");
+        assert_eq!((again.page, again.at), (big.page, LONG - 64));
+        // Trimmed to a short run: it moves to the page for short runs.
+        let short = pool.trim(&device, &mut encoder, again, 2 * LONG, 3000);
+        assert_eq!((short.page, short.at), (far.page, 640));
+        assert_eq!(pool.alloc(&device, &queue, 2 * LONG), Some(again));
         // No hole takes them: the run keeps its place and gives back its tail.
         let mut full = BladePool::new(&device);
         let all = full.alloc(&device, &queue, FIRST_PAGE).expect("room");
-        assert_eq!(full.trim(&device, &mut encoder, all, FIRST_PAGE, 1000), all);
+        let kept = full.trim(&device, &mut encoder, all, FIRST_PAGE, LONG);
+        assert_eq!(kept, all);
         assert_eq!(
             full.room(),
             (
                 FIRST_PAGE as u64,
-                FIRST_PAGE as u64 - 1024,
-                FIRST_PAGE - 1024
+                (FIRST_PAGE - LONG) as u64,
+                FIRST_PAGE - LONG
             )
         );
         // Nothing to give back: untouched.
-        assert_eq!(pool.trim(&device, &mut encoder, after, 64, 64), after);
-        assert_eq!(pool.trim(&device, &mut encoder, after, 64, 1), after);
+        assert_eq!(pool.trim(&device, &mut encoder, after, LONG, LONG), after);
+        assert_eq!(
+            pool.trim(&device, &mut encoder, after, LONG, LONG - 1),
+            after
+        );
         queue.submit([encoder.finish()]);
     }
 
     #[test]
-    fn full_pages_refuse_and_an_empty_last_page_goes() {
+    fn full_pages_refuse_and_an_empty_page_gives_its_memory_back() {
         let Some((device, queue)) = crate::render::gpu_tests::headless() else {
             return;
         };
         let mut pool = BladePool::new(&device);
-        pool.set_page_limit(1024);
-        assert_eq!(pool.room_limit(), 4096);
+        pool.set_page_limit(LONG);
+        assert_eq!(pool.room_limit(), 4 * LONG as u64);
         let runs: Vec<Slot> = (0..MAX_PAGES)
-            .map(|_| pool.alloc(&device, &queue, 1024).expect("room"))
+            .map(|_| pool.alloc(&device, &queue, LONG).expect("room"))
             .collect();
         assert_eq!(pool.pages(), MAX_PAGES);
         // Every page full: no room, and no buffer outside the pages.
         assert_eq!(pool.alloc(&device, &queue, 64), None);
-        assert_eq!(pool.bytes(), 4096 * BLADE_BYTES);
-        // The last page empties: it can go; the ones before it stay (their runs keep their
-        // places), and so does the only page left.
+        assert_eq!(pool.alloc(&device, &queue, LONG), None);
+        assert_eq!(pool.bytes(), 4 * LONG as u64 * BLADE_BYTES);
+        // A page empties: its memory can go; the page keeps its number (the others' runs
+        // name theirs).
         assert!(!pool.spare_page());
-        pool.free(runs[3], 1024);
+        pool.free(runs[1], LONG);
         let generation = pool.generation;
-        assert!(pool.spare_page() && pool.drop_spare_page());
-        assert_eq!(pool.pages(), 3);
+        assert!(pool.spare_page() && pool.release_spare_page(&device));
+        assert!(!pool.spare_page() && !pool.release_spare_page(&device));
+        assert_eq!(
+            (pool.pages(), pool.live_pages()),
+            (MAX_PAGES, MAX_PAGES - 1)
+        );
         assert!(pool.generation > generation);
-        pool.free(runs[0], 1024);
-        assert!(!pool.drop_spare_page());
-        for r in &runs[1..3] {
-            pool.free(*r, 1024);
-        }
-        while pool.drop_spare_page() {}
-        assert_eq!(pool.pages(), 1);
-        // And comes back when it is needed.
-        for _ in 0..2 {
-            pool.alloc(&device, &queue, 1024).expect("room");
-        }
-        assert_eq!(pool.pages(), 2);
+        assert!(pool.bytes() < (3 * LONG as u64 + 2 * GRAIN as u64) * BLADE_BYTES);
+        // And comes back when it is needed, in the same place.
+        assert_eq!(pool.alloc(&device, &queue, LONG), Some(runs[1]));
+        assert_eq!(pool.live_pages(), MAX_PAGES);
+    }
+
+    #[test]
+    fn records_mirror_the_pages() {
+        let Some((device, queue)) = crate::render::gpu_tests::headless() else {
+            return;
+        };
+        let mut pool = BladePool::new(&device);
+        let short = pool.alloc(&device, &queue, 640).expect("room");
+        let _first = pool.alloc(&device, &queue, LONG).expect("room");
+        let long = pool.alloc(&device, &queue, LONG).expect("room");
+        assert_eq!(pool.record_at(short), 0);
+        assert_eq!(pool.record_at(long), pool.max_page + LONG);
+        assert_eq!(pool.records_end(0), FIRST_PAGE as u64);
+        assert_eq!(pool.records_end(1), (pool.max_page + FIRST_PAGE) as u64);
+        // Every run's records fit under the limit of the arena on this device.
+        let last = Slot {
+            page: MAX_PAGES as u32 - 1,
+            at: pool.max_page - GRAIN,
+        };
+        let end = pool.record_at(last) as u64 + GRAIN as u64;
+        assert!(end <= crate::render::grass_cull::Arena::limit(&device));
     }
 }

@@ -383,9 +383,6 @@ fn trimmed_chunks_keep_their_first_blades() {
         .map(|c| (c.count.max(1) as u64).next_multiple_of(64))
         .sum();
     assert_eq!(used, rounded);
-    if load.records > 0 {
-        assert_eq!(load.records - load.records_free, rounded);
-    }
 }
 
 #[test]
@@ -536,15 +533,98 @@ fn a_walk_through_meadow_demo_stays_in_its_pages() {
         most as f64 <= still.blades as f64 * 1.5,
         "{most} blades held"
     );
-    // Two pages are plenty (four are the limit), nothing was refused or thinned, and every
-    // chunk has its cull records.
+    // The pages have room to spare (short runs in one, long runs in another one or two;
+    // four are the limit), nothing was refused or thinned, and every chunk has its cull
+    // records.
+    assert!(walked.pages <= 3, "{} pages", walked.pages);
     assert!(
-        walked.pages <= 2 && walked.pages <= still.pages + 1,
-        "{} pages",
-        walked.pages
+        walked.page_blades as f64 <= most as f64 * 1.6,
+        "pages for {} blades",
+        walked.page_blades
     );
     assert_eq!((walked.coarser, walked.unculled), (0, 0));
     // The chunks around the camera hold every blade.
     let under = ((far.x / CHUNK) as u32, (far.z / CHUNK) as u32);
     assert_eq!(g.chunks[&under].level, 0);
+}
+
+/// What the grass of any terrain file holds standing and on a walk (prints only):
+/// `MISTY_WALK_TERRAIN=<file.terrain>`, `MISTY_WALK_START=x,z` (terrain-local; the middle),
+/// `MISTY_WALK_YAW` degrees (0), `MISTY_WALK_METRES` (600).
+#[test]
+#[ignore = "prints only; needs MISTY_WALK_TERRAIN"]
+fn terrain_walk_report() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let Ok(path) = std::env::var("MISTY_WALK_TERRAIN") else {
+        eprintln!("MISTY_WALK_TERRAIN not set: skipped");
+        return;
+    };
+    let d = Arc::new(TerrainData::load(std::path::Path::new(&path)).expect("terrain file"));
+    let number = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<f32>().ok());
+    let start = std::env::var("MISTY_WALK_START")
+        .ok()
+        .and_then(|s| {
+            let (x, z) = s.split_once(',')?;
+            Some(Vec2::new(x.trim().parse().ok()?, z.trim().parse().ok()?))
+        })
+        .unwrap_or(Vec2::new(d.size.x, d.size.z) * 0.5);
+    let yaw = number("MISTY_WALK_YAW").unwrap_or(0.0).to_radians();
+    let metres = number("MISTY_WALK_METRES").unwrap_or(600.0);
+    let end = start + Vec2::new(yaw.sin(), yaw.cos()) * metres;
+    let eye = |p: Vec2| Vec3::new(p.x, d.sample_height(p.x, p.y) + 1.7, p.y);
+    let s = &d.details;
+    eprintln!(
+        "{path}: {} × {} m, grass {} blades/m², draw distance {} m, LOD distance {} m, {} species, flowers {}",
+        d.size.x,
+        d.size.z,
+        s.density,
+        s.draw_distance,
+        s.lod_distance,
+        d.detail_layers.len(),
+        if d.flowers.enabled {
+            d.flowers.density
+        } else {
+            0.0
+        }
+    );
+    let mut standing = Grass::default();
+    standing.update(&device, &queue, &d, eye(start), 1.0);
+    let still = standing.load();
+    drop(standing);
+    let mut g = Grass {
+        camera_memory: std::time::Duration::ZERO,
+        ..Default::default()
+    };
+    let steps = (metres / 2.0).ceil() as usize;
+    let (mut most, mut most_pages, mut coarser, mut refused) = (0, 0, 0, 0);
+    for i in 0..=steps {
+        let at = eye(start.lerp(end, i as f32 / steps as f32));
+        g.update(&device, &queue, &d, at, 1.0);
+        most = most.max(g.stats.blades);
+        coarser = coarser.max(g.stats.coarser);
+        refused += g.stats.refused;
+        most_pages = most_pages.max(g.pool.as_ref().map_or(0, |p| p.pages()));
+        if i % 50 == 0 {
+            let l = g.load();
+            eprintln!(
+                "  {:5.0} m: {:.2} M blades in {} pieces, {} pages ({:.2} M free, longest run {:.2} M), {} levels coarser",
+                i as f32 * 2.0,
+                l.blades as f64 / 1e6,
+                l.pieces,
+                l.pages,
+                l.page_free as f64 / 1e6,
+                l.page_longest_free as f64 / 1e6,
+                l.coarser
+            );
+        }
+    }
+    eprintln!(
+        "standing: {:.2} M blades in {} pieces, {} pages; walking {metres} m: at most {:.2} M blades, {most_pages} pages, {coarser} levels coarser, {refused} chunks refused",
+        still.blades as f64 / 1e6,
+        still.pieces,
+        still.pages,
+        most as f64 / 1e6
+    );
 }
