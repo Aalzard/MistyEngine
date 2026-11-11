@@ -1,0 +1,12 @@
+# Optional SignPath pipeline policy for the release-signing policy: paste it into SignPath
+# (Pipeline Policies > internal definition) and add it to the signing policy, if SignPath
+# Foundation has not set one up already. See README.md here.
+#
+# Every job of the workflow that asks for a signature must have run on a GitHub-hosted runner
+# (SignPath checks this for open source projects anyway; the policy makes it visible).
+# Re-runs stay allowed: a release whose approval timed out is re-run from the same tag.
+github-build-policies:
+  version: '1.0'
+  disallow_reruns: false
+  runners:
+    require_github_hosted: true

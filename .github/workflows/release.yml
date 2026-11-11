@@ -1,9 +1,10 @@
 # Linux x64 release package: built on ubuntu-22.04 (glibc 2.35, so it runs on Ubuntu 22.04,
 # Debian 12, Fedora 36 and newer) when a v* tag is pushed, then uploaded to that tag's GitHub
-# release next to the Windows packages made with tools/make_release.ps1. See docs/release.md.
+# release next to the Windows packages from release-windows.yml. See docs/release.md.
 #
-# The Windows release is usually created first (by hand, from Windows). This job waits for it
-# (a draft counts) and creates a published release itself only if none appears in time.
+# The release is usually created first, as a draft, by the Windows workflow (or by hand). This
+# job waits for it (a draft counts) and creates a published release itself only if none appears
+# in time.
 # "Run workflow" (workflow_dispatch) rebuilds and re-uploads for an existing tag.
 
 name: Release (Linux)

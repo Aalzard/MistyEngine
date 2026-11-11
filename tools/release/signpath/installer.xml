@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer" (signing pass 2).
+
+  Input: the workflow artifact "unsigned-installer" of .github/workflows/release-windows.yml,
+  a zip with one file at its root: the Inno Setup installer the same workflow run built from
+  the executables signed in pass 1.
+
+  The installer must have the release's file name and carry the product name "Misty Engine" and
+  the release version in its version info (set in tools/installer/MistyEngine.iss). The workflow
+  passes the workspace version from Cargo.toml as the "version" parameter.
+
+  SignPath cannot look inside an Inno Setup installer, which is why the executables are signed
+  first, in their own request.
+
+  Keep this file and the configuration stored in SignPath the same (see README.md here).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="MistyEngine-Setup-v${version}-windows-x64.exe" product-name="Misty Engine" product-version="${version}">
+      <authenticode-sign description="Misty Engine Setup" description-url="https://github.com/Aalzard/MistyEngine" />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
