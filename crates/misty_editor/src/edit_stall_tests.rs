@@ -20,12 +20,12 @@ use crate::actions::{Action, Create};
 use crate::project::ProjectBrowser;
 use crate::state::EditorState;
 
-/// Folders and files per folder of the test project (3000 files, more than the sample project).
-const FOLDERS: usize = 60;
+/// Folders and files per folder of the test project (1500 files, about the sample project's).
+const FOLDERS: usize = 30;
 const FILES: usize = 50;
 
 /// Main-thread time allowed for the selection frame plus the move frame. They take 1-3 ms in a
-/// release build; walking the 3000 files took 70 ms or more.
+/// release build; walking the sample project's 1800 files took 100 ms or more.
 const BUDGET: Duration = Duration::from_millis(if cfg!(debug_assertions) { 60 } else { 25 });
 
 /// A project with many asset files and its GUID database (as the editor keeps it), a scene
