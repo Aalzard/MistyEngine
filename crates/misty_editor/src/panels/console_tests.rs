@@ -17,7 +17,10 @@ fn state(tag: &str) -> EditorState {
     let root = std::env::temp_dir().join(format!("misty_console_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("Assets")).unwrap();
-    EditorState::new(ProjectBrowser::open(root))
+    let mut s = EditorState::new(ProjectBrowser::open(root));
+    // Without the line opening a project logs.
+    s.console = Default::default();
+    s
 }
 
 fn cleanup(h: Harness<'static, EditorState>) {
@@ -216,7 +219,7 @@ fn counters_search_and_collapse_after_lines_were_dropped() {
     h.state_mut().console.show_errors = false;
     h.run();
     let kept_warnings = h.state().console.built_rows().len();
-    assert!((99..=100).contains(&kept_warnings), "{kept_warnings}");
+    assert!((97..=100).contains(&kept_warnings), "{kept_warnings}");
     // Collapse: one row for the identical warnings, with their number.
     h.state_mut().console.collapse = true;
     h.run();

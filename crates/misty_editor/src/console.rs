@@ -190,6 +190,7 @@ impl Console {
     }
 
     /// The lines still kept, oldest first.
+    #[cfg(test)]
     pub fn entries(&self) -> &VecDeque<LogEntry> {
         &self.entries
     }
