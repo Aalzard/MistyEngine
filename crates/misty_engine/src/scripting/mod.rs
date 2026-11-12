@@ -463,7 +463,7 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
-        let lua = Lua::new();
+        let lua = game_lua();
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
@@ -1659,6 +1659,37 @@ impl ScriptHost {
     }
 }
 
+/// Standard libraries game scripts get (`debug`, `io` and `package` are left out).
+pub fn game_libs() -> mlua::StdLib {
+    use mlua::StdLib as L;
+    L::TABLE | L::STRING | L::MATH | L::UTF8 | L::COROUTINE | L::OS
+}
+
+/// A Lua state for game scripts: [`game_libs`], then [`sandbox`].
+pub fn game_lua() -> Lua {
+    let lua = Lua::new_with(game_libs(), mlua::LuaOptions::default())
+        .expect("the safe standard libraries load");
+    sandbox(&lua).expect("the sandbox chunk runs");
+    lua
+}
+
+/// Take away what lets a game script touch the machine: files (`dofile`, `loadfile`), modules
+/// (`require`), processes and the environment (`os` keeps only `time`, `clock`, `date` and
+/// `difftime`), and precompiled chunks (`load` takes source text only: crafted bytecode can
+/// crash Lua).
+pub fn sandbox(lua: &Lua) -> mlua::Result<()> {
+    lua.load(
+        r#"
+local os_, load_ = os, load
+os = os_ and { time = os_.time, clock = os_.clock, date = os_.date, difftime = os_.difftime }
+io, package, require, dofile, loadfile = nil, nil, nil, nil, nil
+load = function(chunk, name, mode, ...) return load_(chunk, name, "t", ...) end
+"#,
+    )
+    .set_name("=sandbox")
+    .exec()
+}
+
 fn load_class(lua: &Lua, root: &std::path::Path, path: &str) -> Result<Table, String> {
     let source = crate::vfs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
     // `--#if DEFINE` blocks of the Build Profile's scripting defines.
@@ -1704,7 +1735,7 @@ pub struct ScriptInfo {
 
 /// Public fields of a script with their Inspector attributes.
 pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
-    let lua = Lua::new();
+    let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
     let class = eval_class(&lua, source, path)?;
     let attributes = attributes::parse(&class);
@@ -1747,7 +1778,7 @@ pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
 /// objects are unavailable, but `Vector3`, `Mathf` and the classes' own functions work).
 /// Returns the chunk's error, if any.
 pub fn test_scripts(scripts: &[(&str, &str)], chunk: &str) -> Result<(), String> {
-    let lua = Lua::new();
+    let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
     for (name, source) in scripts {
         let class = eval_class(&lua, source, name)?;

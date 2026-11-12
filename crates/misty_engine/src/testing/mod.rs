@@ -290,11 +290,12 @@ fn load_file(root: &Path, rel: &str, mode: TestMode) -> Result<(Lua, Vec<TestCas
     // SAFETY: only the framework (our code) touches `debug`, before any test code runs.
     let lua = unsafe {
         Lua::unsafe_new_with(
-            mlua::StdLib::ALL_SAFE | mlua::StdLib::DEBUG,
+            crate::scripting::game_libs() | mlua::StdLib::DEBUG,
             mlua::LuaOptions::default(),
         )
     };
     let fail = |e: String| Failure::from_lua(&e, "", rel);
+    crate::scripting::sandbox(&lua).map_err(|e| fail(e.to_string()))?;
     crate::scripting::api::register(&lua).map_err(|e| fail(e.to_string()))?;
     lua.load(FRAMEWORK)
         .set_name(FRAMEWORK_CHUNK)

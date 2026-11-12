@@ -292,6 +292,46 @@ return Ball
 }
 
 #[test]
+fn game_scripts_cannot_reach_files_processes_or_bytecode() {
+    let probe = r#"
+local Probe = {}
+function Probe:Start()
+    Debug.Log("io", type(io), "package", type(package), "require", type(require))
+    Debug.Log("dofile", type(dofile), "loadfile", type(loadfile), "debug", type(debug))
+    Debug.Log("execute", type(os.execute), "remove", type(os.remove), "getenv", type(os.getenv))
+    Debug.Log("exit", type(os.exit), "time", type(os.time()), "clock", type(os.clock()))
+    local f = load(string.dump(function() return 1 end))
+    Debug.Log("bytecode", type(f), "text", load("return 2")())
+end
+return Probe
+"#;
+    let root = project(&[("Probe.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Probe", None);
+    attach(&mut scene, e, "Probe.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    for want in [
+        "io nil package nil require nil",
+        "dofile nil loadfile nil debug nil",
+        "execute nil remove nil getenv nil",
+        "exit nil time number clock number",
+        "bytecode nil text 2",
+    ] {
+        assert!(logs.iter().any(|(_, t)| t == want), "{want}: {logs:?}");
+    }
+    // The Inspector reads a script's fields by running its top level: same sandbox.
+    let info = crate::scripting::inspect_script(
+        "local S = { opened = type(io) .. type(os.execute) }\nreturn S",
+        "S.lua",
+    )
+    .unwrap();
+    assert_eq!(
+        info.fields,
+        vec![("opened".to_owned(), ScriptValue::Text("nilnil".into()))]
+    );
+}
+
+#[test]
 fn instantiate_refuses_paths_outside_the_project() {
     let root = project(&[]);
     // A prefab next to the project folder, and one at an absolute path.
