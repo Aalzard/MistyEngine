@@ -4057,3 +4057,94 @@ the texture's GUID and gets a `.meta`.
   asked first.
 - Metallic, occlusion and emission maps are not detected by name; they become albedo
   materials.
+## Round 38 — Weather polish: rain that reads as water (branch r38-weather-polish)
+
+### Done (docs/pending/r38-weather-polish.md)
+- **Properties bug** (commit "Weather Properties: edits always show"): with a timeline on, the
+  runtime took its values from the timeline's states and ignored the volume's own, and a
+  script's `Weather.SetState` (WeatherDemo's keys 1–8) held the weather until
+  `Weather.ClearState`: either way presets and sliders did nothing. Now picking a preset or
+  changing any weather value turns the timeline off (its states are kept) and clears the
+  script's hold, so the edit shows on the next frame in the Edit Mode preview and in Play. A
+  notice names what is driving the weather ("Timeline is driving the weather (now: …)" with
+  Turn Timeline Off, "Script override: Blizzard" with Clear Override). Turkish and Arabic
+  strings. A timeline's Time Scale left out of a scene file loads as 1 (it loaded as 0).
+- **Rain drops are lenses, not white lines** (`precipitation.wgsl`, `vs_rain` / `fs_rain`):
+  - A drop shows the scene behind it flipped across its width, read from a small blurred
+    chain of the opaque scene (`render/weather/scene_blur.rs`: 6 levels from half size,
+    recorded only while it rains; cheaper to sample than the full-size copy read before).
+  - **Depth**: near drops are drawn larger; about half of the drops within a few metres are
+    out of focus (wide, soft, see-through), the rest sharp; further out they are thin beads;
+    far away they merge into soft streaky sheets with drifting bands.
+  - **Bead shape and motion** (what the user liked in Sleet): a shorter exposure
+    (`SHUTTER` 1/55 s at Streak Length 1), a round head thinning up its tail, every drop
+    swaying on its own small loops and carried differently by the wind, so no two lie along
+    one line; size, speed (big drops fall faster), brightness and beading differ per drop.
+  - **Light**: a thin drop carries the light around it (the widest blur level, seen through
+    the same haze as the pixel behind it), so it vanishes against the sky and shows against
+    trees; every drop has a highlight of the sky so rain shows against dark ground; glints
+    from the sun (towards it: the scattering direction was reversed in r34, which lit drops
+    looking away from the sun), lamps and lightning. A flash lasts a millisecond: it lights
+    the head of each streak only (frozen drops).
+  - Heavy rain pulls distant colour towards grey; an early frustum test skips the occlusion
+    lookups of drops outside the picture.
+  - **Streaks bend**: a drop's path through one exposure bows or snakes a little (a few % of
+    its length, more in turbulent wind, less for big drops and out-of-focus ones), drawn in
+    the fragment shader inside a widened quad, so no streak is a ruled line.
+  - **Against a bright sky** a drop is a little darker than the sky (a lens shows the ground
+    below the horizon), so rain reads as grey streaks there instead of vanishing.
+- **Rain stops in terrain tree crowns**: the occlusion map also draws each terrain tree's
+  crown near the camera (the upper half of the ellipsoid the GI uses, at 0.8 of its size,
+  `occlusion_crowns.wgsl`), so it no longer rains through the oaks and the ground under
+  them stays drier.
+- **Presets**: Sleet is thicker (22 drops and 18 flakes per m³), Thunderstorm by day lets
+  more light through (sun dimming 0.78, ambient 0.48; nights stay dark).
+- **Night storms are dark**: the test's night is a real one (sun under the horizon, r27's
+  moon and night sky); rain is lit by lamps and lightning. The flash lights the cloud base
+  in cloud shapes round the strike instead of whitening the whole sky and the haze.
+- **Splashes**: droplets on real arcs (2–5 per splash), a thin broken ring, a low smooth
+  corona from the biggest drops only (tall ragged cups read as grass tufts); clear water lit
+  by the light around it; every splash differs.
+- **Snow**: the same depth of field as the rain (big soft flakes near the lens), flakes
+  smeared by wind are soft dashes instead of pills, a faster exposure, far flakes thin into
+  the haze in a gale.
+- **Wet surfaces**: the water film is uneven (patches of gloss, not one mirror); soil and
+  turf (very rough surfaces) darken but stay dull and hold fewer puddles; puddles have soft
+  edges; the noise behind puddles and snow patches no longer shows square cells or facets.
+- **Lens drops** (still optional, off by default): a few lumpy drops at a time, each a small
+  upside-down, out-of-focus view.
+- **WeatherDemo** is a lane by an oak wood: a small terrain (`Terrains/WeatherDemo.terrain`)
+  with grass and a gravel path, terrain trees from `Assets/Trees` (oak, young oak, birch),
+  rock prefabs, a timber shelter with a pitched roof and a bench, two street lamps. It
+  starts in manual (Rain; the demo cycle's states are kept with the timeline off). Keys as
+  before, plus N for night / day.
+- `weather_screenshots` takes `MISTY_WEATHER_OUT` / `MISTY_WEATHER_SHOTS`, `weather_demo`
+  takes `MISTY_WEATHER_SCENE`; tests can read the composite shaders from disk
+  (`MISTY_WEATHER_SHADERS`) to tune the look without rebuilding.
+- **GPU cost** (`weather_gpu_timings`, weather composite pass, r34's WeatherDemo view so the
+  numbers compare; the machine was busy with other builds, so ±0.1 ms is noise):
+
+  | Weather | r34 (2026-11-11) | r38 first agent's shaders | r38 final (two runs) |
+  |---|---|---|---|
+  | Heavy Rain | 1.137 ms | 1.250 ms | 1.252 / 1.313 ms |
+  | Downpour | 1.575 ms | 1.854 ms | 1.880 / 1.948 ms |
+  | Thunderstorm | 1.250 ms | 1.466 ms | 1.530 / 1.476 ms |
+  | Blizzard + snow cover | 1.215 ms | 0.772 ms | 0.776 / 0.914 ms |
+
+  Rain costs 0.1–0.35 ms more than r34 (the lens look: blurred-scene reads, depth of field
+  on the near drops, bent streaks); snow is cheaper. The bend is kept narrow on wide blurred
+  drops and the blur disc is capped at 5 % of the picture height to hold it there. The r34
+  binary could not be re-run the same day (its copy was on the failing D: drive), so the
+  r34 column is the day before's measurement. On the new WeatherDemo view (terrain, oak
+  wood) the occlusion map with crowns costs 0.061 ms.
+- **Screenshots** (`docs/screenshots/r38/`): `before_light_rain.jpg` and
+  `before_downpour_mist_splashes.jpg` (r34) against `light_rain.jpg` and `downpour.jpg`;
+  `rain_near_drops.jpg`, `rain_against_sky.jpg`, `rain_looking_down.jpg`,
+  `thunderstorm_looking_down.jpg`, `thunderstorm_night.jpg`, `thunderstorm_night_flash.jpg`,
+  `thunderstorm_day.jpg`, `rain_night_lamp.jpg`, `rain_lamp_day.jpg`, `sleet.jpg`,
+  `wet_lane_puddles.jpg`, `rain_lens_drops.jpg`, `rain.jpg`, `clear.jpg`, snow:
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`, `snow_night_lamp.jpg`.
+- **Not real yet**: near drops are still billboards (no true refraction of the 3D scene, only
+  the flipped blurred screen); puddle reflections are softened, not fixed (the hard edges
+  come from the screen-space reflection / probes); tree crowns block rain as solid
+  ellipsoids (no drip, no thinning); no Inspector values for the bead shape or blur.

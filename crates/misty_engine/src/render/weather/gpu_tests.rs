@@ -203,10 +203,14 @@ fn project() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
 }
 
+/// WeatherDemo (or the scene file named by `MISTY_WEATHER_SCENE`, to time another scene).
 fn weather_demo() -> Option<Scene> {
     let root = project();
     crate::assets::set_project_root(&root);
-    let (scene, _) = Scene::load(&root.join("Assets/Scenes/WeatherDemo.scene")).ok()?;
+    let path = std::env::var("MISTY_WEATHER_SCENE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| root.join("Assets/Scenes/WeatherDemo.scene"));
+    let (scene, _) = Scene::load(&path).ok()?;
     Some(scene)
 }
 
@@ -245,13 +249,18 @@ fn demo_state(scene: &mut Scene, preset: WeatherPreset, wet: f32, snow: f32) {
     scene.weather.set_surfaces(Some(wet), Some(snow));
 }
 
+/// Night: the sun 28° under the horizon (the moon and the night sky take over, r27).
 fn night(scene: &mut Scene) {
     let sun = scene.find_by_name("Directional Light").unwrap();
-    let mut l = scene.world.get::<&mut Light>(sun).unwrap();
-    // Moonlight.
-    l.color = [0.55, 0.65, 1.0];
-    l.intensity = 0.06;
-    scene.render_settings.environment_lighting.intensity = 0.15;
+    let mut t = scene.transform(sun);
+    let yaw = t.euler().y;
+    t.set_euler(Vec3::new(-28.0, yaw, 0.0));
+    scene.set_transform(sun, t);
+}
+
+fn move_camera(s: &mut Scene, position: Vec3, euler: Vec3) {
+    let cam = s.find_by_name("Main Camera").unwrap();
+    s.set_transform(cam, Transform::from_position(position).with_euler(euler));
 }
 
 /// GPU time of the weather at 1080p on High: Heavy Rain with splashes and wet surfaces, a
@@ -332,9 +341,11 @@ fn weather_gpu_timings() {
     }
 }
 
-/// The docs screenshots (docs/screenshots/r34/*.jpg) of WeatherDemo.
+/// The docs screenshots (docs/screenshots/r38/*.jpg, or the folder named by
+/// `MISTY_WEATHER_OUT`) of WeatherDemo; `MISTY_WEATHER_SHOTS` = comma-separated name parts
+/// picks some of them.
 #[test]
-#[ignore = "writes docs/screenshots/r34; run on purpose under the gpu-timing lock"]
+#[ignore = "writes docs/screenshots/r38; run on purpose under the gpu-timing lock"]
 fn weather_screenshots() {
     let Some((device, queue)) = headless() else {
         eprintln!("no GPU adapter: skipped");
@@ -344,20 +355,23 @@ fn weather_screenshots() {
         eprintln!("WeatherDemo missing: skipped");
         return;
     };
-    let out =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r34");
+    let out = std::env::var("MISTY_WEATHER_OUT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots/r38")
+        });
     std::fs::create_dir_all(&out).unwrap();
     let only = std::env::var("MISTY_WEATHER_SHOTS").unwrap_or_default();
     type Setup = fn(&mut Scene);
-    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 7] = [
+    // Standing under the lamp looking along the lane.
+    let lamp_view: Setup = |s| {
+        move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
+    };
+    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 20] = [
+        ("clear", WeatherPreset::Clear, 0.0, 0.0, None),
         ("light_rain", WeatherPreset::LightRain, 0.5, 0.0, None),
-        (
-            "downpour_mist_splashes",
-            WeatherPreset::Downpour,
-            1.0,
-            0.0,
-            None,
-        ),
+        ("rain", WeatherPreset::Rain, 0.8, 0.0, None),
+        ("downpour", WeatherPreset::Downpour, 1.0, 0.0, None),
         (
             "thunderstorm_night",
             WeatherPreset::Thunderstorm,
@@ -366,22 +380,110 @@ fn weather_screenshots() {
             Some(night),
         ),
         (
-            "wet_street_puddles",
-            WeatherPreset::Clear,
+            "thunderstorm_night_flash",
+            WeatherPreset::Thunderstorm,
+            1.0,
+            0.0,
+            Some(night),
+        ),
+        (
+            "rain_night_lamp",
+            WeatherPreset::HeavyRain,
             1.0,
             0.0,
             Some(|s: &mut Scene| {
-                let cam = s.find_by_name("Main Camera").unwrap();
-                s.set_transform(
-                    cam,
-                    Transform::from_position(Vec3::new(-2.0, 1.2, -6.0))
-                        .with_euler(Vec3::new(12.0, 20.0, 0.0)),
-                );
+                night(s);
+                move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
+            }),
+        ),
+        (
+            "rain_lamp_day",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(lamp_view),
+        ),
+        (
+            // Standing on the lane looking down at the ground ahead.
+            "rain_looking_down",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(38.0, 25.0, 0.0));
+            }),
+        ),
+        (
+            "thunderstorm_looking_down",
+            WeatherPreset::Thunderstorm,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(30.0, -20.0, 0.0));
+            }),
+        ),
+        (
+            "thunderstorm_day",
+            WeatherPreset::Thunderstorm,
+            1.0,
+            0.0,
+            None,
+        ),
+        ("sleet", WeatherPreset::Sleet, 0.8, 0.1, None),
+        (
+            // Looking up along the lane: rain against the bright overcast sky.
+            "rain_against_sky",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(-14.0, 25.0, 0.0));
+            }),
+        ),
+        (
+            // Level, towards the dark wood behind the shelter: the near drops (some sharp,
+            // most out of focus and see-through) against a dark background.
+            "rain_near_drops",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(2.0, 25.0, 0.0));
+            }),
+        ),
+        (
+            "rain_lens_drops",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                let e = s.find_by_name("Weather").unwrap();
+                let mut w = s.world.get::<&mut Weather>(e).unwrap();
+                w.effects.lens_drops = true;
+            }),
+        ),
+        (
+            "wet_lane_puddles",
+            WeatherPreset::Rain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-2.0, 1.2, -6.5), Vec3::new(14.0, 55.0, 0.0));
             }),
         ),
         ("snow_falling", WeatherPreset::Snow, 0.0, 0.35, None),
         ("blizzard", WeatherPreset::Blizzard, 0.0, 0.7, None),
         ("snow_covered", WeatherPreset::Clear, 0.0, 1.0, None),
+        (
+            "snow_night_lamp",
+            WeatherPreset::HeavySnow,
+            0.0,
+            0.6,
+            Some(|s: &mut Scene| {
+                night(s);
+                move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
+            }),
+        ),
     ];
     for (name, preset, wet, snow, setup) in shots {
         if !only.is_empty() && !only.split(',').any(|o| name.contains(o)) {
@@ -392,7 +494,13 @@ fn weather_screenshots() {
             f(&mut scene);
         }
         demo_state(&mut scene, preset, wet, snow);
-        if name == "wet_street_puddles" {
+        {
+            // No chance strikes: only the flash shot shows lightning.
+            let e = scene.find_by_name("Weather").unwrap();
+            let mut w = scene.world.get::<&mut Weather>(e).unwrap();
+            w.state.lightning_frequency = 0.0;
+        }
+        if name == "wet_lane_puddles" {
             let e = scene.find_by_name("Weather").unwrap();
             scene.world.get::<&mut Weather>(e).unwrap().surfaces.puddles = 0.7;
             crate::weather::update_scene(&mut scene, 0.0, Vec3::ZERO);
@@ -402,7 +510,7 @@ fn weather_screenshots() {
         r.set_quality(&device, &QualityLevel::high());
         let target = r.create_target(&device, 1600, 900);
         let mut img = render_demo(&device, &queue, &mut r, &target, &mut scene, 40, 1.0 / 60.0);
-        if name == "thunderstorm_night" {
+        if name == "thunderstorm_night_flash" {
             // A strike in view, caught at its first flash.
             let cam = crate::render_scene::game_camera(&scene).unwrap().0;
             let at = cam.position + cam.forward() * 900.0 + cam.right() * 250.0;
@@ -416,7 +524,7 @@ fn weather_screenshots() {
         let path = out.join(format!("{name}.jpg"));
         let file = std::fs::File::create(&path).unwrap();
         let mut enc =
-            image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), 88);
+            image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), 90);
         enc.encode_image(&rgb).unwrap();
         eprintln!("wrote {}", path.display());
     }

@@ -28,12 +28,32 @@ use crate::weather::frame::MAX_REGIONS;
 
 #[cfg(test)]
 mod gpu_tests;
+mod scene_blur;
 
 const PRECIP_SRC: &str = concat!(
     include_str!("shaders/weather_common.wgsl"),
     "\n",
     include_str!("shaders/precipitation.wgsl")
 );
+/// The composite shader. Tests can read the two files from disk instead (`MISTY_WEATHER_SHADERS`
+/// = the shaders folder), to tune the look of the weather without rebuilding.
+fn precip_src() -> std::borrow::Cow<'static, str> {
+    #[cfg(test)]
+    if let Ok(dir) = std::env::var("MISTY_WEATHER_SHADERS") {
+        let read = |name: &str| {
+            std::fs::read_to_string(std::path::Path::new(&dir).join(name))
+                .unwrap_or_else(|e| panic!("{name}: {e}"))
+        };
+        return format!(
+            "{}
+{}",
+            read("weather_common.wgsl"),
+            read("precipitation.wgsl")
+        )
+        .into();
+    }
+    PRECIP_SRC.into()
+}
 const SPLASH_SRC: &str = concat!(
     include_str!("shaders/weather_common.wgsl"),
     "\n",
@@ -44,6 +64,14 @@ const OCCLUSION_SRC: &str = concat!(
     "\n",
     include_str!("shaders/occlusion.wgsl")
 );
+const CROWNS_SRC: &str = include_str!("shaders/occlusion_crowns.wgsl");
+/// Terrain tree crowns the occlusion map holds at most, and the vertices of one crown's dome
+/// (occlusion_crowns.wgsl: 3 bands x 10 sectors x 6).
+const MAX_CROWNS: usize = 4096;
+const CROWN_VERTICES: u32 = 180;
+/// Share of a crown's ellipsoid that keeps the rain off (leaves are not a roof: the thin edge
+/// of a crown lets the rain through).
+const CROWN_COVER: f32 = 0.8;
 
 /// Metres the occlusion map covers (centred on the camera).
 pub const OCCLUSION_SIZE: f32 = 96.0;
@@ -56,7 +84,10 @@ const FAR_VOLUME: f32 = 64.0 * 32.0 * 64.0;
 /// Most drops / flakes drawn in one render (all layers).
 pub const MAX_PARTICLES: u32 = 700_000;
 /// Base exposure of a streak (s) at Streak Length 1: a film camera's shutter.
-const SHUTTER: f32 = 1.0 / 25.0;
+const SHUTTER: f32 = 1.0 / 55.0;
+/// Depth of field of the drops: the blur disc of a drop 1 m from the lens as a share of the
+/// picture height (the lens is focused far away, so only drops within a few metres blur).
+const DEFOCUS: f32 = 0.028;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
@@ -104,6 +135,7 @@ struct PrecipGpu {
     haze: [f32; 4],
     misc: [f32; 4],
     bolt: [f32; 4],
+    rain3: [f32; 4],
 }
 
 /// `SplashSim` in splash_sim.wgsl.
@@ -247,6 +279,9 @@ struct Occlusion {
     uniform: wgpu::Buffer,
     layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
+    /// Terrain tree crowns (occlusion_crowns.wgsl) and their buffer.
+    crown_pipeline: wgpu::RenderPipeline,
+    crowns: wgpu::Buffer,
 }
 
 /// What this render draws.
@@ -255,6 +290,9 @@ struct Now {
     counts: [u32; 4],
     occlusion: bool,
     centre: Vec3,
+    /// Terrain tree crowns inside the occlusion map: centre and radii (`Crown` in
+    /// occlusion_crowns.wgsl).
+    crowns: Vec<[f32; 8]>,
     splash_spawn: u32,
     segments: u32,
 }
@@ -266,6 +304,8 @@ pub(super) struct WeatherGpu {
     dummy: wgpu::TextureView,
     occlusion: Option<Occlusion>,
     passes: Option<Passes>,
+    /// The blurred scene the rain is seen through (made with the passes).
+    blur: Option<scene_blur::SceneBlur>,
     precip: wgpu::Buffer,
     precip_glow: wgpu::Buffer,
     sim_uniform: wgpu::Buffer,
@@ -319,6 +359,7 @@ impl WeatherGpu {
             dummy: depth_texture(device, 1, "misty weather occlusion (none)"),
             occlusion: None,
             passes: None,
+            blur: None,
             precip: buffer(
                 "misty weather precip",
                 std::mem::size_of::<PrecipGpu>() as u64,
@@ -445,8 +486,15 @@ impl Renderer {
             0
         };
         let texels = occlusion_texels(tier);
+        let centre = occlusion_centre(frame.camera.position, texels);
+        let crowns = if wf.effects.occlusion {
+            terrain_crowns(frame.terrains, centre, OCCLUSION_SIZE * 0.5)
+        } else {
+            Vec::new()
+        };
         w.now = Some(Now {
-            centre: occlusion_centre(frame.camera.position, texels),
+            centre,
+            crowns,
             occlusion: wf.effects.occlusion,
             frame: wf,
             counts,
@@ -562,6 +610,9 @@ impl Renderer {
         if let Some(o) = &self.weather.occlusion {
             let m = occlusion_matrix(now.centre, OCCLUSION_SIZE * 0.5);
             queue.write_buffer(&o.uniform, 0, bytemuck::bytes_of(&m.to_cols_array_2d()));
+            if !now.crowns.is_empty() {
+                queue.write_buffer(&o.crowns, 0, bytemuck::cast_slice(&now.crowns));
+            }
         }
         // Bolt segments.
         if now.segments > 0 {
@@ -597,6 +648,10 @@ impl Renderer {
                 || w.effects.lens_drops)
         {
             self.weather.passes = Some(make_passes(device, &self.pipelines.view_layout));
+            self.weather.blur = Some(scene_blur::SceneBlur::new(
+                device,
+                &self.pipelines.view_layout,
+            ));
         }
     }
 
@@ -671,6 +726,25 @@ impl Renderer {
                 m.draw(&mut pass, i as u32..i as u32 + 1);
             }
         }
+        if !now.crowns.is_empty() {
+            let crowns = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty weather occlusion crowns"),
+                layout: &o.layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: o.uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: o.crowns.as_entire_binding(),
+                    },
+                ],
+            });
+            pass.set_pipeline(&o.crown_pipeline);
+            pass.set_bind_group(0, &crowns, &[]);
+            pass.draw(0..CROWN_VERTICES, 0..now.crowns.len() as u32);
+        }
     }
 
     /// Splashes, then the composite into the HDR image (after the temporal resolve) and the
@@ -692,6 +766,26 @@ impl Renderer {
         let Some(copy) = self.scene_copies.current(target.size()) else {
             return;
         };
+        let Some(blur) = self.weather.blur.as_mut() else {
+            return;
+        };
+        // Rain, its far sheets, splashes and lens drops show the scene through water: the
+        // blurred chain.
+        let wet = now.frame.max_rain > 0.0 || now.frame.effects.lens_drops;
+        if wet {
+            blur.record(
+                device,
+                encoder,
+                &self.view_bind_group,
+                &copy.color_view,
+                target.size(),
+            );
+        }
+        let blur = self.weather.blur.as_ref().unwrap();
+        let blur_view = blur
+            .current(target.size())
+            .filter(|_| wet)
+            .map_or(&copy.color_view, |c| &c.view);
         let w = &now.frame;
         let cam = frame.camera;
         let out = target.output_size();
@@ -748,7 +842,8 @@ impl Renderer {
                 p.snow_speed,
                 p.snow_turbulence,
                 p.snow_opacity,
-                SHUTTER * 0.6 * p.streak_length,
+                // Flakes are photographed faster than rain is (they'd all be dashes otherwise).
+                SHUTTER * 0.53 * p.streak_length,
             ],
             wind: w.wind.extend(w.rain_fall).to_array(),
             drift: w.wind_offset.extend(w.snow_fall).to_array(),
@@ -773,6 +868,16 @@ impl Renderer {
                 0.0,
                 if w.effects.splashes { 1.0 } else { 0.0 },
                 if w.effects.mist { 1.0 } else { 0.0 },
+            ],
+            rain3: [
+                p.wind_turbulence,
+                DEFOCUS,
+                (scene_blur::LEVELS - 1) as f32,
+                if w.effects.haze {
+                    p.rain_intensity
+                } else {
+                    0.0
+                },
             ],
         };
         queue.write_buffer(&self.weather.precip, 0, bytemuck::bytes_of(&u));
@@ -880,6 +985,14 @@ impl Renderer {
                         binding: 6,
                         resource: self.weather.bolts.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(blur_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: wgpu::BindingResource::Sampler(&blur.sampler),
+                    },
                 ],
             })
         };
@@ -961,6 +1074,68 @@ impl Renderer {
     }
 }
 
+/// Crowns of the terrain trees that reach into the occlusion map (`half` metres round `centre`
+/// across x and z), as ellipsoids (the shape the GI uses for them).
+fn terrain_crowns(
+    terrains: &[crate::terrain::TerrainDraw],
+    centre: Vec3,
+    half: f32,
+) -> Vec<[f32; 8]> {
+    let mut out = Vec::new();
+    for t in terrains {
+        let d = &t.data;
+        if d.trees.instances.is_empty() {
+            continue;
+        }
+        // Skip a terrain that lies wholly outside the map.
+        if t.position.x > centre.x + half
+            || t.position.z > centre.z + half
+            || t.position.x + d.size.x < centre.x - half
+            || t.position.z + d.size.z < centre.z - half
+        {
+            continue;
+        }
+        let protos: Vec<Option<std::sync::Arc<crate::trees::store::Built>>> = d
+            .trees
+            .prototypes
+            .iter()
+            .map(|p| crate::trees::store::get(&p.tree))
+            .collect();
+        for inst in &d.trees.instances {
+            let Some(Some(built)) = protos.get(inst.prototype as usize) else {
+                continue;
+            };
+            let a = &built.asset;
+            let x = t.position.x + inst.position.x * d.size.x;
+            let z = t.position.z + inst.position.y * d.size.z;
+            let height = a.height * inst.height_scale;
+            let width = a.crown_width * a.height * inst.width_scale;
+            let r = width * 0.5 * CROWN_COVER;
+            if (x - centre.x).abs() > half + r || (z - centre.z).abs() > half + r {
+                continue;
+            }
+            let crown_base = a.crown_base.clamp(0.0, 0.95) * height;
+            let ground = t.position.y
+                + d.sample_height(inst.position.x * d.size.x, inst.position.y * d.size.z);
+            let ry = (height - crown_base) * 0.5;
+            out.push([
+                x,
+                ground + crown_base + ry,
+                z,
+                0.0,
+                r,
+                ry * CROWN_COVER,
+                r,
+                0.0,
+            ]);
+            if out.len() >= MAX_CROWNS {
+                return out;
+            }
+        }
+    }
+    out
+}
+
 fn make_occlusion(device: &wgpu::Device, texels: u32) -> Occlusion {
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("misty weather occlusion"),
@@ -1031,7 +1206,44 @@ fn make_occlusion(device: &wgpu::Device, texels: u32) -> Occlusion {
         multiview_mask: None,
         cache: None,
     });
+    let crown_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("misty weather occlusion crowns"),
+        source: wgpu::ShaderSource::Wgsl(CROWNS_SRC.into()),
+    });
+    let crown_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("misty weather occlusion crowns"),
+        layout: Some(&pl),
+        vertex: wgpu::VertexState {
+            module: &crown_module,
+            entry_point: Some("vs_crown"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        fragment: None,
+        multiview_mask: None,
+        cache: None,
+    });
     Occlusion {
+        crown_pipeline,
+        crowns: device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty weather occlusion crowns"),
+            size: (MAX_CROWNS * 32) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }),
         texels,
         view: depth_texture(device, texels, "misty weather occlusion"),
         uniform: device.create_buffer(&wgpu::BufferDescriptor {
@@ -1083,6 +1295,12 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
             entry(4, vf, uniform),
             entry(5, S::VERTEX, read),
             entry(6, S::VERTEX, read),
+            entry(7, S::FRAGMENT, tex(true)),
+            entry(
+                8,
+                S::FRAGMENT,
+                wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            ),
         ],
     });
     let premultiplied = wgpu::BlendState {
@@ -1106,6 +1324,7 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
         alpha: premultiplied.alpha,
     };
     let layouts = [view_layout, &layout];
+    let source = precip_src();
     let build = |name: &'static str, vs: &'static str, fs: &'static str, blend| {
         pipelines::build(
             device,
@@ -1117,7 +1336,7 @@ fn make_passes(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Pa
                 blend: Some(blend),
                 samples: 1,
                 glow: None,
-                ..Spec::new(name, PRECIP_SRC, &layouts)
+                ..Spec::new(name, &source, &layouts)
             },
         )
     };
@@ -1195,6 +1414,15 @@ mod tests {
         validate("weather composite", &format!("{COMMON}\n{PRECIP_SRC}"));
         validate("weather splashes", SPLASH_SRC);
         validate("weather occlusion", OCCLUSION_SRC);
+        validate("weather occlusion crowns", CROWNS_SRC);
+        validate(
+            "weather scene blur",
+            &format!(
+                "{COMMON}
+{}",
+                include_str!("shaders/scene_blur.wgsl")
+            ),
+        );
         // The lit shaders with the surface hook.
         validate("mesh", &format!("{COMMON}\n{MESH_SRC}"));
         validate("terrain", &format!("{COMMON}\n{TERRAIN_SRC}"));
@@ -1208,8 +1436,8 @@ mod tests {
             std::mem::size_of::<GlobalsGpu>(),
             9 * 16 + 4 * (64 + 4 * 16)
         );
-        // Precip: 2 matrices + 14 vec4s.
-        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 14 * 16);
+        // Precip: 2 matrices + 15 vec4s.
+        assert_eq!(std::mem::size_of::<PrecipGpu>(), 2 * 64 + 15 * 16);
         assert_eq!(std::mem::size_of::<SplashSimGpu>(), 64 + 4 * 16);
     }
 
