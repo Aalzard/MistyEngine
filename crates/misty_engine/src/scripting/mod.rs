@@ -464,6 +464,8 @@ impl ScriptHost {
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
         let lua = game_lua();
+        install_deadline(&lua);
+        arm_deadline(&lua, true);
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
@@ -521,6 +523,7 @@ impl ScriptHost {
             w.video_events.extend(ev);
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
+        arm_deadline(&host.lua, false);
         host
     }
 
@@ -1055,6 +1058,12 @@ impl ScriptHost {
 
     /// One game frame: Start (first frame), FixedUpdate + physics steps, Update, LateUpdate, Destroy.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        arm_deadline(&self.lua, true);
+        self.update_frame(scene, time, input);
+        arm_deadline(&self.lua, false);
+    }
+
+    fn update_frame(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
@@ -1656,6 +1665,49 @@ impl ScriptHost {
                 self.log(LogKind::Error, format!("{} ({}): {e}", inst.name, ev.name));
             }
         }
+    }
+}
+
+/// Longest the game scripts of one frame (or of `Awake`/`Start` when the game starts) may run
+/// before the running script is stopped with an error: `while true do end` in an `Update`
+/// would otherwise freeze the editor (Play runs on its UI thread) or the game for good.
+pub const FRAME_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// When the scripts running now must stop (checked by an instruction-count hook).
+struct Deadline(std::cell::Cell<Option<std::time::Instant>>);
+
+fn install_deadline(lua: &Lua) {
+    lua.set_app_data(Deadline(std::cell::Cell::new(None)));
+    let _ = lua.set_global_hook(
+        mlua::HookTriggers::new().every_nth_instruction(10_000),
+        |lua, debug| {
+            if let Some(d) = lua.app_data_ref::<Deadline>()
+                && let Some(t) = d.0.get()
+                && std::time::Instant::now() > t
+            {
+                // A little more time so the error can unwind through the script's pcalls.
+                d.0.set(Some(
+                    std::time::Instant::now() + std::time::Duration::from_millis(200),
+                ));
+                let at = debug
+                    .source()
+                    .short_src
+                    .map(|s| format!("{s}:{}: ", debug.current_line().unwrap_or(0)))
+                    .unwrap_or_default();
+                return Err(mlua::Error::runtime(format!(
+                    "{at}stopped after running for {} s in one frame (an endless loop?)",
+                    FRAME_LIMIT.as_secs()
+                )));
+            }
+            Ok(mlua::VmState::Continue)
+        },
+    );
+}
+
+/// Start (`on`) or stop the clock of [`FRAME_LIMIT`].
+fn arm_deadline(lua: &Lua, on: bool) {
+    if let Some(d) = lua.app_data_ref::<Deadline>() {
+        d.0.set(on.then(|| std::time::Instant::now() + FRAME_LIMIT));
     }
 }
 

@@ -332,6 +332,36 @@ return Probe
 }
 
 #[test]
+fn an_endless_loop_in_update_is_stopped() {
+    let looper = r#"
+local L = {}
+function L:Update()
+    if Time.frameCount == 2 then while true do end end
+    Debug.Log("frame", Time.frameCount)
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Looper", None);
+    attach(&mut scene, e, "Looper.lua", &[]);
+    let start = std::time::Instant::now();
+    let logs = run(&mut scene, root, 4, Input::default());
+    assert!(
+        start.elapsed() < crate::scripting::FRAME_LIMIT * 4,
+        "{:?}",
+        start.elapsed()
+    );
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
+    // Later frames run normally.
+    assert!(logs.iter().any(|(_, t)| t == "frame 4"), "{logs:?}");
+}
+
+#[test]
 fn instantiate_refuses_paths_outside_the_project() {
     let root = project(&[]);
     // A prefab next to the project folder, and one at an absolute path.
