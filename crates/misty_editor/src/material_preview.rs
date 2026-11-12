@@ -20,6 +20,8 @@ use crate::viewport::Gpu;
 pub const THUMB_SIZE: u32 = 128;
 /// Thumbnails rendered per frame at most (the rest wait for the next frames).
 const THUMBS_PER_FRAME: usize = 6;
+/// Main-thread time the thumbnails may take in one frame; the first one always renders.
+const THUMB_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
 
 /// Preview shape in the Inspector.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -236,7 +238,18 @@ fn draw(
         water: &[],
     };
     let rs = &gpu.state;
+    // Textures and shader variants a preview needs for the first time load on the
+    // background queues (a folder of materials with 4K textures froze the editor while
+    // each one was decoded here); the preview is drawn again once they arrive.
+    gpu.renderer.set_background_loads(true);
     gpu.renderer.render(&rs.device, &rs.queue, target, &frame);
+    gpu.renderer.set_background_loads(false);
+}
+
+/// True when the last [`draw`] left something to load in the background (its image is
+/// incomplete: a stand-in shader or a 1×1 texture).
+fn incomplete(gpu: &Gpu) -> bool {
+    gpu.renderer.background_pending() > 0
 }
 
 /// Render the previews panels asked for this frame.
@@ -257,7 +270,11 @@ pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
         gpu.renderer
             .create_target(&gpu.state.device, THUMB_SIZE, THUMB_SIZE)
     });
-    for path in waiting {
+    let start = std::time::Instant::now();
+    for (i, path) in waiting.into_iter().enumerate() {
+        if i > 0 && start.elapsed() > THUMB_BUDGET {
+            break;
+        }
         let Some(t) = p.thumbs.get_mut(&path) else {
             continue;
         };
@@ -265,6 +282,11 @@ pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
             continue;
         };
         draw(gpu, target, &m, 0.0, 0.0, PreviewShape::Sphere);
+        if incomplete(gpu) {
+            // Its textures or shader are still loading: keep the old thumbnail (if any)
+            // and try again on a later frame.
+            continue;
+        }
         let device = &gpu.state.device;
         let (texture, _) = t.texture.get_or_insert_with(|| {
             let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -338,6 +360,12 @@ fn render_slot(gpu: &mut Gpu, wanted: Option<&InspectorKey>, slot: &mut Slot) {
         want.pitch,
         want.shape,
     );
+    if incomplete(gpu) {
+        // Something it shows is still loading: mark the slot stale so it is drawn again.
+        if let Some((key, _, _)) = slot.as_mut() {
+            key.frame = u64::MAX;
+        }
+    }
 }
 
 #[cfg(test)]

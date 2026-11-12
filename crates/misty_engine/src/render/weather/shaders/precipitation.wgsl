@@ -281,36 +281,40 @@ fn ray_dir(px: vec2<f32>) -> vec3<f32> {
     return normalize(b.xyz / b.w - a.xyz / a.w);
 }
 
-// Smooth noise whose columns wrap after `period` cells (no seam where the angle wraps).
-fn sheet_noise(u: f32, v: f32, period: f32, seed: f32) -> f32 {
-    let i = floor(vec2<f32>(u, v));
-    let f = fract(vec2<f32>(u, v));
-    let w = f * f * (3.0 - 2.0 * f);
-    let x0 = i.x - floor(i.x / period) * period;
-    let x1 = (i.x + 1.0) - floor((i.x + 1.0) / period) * period;
-    let a = weather_hash2(vec2<f32>(x0 + seed, i.y));
-    let b = weather_hash2(vec2<f32>(x1 + seed, i.y));
-    let c = weather_hash2(vec2<f32>(x0 + seed, i.y + 1.0));
-    let d = weather_hash2(vec2<f32>(x1 + seed, i.y + 1.0));
-    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);
+fn hash3(c: vec3<i32>, seed: u32) -> f32 {
+    let n = (u32(c.x) * 73856093u) ^ (u32(c.y) * 19349663u) ^ (u32(c.z) * 83492791u) ^ (seed * 2654435761u);
+    return f32(pcg(n) & 0xffffffu) / 16777215.0;
 }
 
-// A soft curtain of rain on a cylinder `radius` metres round the camera, seen along `dir`:
-// fine falling streaks that run into each other (at this distance a drop is far thinner than
-// a pixel, so there are no single lines, only a streaky veil).
-fn rain_sheet(dir: vec3<f32>, radius: f32, seed: f32) -> f32 {
-    let flat_len = max(length(dir.xz), 1e-3);
-    let h = dir.y / flat_len * radius;
-    let theta = atan2(dir.x, dir.z);
-    // Wind slants the streaks: the wind across the line of sight shears them.
-    let tangent = vec2<f32>(cos(theta), -sin(theta));
-    let shear = dot(pr.wind.xz, tangent) / max(pr.rain2.x, 0.5);
-    // Columns a few pixels wide whatever the distance and the picture size.
+// Smooth value noise in 3D.
+fn value_noise3(q: vec3<f32>, seed: u32) -> f32 {
+    let i = vec3<i32>(floor(q));
+    let f = fract(q);
+    let w = f * f * (3.0 - 2.0 * f);
+    let x00 = mix(hash3(i, seed), hash3(i + vec3<i32>(1, 0, 0), seed), w.x);
+    let x10 = mix(hash3(i + vec3<i32>(0, 1, 0), seed), hash3(i + vec3<i32>(1, 1, 0), seed), w.x);
+    let x01 = mix(hash3(i + vec3<i32>(0, 0, 1), seed), hash3(i + vec3<i32>(1, 0, 1), seed), w.x);
+    let x11 = mix(hash3(i + vec3<i32>(0, 1, 1), seed), hash3(i + vec3<i32>(1, 1, 1), seed), w.x);
+    return mix(mix(x00, x10, w.y), mix(x01, x11, w.y), w.z);
+}
+
+// A soft curtain of rain where the ray crosses a cylinder `radius` metres round the camera
+// (at `p`): fine falling streaks that run into each other (at this distance a drop is far
+// thinner than a pixel, so there are no single lines, only a streaky veil). The streaks are a
+// field fixed in the world (falling, slanted by the wind) that the cylinder samples: turning
+// or walking shows other rain instead of dragging the same pattern along with the camera.
+fn rain_sheet(p: vec3<f32>, radius: f32, seed: f32) -> f32 {
+    // Columns a few pixels wide at this distance whatever the picture size.
     let cols = max(round(6.2831853 * pr.sizes.y / max(2.0 * pr.right.w, 0.1) / 3.2), 16.0);
-    let u = (theta / 6.2831853 + 0.5 + h * shear / (6.2831853 * radius)) * cols;
-    let fall = h + pr.wind.w * (1.0 + seed * 0.07);
-    let fine = sheet_noise(u, fall / 1.7, cols, seed * 37.0);
-    let broad = sheet_noise(u * round(cols * 0.37) / cols, fall / 4.3 + 11.0, round(cols * 0.37), seed * 91.0);
+    let col_w = 6.2831853 * radius / cols;
+    // Along a falling, wind-blown drop `xz + wind / speed · y` stays the same; the drops
+    // move down that line as the fall distance (`wind.w`) grows.
+    let speed = max(pr.rain2.x, 0.5);
+    let xz = p.xz + pr.wind.xz / speed * p.y;
+    let fall = p.y + pr.wind.w * (1.0 + seed * 0.07);
+    let s = u32(seed * 37.0);
+    let fine = value_noise3(vec3<f32>(xz.x / col_w, fall / 1.7, xz.y / col_w), s);
+    let broad = value_noise3(vec3<f32>(xz.x / (col_w * 2.7), fall / 4.3, xz.y / (col_w * 2.7)), s + 91u);
     return smoothstep(0.42, 0.95, fine * 0.65 + broad * 0.35);
 }
 
@@ -388,24 +392,29 @@ fn fs_screen(in: FullscreenOut) -> @location(0) vec4<f32> {
     if (pr.haze.z > 0.5) {
         // Rain takes the light around it: a grey veil over dark trees, nothing over the sky.
         let around = light_around(uv, haze, light) + flash_sky;
-        let radii = vec3<f32>(15.0, 26.0, 44.0);
+        // Beyond the particle boxes (the far box reaches 32 m out): nearer sheets lay a
+        // second, flat layer over the real drops.
+        let radii = vec3<f32>(36.0, 55.0, 85.0);
         for (var k = 0; k < 3; k++) {
             let rr = radii[k];
             let t = rr / max(length(dir.xz), 0.05);
             if (t < dist && t < 400.0) {
                 let p = pr.camera.xyz + dir * t;
                 let amt = weather_precip_at(p);
+                // Fade a sheet out just before the ground or a wall it would stop at (a hard
+                // line there reads as rain sinking into the ground).
+                let ground_fade = clamp((dist - t) / (0.25 * t), 0.0, 1.0);
                 if (amt.x > 0.0) {
                     // Bands of denser rain drift across with the wind.
                     let bands = 0.55 + 0.9 * weather_noise(p.xz * 0.045 + pr.drift.xz * 0.045);
-                    let s = rain_sheet(dir, rr, f32(k) + 1.0) * clamp(amt.x / 30.0, 0.0, 1.5) * 0.3 * pr.rain2.z * bands;
+                    let s = rain_sheet(p, rr, f32(k) + 1.0) * clamp(amt.x / 30.0, 0.0, 1.5) * 0.3 * pr.rain2.z * bands * ground_fade;
                     // Against the sky the veil is a little darker than it (grey shafts).
                     let lit = around * (1.0 - 0.3 * haze);
                     col += lit * s * (1.0 - alpha);
                     alpha += s * (1.0 - alpha);
                 }
                 if (amt.y > 0.0) {
-                    let s = snow_sheet(dir, rr, f32(k) * 71.0) * clamp(amt.y / 12.0, 0.0, 1.5) * 0.35 * pr.snow2.z;
+                    let s = snow_sheet(dir, rr, f32(k) * 71.0) * clamp(amt.y / 12.0, 0.0, 1.5) * 0.35 * pr.snow2.z * ground_fade;
                     col += light * 1.3 * s * (1.0 - alpha);
                     alpha += s * (1.0 - alpha);
                 }
@@ -687,24 +696,34 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     let v = normalize(pr.camera.xyz - in.world);
     let haze_col = haze_light(-v);
     let hazed = haze_behind(scene_at, -v);
-    // In front of the sky a drop is darker than it: a lens flips the view, so what shows
-    // through it is the darker ground below the horizon (a grey streak on a bright sky). It
-    // lights up with the clouds in a flash.
+    // It lights up with the clouds in a flash.
     let over_sky = smoothstep(0.88, 0.95, hazed);
     let lit_sky = sky_flash(-v) * over_sky;
-    let seen = mix(through_water(uv + offset, in.look.x), haze_col, hazed) * (1.0 - 0.42 * over_sky) + lit_sky;
-    let around = light_around(uv, hazed, haze_col) * (1.0 - 0.45 * over_sky) + lit_sky;
+    let seen = mix(through_water(uv + offset, in.look.x), haze_col, hazed) + lit_sky;
+    let around = light_around(uv, hazed, haze_col) + lit_sky;
+    // How the drop stands against what is right behind it, as one smooth value (no sky / ground
+    // switch: a switch per pixel turned a drop black over the sky and white over the ground,
+    // flipping halfway down as it crossed the horizon). A drop gathers the light all round it
+    // (`around`): against a background brighter than that it reads a little darker (a grey
+    // streak on a bright sky), against a darker one a little brighter (a pale line on grass).
+    let behind_col = mix(through_water(uv, in.look.x), haze_col, hazed);
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+    let bg = dot(behind_col, luma);
+    let gathered = dot(around, luma);
+    let contrast = clamp((bg - gathered) / max(bg + gathered, 1e-4), -1.0, 1.0);
+    let brighter_behind = max(contrast, 0.0);
     // Fresnel: the middle of a drop is clear, its rim mirrors the light around it.
     let ndv = sqrt(max(1.0 - x * x, 0.0));
     let fresnel = 0.03 + 0.97 * pow(1.0 - ndv, 4.0);
     // A hairline streak can't show an image: it carries the average light instead.
     let clear = mix(0.25, 1.0 - fresnel, thick);
-    var col = seen * clear + around * (1.0 - clear) * 1.2;
+    var col = (seen * clear + around * (1.0 - clear) * 1.2) * (1.0 - 0.22 * brighter_behind);
     // Every drop carries a highlight of the sky (a bright line off its middle): it is what
-    // shows the rain against dark ground. At night there is no sky to mirror.
-    // A thick near drop is mostly clear: its highlight is a thin line, not a white body.
+    // shows the rain against dark ground, fading smoothly as the background gets brighter
+    // than it. At night there is no sky to mirror. A thick near drop is mostly clear: its
+    // highlight is a thin line, not a white body.
     let shine = exp(-(x - 0.4) * (x - 0.4) * 14.0) * mix(0.35, 0.55, thick) * (1.0 - soft * 0.6);
-    col += haze_col * shine * (1.0 - over_sky) * 0.55;
+    col += haze_col * shine * (1.0 - brighter_behind) * 0.45;
     // Light shining through the drop: the sun ahead and lamps. Lightning lasts a
     // thousandth of a second: it freezes the drop where it is (the head of the streak).
     var glint = sun_scatter(in.world, v, 0.8) * 0.8;
