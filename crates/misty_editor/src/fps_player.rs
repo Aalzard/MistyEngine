@@ -50,6 +50,35 @@ pub const SCRIPTS: [(&str, &str); 4] = [
     ),
 ];
 
+/// The footstep clips the controller plays by default (its Footstep Clips): the sample
+/// project's files, written into a project that lacks them.
+pub const FOOTSTEPS: [(&str, &[u8]); 6] = [
+    (
+        "Assets/Audio/Footsteps/footstep_grass_01.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_01.wav"),
+    ),
+    (
+        "Assets/Audio/Footsteps/footstep_grass_02.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_02.wav"),
+    ),
+    (
+        "Assets/Audio/Footsteps/footstep_grass_03.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_03.wav"),
+    ),
+    (
+        "Assets/Audio/Footsteps/footstep_grass_04.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_04.wav"),
+    ),
+    (
+        "Assets/Audio/Footsteps/footstep_grass_05.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_05.wav"),
+    ),
+    (
+        "Assets/Audio/Footsteps/footstep_grass_06.wav",
+        include_bytes!("../../../SampleProject/Assets/Audio/Footsteps/footstep_grass_06.wav"),
+    ),
+];
+
 /// Eye height above the feet (the camera's rest position).
 pub const EYE_HEIGHT: f32 = 1.7;
 pub const CAPSULE_HEIGHT: f32 = 1.8;
@@ -133,11 +162,15 @@ pub fn prefab() -> misty_engine::scene::prefab::Prefab {
     Prefab::from_scene(&scene, root)
 }
 
-/// Write the scripts the rig needs into the project when they are missing; returns what was
-/// written.
+/// Write the scripts and footstep clips the rig needs into the project when they are missing;
+/// returns what was written.
 pub fn ensure_scripts(root: &Path) -> Result<Vec<String>, String> {
     let mut written = Vec::new();
-    for (rel, source) in SCRIPTS {
+    let files = SCRIPTS
+        .iter()
+        .map(|(rel, source)| (*rel, source.as_bytes()))
+        .chain(FOOTSTEPS);
+    for (rel, bytes) in files {
         let path = root.join(rel);
         if path.exists() {
             continue;
@@ -145,7 +178,7 @@ pub fn ensure_scripts(root: &Path) -> Result<Vec<String>, String> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, source).map_err(|e| format!("{rel}: {e}"))?;
+        std::fs::write(&path, bytes).map_err(|e| format!("{rel}: {e}"))?;
         written.push(rel.to_owned());
     }
     Ok(written)
@@ -524,6 +557,9 @@ mod tests {
         for (rel, source) in SCRIPTS {
             assert_eq!(std::fs::read_to_string(root.join(rel)).unwrap(), source);
         }
+        for (rel, bytes) in FOOTSTEPS {
+            assert_eq!(std::fs::read(root.join(rel)).unwrap(), bytes, "{rel}");
+        }
         s.undo_step();
         assert!(!s.scene.contains(player), "undoable");
         // A second one keeps the scripts as they are (never overwritten).
@@ -712,6 +748,68 @@ mod tests {
             assert(l.landing == 0)
             "#
         ));
+    }
+
+    #[test]
+    fn lua_footsteps_follow_the_steps_and_never_repeat_a_clip() {
+        lua(r#"
+            local T = FirstPersonController
+            -- One step each half stride: crossing pi and 2pi (wrapping to 0).
+            assert(T.stepCrossed(3.0, 3.2))
+            assert(not T.stepCrossed(0.5, 3.0))
+            assert(T.stepCrossed(6.2, 0.1), "wraps")
+            assert(not T.stepCrossed(1.0, 1.0))
+            -- Picks: in range, never the last one again, every clip used.
+            local seen, last = {}, nil
+            for n = 1, 2000 do
+                local i = T.pickFootstep(6, last, math.random)
+                assert(i >= 1 and i <= 6, "range " .. i)
+                assert(i ~= last, "repeated " .. i)
+                seen[i] = true
+                last = i
+            end
+            for i = 1, 6 do assert(seen[i], "clip " .. i .. " never played") end
+            -- Edge draws (0 and just under 1) stay in range and off the last clip.
+            assert(T.pickFootstep(6, 1, function() return 0 end) == 2)
+            assert(T.pickFootstep(6, 6, function() return 0.999999 end) == 5)
+            assert(T.pickFootstep(6, nil, function() return 0.999999 end) == 6)
+            assert(T.pickFootstep(1, 1, math.random) == 1)
+            -- Two clips alternate.
+            assert(T.pickFootstep(2, 1, math.random) == 2 and T.pickFootstep(2, 2, math.random) == 1)
+            -- The clip list.
+            local c = T.parseClips(" a.wav, b.wav;c.wav ,, ")
+            assert(#c == 3 and c[1] == "a.wav" and c[2] == "b.wav" and c[3] == "c.wav")
+            assert(#T.parseClips("") == 0)
+            -- The default clips are the six grass steps.
+            assert(#T.parseClips(T.footstepClips) == 6)
+            -- Walking at 4 m/s for 110 frames (7.3 m) with 1.6 m steps: 4 steps.
+            local l = T.Locomotion.new(T)
+            local steps = 0
+            for i = 1, 110 do
+                l:step({ move = { x = 0, z = 1 } }, 1 / 60, true)
+                local before = l.phase
+                l:afterMove(true, { x = 0, y = 0, z = 4 }, 1 / 60)
+                if T.stepCrossed(before, l.phase) then steps = steps + 1 end
+            end
+            assert(steps == 4, "steps " .. steps)
+        "#);
+    }
+
+    /// The controller's default footstep clips are in the sample project.
+    #[test]
+    fn footstep_clips_are_in_the_sample_project() {
+        let root = project();
+        for (rel, bytes) in FOOTSTEPS {
+            assert_eq!(std::fs::read(root.join(rel)).unwrap(), bytes, "{rel}");
+            assert!(root.join(format!("{rel}.meta")).is_file(), "{rel}.meta");
+        }
+        let script = SCRIPTS[0].1;
+        for (rel, _) in FOOTSTEPS {
+            assert!(
+                script.contains(rel),
+                "{rel} in the controller's Footstep Clips"
+            );
+        }
     }
 
     #[test]

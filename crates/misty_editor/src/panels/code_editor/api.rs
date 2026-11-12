@@ -182,7 +182,7 @@ RenderSettings|auroraCurtains|auroraCurtains|Number of aurora curtains, 1..6
 RenderSettings|moonTexture|moonTexture|Moon texture path (nil = built-in)
 RenderSettings|moonIllumination|moonIllumination|Lit fraction of the moon (read-only)
 RenderSettings|moonDirection|moonDirection|Vector3 towards the moon (read-only)
-AudioSource|PlayClipAtPoint|PlayClipAtPoint(clipPath, position [, volume])|A 3D one-shot at a fixed point
+AudioSource|PlayClipAtPoint|PlayClipAtPoint(clipPath, position [, volume [, pitch]])|A 3D one-shot at a fixed point (pitch: playback speed, 1 = normal)
 AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene

@@ -18451,10 +18451,1101 @@
         }
       },
       "parent": 325
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ambience",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "openSource": "Meadow Ambience",
+                "openVolume": 0.5,
+                "zonePrefix": "Forest Area",
+                "zoneSource": "Forest Birds"
+              },
+              "path": "Assets/Scripts/AmbienceZones.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            22.60177,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Audio Source": {
+          "clip": "Assets/Audio/Ambience/meadow_ambience_loop.ogg",
+          "enabled": true,
+          "loop": true,
+          "max_distance": 500.0,
+          "min_distance": 1.0,
+          "mute": false,
+          "pitch": 1.0,
+          "play_on_awake": true,
+          "rolloff": "Logarithmic",
+          "spatial_blend": 0.0,
+          "stereo_pan": 0.0,
+          "volume": 0.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Audio Source"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Meadow Ambience",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "Audio Source": {
+          "clip": "Assets/Audio/Ambience/forest_birds_loop.ogg",
+          "doppler_level": 0.0,
+          "enabled": true,
+          "loop": true,
+          "max_distance": 160.0,
+          "min_distance": 25.0,
+          "mute": false,
+          "pitch": 1.0,
+          "play_on_awake": true,
+          "rolloff": "Linear",
+          "spatial_blend": 1.0,
+          "spread": 120.0,
+          "stereo_pan": 0.0,
+          "volume": 0.8
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Audio Source"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Birds",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "Audio Source": {
+          "clip": "Assets/Audio/Ambience/breeze_grass_loop.ogg",
+          "enabled": true,
+          "loop": true,
+          "max_distance": 500.0,
+          "min_distance": 1.0,
+          "mute": false,
+          "pitch": 1.0,
+          "play_on_awake": true,
+          "rolloff": "Logarithmic",
+          "spatial_blend": 0.0,
+          "stereo_pan": 0.0,
+          "volume": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Audio Source"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Breeze",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 1",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -105.31762,
+            0.0,
+            -364.23877
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            58.0,
+            1.0,
+            58.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 2",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            35.61802,
+            0.0,
+            -481.74338
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            30.0,
+            1.0,
+            30.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 3",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -48.562115,
+            0.0,
+            -478.17908
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            46.0,
+            1.0,
+            46.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 4",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -69.73363,
+            0.0,
+            -510.1009
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            30.0,
+            1.0,
+            30.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 5",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            30.000004,
+            0.0,
+            -555.96155
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            62.0,
+            1.0,
+            62.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 6",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -30.781818,
+            0.0,
+            -588.5723
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            74.0,
+            1.0,
+            74.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 7",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            112.763115,
+            0.0,
+            -545.0424
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            70.0,
+            1.0,
+            70.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 8",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -222.94347,
+            0.0,
+            -303.26083
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            100.0,
+            1.0,
+            100.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 9",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            173.97397,
+            0.0,
+            -310.78235
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            86.0,
+            1.0,
+            86.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 10",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            357.0832,
+            0.0,
+            -374.03235
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            120.0,
+            1.0,
+            120.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 11",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -413.61923,
+            0.0,
+            -431.06775
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            130.0,
+            1.0,
+            130.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 12",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -229.81332,
+            0.0,
+            -696.8363
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            110.0,
+            1.0,
+            110.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 13",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            233.34523,
+            0.0,
+            -737.3452
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            110.0,
+            1.0,
+            110.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 14",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.000022729922,
+            0.0,
+            -764.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            110.0,
+            1.0,
+            110.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 15",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -253.57097,
+            0.0,
+            39.784668
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            210.0,
+            1.0,
+            210.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 16",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            145.5382,
+            0.0,
+            180.70331
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            250.0,
+            1.0,
+            250.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 17",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            321.20282,
+            0.0,
+            -45.27484
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            190.0,
+            1.0,
+            190.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 18",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -536.9358,
+            0.0,
+            -194.00003
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            250.0,
+            1.0,
+            250.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 19",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            563.81555,
+            0.0,
+            -298.7879
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            250.0,
+            1.0,
+            250.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 20",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            502.28143,
+            0.0,
+            -638.58594
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            210.0,
+            1.0,
+            210.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 21",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -540.91846,
+            0.0,
+            -648.93866
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            230.0,
+            1.0,
+            230.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 22",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -240.00003,
+            0.0,
+            -919.6922
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            230.0,
+            1.0,
+            230.0
+          ]
+        }
+      },
+      "parent": 330
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Area 23",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            160.7495,
+            0.0,
+            -945.6555
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            230.0,
+            1.0,
+            230.0
+          ]
+        }
+      },
+      "parent": 330
     }
   ],
   "version": 1,
   "asset_guids": {
+    "Assets/Audio/Ambience/breeze_grass_loop.ogg": "41c473762ce3444698fd562f87aa2056",
+    "Assets/Audio/Ambience/forest_birds_loop.ogg": "f3a449a4426844b594fd819629679d2b",
+    "Assets/Audio/Ambience/meadow_ambience_loop.ogg": "576639bdacec405e98c2f1b7f72167f7",
     "Assets/Prefabs/First Person Player.prefab": "0146ed97c94a40aeaf4afe742ab384fb",
     "Assets/Rocks/Materials/Boulder Large.mat": "1de11fe26fbd821c63a0ac4bec6b83c0",
     "Assets/Rocks/Materials/Boulder Round.mat": "2c707f2c606e8442563453c540a9b385",
@@ -18480,6 +19571,7 @@
     "Assets/Rocks/Prefabs/Cobbles.prefab": "e4ee1642fd5295408b0e0f062d6a6275",
     "Assets/Rocks/Prefabs/Outcrop Layered.prefab": "ee70d89bc83c98cd66d0d4d3ef33a222",
     "Assets/Rocks/Prefabs/Rock Small.prefab": "7a8166b51afe8aa99157ed2806916083",
+    "Assets/Scripts/AmbienceZones.lua": "e598553d00f04fc789379edd727976d9",
     "Assets/Scripts/FirstPersonController.lua": "26f54e32ac4c42eb9b2ce4247b50b0b6",
     "Assets/Scripts/HeadBobHorizontal.lua": "586d001572ad4a8ca362d8ddb8798665",
     "Assets/Scripts/HeadBobRotation.lua": "0a7ee307706543f594b6c01818c3cba6",

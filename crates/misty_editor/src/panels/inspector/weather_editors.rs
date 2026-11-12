@@ -56,9 +56,14 @@ fn toggle(ui: &mut Ui, label: &str, tip: &str, v: &mut bool) -> bool {
 }
 
 fn text(ui: &mut Ui, label: &str, tip: &str, v: &mut String) -> bool {
+    hinted(ui, label, tip, v, "(generated)")
+}
+
+/// A clip path field showing `hint` (what plays when it is empty).
+fn hinted(ui: &mut Ui, label: &str, tip: &str, v: &mut String, hint: &str) -> bool {
     ui.label(tr(label)).on_hover_text(tr(tip));
     let ch = ui
-        .add(egui::TextEdit::singleline(v).hint_text(tr("(generated)")))
+        .add(egui::TextEdit::singleline(v).hint_text(tr(hint)))
         .on_hover_text(tr(tip))
         .changed();
     ui.end_row();
@@ -706,8 +711,8 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
         let mut ch = false;
         ch |= toggle(
             ui,
-            "Enabled",
-            "Rain loops that follow the intensity, wind, and thunder delayed by distance.",
+            "Sound",
+            "Rain that follows the intensity (steady rain crossfading into a storm), wind, and thunder delayed by distance.",
             &mut a.enabled,
         );
         ch |= slider(
@@ -717,11 +722,26 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
             &mut a.volume,
             0.0..=1.0,
         );
-        ch |= text(
+        ch |= slider(
             ui,
-            "Rain Clip",
-            "Your own rain loop (project path); empty = a generated one.",
+            "Under Cover",
+            "Share of the rain and wind left under a roof (colliders above the Audio Listener; needs Sheltered Areas).",
+            &mut a.under_cover,
+            0.0..=1.0,
+        );
+        ch |= hinted(
+            ui,
+            "Rain Loop",
+            "Loop for light and steady rain (project path); empty = the built-in steady rain recording.",
             &mut a.rain_clip,
+            "(built-in steady rain)",
+        );
+        ch |= hinted(
+            ui,
+            "Storm Loop",
+            "Loop the rain crossfades into as it gets heavy; empty = the built-in storm recording.",
+            &mut a.storm_clip,
+            "(built-in storm)",
         );
         ch |= text(
             ui,
@@ -729,6 +749,25 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
             "Your own wind loop; empty = generated.",
             &mut a.wind_clip,
         );
+        // One thunder clip here (scripts and files may list several, picked at random).
+        let mut thunder = a.thunder_clips.first().cloned().unwrap_or_default();
+        if text(
+            ui,
+            "Thunder Clip",
+            "Plays after each lightning flash, later the farther the strike; empty = generated thunder.",
+            &mut thunder,
+        ) {
+            ch = true;
+            if thunder.trim().is_empty() {
+                if !a.thunder_clips.is_empty() {
+                    a.thunder_clips.remove(0);
+                }
+            } else if let Some(first) = a.thunder_clips.first_mut() {
+                *first = thunder;
+            } else {
+                a.thunder_clips.push(thunder);
+            }
+        }
         ch |= text(
             ui,
             "Output",

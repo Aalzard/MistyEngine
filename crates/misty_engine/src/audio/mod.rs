@@ -97,6 +97,7 @@ struct PointVoice {
     id: VoiceId,
     at: Vec3,
     volume: f32,
+    pitch: f32,
 }
 
 pub struct Audio {
@@ -205,7 +206,24 @@ impl Audio {
         params: VoiceParams,
         track: Option<TrackId>,
     ) -> Option<VoiceId> {
-        let path = match crate::vfs::project_file(&self.root, clip) {
+        self.start_voice_at(clip, false, params, track)
+    }
+
+    /// [`Audio::start_voice`]; `absolute_ok` also takes an absolute path (engine-made clips,
+    /// like the weather's in `Library/Weather`; never a path from a script).
+    fn start_voice_at(
+        &mut self,
+        clip: &str,
+        absolute_ok: bool,
+        params: VoiceParams,
+        track: Option<TrackId>,
+    ) -> Option<VoiceId> {
+        let resolved = if absolute_ok && std::path::Path::new(clip).is_absolute() {
+            Ok(PathBuf::from(clip))
+        } else {
+            crate::vfs::project_file(&self.root, clip)
+        };
+        let path = match resolved {
             Ok(p) => p,
             Err(e) => {
                 if self.bad_clips.insert(clip.to_owned()) {
@@ -377,16 +395,44 @@ impl Audio {
     /// `AudioSource.PlayClipAtPoint(clip, position [, volume])`: a fully 3D one-shot at a
     /// fixed world position with the default rolloff, straight to the listener.
     pub fn play_clip_at_point(&mut self, scene: &Scene, clip: &str, at: Vec3, volume: f32) -> bool {
+        self.play_clip_at_point_pitched(scene, clip, at, volume, 1.0)
+    }
+
+    /// [`Audio::play_clip_at_point`] at a playback speed (`AudioSource.PlayClipAtPoint(clip,
+    /// position, volume, pitch)`: footsteps vary theirs a little each step).
+    pub fn play_clip_at_point_pitched(
+        &mut self,
+        scene: &Scene,
+        clip: &str,
+        at: Vec3,
+        volume: f32,
+        pitch: f32,
+    ) -> bool {
         // `clamp` keeps NaN: a NaN volume reached the audio thread.
         let volume = if volume.is_finite() {
             volume.clamp(0.0, 1.0)
         } else {
             1.0
         };
-        let params = spatial::mix(&point_source(volume), at, listener(scene), self.muted);
+        let pitch = if pitch.is_finite() {
+            pitch.clamp(0.1, 3.0)
+        } else {
+            1.0
+        };
+        let params = spatial::mix(
+            &point_source(volume, pitch),
+            at,
+            listener(scene),
+            self.muted,
+        );
         match self.start_voice(clip, params, None) {
             Some(id) => {
-                self.points.push(PointVoice { id, at, volume });
+                self.points.push(PointVoice {
+                    id,
+                    at,
+                    volume,
+                    pitch,
+                });
                 true
             }
             None => false,
@@ -426,7 +472,7 @@ impl Audio {
             looping,
             ..Default::default()
         };
-        let id = self.start_voice(clip, params, track)?;
+        let id = self.start_voice_at(clip, true, params, track)?;
         self.clips.push(id);
         Some(id)
     }
@@ -588,7 +634,7 @@ impl Audio {
         }
         points.retain(|p| b.is_alive(p.id));
         for p in points.iter() {
-            let params = spatial::mix(&point_source(p.volume), p.at, ctx.ear, ctx.muted);
+            let params = spatial::mix(&point_source(p.volume, p.pitch), p.at, ctx.ear, ctx.muted);
             planned.push((p.id, params, 128));
         }
         clips.retain(|id| b.is_alive(*id));
@@ -659,9 +705,10 @@ fn limit_voices(planned: &mut [(VoiceId, VoiceParams, u16)]) {
 }
 
 /// The settings `PlayClipAtPoint` plays with.
-fn point_source(volume: f32) -> AudioSource {
+fn point_source(volume: f32, pitch: f32) -> AudioSource {
     AudioSource {
         volume,
+        pitch,
         spatial_blend: 1.0,
         ..Default::default()
     }

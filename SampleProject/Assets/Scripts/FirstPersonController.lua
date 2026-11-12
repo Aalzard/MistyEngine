@@ -8,11 +8,26 @@
 -- reduced air control. It publishes `self.signal` for the head bob scripts
 -- (GetComponent("FirstPersonController").signal): see Locomotion:publish below.
 --
+-- Footsteps: a random clip of Footstep Clips (comma-separated project paths; never the same
+-- one twice in a row) plays at the feet on every step while on the ground (each half stride,
+-- so the rate follows the speed and the step lengths), a little louder running, softer
+-- crouched, a thump on landing, each with a slight random volume and pitch.
+--
 -- Input: with a Player Input on the same object, the Move, Look, Jump, Sprint and Crouch
 -- actions of its Input Actions asset drive it (Scenes/InputSystemDemo, Input/Player.inputactions);
 -- while that map is disabled (a menu switched to another map) the player stands still and
 -- leaves the cursor alone. Without one, it reads the Input Manager axes (Horizontal, Vertical,
 -- Mouse X, Mouse Y, Run, Crouch, Jump) with key fallbacks.
+-- The default footstep clips (one literal each, so builds and templates pack them).
+local GRASS_STEPS = {
+    "Assets/Audio/Footsteps/footstep_grass_01.wav",
+    "Assets/Audio/Footsteps/footstep_grass_02.wav",
+    "Assets/Audio/Footsteps/footstep_grass_03.wav",
+    "Assets/Audio/Footsteps/footstep_grass_04.wav",
+    "Assets/Audio/Footsteps/footstep_grass_05.wav",
+    "Assets/Audio/Footsteps/footstep_grass_06.wav",
+}
+
 local FirstPersonController = {
     walkSpeed = 4,
     runSpeed = 7,
@@ -41,6 +56,11 @@ local FirstPersonController = {
     walkStepLength = 1.6, -- metres per footstep: the head bob frequency follows the steps
     runStepLength = 2.2,
     pushPower = 2, -- rigidbodies walked into get this velocity
+    footsteps = true, -- play a footstep clip at every step on the ground
+    footstepClips = table.concat(GRASS_STEPS, ", "), -- comma-separated clip paths
+    footstepVolume = 0.8,
+    footstepVolumeVariation = 0.15, -- each step's volume varies by up to this share
+    footstepPitchVariation = 0.06, -- each step's pitch (playback speed) varies by up to this
 }
 
 -- ---- helpers ----------------------------------------------------------------------------------
@@ -266,6 +286,38 @@ end
 
 FirstPersonController.Locomotion = Locomotion
 
+-- ---- footsteps: pure helpers (unit tested) ------------------------------------------------------
+
+-- Did the stride phase pass a step (a multiple of π: one step each half stride) going from
+-- `before` to `after` (radians, wrapping at 2π)?
+function FirstPersonController.stepCrossed(before, after)
+    if after == before then return false end
+    if after < before then after = after + 2 * math.pi end
+    return math.floor(after / math.pi) > math.floor(before / math.pi)
+end
+
+-- A clip index 1..count, never `last` twice in a row (when there is more than one clip).
+-- `rand` returns 0 <= x < 1 (math.random).
+function FirstPersonController.pickFootstep(count, last, rand)
+    if count <= 1 then return 1 end
+    if last == nil or last < 1 or last > count then
+        return math.min(count, math.floor(rand() * count) + 1)
+    end
+    local i = math.min(count - 1, math.floor(rand() * (count - 1)) + 1)
+    if i >= last then i = i + 1 end
+    return i
+end
+
+-- "a.wav, b.wav;c.wav" -> { "a.wav", "b.wav", "c.wav" }
+function FirstPersonController.parseClips(text)
+    local out = {}
+    for item in string.gmatch(text or "", "[^,;]+") do
+        local clip = item:match("^%s*(.-)%s*$")
+        if clip ~= "" then out[#out + 1] = clip end
+    end
+    return out
+end
+
 -- Mouse look: yaw turns the body, pitch the camera (clamped). Pure, for tests.
 function FirstPersonController.look(yaw, pitch, mouseX, mouseY, sensitivity, pitchMin, pitchMax)
     yaw = (yaw + mouseX * sensitivity) % 360
@@ -454,8 +506,10 @@ function FirstPersonController:Update()
     }
     local vx, vy, vz = loco:step(input, dt, self.cc.isGrounded)
     self.cc:Move(Vector3.new(vx, vy, vz) * dt)
+    local phaseBefore = loco.phase
     loco:afterMove(self.cc.isGrounded, self.cc.velocity, dt)
     self:_applyCrouch()
+    self:_footstep(loco, phaseBefore)
 
     -- Sprint FOV kick.
     if self._camera ~= nil then
@@ -465,6 +519,33 @@ function FirstPersonController:Update()
         self._camera.fieldOfView = fov
     end
     loco:publish(h, v, turnRate, self._pitch)
+end
+
+-- A footstep at each step on the ground (and on landing).
+function FirstPersonController:_footstep(loco, phaseBefore)
+    if not self.footsteps then return end
+    if self._stepText ~= self.footstepClips then
+        self._stepText = self.footstepClips
+        self._stepClips = FirstPersonController.parseClips(self.footstepClips)
+        self._lastStep = nil
+    end
+    local clips = self._stepClips
+    if #clips == 0 then return end
+    local loud
+    if loco.landing > 0 then
+        loud = 1 + 0.4 * loco.landing
+    elseif loco.grounded and loco.phaseRate > 0
+        and FirstPersonController.stepCrossed(phaseBefore, loco.phase) then
+        loud = loco.crouching and 0.55 or (loco.running and 1.15 or 1)
+    else
+        return
+    end
+    self._lastStep = FirstPersonController.pickFootstep(#clips, self._lastStep, math.random)
+    local volume = self.footstepVolume * loud
+        * (1 + (math.random() * 2 - 1) * self.footstepVolumeVariation)
+    local pitch = 1 + (math.random() * 2 - 1) * self.footstepPitchVariation
+    AudioSource.PlayClipAtPoint(clips[self._lastStep], self.transform.position,
+        clamp01(volume), pitch)
 end
 
 -- Crates and barrels get a shove.
