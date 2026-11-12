@@ -295,3 +295,25 @@ return Switcher
     crate::prefs::delete_key(PREF_KEY);
     std::fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn deeply_nested_plurals_do_not_overflow_the_stack() {
+    let n = 100_000;
+    let text = format!("{}x{}", "{0:p:".repeat(n), "}".repeat(n));
+    let args = Args::from_entries(&["1".to_owned()]);
+    // Run on a small stack: unbounded recursion would overflow it.
+    let out = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || format(&text, &args, "en"))
+        .unwrap()
+        .join()
+        .expect("formatting overflowed the stack");
+    assert!(
+        out.ends_with('x') || out.contains("{0:p:"),
+        "{}",
+        &out[..out.len().min(80)]
+    );
+    // Ordinary nesting still works.
+    let args = Args::from_entries(&["2".to_owned(), "total=5".to_owned()]);
+    assert_eq!(format("{0:p:one|{0} of {total}}", &args, "en"), "2 of 5");
+}
