@@ -503,6 +503,18 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                 " m",
                 true,
             );
+            ch |= kit::slider(
+                ui,
+                &tr!("LOD Fade"),
+                &tr!(
+                    "Cross-fade between detail levels, billboards and the draw distance, as a share of each distance (0 = switch at once). Only trees inside it draw twice."
+                ),
+                &mut s.lod_fade,
+                0.0..=0.3,
+                def.lod_fade,
+                "",
+                false,
+            );
             ch |= kit::check(
                 ui,
                 &tr!("Cast Shadows"),
@@ -529,6 +541,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             d.trees.draw_distance = s.draw_distance;
             d.trees.lod_distance = s.lod_distance;
             d.trees.billboard_start = s.billboard_start;
+            d.trees.lod_fade = s.lod_fade;
             d.trees.cast_shadows = s.cast_shadows;
             d.trees.shadow_detail = s.shadow_detail;
         });
