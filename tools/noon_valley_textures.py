@@ -359,7 +359,7 @@ def forest_floor(out: Path):
     wide = gaussian_filter(height, 14.0, mode="wrap")
     ao = np.clip(1.0 - 2.6 * np.clip(near - height, 0, 1) - 1.3 * np.clip(wide - height, 0, 1), 0.3, 1.0)
     grain = fbm(n, 400, 400, 2, 78)
-    col = col * ao[..., None] * (0.9 + 0.2 * grain[..., None]) * np.array([0.6, 0.5, 0.45])
+    col = col * ao[..., None] * (0.9 + 0.2 * grain[..., None]) * np.array([0.5, 0.45, 0.41])
     save_rgb(out / "ForestFloor.png", col)
     save_normal(out / "ForestFloorNormal.png", normal_map(gaussian_filter(height, 0.8, mode="wrap"), 14.0))
     save_gray(out / "ForestFloorHeight.png", height)

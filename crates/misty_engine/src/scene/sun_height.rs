@@ -50,14 +50,9 @@ pub fn apply(color: [f32; 3], intensity: f32, direction: Vec3) -> ([f32; 3], f32
         return (color, 0.0);
     }
     let lin = Vec3::from(crate::render::srgb_to_linear(color)) * (t / peak);
-    let c = lin.to_array().map(|v| {
-        let v = v.clamp(0.0, 1.0);
-        if v <= 0.003_130_8 {
-            v * 12.92
-        } else {
-            1.055 * v.powf(1.0 / 2.4) - 0.055
-        }
-    });
+    // (Back through the inverse of `srgb_to_linear`'s 2.2 gamma: the colour overhead stays
+    // the colour as set.)
+    let c = lin.to_array().map(|v| v.clamp(0.0, 1.0).powf(1.0 / 2.2));
     (c, intensity * peak)
 }
 

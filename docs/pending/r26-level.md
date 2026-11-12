@@ -5,6 +5,37 @@ Scene content only (generator `crates/misty_editor/src/sample_noon_valley.rs`,
 Engine code stays on `r26-noon-meadow` (merge it in now and then: `git merge r26-noon-meadow`).
 Forked from `r26-noon-meadow` at 80e185bb.
 
+## Fourth agent (2026-11-12 05:20): stopped, D: is failing
+
+- **D: (disk 0, Seagate ST4000DM004 HDD) is failing:** System log since 11 Nov: 17 × disk 7
+  "has a bad block" (last 03:16), ~1000 × Ntfs 130 repairs, 41 × Ntfs 55 corruption,
+  `Get-Volume D` = HealthStatus Warning, **"Full Repair Needed"**. Build files in
+  `D:/MistyTargets/r26-level` keep turning corrupt after they are written (rustc ICEs decoding
+  `glam`, then `rayon`, then a third crate's metadata; each rebuilt crate was fine, the next
+  one broke). The clippy "exit 127" was probably this too. All my builds on D: are stopped. The
+  user should back up `D:\MistyEngine` / `D:\MistyTest` and run a disk check (`chkdsk D: /f`)
+  before any more builds go there. Build targets need another disk (C: has 29 GB free, E: 60 GB).
+- **Check results are explained:** `noon_valley_matches_its_generator` failed because the test
+  build compiled my uncommitted r21 generator edits (made 23:20, before the editor tests
+  compiled), not because r20's files were stale. `sun_height` test: the test was right; `apply`
+  converted back with the piecewise sRGB curve although `srgb_to_linear` is a plain 2.2 gamma
+  (so the overhead colour drifted: 0.9 → 0.903). Fixed (powf(1/2.2)); compiles, test not rerun.
+  The four others (`live_reload` prefab reload count, `asset_index` "index never built",
+  `updater` "check timed out", `tutorials` step 7) look like timing under load (editor tests took
+  5336 s); not rerun yet, nor checked on main.
+- **WIP r21 (committed, NOT regenerated, not rendered):** `wood_cell` carpets cover about half
+  the floor (smooth(−0.02, 0.2) of the fbm, was smooth(0.28, 0.42)) plus 2–4 scattered plants per
+  cell, bushes 0.24 / 0.4, a tree dropped only above r(1) 0.7 (was 0.62); litter tint
+  [0.5, 0.45, 0.41] (was [0.6, 0.5, 0.45]: less pink, ~10 % darker; `ForestFloor.png` regenerated
+  and copied, normal and height unchanged); cliffs: `hill_m` / `cliff_steps` split out of
+  `height_m`, steps 26–36 m + 24·site (45–60 m in the sites) with the face 0.27 − 0.12·site of
+  each step, sites ~20 % wider, no trees on faces (slope > 35°) or on the lower 60 % of each
+  ledge (crowns there hid the face), trees on the ledge above up to 1.3× bigger.
+  Note: the brightest sunlit litter in the forest reference is as pale as ours (245/229/208 vs
+  240/218/195 sRGB); the difference is how much bare sunlit floor shows, hence the carpets.
+- **Next:** on a healthy target: build, `write_noon_valley`, render r21, rerun the five tests
+  alone, clippy, then the hero GPU time (MISTY_NOON_GRASS variants via `times.sh`).
+
 ## Hand-over (2026-11-11 23:10): where this stands
 
 - **Committed:** everything. Scene r20 = fd57acf6 (regenerated, final shots in

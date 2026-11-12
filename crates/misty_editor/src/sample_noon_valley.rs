@@ -106,12 +106,12 @@ fn far_radius(p: Vec2) -> f32 {
 }
 
 /// Terrace steps (limestone ledges): `h` metres stepped every `step`, the rise squeezed into
-/// the last part of each step (the cliff face), the rest nearly flat (a ledge).
-fn terrace(h: f32, step: f32) -> f32 {
+/// the last `face` of each step (the cliff face), the rest nearly flat (a ledge).
+fn terrace(h: f32, step: f32, face: f32) -> f32 {
     let t = h / step;
     let base = t.floor();
     let f = t - base;
-    let rise = smooth(0.7, 0.97, f);
+    let rise = smooth(0.97 - face, 0.97, f);
     (base + 0.12 * f + 0.88 * rise) * step
 }
 
@@ -119,12 +119,12 @@ fn terrace(h: f32, step: f32) -> f32 {
 /// (nearer ones hide behind the slope's own flank): (right, ahead) of the camera and radius
 /// (metres). Ledges step the slope there, the faces between them too steep for trees.
 const CLIFFS: &[(f32, f32, f32)] = &[
-    (150.0, 800.0, 140.0),
-    (280.0, 980.0, 170.0),
-    (40.0, 1020.0, 120.0),
-    (340.0, 700.0, 130.0),
-    (200.0, 1250.0, 180.0),
-    (430.0, 430.0, 120.0),
+    (150.0, 800.0, 170.0),
+    (280.0, 980.0, 200.0),
+    (40.0, 1020.0, 150.0),
+    (340.0, 700.0, 160.0),
+    (200.0, 1250.0, 210.0),
+    (430.0, 430.0, 140.0),
 ];
 
 /// 0..1 inside the [`CLIFFS`] (ragged outlines, none at the hill's foot).
@@ -139,6 +139,32 @@ fn cliff_site(x: f32, z: f32) -> f32 {
     site
 }
 
+/// The hillside on the right before its terraces: a wall rising ~40° from its foot, rounding
+/// off towards a ridge 400–500 m up.
+fn hill_m(x: f32, z: f32) -> f32 {
+    let u = hill_side(x, z);
+    let soft = 60.0 * (1.0 + (u / 60.0).exp()).ln();
+    let ridge = 1.0 + 0.2 * noise::fbm(x, z, 700.0, 2, 17);
+    let hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
+    hill + 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u)
+}
+
+/// The terraces on the hillside at (x, z): weight 0..1 (limestone ledges in patches on the
+/// slope and in the [`CLIFFS`] sites), step height (m) and the share of each step that is
+/// face. In the sites the steps are 45–60 m with steep faces, seen from the meadow.
+fn cliff_steps(x: f32, z: f32) -> (f32, f32, f32) {
+    let p = rel(x, z);
+    let u = hill_side(x, z);
+    let site = cliff_site(x, z);
+    let cliffs = (smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
+        * smooth(140.0, 220.0, u)
+        * smooth(650.0, 500.0, u)
+        * smooth(1100.0, 800.0, p.y))
+        .max(site);
+    let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29) + 24.0 * site;
+    (cliffs, step, 0.27 - 0.12 * site)
+}
+
 /// Height in metres at terrain-local (x, z).
 fn height_m(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
@@ -148,22 +174,11 @@ fn height_m(x: f32, z: f32) -> f32 {
     let dips = noise::fbm(x, z, 24.0, 2, 13);
     let mut h =
         40.0 + 7.0 * rolling + 2.2 * swells + 0.6 * dips + 10.0 * smooth(-200.0, -900.0, p.x);
-    // The hillside on the right: a wall rising ~40° from its foot, rounding off towards a
-    // ridge 400–500 m up.
-    let u = hill_side(x, z);
-    let soft = 60.0 * (1.0 + (u / 60.0).exp()).ln();
-    let ridge = 1.0 + 0.2 * noise::fbm(x, z, 700.0, 2, 17);
-    let mut hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
-    hill += 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u);
-    // Limestone cliffs: ledges in patches on the slope.
-    let mut cliffs = smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
-        * smooth(140.0, 220.0, u)
-        * smooth(650.0, 500.0, u)
-        * smooth(1100.0, 800.0, p.y);
-    cliffs = cliffs.max(cliff_site(x, z));
+    // The hillside on the right, with limestone ledges and faces in patches.
+    let mut hill = hill_m(x, z);
+    let (cliffs, step, face) = cliff_steps(x, z);
     if cliffs > 0.0 {
-        let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29);
-        hill += (terrace(hill, step) - hill) * cliffs;
+        hill += (terrace(hill, step, face) - hill) * cliffs;
     }
     h += hill;
     // Distant hills: three rounded, layered ranges ahead (1.5, 2.2 and 2.8 km), each higher
@@ -839,7 +854,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
         });
     };
     let gap = noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.62;
-    let carpet = smooth(0.28, 0.42, noise::fbm(p.x, p.y, 21.0, 2, 67));
+    let carpet = smooth(-0.02, 0.2, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
         if !gap && noise::hash(ix + k as i32, iz, 0x51b1) < 0.45 {
@@ -848,7 +863,7 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
             plant(k, 0x5a91, 11, [0.6, 1.25], [0.7, 1.1]);
         }
     }
-    if r(6) < if gap { 0.35 } else { 0.14 } {
+    if r(6) < if gap { 0.4 } else { 0.24 } {
         plant(0, 0xb054, 3, [0.4, 0.7], [0.5, 0.8]);
     }
     // Ferns everywhere, more in the light of the gaps.
@@ -856,12 +871,12 @@ fn wood_cell(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2,
         let s = SMALL_SCALE.0;
         plant(k, 0xfe21, 7, [0.7 * s, 1.5 * s], [0.7 * s, 1.4 * s]);
     }
-    // Carpets of low broad-leaved plants: flat (a third of a metre high, 1.5 m across),
-    // overlapping.
-    for k in 0..(carpet * (22.0 + 12.0 * r(8))) as u32 + u32::from(r(9) < 0.5) {
+    // Carpets of low broad-leaved plants over half the floor: flat (a third of a metre
+    // high, 1.5 m across), overlapping; a few scattered plants between them.
+    for k in 0..(carpet * (24.0 + 12.0 * r(8))) as u32 + 2 + (r(9) * 3.0) as u32 {
         plant(k, 0x6c07, 8, [0.3, 0.55], [0.7, 1.1]);
     }
-    if gap || r(1) > 0.62 {
+    if gap || r(1) > 0.7 {
         return;
     }
     let kind = match r(2) {
@@ -923,12 +938,18 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             if slope > 47.0 + 14.0 * smooth(1000.0, 1400.0, dist) {
                 continue;
             }
-            // The cliff faces stay bare rock (trees stand on the ledges between them).
-            // (Few trees in the middle of a cliff site at all: tall crowns on the ledges
-            // would hide the faces from the meadow.)
+            // The cliff faces stay bare rock, and so does the ledge at each face's foot
+            // (crowns there would hide the face from the meadow); the ledge above a face
+            // carries heavy trees on its rim.
             let site = cliff_site(p.x, p.y);
-            if site > 0.12 && (slope > 30.0 || noise::hash(ix, iz, 0xc11f) > 0.12) {
-                continue;
+            let mut heavy = 1.0;
+            if site > 0.12 {
+                let (_, step, _) = cliff_steps(p.x, p.y);
+                let f = (hill_m(p.x, p.y) / step).fract();
+                if slope > 35.0 || f > 0.4 {
+                    continue;
+                }
+                heavy = 1.0 + 0.3 * smooth(0.12, 0.4, site);
             }
             // The forest's edges (the outer ~20 m): bushes and low crowns down to the ground.
             let depth = wood_depth(p.x, p.y);
@@ -951,7 +972,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             };
             // Bigger towards the far woods; edge trees a little lower.
             let edge = smooth(0.0, 0.6, f);
-            let height = (0.7 + 0.6 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45);
+            let height = (0.7 + 0.6 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45) * heavy;
             // Undergrowth within 700 m: ferns and broad-leaved plants between the trunks
             // (one to three per tree, more in the light of clearings and edges), and a bush
             // for every few trees.
@@ -989,7 +1010,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 prototype: kind,
                 rotation: r(6) * std::f32::consts::TAU,
                 height_scale: height,
-                width_scale: (0.85 + 0.35 * r(7)) * height.powf(0.4) * grow.powf(0.9),
+                width_scale: (0.85 + 0.35 * r(7)) * height.powf(0.4) * grow.powf(0.9) * heavy,
                 color: r(8),
             });
             // A second low crown in each edge cell within 1.2 km: the edge is a wall of
