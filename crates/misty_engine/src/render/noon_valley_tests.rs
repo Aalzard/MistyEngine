@@ -590,14 +590,30 @@ fn lod_fade_dolly() {
     }
     let meadow = env("MISTY_DOLLY_SCENE").is_some_and(|s| s == "meadow");
     let name = env("MISTY_NOON_VIEWS").unwrap_or_else(|| "treeline".into());
+    // `MISTY_DOLLY_CLEAN=1`: no grass or flowers (their blades' parallax swamps the second
+    // difference) and no eye adaptation, so what changes is mostly the LOD switches.
+    let clean = env("MISTY_DOLLY_CLEAN").is_some_and(|v| v == "1");
     let make = || {
-        if meadow {
+        let mut gv = if meadow {
             crate::render::trees::gpu_tests::meadow_view(
                 crate::render::trees::gpu_tests::Shot::Behind,
             )
         } else {
             noon_view(&name).expect("view")
+        };
+        if clean {
+            gv.post.auto_exposure.active = false;
+            for t in &mut gv.terrains {
+                let mut d = (*t.data).clone();
+                d.details.density = 0.0;
+                d.flowers.enabled = false;
+                d.detail_layers
+                    .retain(|l| l.kind != crate::terrain::detail_layers::DetailKind::Grass);
+                t.key = format!("{}#dolly-clean", t.key);
+                t.data = std::sync::Arc::new(d);
+            }
         }
+        gv
     };
     let (level, quality) = levels("high").remove(0);
     for fades in [false, true] {

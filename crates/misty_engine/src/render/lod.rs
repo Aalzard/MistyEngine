@@ -24,9 +24,9 @@ pub fn dither(p: [u32; 2], shift: [u32; 2]) -> f32 {
     (BAYER4[(y * 4 + x) as usize] as f32 + 0.5) / 16.0
 }
 
-/// Is a pixel of dither threshold `t` dropped by a draw of fade value `fade`? 0 = drawn whole;
-/// > 0 = fading out, keeps `t < fade`; < 0 = fading in, keeps `t >= 1 + fade`
-/// (`lod_dithered_out` in common.wgsl).
+/// Is a pixel of dither threshold `t` dropped by a draw of fade value `fade`? A fade of 0 is
+/// drawn whole; a positive one fades out and keeps `t < fade`; a negative one fades in and
+/// keeps `t >= 1 + fade` (`lod_dithered_out` in common.wgsl).
 pub fn dithered_out(fade: f32, t: f32) -> bool {
     if fade == 0.0 {
         false
