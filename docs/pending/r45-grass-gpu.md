@@ -130,3 +130,25 @@ difference × 8) and `lod_switch_sheet.jpg` (forced-switch differences × 8, bef
 - The leaf count across a card still steps per tuft as its width passes a half leaf (see
   above); fans that enter a chunk's drawn prefix still appear whole (both per blade, not
   rings).
+
+## Paused 2026-11-12 18:25 (user pause): where this stands
+
+- Committed: ebda8d5c (Rgba8Unorm card target), 8ea3aa74 (LOD fades), af25e9b7 (notes). The
+  tree is clean; nothing of r45 holds a build slot or the GPU lock.
+- Checks on 8ea3aa74: `cargo fmt --all --check` passes; clippy `--workspace --all-targets
+  --release`: 0 warnings; workspace tests: editor 918 passed, engine 1521 passed / 1 failed
+  (`render::hitch_tests::scripted_meadow_run_has_no_hitches`: one 95 ms wall-clock frame with
+  3.5 ms CPU and 9.6 ms GPU while the machine was 48 % busy with other jobs; not rerun alone
+  yet), every other crate passes.
+- **Golden shots: 19 of 20 pass, `meadow_low_close` drifts: mean 0.55 (limit 0.5)**. All
+  MeadowDemo shots moved 0.28–0.55 (Low the most: wide 0.47, behind 0.45, oak 0.42); cycles
+  0.00. Do not update the golden images. Was finding which fade causes it when paused: a
+  script (`scratchpad r45/gold.sh`) runs golden_shots with base.exe (base drift) and with
+  final.exe + the patches `nomorph`, `noprep`, `nofade` (scratchpad `r45/patches/`); it had
+  not started (waiting for the GPU lock).
+- **Next:** 1) run that attribution; likely fixes: start the coarse-card morph later (band
+  0.9–1.0 instead of 0.8–1.0) and/or keep the prepass thinning only where the prepass range
+  is ≥ 12 m (Low and Medium's 8 m range puts the thinning at 6–8 m, close to the camera); 2)
+  rebuild, rerun golden_shots under the lock (must pass), the hitch test alone, and the
+  forced-switch check (`lodcheck.sh`); 3) refresh the tables above and the Round 45 section of
+  docs/progress.md if numbers change.
