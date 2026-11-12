@@ -65,41 +65,61 @@ impl GuidDatabase {
     /// meta file (or GUID) gets one, and copies sharing a GUID get a new one. Of the assets
     /// sharing a GUID, the one whose meta file was created first keeps it (then the shorter path).
     pub fn scan(root: &Path) -> (Self, ScanReport) {
+        use rayon::prelude::*;
         let mut report = ScanReport::default();
-        let mut found: Vec<(String, Option<Guid>, Option<SystemTime>)> = Vec::new();
+        let mut assets: Vec<PathBuf> = Vec::new();
         walk(&root.join("Assets"), &mut |asset| {
-            let m = meta::meta_path(asset);
-            let guid = std::fs::read_to_string(&m)
-                .ok()
-                .and_then(|t| meta::guid_in(&t));
-            // Copies keep the modification time (Explorer, `fs::copy`) but get a new creation time.
-            let time = std::fs::metadata(&m)
-                .and_then(|x| x.created().or_else(|_| x.modified()))
-                .ok();
-            found.push((rel(root, asset), guid, time));
+            assets.push(asset.to_path_buf())
         });
+        // The meta files are read (and missing ones written, below) on several threads: one
+        // at a time, a first open of a project of 850 files spent most of its scan waiting
+        // for the disk (each new meta file is flushed to it).
+        let mut found: Vec<(String, Option<Guid>, Option<SystemTime>)> = assets
+            .par_iter()
+            .map(|asset| {
+                let m = meta::meta_path(asset);
+                let guid = std::fs::read_to_string(&m)
+                    .ok()
+                    .and_then(|t| meta::guid_in(&t));
+                // Copies keep the modification time (Explorer, `fs::copy`) but get a new
+                // creation time.
+                let time = std::fs::metadata(&m)
+                    .and_then(|x| x.created().or_else(|_| x.modified()))
+                    .ok();
+                (rel(root, asset), guid, time)
+            })
+            .collect();
         // Oldest meta first, then the shorter path ("Red" before "Red 1"), so the original of a
         // copied pair keeps its GUID.
         found.sort_by(|a, b| (a.2, a.0.len(), &a.0).cmp(&(b.2, b.0.len(), &b.0)));
         let mut db = Self::new(root);
+        // (path, new GUID, it replaces a taken one) for the meta files to write.
+        let mut new: Vec<(String, Guid, bool)> = Vec::new();
         for (rel, guid, _) in found {
             let taken = guid.is_some_and(|g| db.by_guid.contains_key(&g));
-            let guid = match guid {
-                Some(g) if !taken => g,
+            match guid {
+                Some(g) if !taken => db.insert(&rel, g),
                 _ => {
                     let g = Guid::new();
-                    match meta::write_guid(&root.join(&rel), g) {
-                        Ok(()) if taken => report.reassigned.push(rel.clone()),
-                        Ok(()) => report.created.push(rel.clone()),
-                        Err(e) => {
-                            report.errors.push(e);
-                            continue;
-                        }
-                    }
-                    g
+                    // Reserved now, so a later copy of the same GUID is seen as taken too.
+                    db.insert(&rel, g);
+                    new.push((rel, g, taken));
                 }
-            };
-            db.insert(&rel, guid);
+            }
+        }
+        let written: Vec<Result<(), String>> = new
+            .par_iter()
+            .map(|(rel, g, _)| meta::write_guid(&root.join(rel), *g))
+            .collect();
+        for ((rel, _, taken), result) in new.into_iter().zip(written) {
+            match result {
+                Ok(()) if taken => report.reassigned.push(rel),
+                Ok(()) => report.created.push(rel),
+                Err(e) => {
+                    db.remove_path(&rel);
+                    report.errors.push(e);
+                }
+            }
         }
         report.created.sort();
         report.reassigned.sort();
@@ -155,6 +175,13 @@ impl GuidDatabase {
             && old != rel
         {
             self.by_path.remove(&old);
+        }
+    }
+
+    /// Forget `rel` alone (not what is under it).
+    fn remove_path(&mut self, rel: &str) {
+        if let Some(g) = self.by_path.remove(rel) {
+            self.by_guid.remove(&g);
         }
     }
 

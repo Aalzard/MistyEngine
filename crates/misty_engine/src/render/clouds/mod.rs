@@ -89,6 +89,11 @@ pub(crate) struct Clouds {
 }
 
 impl Clouds {
+    /// Wait for the pipelines being built on a worker (see `Prebuilt::wait`).
+    pub(in crate::render) fn wait_prebuilt(&mut self) {
+        self.prebuilt.wait();
+    }
+
     /// Start making the noise volumes and the pipelines on a worker thread (streaming only).
     pub fn prebuild(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let (device, queue) = (device.clone(), queue.clone());

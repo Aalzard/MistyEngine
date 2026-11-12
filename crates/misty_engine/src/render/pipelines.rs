@@ -690,85 +690,63 @@ impl Pipelines {
         ];
         let terrain_layout = layout("misty terrain", &terrain_entries);
         let empty_layout = layout("misty empty", &[]);
-        let terrain = build(
-            device,
-            Spec {
-                vs: "vs_terrain",
-                fs: Some("fs_terrain"),
-                cull: Some(wgpu::Face::Back),
-                depth: Depth::main(true, wgpu::CompareFunction::Less),
-                glow: Some(true),
-                velocity: true,
-                ..Spec::new(
-                    "terrain",
-                    TERRAIN_SRC,
-                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
-                )
-            },
-        );
-        let terrain_depth = build(
-            device,
-            Spec {
-                vs: "vs_terrain",
-                fs: Some("fs_terrain_depth"),
-                cull: Some(wgpu::Face::Back),
-                depth: Depth::main(true, wgpu::CompareFunction::Less),
-                glow: Some(false),
-                color_writes: wgpu::ColorWrites::empty(),
-                ..Spec::new(
-                    "terrain depth",
-                    TERRAIN_SRC,
-                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
-                )
-            },
-        );
-        let terrain_shade = build(
-            device,
-            Spec {
-                vs: "vs_terrain",
-                fs: Some("fs_terrain"),
-                cull: Some(wgpu::Face::Back),
-                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-                glow: Some(true),
-                velocity: true,
-                ..Spec::new(
-                    "terrain shade",
-                    TERRAIN_SRC,
-                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
-                )
-            },
-        );
-        let terrain_shadow = build(
-            device,
-            Spec {
-                vs: "vs_terrain_depth",
-                fs: None,
-                cull: Some(wgpu::Face::Back),
-                depth: Some(Depth {
-                    format: super::SHADOW_FORMAT,
-                    write: true,
-                    compare: wgpu::CompareFunction::LessEqual,
-                    bias: wgpu::DepthBiasState {
-                        constant: 1,
-                        slope_scale: 1.0,
-                        clamp: 0.0,
-                    },
-                }),
-                color: None,
-                samples: 1,
-                glow: None,
-                ..Spec::new(
-                    "terrain shadow",
-                    TERRAIN_SHADOW_SRC,
-                    &[
-                        &shadow_view_layout,
-                        &draws_layout,
-                        &material_layout,
-                        &terrain_layout,
-                    ],
-                )
-            },
-        );
+        let terrain_layouts = [&view_layout, &mesh_layout, &empty_layout, &terrain_layout];
+        let terrain = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(true),
+            velocity: true,
+            ..Spec::new("terrain", TERRAIN_SRC, &terrain_layouts)
+        };
+        let terrain_depth = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain_depth"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(false),
+            color_writes: wgpu::ColorWrites::empty(),
+            ..Spec::new("terrain depth", TERRAIN_SRC, &terrain_layouts)
+        };
+        let terrain_shade = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+            glow: Some(true),
+            velocity: true,
+            ..Spec::new("terrain shade", TERRAIN_SRC, &terrain_layouts)
+        };
+        let terrain_shadow_layouts = [
+            &shadow_view_layout,
+            &draws_layout,
+            &material_layout,
+            &terrain_layout,
+        ];
+        let terrain_shadow = Spec {
+            vs: "vs_terrain_depth",
+            fs: None,
+            cull: Some(wgpu::Face::Back),
+            depth: Some(Depth {
+                format: super::SHADOW_FORMAT,
+                write: true,
+                compare: wgpu::CompareFunction::LessEqual,
+                bias: wgpu::DepthBiasState {
+                    constant: 1,
+                    slope_scale: 1.0,
+                    clamp: 0.0,
+                },
+            }),
+            color: None,
+            samples: 1,
+            glow: None,
+            ..Spec::new(
+                "terrain shadow",
+                TERRAIN_SHADOW_SRC,
+                &terrain_shadow_layouts,
+            )
+        };
         // Grass parameters, the grass atlas (grass and flower layers) and its sampler.
         let grass_layout = layout(
             "misty grass",
@@ -798,83 +776,82 @@ impl Pipelines {
                 entry(1, S::VERTEX, storage()),
             ],
         );
-        let grass = build(
+        let grass_layouts = [
+            &view_layout,
+            &mesh_layout,
+            &grass_layout,
+            &grass_blades_layout,
+        ];
+        let grass = Spec {
+            vs: "vs_grass",
+            fs: Some("fs_grass"),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            // Tests against the depth the grass depth pipeline wrote just before.
+            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+            glow: Some(true),
+            alpha_to_coverage: true,
+            velocity: true,
+            ..Spec::new("grass", GRASS_SRC, &grass_layouts)
+        };
+        let grass_depth = Spec {
+            vs: "vs_grass_depth",
+            fs: Some("fs_grass_depth"),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(false),
+            alpha_to_coverage: true,
+            color_writes: wgpu::ColorWrites::ALPHA,
+            ..Spec::new("grass depth", GRASS_SRC, &grass_layouts)
+        };
+        let grass_shadow_layouts = [
+            &shadow_view_layout,
+            &draws_layout,
+            &grass_layout,
+            &grass_blades_layout,
+        ];
+        let grass_shadow = Spec {
+            vs: "vs_grass_shadow",
+            fs: Some("fs_grass_shadow"),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            depth: Some(Depth {
+                format: super::SHADOW_FORMAT,
+                write: true,
+                compare: wgpu::CompareFunction::LessEqual,
+                // Blades shade themselves: a larger slope bias keeps a card's own shadow
+                // off it.
+                bias: wgpu::DepthBiasState {
+                    constant: 2,
+                    slope_scale: 2.5,
+                    clamp: 0.0,
+                },
+            }),
+            color: None,
+            samples: 1,
+            glow: None,
+            ..Spec::new("grass shadow", GRASS_SHADOW_SRC, &grass_shadow_layouts)
+        };
+
+        // The terrain and grass shaders take seconds each on a first launch: compile them at
+        // the same time.
+        let [
+            terrain,
+            terrain_depth,
+            terrain_shade,
+            terrain_shadow,
+            grass,
+            grass_depth,
+            grass_shadow,
+        ] = build_parallel(
             device,
-            Spec {
-                vs: "vs_grass",
-                fs: Some("fs_grass"),
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                // Tests against the depth the grass depth pipeline wrote just before.
-                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-                glow: Some(true),
-                alpha_to_coverage: true,
-                velocity: true,
-                ..Spec::new(
-                    "grass",
-                    GRASS_SRC,
-                    &[
-                        &view_layout,
-                        &mesh_layout,
-                        &grass_layout,
-                        &grass_blades_layout,
-                    ],
-                )
-            },
-        );
-        let grass_depth = build(
-            device,
-            Spec {
-                vs: "vs_grass_depth",
-                fs: Some("fs_grass_depth"),
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                depth: Depth::main(true, wgpu::CompareFunction::Less),
-                glow: Some(false),
-                alpha_to_coverage: true,
-                color_writes: wgpu::ColorWrites::ALPHA,
-                ..Spec::new(
-                    "grass depth",
-                    GRASS_SRC,
-                    &[
-                        &view_layout,
-                        &mesh_layout,
-                        &grass_layout,
-                        &grass_blades_layout,
-                    ],
-                )
-            },
-        );
-        let grass_shadow = build(
-            device,
-            Spec {
-                vs: "vs_grass_shadow",
-                fs: Some("fs_grass_shadow"),
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                depth: Some(Depth {
-                    format: super::SHADOW_FORMAT,
-                    write: true,
-                    compare: wgpu::CompareFunction::LessEqual,
-                    // Blades shade themselves: a larger slope bias keeps a card's own shadow
-                    // off it.
-                    bias: wgpu::DepthBiasState {
-                        constant: 2,
-                        slope_scale: 2.5,
-                        clamp: 0.0,
-                    },
-                }),
-                color: None,
-                samples: 1,
-                glow: None,
-                ..Spec::new(
-                    "grass shadow",
-                    GRASS_SHADOW_SRC,
-                    &[
-                        &shadow_view_layout,
-                        &draws_layout,
-                        &grass_layout,
-                        &grass_blades_layout,
-                    ],
-                )
-            },
+            [
+                terrain,
+                terrain_depth,
+                terrain_shade,
+                terrain_shadow,
+                grass,
+                grass_depth,
+                grass_shadow,
+            ],
         );
 
         // Post-processing: single-sample, no depth.
@@ -1064,6 +1041,32 @@ fn shader_module(device: &wgpu::Device, name: &str, source: &str) -> wgpu::Shade
         m.insert(source.to_owned(), module.clone());
     }
     module
+}
+
+/// Build `specs` at the same time, one thread each: the driver compiles a pipeline on the
+/// thread that creates it, and the big shaders (terrain, grass, the Standard mesh shader) take
+/// seconds each on a first launch. The shader modules are made first, one per source.
+pub(super) fn build_parallel<const N: usize>(
+    device: &wgpu::Device,
+    specs: [Spec<'_>; N],
+) -> [wgpu::RenderPipeline; N] {
+    let cached = modules().as_ref().is_some_and(|(d, _)| d == device);
+    if cached {
+        for spec in &specs {
+            shader_module(device, spec.name, spec.source);
+        }
+    }
+    std::thread::scope(|scope| {
+        let handles = specs.map(|spec| {
+            std::thread::Builder::new()
+                .name(format!("misty pipeline {}", spec.name))
+                .spawn_scoped(scope, move || build(device, spec))
+        });
+        handles.map(|h| match h {
+            Ok(h) => h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)),
+            Err(e) => panic!("pipeline thread: {e}"),
+        })
+    })
 }
 
 pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {

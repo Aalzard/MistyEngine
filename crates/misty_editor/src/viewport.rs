@@ -33,8 +33,32 @@ pub struct Gpu {
     filter: wgpu::FilterMode,
 }
 
-impl Gpu {
-    pub fn new(state: egui_wgpu::RenderState) -> Self {
+/// Pipelines built when the renderer started being made on its worker (`u64::MAX`: no
+/// renderer is being made). The status bar counts the compiles since.
+static STARTING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
+/// While the renderer is being made: the shader pipelines compiled for it so far.
+pub fn renderer_starting() -> Option<u64> {
+    let at = STARTING.load(std::sync::atomic::Ordering::Relaxed);
+    (at != u64::MAX).then(|| misty_engine::render::pipelines_built().saturating_sub(at))
+}
+
+/// What the renderer's worker hands back.
+type Parts = Result<(Renderer, UiRenderer), String>;
+
+/// The renderer being made on a worker thread when a project opens. Its pipelines took 3 to
+/// 10 s to compile on a first launch (the terrain, grass and mesh shaders take seconds each),
+/// all of it on the main thread before round 44: the window showed nothing and Windows called
+/// it Not Responding. Meanwhile the editor draws its panels and the views show
+/// "Compiling shaders".
+pub struct GpuStart {
+    state: egui_wgpu::RenderState,
+    rx: std::sync::mpsc::Receiver<Parts>,
+    started: std::time::Instant,
+}
+
+impl GpuStart {
+    pub fn spawn(state: egui_wgpu::RenderState) -> Self {
         misty_engine::render::cache_shader_modules(&state.device);
         // Compiled pipelines from earlier launches (Vulkan): a new build of the editor starts
         // with the driver's own cache empty.
@@ -43,14 +67,94 @@ impl Gpu {
             &state.adapter.get_info(),
             &misty_engine::assets::absolute("Library/ShaderCache"),
         );
-        let renderer = {
-            misty_engine::profile_scope!("Renderer.New");
-            Renderer::with_queue(&state.device, &state.queue)
+        STARTING.store(
+            misty_engine::render::pipelines_built(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (device, queue) = (state.device.clone(), state.queue.clone());
+        let spawned = std::thread::Builder::new()
+            .name("misty background renderer".into())
+            .spawn(move || {
+                let parts = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let renderer = {
+                        misty_engine::profile_scope!(
+                            "Renderer.New",
+                            misty_engine::profiler::Category::Rendering
+                        );
+                        let mut r = Renderer::with_queue(&device, &queue);
+                        // The quality level the views draw with, then one throwaway frame:
+                        // what a first render makes for itself is made here too.
+                        r.set_quality(&device, &misty_engine::quality::active());
+                        r.warm_up(&device, &queue);
+                        r
+                    };
+                    let ui = {
+                        misty_engine::profile_scope!("UiRenderer.New");
+                        UiRenderer::new(&device, &queue)
+                    };
+                    (renderer, ui)
+                }))
+                .map_err(|p| {
+                    p.downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| p.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "the renderer could not start".to_owned())
+                });
+                let _ = tx.send(parts);
+            });
+        if let Err(e) = spawned {
+            let (tx, failed) = std::sync::mpsc::channel();
+            let _ = tx.send(Err(e.to_string()));
+            return Self {
+                state,
+                rx: failed,
+                started: std::time::Instant::now(),
+            };
+        }
+        Self {
+            state,
+            rx,
+            started: std::time::Instant::now(),
+        }
+    }
+
+    /// The GPU context once the worker is done (`Err`: it failed; the views stay off).
+    pub fn poll(&mut self) -> Option<Result<Gpu, String>> {
+        let parts = match self.rx.try_recv() {
+            Ok(parts) => parts,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err("the renderer thread stopped".to_owned())
+            }
         };
-        let ui = {
-            misty_engine::profile_scope!("UiRenderer.New");
-            UiRenderer::new(&state.device, &state.queue)
-        };
+        STARTING.store(u64::MAX, std::sync::atomic::Ordering::Relaxed);
+        Some(parts.map(|(mut renderer, ui)| {
+            // The variants most scenes draw with compile next, in the background.
+            renderer.warm_common_pipelines(&self.state.device);
+            Gpu::from_parts(self.state.clone(), renderer, ui)
+        }))
+    }
+
+    /// The GPU the renderer is being made for.
+    pub fn adapter_info(&self) -> wgpu::AdapterInfo {
+        self.state.adapter.get_info()
+    }
+
+    /// How long the renderer has been starting.
+    pub fn elapsed(&self) -> std::time::Duration {
+        self.started.elapsed()
+    }
+}
+
+impl Drop for GpuStart {
+    fn drop(&mut self) {
+        STARTING.store(u64::MAX, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Gpu {
+    fn from_parts(state: egui_wgpu::RenderState, renderer: Renderer, ui: UiRenderer) -> Self {
         Self {
             state,
             renderer,
@@ -187,6 +291,10 @@ impl Gpu {
         let target = vp.target.as_ref().expect("target created above");
         // The Scene view shares the Game view's Misty GI clipmaps when its camera is near.
         target.set_misty_gi_secondary(matches!(view, ViewId::Scene));
+        // The views draw what is ready and swap the rest in as the background queues finish
+        // it (new shader variants, models, textures); previews, thumbnails and bakes, which
+        // render through the same renderer, always wait for everything.
+        self.renderer.set_background_loads(true);
         self.renderer.render_with_effects(
             &self.state.device,
             &self.state.queue,
@@ -194,6 +302,7 @@ impl Gpu {
             frame,
             effects,
         );
+        self.renderer.set_background_loads(false);
         vp.last_render = Some(std::time::Instant::now());
         vp.texture.expect("texture registered above")
     }

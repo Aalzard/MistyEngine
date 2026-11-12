@@ -252,6 +252,10 @@
 "Pause ({shortcut})" = "Duraklat ({shortcut})"
 "Step ({shortcut})" = "Adım ({shortcut})"
 "Baking GI distance fields ({count} left)" = "GI mesafe alanları pişiriliyor ({count} kaldı)"
+"Importing {done}/{total}" = "İçe aktarılıyor {done}/{total}"
+"Starting the renderer: compiling shaders ({count} done)" = "Oluşturucu başlatılıyor: gölgelendiriciler derleniyor ({count} bitti)"
+"Compiling shaders {done}/{total}" = "Gölgelendiriciler derleniyor {done}/{total}"
+"Compiling shaders…" = "Gölgelendiriciler derleniyor…"
 "🔍 Search" = "🔍 Ara"
 
 [hierarchy]

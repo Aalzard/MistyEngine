@@ -200,6 +200,15 @@ impl Renderer {
     }
 
     /// AO or contact shadows will run this render (when the view fits one texel buffer).
+    /// Make the screen-space passes now if they are not made yet (the editor's renderer
+    /// worker: they are compiled on the first frame that wants them otherwise, ~0.9 s on a
+    /// first launch).
+    pub(super) fn warm_screen_space(&mut self, device: &wgpu::Device) {
+        if self.screen_space.passes.is_none() {
+            self.screen_space.passes = Some(Passes::new(device, &self.pipelines));
+        }
+    }
+
     pub(super) fn screen_space_wanted(&self, frame: &Frame) -> bool {
         let ao =
             frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;

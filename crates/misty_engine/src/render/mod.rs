@@ -659,6 +659,10 @@ pub struct Renderer {
     wire_only: bool,
     /// Built on the first wireframe render.
     wire_pipelines: Option<wireframe::WirePipelines>,
+    /// Shader variants, models and textures a frame needs for the first time are made on the
+    /// background queues ([`crate::load_queue`]) instead of in the frame
+    /// ([`Renderer::set_background_loads`]).
+    background_loads: bool,
 }
 
 impl Renderer {
@@ -817,6 +821,7 @@ impl Renderer {
             wire: None,
             wire_only: false,
             wire_pipelines: None,
+            background_loads: false,
             vsm: Default::default(),
             vsm_dummy,
             vsm_frame: 0,
@@ -926,6 +931,124 @@ impl Renderer {
             renderer.clouds.prebuild(device, queue);
         }
         renderer
+    }
+
+    /// Make what a frame needs for the first time (shader variants, `.shader` pipelines,
+    /// imported models, decoded textures) on the background queues ([`crate::load_queue`])
+    /// while this is on: the frame draws without it meanwhile (left out, a stand-in pipeline,
+    /// a 1×1 texture) and it is swapped in on a later frame. Off by default: every frame is
+    /// complete, as tests, golden shots, thumbnails and bakes need. The editor turns it on
+    /// around its Scene and Game view renders only.
+    pub fn set_background_loads(&mut self, on: bool) {
+        self.background_loads = on;
+        self.pipelines.variants.background = on;
+        self.textures.set_background(on);
+        self.trees.background = on;
+    }
+
+    /// Queue the shader variants most scenes use (with the background loads on): a new
+    /// renderer's first scene then rarely waits for one.
+    pub fn warm_common_pipelines(&mut self, device: &wgpu::Device) {
+        self.pipelines.warm_common_variants(device);
+    }
+
+    /// Render one small throwaway frame (a cube on a plane, a shadowed sun, the sky and the
+    /// default post-processing) so what a first render makes for itself (the screen-space,
+    /// post-processing and volumetrics compute pipelines, the AO prepass pipelines, the
+    /// shadow maps) is made now: the editor calls this on the worker that makes the
+    /// renderer, so the views' first frame does not wait half a second for them. Mesh
+    /// variants are queued (with the background loads on), not waited for.
+    pub fn warm_up(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        crate::profile_scope!("Renderer.WarmUp");
+        let camera = crate::camera::Camera {
+            position: glam::Vec3::new(0.0, 2.0, -5.0),
+            rotation: glam::Quat::from_rotation_x(15f32.to_radians()),
+            projection: crate::camera::Projection::Perspective { fov_y: 60.0 },
+            near: 0.1,
+            far: 100.0,
+        };
+        let draw = |mesh: PrimitiveMesh, model: glam::Mat4| MeshDraw {
+            mesh: mesh.into(),
+            model,
+            material: MaterialParams::default(),
+            cast_shadows: true,
+            receive_shadows: true,
+            outline: false,
+            sorting: Default::default(),
+            lod: None,
+        };
+        let meshes = [
+            draw(PrimitiveMesh::Cube, glam::Mat4::IDENTITY),
+            draw(
+                crate::scene::PrimitiveMesh::Plane,
+                glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.5, 0.0)),
+            ),
+        ];
+        let lights = [LightData {
+            kind: LightType::Directional,
+            position: glam::Vec3::ZERO,
+            direction: glam::Vec3::new(0.3, -1.0, 0.4).normalize(),
+            color: [1.0; 3],
+            intensity: 1.0,
+            range: 10.0,
+            spot_angle: 45.0,
+            shadows: Shadows::Soft,
+            shadow: Default::default(),
+            volumetric: Default::default(),
+            contact_shadows: true,
+            area: Default::default(),
+        }];
+        let environment = Environment::default();
+        // The screen-space effects scenes often turn on (their passes are made on first use).
+        let mut post = PostSettings::default();
+        post.ao.enabled = true;
+        post.ao.intensity = post.ao.intensity.max(1.0);
+        post.contact_shadows.enabled = true;
+        post.contact_shadows.length = post.contact_shadows.length.max(0.1);
+        post.contact_shadows.opacity = post.contact_shadows.opacity.max(1.0);
+        post.ssgi.enabled = true;
+        post.ssgi.intensity = post.ssgi.intensity.max(1.0);
+        post.ssr.enabled = true;
+        post.ssr.intensity = post.ssr.intensity.max(1.0);
+        post.misty_gi.enabled = true;
+        post.misty_gi.intensity = post.misty_gi.intensity.max(1.0);
+        let frame = Frame {
+            camera: &camera,
+            grid: None,
+            skybox: true,
+            background: [0.1; 3],
+            environment: &environment,
+            post,
+            lines: &[],
+            overlay: &[],
+            meshes: &meshes,
+            particles: &[],
+            terrains: &[],
+            shaded: true,
+            lights: &lights,
+            water: &[],
+        };
+        let was = self.background_loads;
+        self.set_background_loads(true);
+        let target = self.create_view_target(device, 64, 64);
+        self.render(device, queue, &target, &frame);
+        self.set_background_loads(was);
+        // The pipelines started on workers when the renderer was made (trees, grass,
+        // clouds, volumetrics): a first frame with terrain waited seconds for them.
+        self.warm_screen_space(device);
+        crate::profile_scope!("Renderer.WaitPrebuilt");
+        self.trees.wait_prebuilt();
+        self.terrains.wait_prebuilt();
+        self.clouds.wait_prebuilt();
+        self.volumetrics.wait_prebuilt();
+        self.grass_vis_prebuilt.wait();
+    }
+
+    /// Things this renderer is waiting for from the background queues.
+    pub fn background_pending(&self) -> usize {
+        self.pipelines.variants_pending()
+            + self.textures.pending()
+            + self.custom.as_ref().map_or(0, |c| c.pending())
     }
 
     /// Culling / instancing switches.
@@ -1214,6 +1337,15 @@ impl Renderer {
         lod: &[lod::LodState],
     ) {
         self.textures.sync_runtime(device, queue);
+        // Shader variants and textures finished on the background queues since last frame.
+        self.pipelines.take_built_variants();
+        let textures_arrived = self.textures.take_loaded();
+        if let Some(c) = self.custom.as_mut() {
+            if textures_arrived {
+                c.textures_changed();
+            }
+            c.take_built(device, &self.pipelines);
+        }
         let generation = models::generation();
         if generation != self.imported_generation {
             self.imported.clear();
@@ -1246,7 +1378,15 @@ impl Renderer {
                 let custom = self
                     .custom
                     .get_or_insert_with(|| custom_shader::CustomShaders::new(device, queue));
-                custom.prepare(device, queue, &self.pipelines, &mut self.textures, c);
+                let background = self.background_loads;
+                custom.prepare(
+                    device,
+                    queue,
+                    &self.pipelines,
+                    &mut self.textures,
+                    c,
+                    background,
+                );
                 // White vertex colours reaching this mesh's vertices.
                 let reach = self
                     .gpu_mesh(&d.mesh)
@@ -1734,7 +1874,10 @@ impl Renderer {
             culled
         });
         let extra_slots = culled.as_ref().map_or(0, |c| c.slots_needed());
-        self.upload_draws(device, queue, frame, &lists, extra_slots, probes_rebuilt);
+        {
+            crate::profile_scope!("Render.Prep.UploadDraws");
+            self.upload_draws(device, queue, frame, &lists, extra_slots, probes_rebuilt);
+        }
         if let Some(c) = &culled {
             self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
             self.last_gpu_batches = c.batches.len();
@@ -1744,8 +1887,14 @@ impl Renderer {
             device, queue, target, frame, &lists, &view_proj, &plan, gpu_culled,
         );
         self.prepare_wireframe(device);
-        self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
-        let screen = self.prepare_screen_space(device, queue, target, frame);
+        {
+            crate::profile_scope!("Render.Prep.ShadowMask");
+            self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
+        }
+        let screen = {
+            crate::profile_scope!("Render.Prep.ScreenSpace");
+            self.prepare_screen_space(device, queue, target, frame)
+        };
         if screen.is_none() {
             self.cancel_shadow_mask();
         }
@@ -1793,11 +1942,23 @@ impl Renderer {
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         light2d::upload(queue, &self.lights_2d, &frame.environment.lights_2d);
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
-        self.prepare_volumetrics(device, queue, target, frame, &plan);
-        self.prepare_glows(device, queue, target, frame);
+        {
+            crate::profile_scope!("Render.Prep.Volumetrics");
+            self.prepare_volumetrics(device, queue, target, frame, &plan);
+        }
+        {
+            crate::profile_scope!("Render.Prep.Glows");
+            self.prepare_glows(device, queue, target, frame);
+        }
         // (Before the clouds: a new occlusion map rebuilds the view group there.)
-        self.prepare_weather(device, queue);
-        self.prepare_clouds(device, queue, target, frame);
+        {
+            crate::profile_scope!("Render.Prep.Weather");
+            self.prepare_weather(device, queue);
+        }
+        {
+            crate::profile_scope!("Render.Prep.Clouds");
+            self.prepare_clouds(device, queue, target, frame);
+        }
 
         // Overlay triangles follow the lines in the same buffer, which never grows past the
         // device's largest buffer: overlays are kept whole, lines are cut to what fits.
@@ -1822,6 +1983,7 @@ impl Renderer {
         }
 
         let particle_draws = self.upload_particles(device, queue, frame, &lists.particles);
+        let postfx_scope = crate::profiler::Scope::begin_lazy(|| "Render.Prep.PostFx", None);
         (self.postfx).prepare(
             device,
             queue,
@@ -1831,6 +1993,7 @@ impl Renderer {
             motion.prev_view_proj,
             motion.continuous,
         );
+        drop(postfx_scope);
         // No GPU timing while capturing: a replay may skip the pass that ends the timing.
         let timing = match self.capture {
             Some(_) => None,
@@ -2186,7 +2349,8 @@ impl Renderer {
         stats.grass_pending = grass.pending;
         stats.loading = (self.terrains.layers_pending()
             + self.trees.loading()
-            + misty_gi::mesh_sdf_bakes_pending()) as u32;
+            + misty_gi::mesh_sdf_bakes_pending()
+            + self.background_pending()) as u32;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
@@ -3341,6 +3505,11 @@ impl Renderer {
         {
             return false;
         }
+        // With the background loads on, the lit pass draws the grass until the visibility
+        // pipelines (built on a worker) are there.
+        if self.grass_vis.is_none() && self.background_loads && self.grass_vis_prebuilt.building() {
+            return false;
+        }
         if self.grass_vis.is_none() {
             crate::profile_scope!("GrassVis.Pipelines");
             let built = (self.grass_vis_prebuilt.take())
@@ -4038,6 +4207,8 @@ fn view_ray(cam: &Camera, aspect: f32) -> [[f32; 4]; 2] {
     [q.to_array(), tan]
 }
 
+#[cfg(test)]
+mod background_load_gpu_tests;
 #[cfg(test)]
 mod benchmark;
 #[cfg(test)]

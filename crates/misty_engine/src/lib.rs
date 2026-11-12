@@ -24,6 +24,7 @@ pub mod input;
 pub mod light2d;
 pub mod light_probes;
 pub mod lightmap;
+pub mod load_queue;
 pub mod localization;
 pub mod material_features;
 pub mod memory_snapshot;

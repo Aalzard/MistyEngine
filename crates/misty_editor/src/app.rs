@@ -14,7 +14,7 @@ use crate::panels::{PanelViewer, animation};
 use crate::project::ProjectBrowser;
 use crate::scene_files::{self, AfterPrompt};
 use crate::state::{EditorState, PlayState, Tool};
-use crate::viewport::Gpu;
+use crate::viewport::{Gpu, GpuStart};
 use crate::{
     build_settings, commands, game_input, menu_bar, play, status_bar, theme, title_bar, toolbar,
 };
@@ -23,6 +23,8 @@ pub struct EditorApp {
     state: EditorState,
     dock: DockState<Tab>,
     gpu: Option<Gpu>,
+    /// The renderer being made on a worker (the first frames of a project; see [`GpuStart`]).
+    gpu_start: Option<GpuStart>,
     capture: Option<Capture>,
     /// Layout to restore after "Play Maximized".
     saved_dock: Option<DockState<Tab>>,
@@ -30,7 +32,7 @@ pub struct EditorApp {
     errors_seen: usize,
     /// Cursor lock / visibility last sent to the window (`Cursor.lockState` while playing).
     cursor_applied: misty_engine::scripting::CursorState,
-    /// Shader pipelines built so far (a rise shows "Preparing shaders" in the status bar).
+    /// Shader pipelines built so far (a rise schedules a pipeline cache save).
     shaders_seen: u64,
     /// When to write the pipeline cache: a few seconds after the last shader compiled.
     pipeline_cache_due: Option<std::time::Instant>,
@@ -111,16 +113,17 @@ impl EditorApp {
         state.vcs.start(&root);
         // Updater: the one this process runs (started by the launcher, passed on from the Hub).
         state.updater = updater;
-        let gpu = {
+        // The renderer compiles its pipelines on a worker: the window draws meanwhile.
+        let gpu_start = {
             misty_engine::profile_scope!(
                 "Editor.GpuInit",
                 misty_engine::profiler::Category::Rendering
             );
-            render_state.map(Gpu::new)
+            render_state.map(GpuStart::spawn)
         };
-        match &gpu {
-            Some(g) => {
-                let info = g.state.adapter.get_info();
+        let adapter = gpu_start.as_ref().map(|g| g.adapter_info());
+        match adapter {
+            Some(info) => {
                 if capture.is_some() {
                     eprintln!("renderer: {} ({:?})", info.name, info.backend);
                 }
@@ -135,7 +138,8 @@ impl EditorApp {
         Self {
             state,
             dock,
-            gpu,
+            gpu: None,
+            gpu_start,
             capture,
             saved_dock: None,
             errors_seen: 0,
@@ -170,6 +174,54 @@ impl EditorApp {
         self.state
             .console
             .info(format!("Project opened in {} ms.", took.as_millis()));
+    }
+
+    /// Take the renderer once its worker made it; keep drawing meanwhile. Also reports what
+    /// the background queues could not do (a model or texture that failed to import).
+    fn poll_gpu_start(&mut self, ctx: &egui::Context) {
+        if let Some(start) = self.gpu_start.as_mut() {
+            match start.poll() {
+                None => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
+                Some(Ok(gpu)) => {
+                    self.state.console.info(format!(
+                        "Renderer ready in {} ms (shaders compiled in the background).",
+                        start.elapsed().as_millis()
+                    ));
+                    self.gpu = Some(gpu);
+                    self.gpu_start = None;
+                    ctx.request_repaint();
+                }
+                Some(Err(e)) => {
+                    self.state.console.log(
+                        LogLevel::Error,
+                        format!("The renderer could not start: {e}. 3D views are disabled."),
+                    );
+                    self.gpu_start = None;
+                }
+            }
+        }
+        for e in misty_engine::load_queue::imports().take_errors() {
+            self.state.console.warn(format!("Could not import {e}"));
+        }
+        for e in misty_engine::load_queue::shaders().take_errors() {
+            self.state
+                .console
+                .warn(format!("Shader compile failed: {e}"));
+        }
+        if misty_engine::load_queue::busy() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+    }
+
+    /// Something is still loading in the background: the renderer, shader variants, models
+    /// or textures (screenshot runs wait for it).
+    fn background_busy(&self) -> bool {
+        self.gpu_start.is_some()
+            || misty_engine::load_queue::busy()
+            || self
+                .gpu
+                .as_ref()
+                .is_some_and(|g| g.renderer.background_pending() > 0)
     }
 
     /// Save the layout if it changed (debounced), or now when `force` is set.
@@ -565,7 +617,11 @@ impl EditorApp {
             s.console.info(msg);
         }
         // Window ▸ General ▸ Test Runner: a slice of the running tests per frame.
-        if crate::panels::test_runner::tick(s) {
+        let tick = {
+            misty_engine::profile_scope!("Editor.TestRunner");
+            crate::panels::test_runner::tick(s)
+        };
+        if tick {
             ctx.request_repaint();
         }
         // Editor scripts: (re)load, update callbacks, asset processors.
@@ -597,7 +653,10 @@ impl EditorApp {
         }
         drop(reload_scope);
         if !s.play.in_play_mode() {
-            self.sync_cursor(ctx);
+            {
+                misty_engine::profile_scope!("Editor.SyncCursor");
+                self.sync_cursor(ctx);
+            }
             let s = &mut self.state;
             // Spline Extrude meshes and Spline Instantiate copies follow their splines.
             {
@@ -605,6 +664,8 @@ impl EditorApp {
                 misty_engine::splines::update(&mut s.scene);
             }
             // Selected Particle Systems play in the Scene view.
+            let previews_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "Editor.EditPreviews", None);
             if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
@@ -620,6 +681,7 @@ impl EditorApp {
             if crate::weather_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
+            drop(previews_scope);
             // Scripts reload when their files change; syntax errors go to the Console.
             let scripts_scope =
                 misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollScripts", None);
@@ -636,7 +698,12 @@ impl EditorApp {
             drop(guids_scope);
             // Files and folders added, removed or renamed in the folders the Project window
             // lists (Explorer, other apps): re-list and import them now, not on the next visit.
-            if s.project.poll_disk() {
+            let disk = {
+                misty_engine::profile_scope!("Editor.PollDisk");
+                s.project.poll_disk()
+            };
+            if disk {
+                misty_engine::profile_scope!("Editor.RefreshAssets");
                 s.refresh_assets();
             }
             // Open scenes and editor-held assets follow their files (see `live_reload`).
@@ -822,6 +889,9 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
+        // Shader compiles and imports still queued belong to this project: drop them, so
+        // nothing of it lands in the next project's caches.
+        misty_engine::load_queue::cancel_all();
         misty_engine::asset_db::saver::flush();
         crate::mcp::live::shutdown(&mut self.state);
         self.save_layout(true);
@@ -847,6 +917,7 @@ impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         crate::scene_camera::bench::frame_start(&ctx);
+        self.poll_gpu_start(&ctx);
         apply_vsync(&mut self.state, frame);
         self.state.ui_scale.apply(&ctx);
         let s = &mut self.state;
@@ -936,13 +1007,10 @@ impl eframe::App for EditorApp {
         crate::os_drop::fallback(&ctx, &mut self.state);
         // Shader variants compile the first time a view needs them (a new scene, a material
         // or effect first seen): say so, since that frame takes longer.
+        // (The status bar shows the compiles in progress, see `status_bar`.)
         let shaders = misty_engine::render::pipelines_built();
         if shaders > self.shaders_seen {
-            let n = shaders - self.shaders_seen;
             self.shaders_seen = shaders;
-            self.state
-                .live
-                .toast(format!("Preparing shaders… ({n} compiled)"));
             self.pipeline_cache_due =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
         }
@@ -1093,12 +1161,16 @@ impl eframe::App for EditorApp {
         }
         drop(end_scope);
         drop(after_scope);
+        // Screenshots show the finished scene: they wait for the background loads too.
+        let busy = self.capture.is_some() && self.background_busy();
         if let Some(capture) = &mut self.capture {
             if let Some(gpu) = &self.gpu {
                 let stats = gpu.renderer.stats();
-                capture.note_loading(stats.loading > 0 || stats.grass_pending > 0);
+                capture.note_loading(busy || stats.loading > 0 || stats.grass_pending > 0);
+            } else {
+                capture.note_loading(busy);
             }
-            capture.hold(crate::panels::timeline::capture_waiting(&self.state));
+            capture.hold(crate::panels::timeline::capture_waiting(&self.state) || busy);
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {

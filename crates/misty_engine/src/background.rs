@@ -26,7 +26,7 @@ pub fn pool() -> &'static rayon::ThreadPool {
 }
 
 #[cfg(windows)]
-fn lower_priority() {
+pub(crate) fn lower_priority() {
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetCurrentThread() -> isize;
@@ -40,7 +40,34 @@ fn lower_priority() {
 }
 
 #[cfg(not(windows))]
-fn lower_priority() {}
+pub(crate) fn lower_priority() {}
+
+/// Run `f` at normal priority on a background worker (then back below normal): for work
+/// that holds a lock the main thread may need, such as a GPU upload holding wgpu's queue
+/// writes. At below normal priority, busy cores (a build) could keep the worker off the CPU
+/// while it held the lock, and the frame waited seconds for it.
+pub(crate) fn at_normal_priority<R>(f: impl FnOnce() -> R) -> R {
+    set_priority(0);
+    let r = f();
+    set_priority(-1);
+    r
+}
+
+#[cfg(windows)]
+fn set_priority(priority: i32) {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThread() -> isize;
+        fn SetThreadPriority(thread: isize, priority: i32) -> i32;
+    }
+    // SAFETY: the current thread's pseudo handle needs no closing.
+    unsafe {
+        SetThreadPriority(GetCurrentThread(), priority);
+    }
+}
+
+#[cfg(not(windows))]
+fn set_priority(_priority: i32) {}
 
 #[cfg(test)]
 mod tests {

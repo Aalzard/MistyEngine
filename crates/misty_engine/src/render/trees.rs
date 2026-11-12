@@ -826,6 +826,9 @@ pub(super) struct TreeRenderer {
     pipelines: Option<Pipelines>,
     /// The pipelines being built on a worker since the renderer was made (streaming only).
     prebuilt: super::prebuilt::Prebuilt<Pipelines>,
+    /// Draw no trees while their pipelines are still being built
+    /// ([`super::Renderer::set_background_loads`]).
+    pub(super) background: bool,
     /// Bark, leaves and impostor edges of the wireframe draw modes (built on their first
     /// render; the path and MSAA samples they were built for).
     wire: Option<(super::WirePath, u32, [wgpu::RenderPipeline; 3])>,
@@ -874,6 +877,11 @@ const NEAR_IN: f32 = 0.9;
 const NEAR_OUT: f32 = 1.0;
 
 impl TreeRenderer {
+    /// Wait for the pipelines being built on a worker (see `Prebuilt::wait`).
+    pub(in crate::render) fn wait_prebuilt(&mut self) {
+        self.prebuilt.wait();
+    }
+
     pub fn new(device: &wgpu::Device) -> Self {
         use wgpu::ShaderStages as S;
         let texture = |binding| wgpu::BindGroupLayoutEntry {
@@ -922,6 +930,7 @@ impl TreeRenderer {
             sampler,
             pipelines: None,
             prebuilt: Default::default(),
+            background: false,
             wire: None,
             trees: HashMap::new(),
             pending: HashMap::new(),
@@ -1126,6 +1135,12 @@ impl TreeRenderer {
         self.loading = 0;
         self.uploaded = false;
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
+            return;
+        }
+        // With the background loads on, the trees wait for their pipelines (being built on
+        // a worker since the renderer was made) instead of the frame.
+        if self.pipelines.is_none() && self.background && self.prebuilt.building() {
+            self.loading += 1;
             return;
         }
         if self.pipelines.is_none() {
