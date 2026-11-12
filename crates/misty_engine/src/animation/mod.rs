@@ -17,6 +17,10 @@ pub mod mask;
 pub mod player;
 pub mod root_motion;
 
+/// Longest clip an importer or retargeting pass resamples (seconds): a malformed file's key
+/// time of 1e30 would otherwise mean an endless resample loop.
+pub const MAX_IMPORT_LENGTH: f32 = 3600.0;
+
 pub use animator::AnimatorPlayer;
 pub use clip::{AnimationClip, AnimationEvent, Curve, Property, is_clip};
 pub use controller::{AnimatorController, is_controller};

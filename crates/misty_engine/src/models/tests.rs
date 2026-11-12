@@ -315,3 +315,20 @@ fn gltf_node_cycles_import_each_node_once() {
     assert_eq!(model.nodes.len(), 2);
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn gltf_animations_with_huge_key_times_are_capped() {
+    let dir = temp_dir("gltf_long_anim");
+    let path = write_anim_gltf(
+        &dir,
+        r#"[{ "name": "A" }]"#,
+        &[0.0, 1e30],
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        "LINEAR",
+    );
+    let start = std::time::Instant::now();
+    let model = load(&path).unwrap();
+    assert!(model.animations[0].clip.length <= crate::animation::MAX_IMPORT_LENGTH);
+    assert!(start.elapsed().as_secs() < 60, "{:?}", start.elapsed());
+    std::fs::remove_dir_all(dir).ok();
+}

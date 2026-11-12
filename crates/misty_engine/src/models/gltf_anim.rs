@@ -311,7 +311,11 @@ pub fn animations(
                 };
                 tracks.push((node, ch.target().property(), track));
             }
-            let length = tracks.iter().map(|t| t.2.end()).fold(0.0, f32::max);
+            let length = tracks
+                .iter()
+                .map(|t| t.2.end())
+                .fold(0.0, f32::max)
+                .min(crate::animation::MAX_IMPORT_LENGTH);
             let mut clip = AnimationClip {
                 length,
                 looping: true,
