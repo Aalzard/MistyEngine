@@ -33,12 +33,20 @@ impl Shape {
     }
 }
 
-/// Where a cell's sprite sits inside it (local bounds), when it covers less than the cell.
-fn sprite_rect(map: &Tilemap, grid: &Grid, c: IVec2, sprite: Option<&str>) -> Option<(Vec2, Vec2)> {
+/// Where a cell's sprite sits (local bounds of the drawn quad, so rotated and flipped tiles
+/// collide where they are drawn).
+fn sprite_rect(
+    map: &Tilemap,
+    grid: &Grid,
+    c: IVec2,
+    sprite: Option<&str>,
+    t: super::TileTransform,
+) -> Option<(Vec2, Vec2)> {
     let s = crate::sprites::resolve(sprite?)?;
-    let (lo, hi) = s.bounds();
-    let anchor = grid.cell_center(c) - grid.cell_size * 0.5 + grid.cell_size * map.tile_anchor;
-    Some((anchor + lo, anchor + hi))
+    let corners = super::chunks::quad_corners(grid, map.tile_anchor, c, &s, t);
+    let lo = corners.iter().fold(Vec2::INFINITY, |a, p| a.min(*p));
+    let hi = corners.iter().fold(Vec2::NEG_INFINITY, |a, p| a.max(*p));
+    Some((lo, hi))
 }
 
 /// Cells that collide, with their local rectangle when it is not exactly the cell.
@@ -54,7 +62,7 @@ fn solid_cells(map: &Tilemap, grid: &Grid) -> Vec<(IVec2, Option<(Vec2, Vec2)>)>
             ColliderType::None => {}
             ColliderType::Grid => out.push((c, None)),
             ColliderType::Sprite => {
-                let rect = sprite_rect(map, grid, c, r.sprite.as_deref());
+                let rect = sprite_rect(map, grid, c, r.sprite.as_deref(), r.transform);
                 let center = grid.cell_center(c);
                 let h = grid.cell_size * 0.5;
                 let full = rect.is_none_or(|(lo, hi)| {

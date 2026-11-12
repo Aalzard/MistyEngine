@@ -601,3 +601,48 @@ fn drags_far_outside_a_tiny_grid_stay_bounded() {
     // Ordinary boxes still fill.
     assert_eq!(edit::box_fill(&mut map, at(0, 0), at(2, 1), &brush), 6);
 }
+
+#[test]
+fn sprite_colliders_follow_the_tile_rotation() {
+    // A 1×0.5 unit sprite (100×50 pixels at 100 pixels per unit) on a 1×1 cell.
+    let dir = std::env::temp_dir().join(format!("misty_tile_rot_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = dir.join("Wide.png");
+    image::RgbaImage::from_pixel(100, 50, image::Rgba([255; 4]))
+        .save(&png)
+        .unwrap();
+    let wide = png.to_string_lossy().replace('\\', "/");
+    let p = tile_path("sprite_rot", "Wide");
+    tile::register(
+        &p,
+        TileAsset {
+            collider: ColliderType::Sprite,
+            ..TileAsset::sprite(&wide)
+        },
+    );
+    let mut map = Tilemap::default();
+    map.set(at(0, 0), Some(&p), TileTransform::default());
+    map.set(at(3, 0), Some(&p), TileTransform::default().rotated(true));
+    let shapes = collider::shapes(&map, &Grid::default(), false);
+    let boxes: Vec<(Vec2, Vec2)> = shapes
+        .iter()
+        .map(|s| match s {
+            Shape::Box { min, max } => (*min, *max),
+            s => panic!("{s:?}"),
+        })
+        .collect();
+    let close = |a: Vec2, b: Vec2| (a - b).abs().max_element() < 1e-4;
+    assert!(
+        boxes
+            .iter()
+            .any(|(lo, hi)| close(*lo, Vec2::new(0.0, 0.25)) && close(*hi, Vec2::new(1.0, 0.75))),
+        "{boxes:?}"
+    );
+    assert!(
+        boxes
+            .iter()
+            .any(|(lo, hi)| close(*lo, Vec2::new(3.25, 0.0)) && close(*hi, Vec2::new(3.75, 1.0))),
+        "the turned tile stands upright: {boxes:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
