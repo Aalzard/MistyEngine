@@ -20,6 +20,14 @@ end
 return Rotator                     -- a script must return its class table
 ```
 
+Game scripts run in a sandbox: Lua's `table`, `string`, `math`, `utf8` and `coroutine`
+libraries and `os.time`, `os.clock`, `os.date`, `os.difftime`, but no file, process or module
+access (`io`, `os.execute`, `require`, `dofile`), and `load` takes source text only. Paths
+given to the API (`Instantiate("Assets/…")`, clips, input actions) must be project-relative.
+The scripts of one frame may run for at most 5 seconds; past that the running script stops
+with an error (an endless loop no longer freezes the editor). Editor scripts are not
+sandboxed.
+
 ## Callbacks
 `Awake`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
 `OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`

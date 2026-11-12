@@ -90,6 +90,11 @@ impl Keys {
     /// Add a key, replacing the value of one at the same time (its tangent mode is kept).
     /// Returns the key's index.
     pub fn set(&mut self, time: f32, value: f32) -> usize {
+        // Appending past the last key (importers resampling a clip) needs no search.
+        if self.0.last().is_some_and(|k| time - k.time >= TIME_EPSILON) {
+            self.0.push(Keyframe::new(time, value));
+            return self.0.len() - 1;
+        }
         if let Some(i) = self.find(time) {
             self.0[i].value = value;
             return i;

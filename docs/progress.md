@@ -4148,3 +4148,46 @@ the texture's GUID and gets a `.meta`.
   the flipped blurred screen); puddle reflections are softened, not fixed (the hard edges
   come from the screen-space reflection / probes); tree crowns block rain as solid
   ellipsoids (no drip, no thinning); no Inspector values for the bead shape or blur.
+
+## Round 43 — Bug hunt 2: security, crashes on bad input, long-session growth (branch r43-qa2)
+
+QA round 2: the open items of round 33 and a first pass over areas round 33 barely covered
+(networking, player builds, saves, addressables, localization, UI, animation import and
+retargeting, audio streaming, Script Graphs, the Lua sandbox, malformed model files,
+long-session growth). One commit per bug, each with a regression test; the running list with a
+status per bug is `docs/pending/r43-qa2.md`.
+
+### Security
+- **Lua sandbox**: game scripts had `io`, `os` and `package` (`os.execute`, `io.open`,
+  `require`, `dofile`), also while the Inspector read a script's fields. They now get
+  `table`, `string`, `math`, `utf8`, `coroutine` and `os.time/clock/date/difftime`; `load`
+  takes source text only. Editor scripts keep the full libraries.
+- **Paths from scripts, saves and the network** must be project-relative (`vfs::project_file`):
+  no absolute, drive, UNC or `..` paths for Instantiate, a remote spawn's prefab, a server's
+  scene, audio clips, input action assets, Script Graphs and saved prefabs.
+- **Network fragments**: bounded reassembly (a peer could make the other side allocate GBs);
+  spawn messages with NaN/infinite poses are dropped.
+
+### Crashes and hangs
+- Endless loops in game Lua stop after 5 s per frame with an error (the editor froze).
+- glTF: short animation outputs, node cycles and huge key times (also FBX and retargeting);
+  appending curve keys is O(1).
+- Streamed looping clips without frames, bundle dependency cycles, nested plural strings,
+  dropdowns whose item is the template, 0×0 images, gzip save bombs, tilemap drags far
+  outside tiny grids, sprite grid slices with absurd padding, `.vgraph` files with huge or
+  repeated node ids.
+
+### Wrong behaviour and growth
+- `Scene::save` writes only the active scene when several are loaded; Save As / Open accept
+  project roots spelled differently; tile sprite colliders follow rotation and flips; MCP
+  enforces the schema limits it advertises; `StartClient(addr, port)` replaces a port already
+  in the address; `WithTargetBinding` checks its binding; NaN field of view is refused.
+- UI / Timeline / Video / PlayerInput listeners of destroyed objects are dropped; respawned
+  local players no longer add an action set each time; a Script Graph node logs at most four
+  different errors.
+
+### Not done
+B3 (internal tile edges), B6 (chunk cache key, perf), T6 (terrain hole indices, perf),
+`asset.read_text` reading whole files, and the X items listed in the pending notes. Physics
+exit events for destroyed objects stay as they are (as in the familiar engine). F10 belongs
+to `r40-freeze`.

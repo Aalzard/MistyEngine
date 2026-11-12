@@ -184,9 +184,52 @@ pub fn files_under(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// `root` joined with `rel` when `rel` is a plain project-relative path: not absolute, no drive
+/// or UNC prefix, no `..`. Paths that come from scripts, save files or the network go through
+/// this so they can't reach files outside the project.
+pub fn project_file(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let unix = rel.replace('\\', "/");
+    let plain = !unix.trim().is_empty()
+        && !unix.starts_with('/')
+        && !unix.contains(':')
+        && !unix.split('/').any(|seg| seg == "..")
+        && Path::new(rel)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir));
+    if plain {
+        Ok(root.join(rel))
+    } else {
+        Err(format!(
+            "\"{rel}\" is not a project path (use one like \"Assets/Prefabs/Enemy.prefab\")"
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_files_stay_inside_the_project() {
+        let root = std::env::temp_dir().join("game");
+        assert_eq!(
+            project_file(&root, "Assets/P.prefab"),
+            Ok(root.join("Assets/P.prefab"))
+        );
+        assert!(project_file(&root, "./Assets/P.prefab").is_ok());
+        for bad in [
+            "",
+            "../secret.txt",
+            "Assets/../../x.prefab",
+            "Assets\\..\\..\\x.prefab",
+            "/etc/passwd",
+            "\\\\server\\share\\x.prefab",
+            "C:/Windows/win.ini",
+            "C:x.prefab",
+        ] {
+            assert!(project_file(&root, bad).is_err(), "{bad:?} was accepted");
+        }
+    }
 
     #[test]
     fn keys_are_root_relative_with_forward_slashes() {

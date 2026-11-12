@@ -85,6 +85,11 @@ pub fn open(scene: &mut Scene, layout: &UiLayout, dropdown: Entity) -> Option<Op
         cur = scene.parent(cur)?;
     }
     chain.reverse();
+    // The item must sit below the template (not be it), and the copy needs a RectTransform
+    // to place: check before copying anything.
+    if chain.is_empty() || scene.world.get::<&RectTransform>(template).is_err() {
+        return None;
+    }
 
     let template_rect = rt(scene, template).rect_in(node.rect);
     let content_rect = rect_down(scene, template_rect, &chain[..chain.len() - 1]);

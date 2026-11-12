@@ -27,6 +27,12 @@ pub const MTU: usize = 1200;
 pub const FRAGMENT_SIZE: usize = 1024;
 /// Largest message accepted (bigger sends are refused).
 pub const MAX_MESSAGE: usize = 4 << 20;
+/// Most fragments a message can have (a [`MAX_MESSAGE`] one).
+const MAX_FRAGMENTS: u16 = MAX_MESSAGE.div_ceil(FRAGMENT_SIZE) as u16;
+/// Most messages a connection puts back together at once, per channel kind: a peer sending
+/// fragments of endless new groups would otherwise grow memory without limit.
+const MAX_UNRELIABLE_ASSEMBLIES: usize = 64;
+const MAX_RELIABLE_ASSEMBLIES: usize = 1024;
 /// First bytes of every Misty packet ("MN") and the protocol version.
 const MAGIC: u16 = 0x4E4D;
 const VERSION: u8 = 1;
@@ -347,7 +353,7 @@ impl Part {
         let id = if channel.reliable() { r.u16()? } else { 0 };
         let fragment = if b & FLAG_FRAGMENT != 0 {
             let (g, i, n) = (r.u16()?, r.u16()?, r.u16()?);
-            if n == 0 || i >= n {
+            if n == 0 || i >= n || n > MAX_FRAGMENTS {
                 return None;
             }
             Some((g, i, n))
@@ -412,29 +418,30 @@ struct ReliableRecv {
 
 struct Assembly {
     started: f64,
-    parts: Vec<Option<Arc<[u8]>>>,
-    have: usize,
+    count: u16,
+    /// Fragments that arrived, by index (memory follows what was received, not the count
+    /// the peer claims).
+    parts: HashMap<u16, Arc<[u8]>>,
 }
 
 impl Assembly {
     fn new(count: u16, now: f64) -> Self {
         Self {
             started: now,
-            parts: vec![None; count as usize],
-            have: 0,
+            count,
+            parts: HashMap::new(),
         }
     }
     /// Store fragment `i`; the whole message once complete.
     fn add(&mut self, i: u16, data: Arc<[u8]>) -> Option<Vec<u8>> {
-        let slot = self.parts.get_mut(i as usize)?;
-        if slot.is_none() {
-            *slot = Some(data);
-            self.have += 1;
+        if i >= self.count {
+            return None;
         }
-        (self.have == self.parts.len()).then(|| {
+        self.parts.entry(i).or_insert(data);
+        (self.parts.len() == self.count as usize).then(|| {
             let mut out = Vec::new();
-            for p in self.parts.iter().flatten() {
-                out.extend_from_slice(p);
+            for k in 0..self.count {
+                out.extend_from_slice(&self.parts[&k]);
             }
             out
         })
@@ -612,11 +619,16 @@ impl Connection {
             Channel::Unreliable => match part.fragment {
                 None => out.push((part.channel, part.data.to_vec())),
                 Some((g, i, n)) => {
+                    if !self.unreliable_frags.contains_key(&g)
+                        && self.unreliable_frags.len() >= MAX_UNRELIABLE_ASSEMBLIES
+                    {
+                        return;
+                    }
                     let a = self
                         .unreliable_frags
                         .entry(g)
                         .or_insert_with(|| Assembly::new(n, now));
-                    if a.parts.len() != n as usize {
+                    if a.count != n {
                         *a = Assembly::new(n, now);
                     }
                     if let Some(msg) = a.add(i, part.data) {
@@ -662,6 +674,9 @@ fn deliver_part(r: &mut ReliableRecv, part: Part, now: f64, out: &mut Vec<(Chann
     match part.fragment {
         None => out.push((part.channel, part.data.to_vec())),
         Some((g, i, n)) => {
+            if !r.assembling.contains_key(&g) && r.assembling.len() >= MAX_RELIABLE_ASSEMBLIES {
+                return;
+            }
             let a = r
                 .assembling
                 .entry(g)
@@ -1312,6 +1327,39 @@ mod tests {
         }
         assert!(s.send(1, Channel::ReliableOrdered, &vec![0; MAX_MESSAGE]));
         assert!(!s.send(1, Channel::ReliableOrdered, &vec![0; MAX_MESSAGE + 1]));
+    }
+
+    #[test]
+    fn fragments_of_endless_groups_keep_memory_bounded() {
+        let addr: SocketAddr = "127.0.0.1:9".parse().unwrap();
+        let mut c = Connection::new(1, addr, 7, State::Connected, 0.0);
+        let mut out = Vec::new();
+        for g in 0..=u16::MAX {
+            for channel in [Channel::Unreliable, Channel::ReliableUnordered] {
+                let part = Part {
+                    channel,
+                    id: g,
+                    fragment: Some((g, 0, MAX_FRAGMENTS)),
+                    data: Arc::from(&[1u8; 8][..]),
+                };
+                c.on_part(part, 0.0, &mut out);
+            }
+        }
+        assert!(out.is_empty());
+        assert!(c.unreliable_frags.len() <= MAX_UNRELIABLE_ASSEMBLIES);
+        assert!(c.recv[1].assembling.len() <= MAX_RELIABLE_ASSEMBLIES);
+        let parts: usize = c.recv[1].assembling.values().map(|a| a.parts.len()).sum();
+        assert!(parts <= MAX_RELIABLE_ASSEMBLIES);
+        // A claimed count past the largest message is refused when read.
+        let mut w = Writer::new();
+        Part {
+            channel: Channel::Unreliable,
+            id: 0,
+            fragment: Some((1, 0, MAX_FRAGMENTS + 1)),
+            data: Arc::from(&[0u8][..]),
+        }
+        .write(&mut w);
+        assert!(Part::read(&mut Reader::new(&w.buf)).is_none());
     }
 
     #[test]

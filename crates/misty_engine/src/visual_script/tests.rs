@@ -1245,6 +1245,52 @@ fn run_time_errors_are_logged_once_with_the_node() {
     assert!(p.infos().is_empty());
 }
 
+#[test]
+fn run_time_errors_with_changing_values_stop_logging() {
+    let mut g = G::new();
+    let update = g.n("OnUpdate");
+    let list = g.np("MakeList", &[("count", "1")]);
+    g.v(list, "Item 0", Literal::Int(1));
+    let item = g.n("ListGet");
+    g.w(list, "List", item, "List");
+    let frame = g.api("Time", "frameCount", "get");
+    g.w(frame, "Value", item, "Index");
+    let log = g.log();
+    g.w(item, "Item", log, "Message");
+    g.w(update, "Out", log, "In");
+    let (mut p, _) = play("changing_errors", &g.0);
+    p.frames(40);
+    let errors = p.errors();
+    assert!(
+        (1..=4).contains(&errors.len()),
+        "{} errors: {errors:?}",
+        errors.len()
+    );
+}
+
+#[test]
+fn graph_files_with_huge_or_repeated_node_ids_are_refused() {
+    let mut g = G::new();
+    let a = g.n("OnStart");
+    let b = g.log_text("x");
+    g.w(a, "Out", b, "In");
+    let text = g.0.to_json();
+    assert!(ScriptGraph::from_json(&text).is_ok());
+    let huge = text.replace(&format!("\"id\": {b}"), "\"id\": 4294967295");
+    assert_ne!(huge, text);
+    assert!(
+        ScriptGraph::from_json(&huge)
+            .unwrap_err()
+            .contains("too large")
+    );
+    let twice = text.replace(&format!("\"id\": {b}"), &format!("\"id\": {a}"));
+    assert!(
+        ScriptGraph::from_json(&twice)
+            .unwrap_err()
+            .contains("two nodes")
+    );
+}
+
 // ---- files --------------------------------------------------------------------------------------
 
 #[test]

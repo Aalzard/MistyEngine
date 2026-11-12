@@ -33,6 +33,44 @@ fn table(lua: &Lua) -> Result<Table> {
     }
 }
 
+/// Drop the keys of `doomed` objects from the listener table named `name`: keys look like
+/// `{prefix}{entity bits}:{event}`. A destroyed object's keys never match a new object, so
+/// without this every spawned-and-destroyed button keeps its closures (and the script's
+/// `self`) for the rest of the session.
+pub fn forget_listeners(lua: &Lua, name: &str, prefix: &str, doomed: &[Entity]) {
+    if doomed.is_empty() {
+        return;
+    }
+    let Ok(Some(t)) = lua.named_registry_value::<Option<Table>>(name) else {
+        return;
+    };
+    let ids: std::collections::HashSet<String> = doomed
+        .iter()
+        .map(|e| format!("{prefix}{}", e.to_bits().get()))
+        .collect();
+    let stale: Vec<String> = t
+        .pairs::<String, Value>()
+        .flatten()
+        .map(|(k, _)| k)
+        .filter(|k| k.split_once(':').is_some_and(|(id, _)| ids.contains(id)))
+        .collect();
+    for k in stale {
+        let _ = t.set(k, Value::Nil);
+    }
+}
+
+/// [`forget_listeners`] of the UI, Timeline and Video events.
+pub fn forget(lua: &Lua, doomed: &[Entity]) {
+    forget_listeners(lua, LISTENERS, "", doomed);
+}
+
+/// Number of objects-and-events with listeners (tests).
+pub fn listener_count(lua: &Lua) -> usize {
+    table(lua)
+        .map(|t| t.pairs::<Value, Value>().count())
+        .unwrap_or(0)
+}
+
 /// Functions added with `AddListener` for `event` of `e`.
 pub fn listeners(lua: &Lua, e: Entity, event: &str) -> Vec<Function> {
     let Ok(t) = table(lua) else { return Vec::new() };

@@ -216,6 +216,11 @@ impl InputSystem {
         self.sets.get_mut(id)?.as_mut()
     }
 
+    /// Sets that exist (loaded, instantiated or made in code, not yet dropped).
+    pub fn live_sets(&self) -> usize {
+        self.sets.iter().flatten().count()
+    }
+
     /// Add a set made in code; returns its id.
     pub fn add_set(&mut self, set: ActionSet) -> usize {
         self.sets.push(Some(set));
@@ -223,7 +228,7 @@ impl InputSystem {
     }
 
     pub(super) fn load_asset(&self, path: &str) -> Result<InputActionAsset, String> {
-        InputActionAsset::load(&self.root.join(path))
+        InputActionAsset::load(&crate::vfs::project_file(&self.root, path)?)
     }
 
     /// The shared copy of an asset (`InputActions.Load`): every caller gets the same set.
@@ -278,10 +283,18 @@ impl InputSystem {
             .collect();
         for i in gone.into_iter().rev() {
             let p = self.players.remove(i);
-            if let Some(set) = self.set_mut(p.set) {
-                set.set_all_enabled(false);
+            if self.shared.values().any(|s| *s == p.set) {
+                if let Some(set) = self.set_mut(p.set) {
+                    set.set_all_enabled(false);
+                }
+            } else if let Some(slot) = self.sets.get_mut(p.set) {
+                // A player's own copy: nobody else uses it, and the next start makes a new
+                // one (keeping it would add a set per respawn, each updated every frame).
+                *slot = None;
             }
         }
+        // Players that failed to start and are gone may be new objects next time.
+        self.failed.retain(|f| present.iter().any(|(e, _)| e == f));
         for (e, c) in &present {
             if before.contains(e) || self.failed.contains(e) {
                 continue;
@@ -696,15 +709,7 @@ impl InputSystem {
                 })
                 .ok_or("the action has no binding to rebind")?,
         };
-        let fb = *flats.get(flat).ok_or("binding index out of range")?;
-        if fb.part.is_none() && def.bindings[fb.binding].is_composite() {
-            return Err("can't rebind a composite itself; rebind one of its parts".into());
-        }
-        let expect_vector = fb.part.is_none()
-            && (def.control_type == ControlType::Vector2
-                || (def.kind == ActionType::Value
-                    && ControlPath::parse(&def.bindings[fb.binding].path)
-                        .is_ok_and(|c| c.is_vector())));
+        let expect_vector = self.rebind_target(set, map, action, flat)?;
         let id = self.next_rebind;
         self.next_rebind += 1;
         self.rebinds.push(Rebind {
@@ -723,6 +728,47 @@ impl InputSystem {
             expect_vector,
         });
         Ok(id)
+    }
+
+    /// Check that flat binding `flat` of an action can be rebound; returns whether it reads
+    /// a vector (a stick) rather than a button.
+    fn rebind_target(
+        &self,
+        set: usize,
+        map: usize,
+        action: usize,
+        flat: usize,
+    ) -> Result<bool, String> {
+        let def = self
+            .set(set)
+            .and_then(|s| s.asset.maps.get(map))
+            .and_then(|m| m.actions.get(action))
+            .ok_or("no such action")?;
+        let flats = def.flat_bindings();
+        let fb = *flats.get(flat).ok_or("binding index out of range")?;
+        if fb.part.is_none() && def.bindings[fb.binding].is_composite() {
+            return Err("can't rebind a composite itself; rebind one of its parts".into());
+        }
+        Ok(fb.part.is_none()
+            && (def.control_type == ControlType::Vector2
+                || (def.kind == ActionType::Value
+                    && ControlPath::parse(&def.bindings[fb.binding].path)
+                        .is_ok_and(|c| c.is_vector()))))
+    }
+
+    /// Point a rebind (not started yet) at another binding (`WithTargetBinding`), with the
+    /// same checks as when it was made.
+    pub fn retarget_rebind(&mut self, id: u64, flat: usize) -> Result<(), String> {
+        let r = self.rebind(id).ok_or("the rebinding operation is gone")?;
+        if r.started {
+            return Err("the rebinding operation already started".into());
+        }
+        let expect_vector = self.rebind_target(r.set, r.map, r.action, flat)?;
+        if let Some(r) = self.rebind_mut(id) {
+            r.flat = flat;
+            r.expect_vector = expect_vector;
+        }
+        Ok(())
     }
 
     pub fn rebind_mut(&mut self, id: u64) -> Option<&mut Rebind> {

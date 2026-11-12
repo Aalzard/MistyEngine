@@ -582,3 +582,67 @@ fn scene_round_trip_keeps_tilemaps() {
         TileTransform(5)
     );
 }
+
+#[test]
+fn drags_far_outside_a_tiny_grid_stay_bounded() {
+    let g = Grid {
+        cell_size: Vec2::splat(1e-6),
+        ..Default::default()
+    };
+    let far = g.local_to_cell(Vec2::new(1e30, -1e30));
+    assert_eq!(far, at(Grid::CELL_LIMIT, -Grid::CELL_LIMIT));
+    let mut map = Tilemap::default();
+    let brush = Brush::single("Assets/T.asset", TileTransform::default());
+    let start = std::time::Instant::now();
+    assert_eq!(edit::box_fill(&mut map, -far, far, &brush), 0);
+    assert!(edit::pick(&map, -far, far).cells.is_empty());
+    assert_eq!(edit::line(at(i32::MIN, 0), at(i32::MAX, 0)).len(), 1);
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+    // Ordinary boxes still fill.
+    assert_eq!(edit::box_fill(&mut map, at(0, 0), at(2, 1), &brush), 6);
+}
+
+#[test]
+fn sprite_colliders_follow_the_tile_rotation() {
+    // A 1×0.5 unit sprite (100×50 pixels at 100 pixels per unit) on a 1×1 cell.
+    let dir = std::env::temp_dir().join(format!("misty_tile_rot_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = dir.join("Wide.png");
+    image::RgbaImage::from_pixel(100, 50, image::Rgba([255; 4]))
+        .save(&png)
+        .unwrap();
+    let wide = png.to_string_lossy().replace('\\', "/");
+    let p = tile_path("sprite_rot", "Wide");
+    tile::register(
+        &p,
+        TileAsset {
+            collider: ColliderType::Sprite,
+            ..TileAsset::sprite(&wide)
+        },
+    );
+    let mut map = Tilemap::default();
+    map.set(at(0, 0), Some(&p), TileTransform::default());
+    map.set(at(3, 0), Some(&p), TileTransform::default().rotated(true));
+    let shapes = collider::shapes(&map, &Grid::default(), false);
+    let boxes: Vec<(Vec2, Vec2)> = shapes
+        .iter()
+        .map(|s| match s {
+            Shape::Box { min, max } => (*min, *max),
+            s => panic!("{s:?}"),
+        })
+        .collect();
+    let close = |a: Vec2, b: Vec2| (a - b).abs().max_element() < 1e-4;
+    assert!(
+        boxes
+            .iter()
+            .any(|(lo, hi)| close(*lo, Vec2::new(0.0, 0.25)) && close(*hi, Vec2::new(1.0, 0.75))),
+        "{boxes:?}"
+    );
+    assert!(
+        boxes
+            .iter()
+            .any(|(lo, hi)| close(*lo, Vec2::new(3.25, 0.0)) && close(*hi, Vec2::new(3.75, 1.0))),
+        "the turned tile stands upright: {boxes:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}

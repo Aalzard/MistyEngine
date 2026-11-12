@@ -39,6 +39,12 @@ fn registry_table(lua: &Lua, name: &str) -> Result<Table> {
     }
 }
 
+/// Drop the PlayerInput listeners of destroyed objects (see
+/// [`super::ui_widgets_api::forget_listeners`]).
+pub(super) fn forget(lua: &Lua, doomed: &[Entity]) {
+    super::ui_widgets_api::forget_listeners(lua, LISTENERS, "p", doomed);
+}
+
 fn listeners(lua: &Lua, key: &str) -> Vec<Function> {
     let Ok(t) = registry_table(lua, LISTENERS) else {
         return Vec::new();
@@ -524,7 +530,7 @@ impl UserData for LRebind {
         m.add_function(
             "WithTargetBinding",
             |lua, (r, index): (mlua::UserDataRef<LRebind>, usize)| {
-                edit_rebind(lua, r.0, |x| x.flat = index)?;
+                with_world(lua, |w| w.input_system.retarget_rebind(r.0, index))?.map_err(err)?;
                 Ok(*r)
             },
         );

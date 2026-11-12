@@ -889,3 +889,27 @@ fn input_manager_only_keeps_actions_quiet() {
     let ev = sys.update(&Scene::new("t"), &frame(&[], &["space"]), 0.016);
     assert!(ev.is_empty());
 }
+
+#[test]
+fn respawned_players_do_not_pile_up_action_sets() {
+    let (root, mut scene, players) = players_project(2);
+    let mut sys = InputSystem::new(&root, Default::default());
+    let i = Input::default();
+    sys.update(&scene, &i, 0.016);
+    assert_eq!(sys.live_sets(), 2);
+    for _ in 0..20 {
+        scene.game_object_mut(players[1]).active = false;
+        sys.update(&scene, &i, 0.016);
+        scene.game_object_mut(players[1]).active = true;
+        sys.update(&scene, &i, 0.016);
+    }
+    assert!(sys.player(players[1]).is_some());
+    assert_eq!(sys.live_sets(), 2);
+    // The first player's shared copy stays when it goes and comes back.
+    scene.game_object_mut(players[0]).active = false;
+    sys.update(&scene, &i, 0.016);
+    scene.game_object_mut(players[0]).active = true;
+    sys.update(&scene, &i, 0.016);
+    assert!(sys.live_sets() <= 3);
+    let _ = std::fs::remove_dir_all(&root);
+}

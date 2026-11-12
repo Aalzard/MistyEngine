@@ -255,6 +255,26 @@ pub(crate) fn relative(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+/// `path` relative to `root` (forward slashes) when it lies inside `root`, also when the two
+/// are spelled differently (`./Project/.`, a `\\?\` prefix, drive-letter case): then both are
+/// canonicalized (a file that doesn't exist yet goes by its folder).
+pub(crate) fn inside(root: &Path, path: &Path) -> Option<String> {
+    let plain = |r: &Path| {
+        r.components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+            .then(|| r.to_string_lossy().replace('\\', "/"))
+    };
+    if let Some(rel) = path.strip_prefix(root).ok().and_then(plain) {
+        return Some(rel);
+    }
+    let root = root.canonicalize().ok()?;
+    let path = path.canonicalize().ok().or_else(|| {
+        let dir = path.parent()?.canonicalize().ok()?;
+        Some(dir.join(path.file_name()?))
+    })?;
+    path.strip_prefix(&root).ok().and_then(plain)
+}
+
 pub(crate) fn remember(s: &mut EditorState, rel: &str) {
     let recent = &mut s.files.settings.recent_scenes;
     recent.retain(|r| r != rel);
@@ -513,12 +533,11 @@ pub fn save_scene_as(s: &mut EditorState, id: SceneId) -> bool {
         .save_file();
     let Some(path) = picked else { return false };
     let path = with_extension(path);
-    if !path.starts_with(s.project.root.join("Assets")) {
+    let Some(rel) = inside(&s.project.root, &path).filter(|r| r.starts_with("Assets/")) else {
         s.console
             .warn("Scenes must be saved inside the project's Assets folder.");
         return false;
-    }
-    let rel = relative(&s.project.root, &path);
+    };
     write(s, id, &rel)
 }
 
@@ -589,11 +608,11 @@ pub fn pick_scene(s: &mut EditorState) -> Option<String> {
         .set_directory(s.project.root.join("Assets"))
         .add_filter("Scene", &[EXTENSION])
         .pick_file()?;
-    if !path.starts_with(&s.project.root) {
+    let rel = inside(&s.project.root, &path);
+    if rel.is_none() {
         s.console.warn("Open scenes from inside the project.");
-        return None;
     }
-    Some(relative(&s.project.root, &path))
+    rel
 }
 
 /// Assets ▸ Create ▸ Scene: a new default scene file in `folder`.
@@ -705,6 +724,38 @@ mod tests {
             std::env::temp_dir().join(format!("misty_scene_files_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         EditorState::new(ProjectBrowser::open(root))
+    }
+
+    #[test]
+    fn paths_inside_a_root_spelled_differently_are_found() {
+        let root = std::env::temp_dir().join(format!("misty_inside_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
+        std::fs::write(root.join("Assets/Scenes/A.scene"), "{}").unwrap();
+        let canon = root.canonicalize().unwrap();
+        let picked = canon.join("Assets").join("Scenes").join("A.scene");
+        let new_file = canon.join("Assets").join("Scenes").join("New.scene");
+        for r in [root.clone(), root.join("."), root.join("Assets").join("..")] {
+            assert_eq!(
+                inside(&r, &picked).as_deref(),
+                Some("Assets/Scenes/A.scene"),
+                "{r:?}"
+            );
+            assert_eq!(
+                inside(&r, &new_file).as_deref(),
+                Some("Assets/Scenes/New.scene"),
+                "{r:?}"
+            );
+        }
+        // Outside the project, and through `..`, is still refused.
+        assert_eq!(inside(&root, &std::env::temp_dir().join("x.scene")), None);
+        assert_eq!(
+            inside(
+                &root,
+                &root.join("Assets").join("..").join("..").join("x.scene")
+            ),
+            None
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// Opening MeadowDemo with the Scene view left under its terrain (a new project's first
