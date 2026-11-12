@@ -57,7 +57,8 @@ end
 -- Volumes and spatial blend at `distance` metres from the nearest zone: open loop volume,
 -- zone loop spatial blend.
 function AmbienceZones.blend(t, distance)
-    local out = smoothstep(0, t.blendDistance, distance)
+    -- (A Blend Distance of 0 switches at the zone's edge instead of dividing by zero.)
+    local out = smoothstep(0, math.max(t.blendDistance, 0.001), distance)
     local open = t.openVolume * (t.openInZone + (1 - t.openInZone) * out)
     local spatial = smoothstep(0, math.max(t.envelopDistance, 0.001), distance)
     return open, spatial
