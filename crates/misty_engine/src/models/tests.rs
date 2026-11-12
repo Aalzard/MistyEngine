@@ -300,3 +300,18 @@ fn gltf_animations_with_too_few_values_import_without_panicking() {
     assert!(!model.animations[0].clip.curves.is_empty());
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn gltf_node_cycles_import_each_node_once() {
+    let dir = temp_dir("gltf_cycle");
+    let path = write_anim_gltf(
+        &dir,
+        r#"[{ "name": "A", "children": [1] }, { "name": "B", "children": [0, 1] }]"#,
+        &[],
+        &[],
+        "LINEAR",
+    );
+    let model = load(&path).unwrap();
+    assert_eq!(model.nodes.len(), 2);
+    std::fs::remove_dir_all(dir).ok();
+}

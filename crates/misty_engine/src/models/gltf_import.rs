@@ -144,6 +144,11 @@ pub fn load(path: &Path) -> Result<Model, String> {
     // glTF node index → our node index.
     let mut node_map: Vec<Option<usize>> = vec![None; doc.nodes().len()];
     while let Some((node, parent)) = stack.pop() {
+        // Each node once: a malformed file listing a node under itself (or under two parents)
+        // would otherwise loop forever.
+        if node_map.get(node.index()).is_some_and(Option::is_some) {
+            continue;
+        }
         let (t, r, s) = node.transform().decomposed();
         let index = model.nodes.len();
         if let Some(slot) = node_map.get_mut(node.index()) {
