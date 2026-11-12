@@ -354,6 +354,9 @@ pub struct Light {
     /// Glow sprite around point / spot lights (left out of files while untouched).
     #[serde(skip_serializing_if = "super::light_glow::LightHalo::is_default")]
     pub halo: super::light_glow::LightHalo,
+    /// Glow of the light's visible shape (left out of files while untouched).
+    #[serde(skip_serializing_if = "super::light_glow::LightGlow::is_default")]
+    pub glow: super::light_glow::LightGlow,
     /// Rectangle: width along local X and height along local Y, in metres.
     #[serde(skip_serializing_if = "super::light_area::is_size")]
     pub width: f32,
@@ -390,6 +393,7 @@ impl Default for Light {
             contact_shadows: false,
             intensity_from_sun_height: false,
             halo: Default::default(),
+            glow: Default::default(),
             width: super::light_area::SIZE,
             height: super::light_area::SIZE,
             two_sided: false,

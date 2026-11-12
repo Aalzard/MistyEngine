@@ -8,7 +8,8 @@ struct GlowIn {
     @location(0) center: vec4<f32>,
     // rgb = linear HDR colour, w = occlusion bias in metres.
     @location(1) color: vec4<f32>,
-    // Halo: x = softness. Flare: x = kind (1 glow, 2 ring, 3 streak, 4 ghost), y = axis
+    // Halo: x = softness, y = share of the hot core taken out (Soft Core), z = share kept
+    // out of bloom (Glow Spread). Flare: x = kind (1 glow, 2 ring, 3 streak, 4 ghost), y = axis
     // position (1 = at the light), z = size (fraction of the screen height), w = x stretch.
     @location(2) shape: vec4<f32>,
 };
@@ -138,7 +139,7 @@ fn fs_halo(in: GlowOut) -> GlowTargets {
     let soft = in.shape.x;
     // A wide falloff plus a hot core that softness spreads out.
     let wide = pow(1.0 - r, mix(3.2, 1.5, soft));
-    let core = exp(-r * r * mix(90.0, 25.0, soft)) * mix(1.0, 0.35, soft);
+    let core = exp(-r * r * mix(90.0, 25.0, soft)) * mix(1.0, 0.35, soft) * (1.0 - in.shape.y);
     var i = wide * 0.55 + core;
     // Soft depth fade: geometry just in front of the halo's plane eats into it smoothly.
     let size = depth_size();
@@ -152,7 +153,8 @@ fn fs_halo(in: GlowOut) -> GlowTargets {
         i *= clamp((scene - plane) / max(in.light.w * 0.5, 1e-3), 0.0, 1.0);
     }
     let c = in.color * i * glow_through_fog(in.light.xyz);
-    return GlowTargets(vec4<f32>(c, 1.0), vec4<f32>(c, 1.0));
+    // Glow Spread: that share of the halo's bloom is drawn by fs_spread instead.
+    return GlowTargets(vec4<f32>(c, 1.0), vec4<f32>(c * (1.0 - in.shape.z), 1.0));
 }
 
 // Lens flare element: a screen-space quad on the line from the light through the centre.
@@ -208,4 +210,102 @@ fn fs_flare(in: GlowOut) -> GlowTargets {
     }
     let c = in.color * tint * max(i, 0.0) * glow_through_fog(in.light.xyz);
     return GlowTargets(vec4<f32>(c, 1.0), vec4<f32>(c, 1.0));
+}
+
+// ---- Glow Spread (render/glow/spread.rs) ------------------------------------------------------
+// A Rectangle light's (or a halo's) share of glow taken out of bloom, drawn as a mix of three Gaussians of
+// the screen distance to its projected quad. Positions are in "q space": NDC with x × aspect.
+// Only the HDR image: this glow is bloom already.
+
+struct SpreadIn {
+    @location(0) c01: vec4<f32>,
+    @location(1) c23: vec4<f32>,
+    // rgb = linear radiance, w = occlusion bias in metres.
+    @location(2) color: vec4<f32>,
+    // xyz = sigmas, w = reach past the outline.
+    @location(3) sigma: vec4<f32>,
+    // xyz = peak weights, w = occlusion tap radius.
+    @location(4) weight: vec4<f32>,
+    // xyz = light centre, w = 1 when it is in front of the camera.
+    @location(5) center: vec4<f32>,
+};
+
+struct SpreadOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) q: vec2<f32>,
+    @location(1) @interpolate(flat) c01: vec4<f32>,
+    @location(2) @interpolate(flat) c23: vec4<f32>,
+    @location(3) @interpolate(flat) color: vec3<f32>,
+    @location(4) @interpolate(flat) sigma: vec4<f32>,
+    @location(5) @interpolate(flat) weight: vec3<f32>,
+    @location(6) @interpolate(flat) center: vec3<f32>,
+};
+
+@vertex
+fn vs_spread(@builtin(vertex_index) vi: u32, inst: SpreadIn) -> SpreadOut {
+    var out: SpreadOut;
+    out.c01 = inst.c01;
+    out.c23 = inst.c23;
+    out.sigma = inst.sigma;
+    out.weight = inst.weight.xyz;
+    let size = depth_size();
+    let aspect = size.x / size.y;
+    var vis = 1.0;
+    if (inst.center.w > 0.5) {
+        let c = inst.center.xyz;
+        let clip = view.view_proj * vec4<f32>(c, 1.0);
+        vis = visibility(clip.xy / clip.w, inst.weight.w, distance(c, view.camera_pos.xyz), inst.color.w);
+    }
+    out.color = inst.color.rgb * vis;
+    out.center = inst.center.xyz;
+    if (vis <= 0.0) {
+        out.pos = vec4<f32>(0.0, 0.0, 2.0, 1.0);
+        return out;
+    }
+    // The quad's bounds plus the reach, clamped to the screen.
+    let lo = min(min(inst.c01.xy, inst.c01.zw), min(inst.c23.xy, inst.c23.zw)) - inst.sigma.w;
+    let hi = max(max(inst.c01.xy, inst.c01.zw), max(inst.c23.xy, inst.c23.zw)) + inst.sigma.w;
+    let screen = vec2<f32>(aspect, 1.0);
+    let a = clamp(lo, -screen, screen);
+    let b = clamp(hi, -screen, screen);
+    let t = quad_corner(vi) * 0.5 + 0.5;
+    let q = mix(a, b, t);
+    out.q = q;
+    out.pos = vec4<f32>(q.x / aspect, q.y, 0.0, 1.0);
+    return out;
+}
+
+// Signed distance from `p` to the polygon `v` (negative inside).
+fn quad_distance(p: vec2<f32>, v: array<vec2<f32>, 4>) -> f32 {
+    var d = dot(p - v[0], p - v[0]);
+    var s = 1.0;
+    var j = 3u;
+    for (var i = 0u; i < 4u; i++) {
+        let e = v[j] - v[i];
+        let w = p - v[i];
+        let b = w - e * clamp(dot(w, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
+        d = min(d, dot(b, b));
+        let c = vec3<bool>((p.y >= v[i].y), (v[j].y > p.y), (e.x * w.y > e.y * w.x));
+        if (all(c) || !any(c)) {
+            s = -s;
+        }
+        j = i;
+    }
+    return s * sqrt(d);
+}
+
+@fragment
+fn fs_spread(in: SpreadOut) -> GlowTargets {
+    let v = array<vec2<f32>, 4>(in.c01.xy, in.c01.zw, in.c23.xy, in.c23.zw);
+    let d = max(quad_distance(in.q, v), 0.0);
+    // Each Gaussian minus its value at the reach: exactly 0 at the halo's edge.
+    let s2 = 2.0 * in.sigma.xyz * in.sigma.xyz;
+    let edge = exp(-vec3<f32>(in.sigma.w * in.sigma.w) / s2);
+    let g = max(exp(-vec3<f32>(d * d) / s2) - edge, vec3<f32>(0.0));
+    let k = dot(g, in.weight);
+    if (k <= 0.0) {
+        discard;
+    }
+    let c = in.color * k * glow_through_fog(in.center);
+    return GlowTargets(vec4<f32>(c, 1.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
 }

@@ -58,6 +58,7 @@ pub(crate) fn rect(position: Vec3, right: Vec3, up: Vec3, size: Vec2) -> LightDa
             up,
             two_sided: false,
             show_emitter: false,
+            glow: Default::default(),
         },
     }
 }

@@ -219,7 +219,28 @@ struct Surface {
     wrap_color: vec3<f32>,
     // Specular colour × strength of dielectrics (1 = the usual 4% reflectance).
     specular: vec3<f32>,
+    // Bloom feed = emission × (1 - glow_cut) (0 = the emission glows as it is; `var s:
+    // Surface` leaves it zero). Rectangle light emitters, see `light_glow_surface`.
+    glow_cut: f32,
 };
+
+// Light ▸ Glow of a Rectangle light's emitter quad (draw.wgsl `lightmap.zw`): Soft Core
+// compresses the visible emission's highlights; the bloom feed is the uncompressed emission ×
+// the light's glow share (Glow Intensity × (1 - Spread), the rest goes to its spread halo).
+fn light_glow_surface(s_in: Surface, d: Draw) -> Surface {
+    var s = s_in;
+    let cut = d.lightmap.z;
+    let soft = d.lightmap.w;
+    if (cut == 0.0 && soft == 0.0) {
+        return s;
+    }
+    let m = max(s.emission.r, max(s.emission.g, s.emission.b));
+    // Highlight compression: about 4 / Soft Core at most, hue kept.
+    let k = 1.0 / (1.0 + soft * m / 4.0);
+    s.emission *= k;
+    s.glow_cut = 1.0 - (1.0 - cut) / k;
+    return s;
+}
 
 // The Standard shader's material textures at a surface point.
 struct MaterialSamples {
@@ -283,7 +304,7 @@ fn standard_surface_from(in: MeshOut, front: bool, t: MaterialSamples) -> Surfac
     s.premultiply = d.surface.x > 2.5;
     s.draw = in.draw;
     s.lightmap_uv = in.lightmap_uv;
-    return s;
+    return light_glow_surface(s, d);
 }
 
 // Baked light of a lightmapped surface: rgb = irradiance (× albedo = diffuse light), a = 1;
@@ -673,7 +694,7 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
     color = vfog_blend(color, vf, select(1.0, alpha, s.premultiply));
     var out: MeshTargets;
     out.color = vec4<f32>(color, alpha);
-    out.glow = vec4<f32>(s.emission * fog * vfog_glow(vf), alpha);
+    out.glow = vec4<f32>(s.emission * (1.0 - s.glow_cut) * fog * vfog_glow(vf), alpha);
     out.velocity = vec2<f32>(0.0);
     if (ao_debug_view()) {
         out.color = vec4<f32>(vec3<f32>(ssao), alpha);

@@ -17,7 +17,9 @@
 //                     w = 2D lighting: Sorting Layer bit + 1 (0 = not 2D lit)
 //   224     lightmap_st  lightmap uv = uv2 * xy + zw
 //   240     lightmap  x = lightmap layer + 1 (0 = not lightmapped), y = 1 when the surface
-//                     sends no light through Screen Space GI (Contribute GI off)
+//                     sends no light through Screen Space GI (Contribute GI off),
+//                     z = share of the emission kept out of bloom, w = Soft Core (Rectangle
+//                     light emitters, Light ▸ Glow; both 0 otherwise)
 //   256     prev_model  last frame's object → world (motion vectors; = model when still)
 struct Draw {
     model: mat4x4<f32>,

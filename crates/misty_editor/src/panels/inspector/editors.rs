@@ -753,7 +753,8 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
     ch |= grid(ui, "light_volumetric_grid", |ui| {
         super::fog_editors::light_rows(ui, l)
     });
-    ch | super::glow_editors::halo_section(ui, l)
+    ch |= super::glow_editors::halo_section(ui, l);
+    ch | super::glow_editors::glow_section(ui, l)
 }
 
 /// Mesh Renderer: material slot (pick from project materials, or drop one from the Project window).

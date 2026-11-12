@@ -1,4 +1,5 @@
-//! Light glows: halos around point / spot lights and procedural lens flares.
+//! Light glows: halos around point / spot lights, procedural lens flares and the Glow Spread
+//! halos of Rectangle lights (see [`spread`]).
 //!
 //! Sources come from the scene through [`Environment::glows`](super::Environment). Each render
 //! [`Renderer::prepare_glows`] builds the instances (spot facing, fog response, screen-edge
@@ -8,9 +9,12 @@
 
 mod fog;
 mod instances;
+pub(crate) mod spread;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod spread_tests;
 #[cfg(test)]
 mod tests;
 
@@ -18,8 +22,10 @@ use glam::Vec3;
 
 use super::pipelines::{self, Spec};
 use super::{HDR_FORMAT, RenderTarget, Renderer};
-use crate::scene::{LensFlare, LightHalo, LightType};
+use crate::scene::{LensFlare, LightGlow, LightHalo, LightType};
 use instances::GlowInstance;
+use spread::SpreadInstance;
+pub use spread::emitter_feed;
 
 const SRC: &str = include_str!("glow.wgsl");
 
@@ -35,6 +41,8 @@ pub struct GlowSource {
     /// sRGB.
     pub color: [f32; 3],
     pub intensity: f32,
+    /// Light ▸ Glow (Halo brightness, spread and soft core).
+    pub glow: LightGlow,
     pub halo: Option<LightHalo>,
     pub flare: Option<LensFlare>,
 }
@@ -44,8 +52,11 @@ struct GlowGpu {
     layout: wgpu::BindGroupLayout,
     halo: wgpu::RenderPipeline,
     flare: wgpu::RenderPipeline,
+    spread: wgpu::RenderPipeline,
     buffer: wgpu::Buffer,
     capacity: usize,
+    spread_buffer: wgpu::Buffer,
+    spread_capacity: usize,
 }
 
 #[derive(Default)]
@@ -54,19 +65,21 @@ pub(crate) struct Glows {
     /// Instances of the current render: halos first, then flare elements.
     halos: u32,
     flares: u32,
+    /// Glow Spread halos of this render.
+    spreads: u32,
 }
 
 impl Glows {
     /// The main pass must keep its depth (glow occlusion reads it).
     pub fn keeps_depth(&self) -> bool {
-        self.halos + self.flares > 0
+        self.halos + self.flares + self.spreads > 0
     }
 }
 
-fn instance_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+fn instance_buffer<T>(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("misty glow instances"),
-        size: (capacity * std::mem::size_of::<GlowInstance>()) as u64,
+        size: (capacity * std::mem::size_of::<T>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
@@ -109,14 +122,26 @@ impl GlowGpu {
                 operation: wgpu::BlendOperation::Add,
             },
         };
+        let spread_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<SpreadInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x4,
+                1 => Float32x4,
+                2 => Float32x4,
+                3 => Float32x4,
+                4 => Float32x4,
+                5 => Float32x4
+            ],
+        }];
         let layouts = [view_layout, &layout];
-        let build = |name, vs, fs| {
+        let build = |name, vs, fs, buffers: &[wgpu::VertexBufferLayout]| {
             pipelines::build(
                 device,
                 Spec {
                     vs,
                     fs: Some(fs),
-                    buffers: &buffers,
+                    buffers,
                     depth: None,
                     samples: 1,
                     blend: Some(add),
@@ -127,12 +152,21 @@ impl GlowGpu {
             )
         };
         let capacity = 64;
+        let spread_capacity = 8;
         Self {
-            halo: build("light halos", "vs_halo", "fs_halo"),
-            flare: build("lens flares", "vs_flare", "fs_flare"),
+            halo: build("light halos", "vs_halo", "fs_halo", &buffers),
+            flare: build("lens flares", "vs_flare", "fs_flare", &buffers),
+            spread: build(
+                "light glow spread",
+                "vs_spread",
+                "fs_spread",
+                &spread_buffers,
+            ),
             layout,
-            buffer: instance_buffer(device, capacity),
+            buffer: instance_buffer::<GlowInstance>(device, capacity),
             capacity,
+            spread_buffer: instance_buffer::<SpreadInstance>(device, spread_capacity),
+            spread_capacity,
         }
     }
 }
@@ -149,10 +183,16 @@ impl Renderer {
         let g = &mut self.glows;
         g.halos = 0;
         g.flares = 0;
-        if frame.environment.glows.is_empty() {
+        g.spreads = 0;
+        let spreading = frame
+            .lights
+            .iter()
+            .any(|l| l.kind == LightType::Rectangle && l.area.glow.spread > 0.0);
+        if frame.environment.glows.is_empty() && !spreading {
             return;
         }
-        let list = instances::build(frame, target.aspect(), self.quality.lens_flares);
+        let gain = spread::bloom_gain(&frame.post, target.bloom.len());
+        let list = instances::build(frame, target.aspect(), self.quality.lens_flares, gain);
         if list.is_empty() {
             return;
         }
@@ -162,14 +202,24 @@ impl Renderer {
         let all: Vec<GlowInstance> = list.halos.iter().chain(&list.flares).copied().collect();
         if all.len() > gpu.capacity {
             gpu.capacity = all.len().next_power_of_two();
-            gpu.buffer = instance_buffer(device, gpu.capacity);
+            gpu.buffer = instance_buffer::<GlowInstance>(device, gpu.capacity);
         }
-        queue.write_buffer(&gpu.buffer, 0, bytemuck::cast_slice(&all));
+        if list.spreads.len() > gpu.spread_capacity {
+            gpu.spread_capacity = list.spreads.len().next_power_of_two();
+            gpu.spread_buffer = instance_buffer::<SpreadInstance>(device, gpu.spread_capacity);
+        }
+        if !all.is_empty() {
+            queue.write_buffer(&gpu.buffer, 0, bytemuck::cast_slice(&all));
+        }
+        if !list.spreads.is_empty() {
+            queue.write_buffer(&gpu.spread_buffer, 0, bytemuck::cast_slice(&list.spreads));
+        }
         g.halos = list.halos.len() as u32;
         g.flares = list.flares.len() as u32;
+        g.spreads = list.spreads.len() as u32;
     }
 
-    /// Halos, then flares, onto the resolved HDR and glow images (after the main pass).
+    /// Glow Spread halos, halos, then flares, onto the resolved HDR and glow images (after the main pass).
     pub(super) fn glow_passes(
         &self,
         device: &wgpu::Device,
@@ -186,11 +236,14 @@ impl Renderer {
             || super::main_target(target),
             super::frame_debug::EventTarget::Hdr,
             || super::frame_debug::FrameEvent {
-                instances: g.halos + g.flares,
+                instances: g.halos + g.flares + g.spreads,
                 vertices: 6,
                 blend: "One One (additive)".to_owned(),
                 ..super::frame_debug::events::post_event(
-                    format!("Draw {} Halos, {} Flares", g.halos, g.flares),
+                    format!(
+                        "Draw {} Halos, {} Flares, {} Glow Spreads",
+                        g.halos, g.flares, g.spreads
+                    ),
                     "glow.wgsl",
                 )
             },
@@ -226,6 +279,11 @@ impl Renderer {
         });
         pass.set_bind_group(0, &self.view_bind_group, &[]);
         pass.set_bind_group(1, &group, &[]);
+        if g.spreads > 0 {
+            pass.set_pipeline(&gpu.spread);
+            pass.set_vertex_buffer(0, gpu.spread_buffer.slice(..));
+            pass.draw(0..6, 0..g.spreads);
+        }
         pass.set_vertex_buffer(0, gpu.buffer.slice(..));
         if g.halos > 0 {
             pass.set_pipeline(&gpu.halo);
