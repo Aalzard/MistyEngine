@@ -937,7 +937,7 @@ impl Renderer {
     /// imported models, decoded textures) on the background queues ([`crate::load_queue`])
     /// while this is on: the frame draws without it meanwhile (left out, a stand-in pipeline,
     /// a 1×1 texture) and it is swapped in on a later frame. Off by default: every frame is
-    /// complete, as tests, golden shots, thumbnails and bakes need. The editor turns it on
+    /// complete, as tests, golden shots and bakes need. The editor turns it on
     /// around its Scene and Game view renders only.
     pub fn set_background_loads(&mut self, on: bool) {
         self.background_loads = on;

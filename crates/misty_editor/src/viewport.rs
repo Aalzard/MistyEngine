@@ -292,8 +292,9 @@ impl Gpu {
         // The Scene view shares the Game view's Misty GI clipmaps when its camera is near.
         target.set_misty_gi_secondary(matches!(view, ViewId::Scene));
         // The views draw what is ready and swap the rest in as the background queues finish
-        // it (new shader variants, models, textures); previews, thumbnails and bakes, which
-        // render through the same renderer, always wait for everything.
+        // it (new shader variants, models, textures). Material previews do the same and are
+        // redrawn once their loads finish; bakes, which render through the same renderer,
+        // always wait for everything.
         self.renderer.set_background_loads(true);
         self.renderer.render_with_effects(
             &self.state.device,
