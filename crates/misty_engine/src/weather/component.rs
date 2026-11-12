@@ -258,14 +258,16 @@ impl Default for WeatherEffects {
     }
 }
 
-/// Weather sounds (procedural loops and thunder when no clip is set).
+/// Weather sounds: the bundled steady rain and storm recordings crossfading with the rain
+/// intensity (quieter under cover), a generated wind loop, and thunder (generated unless
+/// Thunder Clips are set) delayed by the strike's distance.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WeatherAudio {
     pub enabled: bool,
     /// 0..1.
     pub volume: f32,
-    /// Rain loop (empty = a generated one).
+    /// Rain loop for light and steady rain (empty = the bundled steady rain recording).
     pub rain_clip: String,
     /// Wind loop for strong wind and blizzards (empty = generated).
     pub wind_clip: String,
@@ -274,6 +276,21 @@ pub struct WeatherAudio {
     /// Audio Mixer group the sounds play through ("Assets/Audio/Main.mixer#SFX"; empty =
     /// straight to the output).
     pub output: String,
+    // Newer fields are left out of files at their defaults (older scenes re-save unchanged).
+    /// Loop the rain crossfades into as it gets heavy (empty = the bundled storm recording).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub storm_clip: String,
+    /// 0..1: share of the rain and wind volume left under a roof (cover overhead, from rays
+    /// cast up from the Audio Listener; Sheltered Areas off = always in the open).
+    #[serde(skip_serializing_if = "is_under_cover_default")]
+    pub under_cover: f32,
+}
+
+/// Default [`WeatherAudio::under_cover`].
+pub const UNDER_COVER: f32 = 0.35;
+
+fn is_under_cover_default(v: &f32) -> bool {
+    *v == UNDER_COVER
 }
 
 impl Default for WeatherAudio {
@@ -285,6 +302,8 @@ impl Default for WeatherAudio {
             wind_clip: String::new(),
             thunder_clips: Vec::new(),
             output: String::new(),
+            storm_clip: String::new(),
+            under_cover: UNDER_COVER,
         }
     }
 }

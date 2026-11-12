@@ -1441,7 +1441,41 @@ fn demo_scene(d: &TerrainData) -> Scene {
         s.game_object_mut(cam).active = false;
     }
     crate::sample_rocks::add_to_scene(&mut s, &rocks(d));
+    // The meadow's insects and birds in the open, the forest's birds from the woods.
+    crate::sample_ambience::add(
+        &mut s,
+        ground(d, 0.0, 0.0),
+        (crate::sample_ambience::MEADOW, 0.6),
+        &forest_areas(),
+        &[],
+    );
     s
+}
+
+/// The woods within walking distance as footprints for the ambience: the forested hillside
+/// along the foot of the hill on the right ([`hill_side`] without its noise), the treeline wood
+/// ahead and the treeline behind (world x, z: the camera is at the origin).
+fn forest_areas() -> Vec<crate::sample_ambience::Area> {
+    use crate::sample_ambience::Area;
+    let foot = |y: f32| 90.0 - 0.2 * y - 0.00006 * y.max(0.0).powi(2);
+    // The closed wood starts a few metres past the foot.
+    let edge = |y: f32| Vec2::new(foot(y) + 5.0, y);
+    vec![
+        Area::beside(edge(-700.0), edge(-200.0), 700.0),
+        Area::beside(edge(-200.0), edge(150.0), 700.0),
+        Area::beside(edge(150.0), edge(450.0), 700.0),
+        Area::beside(edge(450.0), edge(900.0), 700.0),
+        Area {
+            centre: Vec2::new(-90.0, 515.0),
+            size: Vec2::new(560.0, 290.0),
+            yaw: 0.0,
+        },
+        Area {
+            centre: Vec2::new(0.0, -800.0),
+            size: Vec2::new(2400.0, 340.0),
+            yaw: 0.0,
+        },
+    ]
 }
 
 /// Meta files for the sample's folder and everything under it, and for the scene, where
@@ -1562,6 +1596,39 @@ fn noon_valley_matches_its_generator() {
         }
     }
     assert!(flowers > 1000, "{flowers} flower cards");
+}
+
+/// The ambience's forest areas cover the woods round the start and leave the meadow open.
+#[test]
+fn noon_valley_forest_areas_cover_the_woods() {
+    let areas = forest_areas();
+    let (mut deep, mut deep_in, mut open, mut open_out) = (0, 0, 0, 0);
+    for i in -30..=30 {
+        for j in -30..=30 {
+            let p = Vec2::new(i as f32 * 20.0, j as f32 * 20.0);
+            let (x, z) = (EYE.0 + p.x, EYE.1 + p.y);
+            let d = crate::sample_ambience::distance(&areas, p);
+            if wood_depth(x, z) > 0.95 {
+                deep += 1;
+                deep_in += usize::from(d < 20.0);
+            }
+            if forest(x, z) < 0.01 {
+                open += 1;
+                open_out += usize::from(d > 0.0);
+            }
+        }
+    }
+    assert!(
+        deep_in as f32 >= 0.9 * deep as f32,
+        "deep wood inside the areas: {deep_in} of {deep}"
+    );
+    assert!(
+        open_out as f32 >= 0.85 * open as f32,
+        "open meadow outside them: {open_out} of {open}"
+    );
+    // The start is in the open meadow, the hillside's wood ~90 m to the right.
+    let d = crate::sample_ambience::distance(&areas, Vec2::ZERO);
+    assert!(d > 50.0 && d < 130.0, "{d}");
 }
 
 /// Playing works (the terrain and rock colliders build).

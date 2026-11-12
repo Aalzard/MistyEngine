@@ -651,7 +651,33 @@ fn demo_scene(d: &TerrainData) -> Scene {
         s.game_object_mut(cam).active = false;
     }
     add_rocks(&mut s, d);
+    add_ambience(&mut s, d);
     s
+}
+
+/// The meadow's sound under an "Ambience" object (after the rocks): the meadow's insects and
+/// birds with a breeze over the grass everywhere, birds in the trees heard from the groves.
+fn add_ambience(s: &mut Scene, d: &TerrainData) {
+    use crate::sample_ambience::{self as amb, Area};
+    let eye = glam::Vec2::new(CORNER.x + EYE.0, CORNER.z + EYE.1);
+    let areas: Vec<Area> = GROVES
+        .iter()
+        .map(|g| {
+            let a = g.bearing.to_radians();
+            Area {
+                centre: eye + glam::Vec2::new(a.sin(), a.cos()) * g.distance,
+                size: glam::Vec2::splat(2.0 * g.spread + 30.0),
+                yaw: 0.0,
+            }
+        })
+        .collect();
+    amb::add(
+        s,
+        ground(d, PLAYER.x, PLAYER.z),
+        (amb::MEADOW, 0.5),
+        &areas,
+        &[("Breeze", amb::BREEZE, 0.35)],
+    );
 }
 
 /// The meadow's rocks under a "Rocks" object (after the user's objects).
@@ -688,18 +714,22 @@ fn write_meadow_demo() {
     }
 }
 
-/// The saved scene with its "Rocks" made again (everything else as the user left it).
+/// The saved scene with its "Rocks" and "Ambience" made again (everything else as the user
+/// left it).
 fn replace_rocks(root: &std::path::Path, d: &TerrainData) {
     misty_engine::asset_db::install(misty_engine::asset_db::GuidDatabase::read(root));
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
-    if let Some(old) = scene.find_by_name("Rocks") {
-        scene.despawn(old);
+    for name in ["Rocks", crate::sample_ambience::ROOT] {
+        if let Some(old) = scene.find_by_name(name) {
+            scene.despawn(old);
+        }
     }
     add_rocks(&mut scene, d);
+    add_ambience(&mut scene, d);
     scene.save(&root.join(SCENE)).unwrap();
 }
 
-/// Only the scene's rocks (after `write_rocks` or a change to their placement).
+/// Only the scene's rocks and ambience (after `write_rocks` or a change to their placement).
 #[test]
 #[ignore = "writes into SampleProject; run on purpose to regenerate"]
 fn write_meadow_rocks() {

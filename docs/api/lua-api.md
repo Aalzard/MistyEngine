@@ -306,11 +306,11 @@ The project mixer with that file name, or nil
 
 PlayClipAtPoint
 
-### `AudioSource.PlayClipAtPoint(clipPath, position [, volume])`
+### `AudioSource.PlayClipAtPoint(clipPath, position [, volume [, pitch]])`
 
 *function* · source: `audio_api.rs`
 
-A 3D one-shot at a fixed point
+A 3D one-shot at a fixed point (pitch: playback speed, 1 = normal)
 
 
 <a id="color"></a>

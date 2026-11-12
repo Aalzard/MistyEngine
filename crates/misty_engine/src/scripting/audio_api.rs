@@ -386,12 +386,20 @@ pub fn register(lua: &Lua) -> Result<()> {
     let source: Table = lua.create_table()?;
     source.set(
         "PlayClipAtPoint",
-        lua.create_function(|lua, (clip, at, volume): (String, LVec3, Option<f32>)| {
-            with_world(lua, |w| {
-                let World { audio, scene, .. } = w;
-                audio.play_clip_at_point(scene, &clip, at.0, volume.unwrap_or(1.0));
-            })
-        })?,
+        lua.create_function(
+            |lua, (clip, at, volume, pitch): (String, LVec3, Option<f32>, Option<f32>)| {
+                with_world(lua, |w| {
+                    let World { audio, scene, .. } = w;
+                    audio.play_clip_at_point_pitched(
+                        scene,
+                        &clip,
+                        at.0,
+                        volume.unwrap_or(1.0),
+                        pitch.unwrap_or(1.0),
+                    );
+                })
+            },
+        )?,
     )?;
     g.set("AudioSource", source)?;
     let mixers: Table = lua.create_table()?;

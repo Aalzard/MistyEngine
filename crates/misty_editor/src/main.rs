@@ -82,6 +82,8 @@ mod sample_2d;
 #[cfg(test)]
 mod sample_addressables;
 #[cfg(test)]
+mod sample_ambience;
+#[cfg(test)]
 mod sample_animation;
 #[cfg(test)]
 mod sample_animator;

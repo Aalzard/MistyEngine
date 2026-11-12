@@ -4333,3 +4333,38 @@ material variants and decoded its textures in one frame. Now the window draws fr
 - **Left**: model imports still load on the calling thread (no placeholder meshes);
   feature and blended variants have no stand-in; a 150-180 ms `Editor.RefreshAssets` once
   after opening; `Editor.State` (0.2 s) before the first frame.
+
+## Round 49 — Sounds: weather, ambience in the demo scenes, footsteps (branch r49-sounds)
+
+The scenes were silent ("is there supposed to be sounds?"). Recordings made in ElevenLabs are
+now part of the sample and the engine; details and numbers in `docs/pending/r49-sounds.md`.
+
+- **Assets** (`SampleProject/Assets/Audio/{Ambience,Weather,Footsteps}`, `tools/sample_sounds.py`):
+  five 30 s loops (meadow, forest birds, breeze, steady rain, storm) checked for seam clicks
+  (none), matched at -24 LUFS under a circular -1 dBFS limiter, Ogg Vorbis (28.8 MB of WAV ->
+  2.0 MB, decoded length and seam re-checked); six grass footsteps cut at their onsets (mono
+  WAV). About 2.3 MB added.
+- **Weather sound**: the bundled steady rain and storm loops (built into the engine) follow the
+  rain intensity and crossfade (equal power) as it gets heavy, quieter under cover (rays up from
+  the Audio Listener, Under Cover 0.35, with Sheltered Areas on), every level eased so the rain
+  fades with the timeline and under roofs. Inspector: Sound, Volume, Under Cover, Rain Loop,
+  Storm Loop, Wind Clip, Thunder Clip (empty = generated thunder, delayed by distance).
+  Old scenes load and re-save unchanged.
+- **Fix**: weather loops and thunder had never played: their absolute `Library/Weather` paths
+  were refused as non-project paths (`Audio::play_ambient` now takes them).
+- **Ambience** (`AmbienceZones.lua`, `sample_ambience.rs`): NoonValley and MeadowDemo play a
+  meadow loop in the open and forest birds from the nearest forest area (3D, the source glides
+  to the closest point of the area, surrounds you inside, the meadow loop gives way); MeadowDemo
+  adds a breeze. Added by the scenes' generators; scenes regenerated (MeadowDemo keeps the
+  user's edits: only Rocks and Ambience are replaced).
+- **Footsteps** (`FirstPersonController.lua`): a random grass step (never the same twice in a
+  row) on each step on the ground, rate from the stride phase, louder running, softer crouched,
+  a landing thump, volume +-15 % and pitch +-6 %, all in the controller's settings.
+  `AudioSource.PlayClipAtPoint` takes an optional pitch. GameObject ▸ First Person Player writes
+  the clips into projects that lack them.
+- **Tests**: rain volume curve (0 when clear, rising, storm takes over, lower under cover),
+  driver fades/crossfades/stops, bundled loops decode sample-exact across the loop point, old
+  Weather audio loads and new fields stay out of files, footstep picks never repeat and steps
+  follow distance, ambience areas match the Lua maths and cover NoonValley's woods.
+- **Left**: no thunder recording (generated thunder plays); tree crowns without colliders don't
+  muffle rain; one footstep set for every surface.

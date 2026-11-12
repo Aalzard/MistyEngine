@@ -236,11 +236,23 @@ impl Runtime {
         self.host.update(scene, time, input);
         {
             crate::profile_scope!("Audio.Update", Category::Audio);
+            // Rain under a roof is quieter: how much is overhead (only while something falls).
+            let w = &scene.weather;
+            let falling = w.live
+                && w.audio.enabled
+                && w.effects.occlusion
+                && (w.current.rain_density > 0.0 || w.current.snow_density > 0.0);
+            let cover = match crate::audio::listener(scene).filter(|_| falling) {
+                Some(ear) => self
+                    .host
+                    .with_physics(|p| crate::weather::audio::cover(p, ear.w_axis.truncate())),
+                None => 0.0,
+            };
             let weather_audio = &mut self.weather_audio;
             self.host.with_audio(|a| {
                 a.tick(time.delta);
                 a.update(scene);
-                weather_audio.update(a, &mut scene.weather);
+                weather_audio.update(a, &mut scene.weather, time.delta, cover);
             });
         }
         crate::profile_scope!("ParticleSystem.Update", Category::Others);

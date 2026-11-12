@@ -618,16 +618,13 @@ fn scene_update_uses_volumes_and_the_frame_follows() {
 }
 
 #[test]
-fn generated_audio_loops_and_thunder_are_sane() {
-    let r = audio::rain(2.0, true, 1);
-    assert!(r.len() > (audio::RATE as f32 * 1.2) as usize);
-    let peak = r
+fn generated_wind_and_thunder_are_sane() {
+    let w = audio::wind(2.0, 1);
+    assert!(w.len() > (audio::RATE as f32 * 1.2) as usize);
+    let peak = w
         .iter()
         .fold(0.0f32, |m, (a, b)| m.max(a.abs()).max(b.abs()));
     assert!(peak > 0.5 && peak <= 0.71, "{peak}");
-    // The loop point is seamless: the first and last samples are close.
-    let (a, b) = (r[0], r[r.len() - 1]);
-    assert!((a.0 - b.0).abs() < 0.35, "{a:?} {b:?}");
     let near = audio::thunder(true, 2);
     let far = audio::thunder(false, 2);
     // A near strike cracks at once; far thunder rolls in slowly.
@@ -638,12 +635,173 @@ fn generated_audio_loops_and_thunder_are_sane() {
             .sum::<f32>()
     };
     assert!(early(&near) > early(&far) * 2.0);
-    // Loop volumes follow the intensity.
+}
+
+#[test]
+fn rain_volume_follows_intensity_and_drops_under_cover() {
+    use audio::rain_volumes;
+    let under = super::component::UNDER_COVER;
+    // Clear: silent.
+    assert_eq!(rain_volumes(0.0, 0.0, under), (0.0, 0.0));
+    assert_eq!(rain_volumes(f32::NAN, 0.0, under), (0.0, 0.0));
+    // Louder as the rain gets heavier (equal-power sum), the storm loop taking over.
+    let power = |(a, b): (f32, f32)| (a * a + b * b).sqrt();
+    let mut last = (0.0, 0.0);
+    for i in 1..=20 {
+        let r = i as f32 / 20.0;
+        let v = rain_volumes(r, 0.0, under);
+        assert!(power(v) > power(last), "louder at {r}: {v:?} vs {last:?}");
+        assert!(v.1 >= last.1, "more storm at {r}");
+        last = v;
+    }
+    let (steady, storm) = rain_volumes(0.3, 0.0, under);
+    assert!(steady > 0.5 && storm == 0.0, "light rain: steady only");
+    let (steady, storm) = rain_volumes(1.0, 0.0, under);
+    assert!(storm > 0.99 && steady < 1e-3, "downpour: storm only");
+    // Under a roof: quieter by Under Cover, half covered in between.
+    for r in [0.2, 0.6, 1.0] {
+        let open = power(rain_volumes(r, 0.0, under));
+        let half = power(rain_volumes(r, 0.5, under));
+        let roof = power(rain_volumes(r, 1.0, under));
+        assert!(roof < half && half < open, "{r}");
+        assert!(approx(roof, open * under, 1e-5), "{r}");
+    }
+    // Wind under cover keeps more than the rain.
+    let mut w = WeatherWorld::default();
+    w.current = WeatherPreset::Blizzard.params();
+    w.wind = Vec3::new(20.0, 0.0, 0.0);
+    let (_, _, open) = audio::loop_volumes(&w, 0.0);
+    let (_, _, roof) = audio::loop_volumes(&w, 1.0);
+    assert!(open > 0.8 && roof < open && roof > open * under);
+}
+
+#[test]
+fn weather_sounds_crossfade_ease_and_stop() {
+    let (mut a, log) = crate::audio::Audio::null(std::env::temp_dir());
+    let mut d = audio::Driver::default();
     let mut w = WeatherWorld::default();
     w.live = true;
-    w.current = WeatherPreset::Drizzle.params();
-    let (l1, h1, _) = audio::loop_volumes(&w);
+    // Clear: nothing plays.
+    w.current = WeatherPreset::Clear.params();
+    d.update(&mut a, &mut w, 0.1, 0.0);
+    assert!(log.lock().unwrap().played.is_empty());
+    // Steady rain fades in (eased), playing the bundled steady loop only.
+    w.current = WeatherPreset::Rain.params();
+    d.update(&mut a, &mut w, 0.1, 0.0);
+    let first = d.levels().0[0];
+    for _ in 0..50 {
+        d.update(&mut a, &mut w, 0.1, 0.0);
+    }
+    let settled = d.levels().0;
+    assert!(
+        first > 0.0 && first < settled[0] * 0.3,
+        "{first} {settled:?}"
+    );
+    let played = log.lock().unwrap().played.clone();
+    assert!(
+        played.iter().any(|p| p.ends_with("rain_steady_v1.ogg")),
+        "{played:?}"
+    );
+    // A downpour crossfades into the storm loop.
     w.current = WeatherPreset::Downpour.params();
-    let (l2, h2, _) = audio::loop_volumes(&w);
-    assert!(l1 > 0.0 && h1 < h2 && h2 > 0.9 && l2 < l1.max(0.5));
+    for _ in 0..50 {
+        d.update(&mut a, &mut w, 0.1, 0.0);
+    }
+    let storm = d.levels().0;
+    assert!(storm[1] > storm[0] && storm[1] > settled[0], "{storm:?}");
+    assert!(
+        log.lock()
+            .unwrap()
+            .played
+            .iter()
+            .any(|p| p.ends_with("rain_storm_v1.ogg"))
+    );
+    // Under a roof: quieter; with Sheltered Areas off the cover is ignored.
+    for _ in 0..50 {
+        d.update(&mut a, &mut w, 0.1, 1.0);
+    }
+    let (covered, cover) = d.levels();
+    assert!(cover > 0.99 && covered[1] < storm[1] * 0.5, "{covered:?}");
+    w.effects.occlusion = false;
+    for _ in 0..50 {
+        d.update(&mut a, &mut w, 0.1, 1.0);
+    }
+    assert!(d.levels().1 < 0.01);
+    // Sound off: everything stops.
+    w.audio.enabled = false;
+    d.update(&mut a, &mut w, 0.1, 0.0);
+    assert!(log.lock().unwrap().voices.is_empty());
+    assert_eq!(d.levels().0, [0.0; 3]);
+}
+
+#[test]
+fn bundled_rain_loops_decode_seamlessly() {
+    use crate::audio::stream::{Pull, StreamInput, StreamReader};
+    for bytes in [audio::RAIN_STEADY_OGG, audio::RAIN_STORM_OGG] {
+        let bytes: std::sync::Arc<[u8]> = bytes.into();
+        // Played looping (Compressed In Memory): the second pass repeats the first exactly,
+        // with nothing added or lost at the seam.
+        let mut r = StreamReader::open(StreamInput::Memory(bytes.clone()), true, false, 0).unwrap();
+        assert_eq!(r.rate, 48_000);
+        let len = 30 * 48_000;
+        let want = len + 4_800;
+        let mut got = Vec::with_capacity(want);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while got.len() < want {
+            match r.pop() {
+                Pull::Frame(f) => got.push(f),
+                Pull::End => panic!("a looping stream ended after {} frames", got.len()),
+                Pull::Underrun => {
+                    assert!(std::time::Instant::now() < deadline, "decoding stalled");
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }
+        }
+        for k in 0..4_800 {
+            let (a, b) = (got[k], got[len + k]);
+            assert!(
+                (a.left - b.left).abs() < 1e-6 && (a.right - b.right).abs() < 1e-6,
+                "frame {k} of the second pass differs: {a:?} vs {b:?}"
+            );
+        }
+        // No click at the seam: the step over it is like the steps around it.
+        let step = |i: usize| (got[i + 1].left - got[i].left).abs();
+        let around: f32 = (len - 200..len + 200).map(step).sum::<f32>() / 400.0;
+        assert!(
+            step(len - 1) < around * 8.0 + 1e-3,
+            "seam step {}",
+            step(len - 1)
+        );
+        // Decoded whole (Decompress On Load): the same length.
+        let data = kira::sound::static_sound::StaticSoundData::from_cursor(std::io::Cursor::new(
+            bytes.to_vec(),
+        ))
+        .unwrap();
+        assert_eq!(data.frames.len(), len);
+    }
+}
+
+#[test]
+fn old_weather_audio_loads_and_new_fields_stay_out_of_files() {
+    // Saved before Storm Loop and Under Cover existed.
+    let old = r#"{"enabled":true,"output":"","rain_clip":"","thunder_clips":[],"volume":0.8,"wind_clip":""}"#;
+    let a: WeatherAudio = serde_json::from_str(old).unwrap();
+    assert_eq!(a, WeatherAudio::default());
+    // Re-saved with the same keys (no new ones at their defaults).
+    let keys =
+        |v: serde_json::Value| -> Vec<String> { v.as_object().unwrap().keys().cloned().collect() };
+    assert_eq!(
+        keys(serde_json::to_value(&a).unwrap()),
+        keys(serde_json::from_str(old).unwrap())
+    );
+    // Set, they are written.
+    let set = WeatherAudio {
+        storm_clip: "Assets/Audio/MyStorm.ogg".into(),
+        under_cover: 0.5,
+        ..Default::default()
+    };
+    let v = serde_json::to_value(&set).unwrap();
+    assert_eq!(v["storm_clip"], "Assets/Audio/MyStorm.ogg");
+    assert_eq!(v["under_cover"], 0.5);
+    assert_eq!(serde_json::from_value::<WeatherAudio>(v).unwrap(), set);
 }
