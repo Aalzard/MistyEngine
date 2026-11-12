@@ -1268,6 +1268,29 @@ fn run_time_errors_with_changing_values_stop_logging() {
     );
 }
 
+#[test]
+fn graph_files_with_huge_or_repeated_node_ids_are_refused() {
+    let mut g = G::new();
+    let a = g.n("OnStart");
+    let b = g.log_text("x");
+    g.w(a, "Out", b, "In");
+    let text = g.0.to_json();
+    assert!(ScriptGraph::from_json(&text).is_ok());
+    let huge = text.replace(&format!("\"id\": {b}"), "\"id\": 4294967295");
+    assert_ne!(huge, text);
+    assert!(
+        ScriptGraph::from_json(&huge)
+            .unwrap_err()
+            .contains("too large")
+    );
+    let twice = text.replace(&format!("\"id\": {b}"), &format!("\"id\": {a}"));
+    assert!(
+        ScriptGraph::from_json(&twice)
+            .unwrap_err()
+            .contains("two nodes")
+    );
+}
+
 // ---- files --------------------------------------------------------------------------------------
 
 #[test]

@@ -194,6 +194,9 @@ impl Default for ScriptGraph {
     }
 }
 
+/// Node ids stay below this (compiling numbers inlined subgraph nodes above the graph's own).
+pub const MAX_NODE_ID: u32 = 1 << 24;
+
 /// Loads subgraph assets for Subgraph nodes.
 pub trait Resolver {
     /// The graph at a project-relative path.
@@ -230,7 +233,30 @@ impl ScriptGraph {
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
-        serde_json::from_str(text).map_err(|e| e.to_string())
+        let g: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        g.check_ids()?;
+        Ok(g)
+    }
+
+    /// Node ids (here and in macros) are unique and below [`MAX_NODE_ID`]: a hand-edited
+    /// file with id 4294967295 overflowed the id counters, and a duplicate id made events
+    /// run twice.
+    fn check_ids(&self) -> Result<(), String> {
+        let mut seen = std::collections::HashSet::new();
+        for n in &self.nodes {
+            if n.id >= MAX_NODE_ID {
+                return Err(format!("node id {} is too large", n.id));
+            }
+            if !seen.insert(n.id) {
+                return Err(format!("two nodes have the id {}", n.id));
+            }
+        }
+        for m in &self.macros {
+            m.graph
+                .check_ids()
+                .map_err(|e| format!("macro '{}': {e}", m.name))?;
+        }
+        Ok(())
     }
 
     pub fn to_json(&self) -> String {
