@@ -177,6 +177,7 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
                 "billboards" => d.trees.billboard_start = v,
                 "treelod" => d.trees.lod_distance = v,
                 "shadowdetail" => d.trees.shadow_detail = v,
+                "treefade" => d.trees.lod_fade = v,
                 "treekeep" | "treefrom" => {}
                 _ => eprintln!("(MISTY_NOON_GRASS: {k} unknown)"),
             }
@@ -541,5 +542,140 @@ fn tree_gpu_cull_matches_the_cpu_lists() {
             "{}: mean {mean}, share {share}",
             shot.name()
         );
+    }
+}
+
+/// Pops while the camera dollies (run on purpose): the camera moves `MISTY_DOLLY_STEP` metres
+/// (default -0.25: backwards) along its view each frame for `MISTY_DOLLY_FRAMES` frames (default
+/// 72) at `MISTY_QUALITY` (default `high`) and `MISTY_SIZE` (default 1280×720), once with the
+/// LOD cross-fades off (every switch instant, as before) and once on. The scene:
+/// `MISTY_DOLLY_SCENE=noon` (default; the view from `MISTY_NOON_VIEWS`, default `treeline`,
+/// `pose` works) or `meadow` (MeadowDemo, the trees behind the player).
+///
+/// A pop is a step change between two frames on top of the smooth change of the camera's
+/// motion, so it shows in the second difference `f(t-1) - 2 f(t) + f(t+1)` of each pixel
+/// while the parallax of a steady dolly mostly cancels. Printed per run: pixels whose second
+/// difference exceeds 64 / 255 (any channel), in total and in the worst frame. With
+/// `MISTY_DOLLY_DIR` every frame is written as `<off|on>_<frame>.png`.
+#[test]
+#[ignore = "renders a camera dolly; run on purpose"]
+fn lod_fade_dolly() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            crate::render::lod::set_fades(true);
+        }
+    }
+    let _restore = Restore;
+    let env = |k: &str| std::env::var(k).ok();
+    let (w, h) = env("MISTY_SIZE")
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        })
+        .unwrap_or((1280, 720));
+    let frames: usize = env("MISTY_DOLLY_FRAMES")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(72);
+    let step: f32 = env("MISTY_DOLLY_STEP")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(-0.25);
+    let dir = env("MISTY_DOLLY_DIR").map(PathBuf::from);
+    if let Some(d) = &dir {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let meadow = env("MISTY_DOLLY_SCENE").is_some_and(|s| s == "meadow");
+    let name = env("MISTY_NOON_VIEWS").unwrap_or_else(|| "treeline".into());
+    // `MISTY_DOLLY_CLEAN=1`: no grass or flowers (their blades' parallax swamps the second
+    // difference) and no eye adaptation, so what changes is mostly the LOD switches.
+    let clean = env("MISTY_DOLLY_CLEAN").is_some_and(|v| v == "1");
+    let make = || {
+        let mut gv = if meadow {
+            crate::render::trees::gpu_tests::meadow_view(
+                crate::render::trees::gpu_tests::Shot::Behind,
+            )
+        } else {
+            noon_view(&name).expect("view")
+        };
+        if clean {
+            gv.post.auto_exposure.active = false;
+            for t in &mut gv.terrains {
+                let mut d = (*t.data).clone();
+                d.details.density = 0.0;
+                d.flowers.enabled = false;
+                d.detail_layers
+                    .retain(|l| l.kind != crate::terrain::detail_layers::DetailKind::Grass);
+                t.key = format!("{}#dolly-clean", t.key);
+                t.data = std::sync::Arc::new(d);
+            }
+        }
+        gv
+    };
+    let (level, quality) = levels("high").remove(0);
+    for fades in [false, true] {
+        crate::render::lod::set_fades(fades);
+        let mut gv = make();
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(&device, &quality);
+        let target = r.create_view_target(&device, w, h);
+        for _ in 0..48 {
+            r.render(&device, &queue, &target, &gv.frame());
+        }
+        let f = gv.camera.forward();
+        let along = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+        let mut images: Vec<Vec<u8>> = Vec::with_capacity(frames);
+        for i in 0..frames {
+            let before = gv.camera.position;
+            let mut eye = before + along * step;
+            eye.y += ground_at(&gv, eye) - ground_at(&gv, before);
+            gv.camera.position = eye;
+            r.render(&device, &queue, &target, &gv.frame());
+            let px = read_back(&device, &queue, &target);
+            if let Some(d) = &dir {
+                let tag = if fades { "on" } else { "off" };
+                image::RgbaImage::from_raw(w, h, px.clone())
+                    .expect("read back")
+                    .save(d.join(format!("{tag}_{i:03}.png")))
+                    .unwrap();
+            }
+            images.push(px);
+        }
+        let mut per_frame = Vec::with_capacity(frames);
+        for t in 1..frames.saturating_sub(1) {
+            let (a, b, c) = (&images[t - 1], &images[t], &images[t + 1]);
+            let mut n = 0usize;
+            for i in (0..a.len()).step_by(4) {
+                let jump = (0..3)
+                    .map(|k| (a[i + k] as i32 - 2 * b[i + k] as i32 + c[i + k] as i32).abs())
+                    .max()
+                    .unwrap_or(0);
+                n += usize::from(jump > 64);
+            }
+            per_frame.push(n);
+        }
+        let total: usize = per_frame.iter().sum();
+        let (worst_at, worst) = per_frame
+            .iter()
+            .copied()
+            .enumerate()
+            .max_by_key(|(_, n)| *n)
+            .unwrap_or((0, 0));
+        let scene = if meadow {
+            "meadow behind"
+        } else {
+            name.as_str()
+        };
+        eprintln!(
+            "== dolly {scene} {level} {w}x{h}, fades {}: pop pixels total {total}, worst frame {} \
+             ({worst}), mean {:.0} per frame",
+            if fades { "on" } else { "off" },
+            worst_at + 1,
+            total as f32 / per_frame.len().max(1) as f32
+        );
+        eprintln!("   per frame: {per_frame:?}");
     }
 }

@@ -122,26 +122,10 @@ fn tree_point(v: TreeVertexIn, inst: TreeInstance) -> TreePoint {
     return out;
 }
 
-// Noise 0..1 per pixel (and per frame with TAA) for dithered LOD fades.
-fn tree_noise(pixel: vec2<f32>) -> f32 {
-    var p = floor(pixel);
-    if (tree.light.w > 0.5) {
-        // TAA's jitter changes every frame (8 phases): the history averages the pattern out.
-        p += fract(view.motion.xy * vec2<f32>(4129.3, 2971.7)) * vec2<f32>(53.7, 91.3);
-    }
-    return fract(52.9829189 * fract(dot(p, vec2<f32>(0.06711056, 0.00583715))));
-}
-
-// Is this pixel dropped by the instance's LOD fade?
+// Is this pixel dropped by the instance's LOD fade? The same dither as every other LOD
+// cross-fade (common.wgsl `lod_dithered_out`: ordered, shifted per frame with TAA).
 fn tree_faded(fade: f32, pixel: vec2<f32>) -> bool {
-    if (fade == 0.0) {
-        return false;
-    }
-    let t = tree_noise(pixel);
-    if (fade > 0.0) {
-        return t >= fade;
-    }
-    return t < 1.0 + fade;
+    return lod_dithered_out(fade, pixel);
 }
 
 struct ImpostorPoint {

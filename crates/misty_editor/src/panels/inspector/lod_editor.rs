@@ -8,6 +8,7 @@ use misty_engine::render::culling::Aabb;
 use misty_engine::render::lod::screen_height;
 use misty_engine::scene::{LodFadeMode, LodGroup, LodLevel, MeshFilter, MeshRenderer, Scene};
 
+use crate::i18n::tr;
 use crate::state::EditorState;
 
 pub const NAMES: [&str; 1] = ["LOD Group"];
@@ -250,14 +251,20 @@ pub fn lod_group(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     }
 
     super::editors::grid(ui, "lod_group_grid", |ui| {
-        ui.label("Fade Mode");
+        ui.label(tr!("Fade Mode")).on_hover_text(tr!(
+            "How neighbouring levels switch: None cuts at once, Cross Fade draws both through a fine dither over the Fade Width, so nothing pops"
+        ));
         let mut cross = g.fade_mode == LodFadeMode::CrossFade;
         let before = cross;
         egui::ComboBox::from_id_salt("lod_fade_mode")
-            .selected_text(if cross { "Cross Fade" } else { "None" })
+            .selected_text(if cross {
+                tr!("Cross Fade")
+            } else {
+                tr!("None")
+            })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut cross, false, "None");
-                ui.selectable_value(&mut cross, true, "Cross Fade");
+                ui.selectable_value(&mut cross, false, tr!("None"));
+                ui.selectable_value(&mut cross, true, tr!("Cross Fade"));
             });
         if cross != before {
             g.fade_mode = match cross {
@@ -268,7 +275,9 @@ pub fn lod_group(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         }
         ui.end_row();
         if cross {
-            ui.label("Fade Width");
+            ui.label(tr!("Fade Width")).on_hover_text(tr!(
+                "Width of the cross-fade at each switch, as a share of its screen height (0.1 = about a tenth of the switch distance). Only objects inside it draw twice."
+            ));
             changed |= ui
                 .add(egui::Slider::new(&mut g.fade_width, 0.0..=1.0))
                 .changed();

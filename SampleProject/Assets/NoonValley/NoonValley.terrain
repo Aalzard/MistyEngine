@@ -314,6 +314,7 @@
     "draw_distance": 4000.0,
     "lod_distance": 30.0,
     "billboard_start": 80.0,
+    "lod_fade": 0.1,
     "cast_shadows": true,
     "shadow_detail": 0.34
   },

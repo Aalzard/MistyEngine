@@ -68,6 +68,12 @@ pub struct TreeSettings {
     pub lod_distance: f32,
     /// Meshes up to here, billboards (impostors) beyond (metres, × the LOD bias).
     pub billboard_start: f32,
+    /// Cross-fade band at each switch (lighter mesh, impostor, draw distance) as a share of its
+    /// distance, just before it (0 = switch at once). New terrains get [`DEFAULT_LOD_FADE`];
+    /// terrains saved before it existed load with 0 and keep switching at once, as LOD Groups
+    /// saved without a fade mode do (written whenever it is not 0).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lod_fade: f32,
     pub cast_shadows: bool,
     /// 0.1..1: detail of the trees in the sun's shadow cascades (1 = each cascade's level of
     /// detail by its texel size; lower = lighter meshes and impostors in finer cascades: a
@@ -84,6 +90,13 @@ fn is_one(v: &f32) -> bool {
     *v == 1.0
 }
 
+/// Tree Rendering ▸ LOD Fade of new terrains: a tenth of each switch distance.
+pub const DEFAULT_LOD_FADE: f32 = 0.1;
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
 impl Default for TreeSettings {
     fn default() -> Self {
         Self {
@@ -92,6 +105,7 @@ impl Default for TreeSettings {
             draw_distance: 2000.0,
             lod_distance: 30.0,
             billboard_start: 110.0,
+            lod_fade: DEFAULT_LOD_FADE,
             cast_shadows: true,
             shadow_detail: 1.0,
         }
@@ -169,6 +183,11 @@ impl TreeSettings {
         fix(&mut self.draw_distance, 10.0, 20_000.0);
         fix(&mut self.lod_distance, 1.0, 1000.0);
         fix(&mut self.billboard_start, 2.0, 5000.0);
+        self.lod_fade = if self.lod_fade.is_finite() {
+            self.lod_fade.clamp(0.0, 0.5)
+        } else {
+            DEFAULT_LOD_FADE
+        };
         self.shadow_detail = if self.shadow_detail.is_finite() {
             self.shadow_detail.clamp(0.1, 1.0)
         } else {
@@ -544,5 +563,35 @@ mod tests {
         assert_eq!(s.prototypes.len(), 2);
         let protos: Vec<u16> = s.instances.iter().map(|t| t.prototype).collect();
         assert_eq!(protos, vec![0, 1]);
+    }
+
+    #[test]
+    fn lod_fade_loads_from_old_files_and_round_trips() {
+        // Saved before LOD Fade existed: switches at once, as before.
+        let old: TreeSettings =
+            serde_json::from_str(r#"{"draw_distance":500.0,"lod_distance":40.0}"#).unwrap();
+        assert_eq!(old.lod_fade, 0.0);
+        // New terrains cross-fade, and say so in the file.
+        let text = serde_json::to_string(&TreeSettings::default()).unwrap();
+        assert!(text.contains("\"lod_fade\":0.1"), "{text}");
+        assert_eq!(TreeSettings::default().lod_fade, DEFAULT_LOD_FADE);
+        for v in [0.0, 0.25] {
+            let s = TreeSettings {
+                lod_fade: v,
+                ..Default::default()
+            };
+            let text = serde_json::to_string(&s).unwrap();
+            let back: TreeSettings = serde_json::from_str(&text).unwrap();
+            assert_eq!(back.lod_fade, v, "{text}");
+        }
+        let mut bad = TreeSettings {
+            lod_fade: f32::NAN,
+            ..Default::default()
+        };
+        bad.sanitize();
+        assert_eq!(bad.lod_fade, DEFAULT_LOD_FADE);
+        bad.lod_fade = 3.0;
+        bad.sanitize();
+        assert_eq!(bad.lod_fade, 0.5);
     }
 }

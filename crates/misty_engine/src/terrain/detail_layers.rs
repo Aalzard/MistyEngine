@@ -492,6 +492,10 @@ pub fn cached_instances(key: &str, d: &TerrainData, version: u64) -> Instances {
     list
 }
 
+/// Fade band of detail meshes at their draw distance (a share of their screen height there:
+/// they thin out over about the last tenth of the distance).
+pub const DETAIL_FADE: f32 = 0.1;
+
 /// Mesh draws of the detail meshes of every enabled terrain `keep` accepts.
 pub fn draws(
     scene: &Scene,
@@ -522,7 +526,8 @@ pub fn draws(
             let model = corner * *m;
             let (scale, _, pos) = model.to_scale_rotation_translation();
             let size = scale.max_element().max(0.05);
-            // Hidden once smaller on screen than at its draw distance (60° view).
+            // Hidden once smaller on screen than at its draw distance (60° view), thinned out
+            // through a dithered fade just before it (DETAIL_FADE) instead of popping.
             let min = size / (2.0 * l.draw_distance.max(1.0) * 30f32.to_radians().tan());
             out.push(MeshDraw {
                 mesh: l.mesh.clone(),
@@ -537,7 +542,7 @@ pub fn draws(
                     size,
                     min,
                     max: f32::INFINITY,
-                    fade: 0.0,
+                    fade: DETAIL_FADE,
                     virtual_lod: None,
                 }),
             });
@@ -781,8 +786,9 @@ mod tests {
             .fold(f32::MAX, f32::min);
         assert!(min_x >= 10.0, "placed from the terrain's corner");
         assert!(
-            out.iter().all(|m| m.lod.is_some_and(|l| l.min > 0.0)),
-            "culled far away"
+            out.iter()
+                .all(|m| m.lod.is_some_and(|l| l.min > 0.0 && l.fade == DETAIL_FADE)),
+            "culled far away, through a fade"
         );
         super::super::store::unload(&path);
     }

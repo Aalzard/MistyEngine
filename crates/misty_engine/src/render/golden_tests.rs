@@ -302,3 +302,38 @@ fn golden_drift_tolerates_noise_and_catches_changes() {
     let small = downscale(&full, SCALE, SCALE);
     assert_eq!(small.get_pixel(0, 0).0, [10, 20, 30, 255]);
 }
+
+/// Trees of the golden views near a level switch (prints only): distance / switch distance
+/// of each tree in front of the camera within 15 % of a switch, per view and level. Used to
+/// keep the default tree cross-fade band (Tree Rendering ▸ LOD Fade) off the golden trees.
+#[test]
+#[ignore = "prints only"]
+fn golden_tree_bands() {
+    for (name, view, quality) in shots() {
+        let v = view();
+        let cam = v.camera.position;
+        let fwd = v.camera.forward();
+        for t in &v.terrains {
+            let s = &t.data.trees;
+            let lod_d = s.lod_distance * quality.lod_bias.max(0.1);
+            let bb_d = s.billboard_start.max(lod_d * 1.25) * quality.lod_bias.max(0.1);
+            let mut near: Vec<String> = Vec::new();
+            for i in &s.instances {
+                let p = t.position + crate::terrain::trees::local_position(&t.data, i);
+                let to = p + glam::Vec3::Y * 4.0 * i.height_scale - cam;
+                if to.normalize_or_zero().dot(fwd) < 0.6 {
+                    continue;
+                }
+                let d = to.length();
+                for (label, edge) in [("lod", lod_d), ("bb", bb_d)] {
+                    let r = d / edge;
+                    if (0.85..1.15).contains(&r) {
+                        near.push(format!("{label} {r:.3}"));
+                    }
+                }
+            }
+            near.sort();
+            eprintln!("{name}: {near:?}");
+        }
+    }
+}

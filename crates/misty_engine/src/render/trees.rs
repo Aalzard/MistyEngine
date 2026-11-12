@@ -80,11 +80,55 @@ const TREE_PREPASS_SRC: &str = concat!(
     include_str!("shaders/tree_prepass.wgsl")
 );
 
-/// Share of a LOD distance over which two levels cross-fade (on each side of it). Practically
-/// off: a dithered fade read as a hatch pattern around the crowns (TAA's neighbourhood clipping
-/// keeps it), and the levels are close enough that the switch hardly shows. The fade code
-/// stays for a smaller-noise dither later.
-const FADE: f32 = 0.0001;
+/// The cross-fade band of a terrain's trees: Tree Rendering ▸ LOD Fade (a share of each switch
+/// distance, just before it: the switch completes there), 0 while cross-fades are off
+/// ([`super::lod::fades`]). Inside it a tree draws both levels (full mesh / lighter mesh / impostor, or fades out at the draw
+/// distance) through the shared ordered dither, which TAA's jitter moves every frame (the
+/// interleaved-noise dither used before read as a hatch pattern around the crowns).
+pub(super) fn tree_fade(s: &crate::terrain::trees::TreeSettings) -> f32 {
+    if super::lod::fades() {
+        s.lod_fade.clamp(0.0, 0.5)
+    } else {
+        0.0
+    }
+}
+
+/// A tree's (level, fade) pairs at distance `dist` from the camera (`usize::MAX` = unused): one
+/// level drawn whole (fade 0), or inside a band the outgoing level (fade > 0, its share) and
+/// the incoming one (fade < 0), the dither values of `lod_dithered_out`. `lod_d`, `bb_d`,
+/// `draw_d`: the switch to the lighter mesh, to the impostor, and the draw distance (the
+/// impostor fades out to nothing by it). `fade_at` in trees_cull.wgsl does the same.
+pub(super) fn levels_at(
+    dist: f32,
+    lod_d: f32,
+    bb_d: f32,
+    draw_d: f32,
+    w: f32,
+) -> [(usize, f32); 2] {
+    use super::lod::distance_fade;
+    let mut chosen: [(usize, f32); 2] = [(usize::MAX, 0.0); 2];
+    let a = distance_fade(dist, lod_d, w);
+    let b = distance_fade(dist, bb_d, w);
+    let far = distance_fade(dist, draw_d, w);
+    let pair = |level: usize, x: f32, next: Option<usize>| -> [(usize, f32); 2] {
+        if x <= 0.0 {
+            return [(level, 0.0), (usize::MAX, 0.0)];
+        }
+        let out = (1.0 - x).clamp(0.001, 0.999);
+        match next {
+            Some(n) => [(level, out), (n, (-x).clamp(-0.999, -0.001))],
+            None => [(level, out), (usize::MAX, 0.0)],
+        }
+    };
+    if a < 1.0 {
+        chosen = pair(0, a, Some(1));
+    } else if b < 1.0 {
+        chosen = pair(1, b, Some(2));
+    } else if far < 1.0 {
+        chosen = pair(2, far, None);
+    }
+    chosen
+}
 /// The mesh LOD trees cast shadows with into a shadow map whose texel is `texel` metres: the
 /// full mesh where texels resolve twigs, the first simplified level further out, impostors only
 /// where a texel is wider than twigs anyway (impostor crowns barely shadow themselves). Chosen
@@ -1250,7 +1294,12 @@ impl TreeRenderer {
                 protos.push(Some((group, tree)));
             }
             let lod_d = s.lod_distance * f.lod_bias.max(0.1);
-            let bb_d = s.billboard_start.max(lod_d * 1.25) * f.lod_bias.max(0.1);
+            let fade_w = tree_fade(s);
+            // The impostor band starts past the first switch.
+            let bb_d = s
+                .billboard_start
+                .max(lod_d * (1.05 / (1.0 - fade_w.min(0.5))).max(1.25))
+                * f.lod_bias.max(0.1);
             let draw_d = s.draw_distance;
             if gpu_cull {
                 crate::profile_scope!("Trees.GpuCull");
@@ -1260,7 +1309,7 @@ impl TreeRenderer {
                     t,
                     f,
                     &protos,
-                    [lod_d, bb_d, draw_d],
+                    [lod_d, bb_d, draw_d, fade_w],
                     shadow_reach,
                     &mut gpu_main,
                     &mut gpu_shadows,
@@ -1294,36 +1343,10 @@ impl TreeRenderer {
                     scale: [p.height, p.width, p.color, fade],
                 };
                 // LOD with cross-fades: (lod, fade) pairs (fade 0 = fully drawn).
-                let mut chosen: [(usize, f32); 2] = [(usize::MAX, 0.0); 2];
-                let fade_at = |d: f32, edge: f32| {
-                    ((d - edge * (1.0 - FADE)) / (edge * 2.0 * FADE)).clamp(0.0, 1.0)
-                };
-                let a = fade_at(dist, lod_d);
-                let b = fade_at(dist, bb_d);
-                let far = fade_at(dist, draw_d * (1.0 - FADE));
-                if a < 1.0 {
-                    chosen[0] = (0, if a > 0.0 { 1.0 - a } else { 0.0 });
-                    if a > 0.0 {
-                        chosen[1] = (1, -a);
-                    }
-                } else if b < 1.0 {
-                    chosen[0] = (1, if b > 0.0 { 1.0 - b } else { 0.0 });
-                    if b > 0.0 {
-                        chosen[1] = (2, -b);
-                    }
-                } else if far < 1.0 {
-                    chosen[0] = (2, if far > 0.0 { 1.0 - far } else { 0.0 });
-                }
-                // `fade` > 0 keeps noise < fade (fading out), < 0 keeps noise >= 1 + fade.
-                // A level that is fading out keeps its share 1 - x; the one fading in, x.
+                let chosen = levels_at(dist, lod_d, bb_d, draw_d, fade_w);
                 let visible = !beyond && frustum.intersects(&bounds);
                 if visible {
                     for &(lod, fade) in chosen.iter().filter(|c| c.0 != usize::MAX) {
-                        let fade = if fade == 0.0 {
-                            0.0
-                        } else {
-                            fade.clamp(-0.999, 0.999)
-                        };
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
@@ -1716,7 +1739,7 @@ impl TreeRenderer {
         t: &TerrainDraw,
         f: &TreeFrame,
         protos: &[Option<(usize, usize)>],
-        lod: [f32; 3],
+        lod: [f32; 4],
         shadow_reach: f32,
         main: &mut Vec<Batch>,
         shadows: &mut [Vec<Batch>],

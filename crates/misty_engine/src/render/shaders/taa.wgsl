@@ -136,6 +136,11 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     }
     let mean = m1 / 9.0;
     let sigma = sqrt(max(m2 / 9.0 - mean * mean, vec3<f32>(0.0)));
+    // Kept with the history (alpha): the nearest depth around the pixel, not its own. A
+    // dithered LOD cross-fade puts two surfaces at different depths in alternate pixels; with
+    // the pixel's own depth every pixel of the nearer one read as a disocclusion and threw
+    // its history away, so the dither stayed on screen. Real disocclusions still differ.
+    let near_z = taa_linear(nearest);
 
     // Reproject through the motion vector of the nearest surface in the neighbourhood.
     let texel = taa.texel.xy;
@@ -144,7 +149,7 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     let velocity = textureLoad(taa_velocity, clamp(nearest_p, vec2<i32>(0), last), 0).xy;
     let prev_uv = uv + velocity;
     if (any(prev_uv < vec2<f32>(0.0)) || any(prev_uv > vec2<f32>(1.0))) {
-        return vec4<f32>(current, z);
+        return vec4<f32>(current, near_z);
     }
     let motion = length(velocity * taa.texel.zw);
 
@@ -152,8 +157,10 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     // never feeds back into the accumulation).
     let history = to_ycocg(taa_compress(taa_history_at(prev_uv)));
 
-    // Disocclusion: the history there saw a surface at another depth than this one would
-    // have had last frame.
+    // Disocclusion: the history there saw a nearer surface than this one would have had last
+    // frame (it has moved away and uncovered this). A surface nearer than what the history
+    // saw (it has come in front) keeps the history and leaves it to the clip: the scattered
+    // pixels of a dithered LOD cross-fade are such surfaces, and threw their history away.
     let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
     let world = taa.inv_view_proj * ndc;
     let prev_clip = taa.prev_view_proj * vec4<f32>(world.xyz / world.w, 1.0);
@@ -162,7 +169,7 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     // foreground edge's vector lands on foreground history by design, and the clip handles it.)
     let seen = taa_history_tap(prev_uv).a;
     let own = all(nearest_p == p);
-    let disoccluded = own && abs(seen - expected) > 0.1 * max(expected, 0.1) + 0.02;
+    let disoccluded = own && expected - seen > 0.1 * max(expected, 0.1) + 0.02;
 
     // Clip the history towards the box of what the pixel can be now. A still view keeps a
     // slightly wider box (less flicker from the jitter walking across thin detail); motion
@@ -189,7 +196,7 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     }
     let now = to_ycocg(taa_compress(current));
     let blended = mix(from_ycocg(clipped), from_ycocg(now), weight);
-    return vec4<f32>(taa_expand(clamp(blended, vec3<f32>(0.0), vec3<f32>(0.999))), z);
+    return vec4<f32>(taa_expand(clamp(blended, vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
 }
 
 // ---- Temporal upscaling (internal resolution → output-resolution history) ----
@@ -251,8 +258,10 @@ fn fs_taau(in: FullscreenOut) -> @location(0) vec4<f32> {
     let spatial = smooth_c / max(smooth_w, 1e-5);
     let depth = taa_depth_at(centre);
     let z = taa_linear(depth);
+    // The nearest depth around the pixel goes with the history (see `fs_taa`).
+    let near_z = taa_linear(nearest);
     if (taa.info.x < 0.5) {
-        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), z);
+        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
     }
     // This frame's estimate of the pixel: the sharp kernel's (only well defined where a
     // sample is close; elsewhere its weight below keeps it out of the history).
@@ -265,7 +274,7 @@ fn fs_taau(in: FullscreenOut) -> @location(0) vec4<f32> {
     let velocity = textureLoad(taa_velocity, clamp(nearest_p, vec2<i32>(0), last), 0).xy;
     let prev_uv = uv + velocity;
     if (any(prev_uv < vec2<f32>(0.0)) || any(prev_uv > vec2<f32>(1.0))) {
-        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), z);
+        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
     }
     // Motion in output pixels.
     let motion = length(velocity * out_size);
@@ -278,8 +287,8 @@ fn fs_taau(in: FullscreenOut) -> @location(0) vec4<f32> {
     let expected = select(prev_clip.w, z, taa.info.w > 0.5);
     let seen = taa_history_tap(prev_uv).a;
     let own = all(nearest_p == centre);
-    if (own && abs(seen - expected) > 0.1 * max(expected, 0.1) + 0.02) {
-        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), z);
+    if (own && expected - seen > 0.1 * max(expected, 0.1) + 0.02) {
+        return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
     }
 
     // Clip the history to the box of the internal neighbourhood (wider at rest: the jitter
@@ -308,7 +317,7 @@ fn fs_taau(in: FullscreenOut) -> @location(0) vec4<f32> {
     let share = mix(base, max(base, 0.3), moving);
     let weight = clamp(share * coverage * pow(pixels, taa.tune.y), share * 0.05, taa.tune.z);
     let blended = mix(from_ycocg(clipped), from_ycocg(now), weight);
-    return vec4<f32>(taa_expand(clamp(blended, vec3<f32>(0.0), vec3<f32>(0.999))), z);
+    return vec4<f32>(taa_expand(clamp(blended, vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
 }
 
 // ---- History sharpening (the resolved history → the HDR image) ----

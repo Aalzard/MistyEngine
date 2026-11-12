@@ -53,6 +53,36 @@ struct View {
 
 @group(0) @binding(0) var<uniform> view: View;
 
+// ---- LOD cross-fades (render/lod.rs) ----
+// Dither threshold 0..1 of a pixel: a 4×4 ordered (Bayer) pattern. While TAA runs every
+// threshold steps by k / 8 each frame (k = the jitter's phase, 0..7: the camera's x jitter is
+// a base-2 Halton sequence), so over a jitter cycle each pixel takes eight thresholds spread
+// over 0..1 and the history averages the two levels of a cross-fade instead of keeping a
+// fixed screen pattern. (Shifting the pattern in space instead kept a 50 % fade's checker
+// in place: every shift the jitter gives moves it by an odd number of pixels.) Without TAA
+// the jitter is 0 and the pattern stands still. Mirrored by `lod::dither`.
+fn lod_dither(pixel: vec2<f32>) -> f32 {
+    let jitter_x = view.motion.x * view.motion.z * 0.5;
+    let phase = clamp(floor(fract(jitter_x + 0.5) * 8.0), 0.0, 7.0);
+    let p = vec2<u32>(max(pixel, vec2<f32>(0.0))) % vec2<u32>(4u);
+    var bayer = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+    return fract((bayer[p.y * 4u + p.x] + 0.5) / 16.0 + phase / 8.0);
+}
+
+// LOD cross-fade: should this pixel be dropped? `fade` 0 = drawn whole; > 0 = the outgoing
+// level, keeps the pixels whose threshold is below `fade`; < 0 = the incoming level, keeps
+// those at or above `1 + fade`. Two levels at fade k and k - 1 cover every pixel exactly once.
+fn lod_dithered_out(fade: f32, pixel: vec2<f32>) -> bool {
+    if (fade == 0.0) {
+        return false;
+    }
+    let t = lod_dither(pixel);
+    if (fade > 0.0) {
+        return t >= fade;
+    }
+    return t < 1.0 + fade;
+}
+
 // ---- Motion vectors (render/motion.rs) ----
 // Every main-pass and prepass shader writes where its surface was last frame, so the
 // temporal passes (TAA, AO, shadow mask, SSGI / SSR) follow moving objects and wind instead
