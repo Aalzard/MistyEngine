@@ -10,6 +10,15 @@ use super::{TileTransform, Tilemap};
 /// Largest region a flood fill touches.
 pub const FLOOD_LIMIT: usize = 1 << 16;
 
+/// Most cells a box fill or pick covers (a drag across a huge area does nothing instead of
+/// looping over billions of cells).
+pub const BOX_LIMIT: i64 = 1 << 22;
+
+fn box_too_big(lo: IVec2, hi: IVec2) -> bool {
+    let d = hi.as_i64vec2() - lo.as_i64vec2() + glam::I64Vec2::ONE;
+    d.x.saturating_mul(d.y) > BOX_LIMIT
+}
+
 /// One cell of a brush pattern (`tile` None = erase there).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BrushCell {
@@ -132,6 +141,11 @@ pub fn paint_line(map: &mut Tilemap, a: IVec2, b: IVec2, brush: &Brush) -> usize
 
 /// Cells of a line (Bresenham), both ends included.
 pub fn line(a: IVec2, b: IVec2) -> Vec<IVec2> {
+    // Ends far apart (cells from a huge drag): no line rather than overflowing `2 * err`.
+    let span = (b.as_i64vec2() - a.as_i64vec2()).abs();
+    if span.max_element() > i64::from(super::Grid::CELL_LIMIT) * 2 {
+        return vec![a];
+    }
     let d = (b - a).abs();
     let s = (b - a).signum();
     let mut err = d.x - d.y;
@@ -160,6 +174,9 @@ pub fn rect(a: IVec2, b: IVec2) -> (IVec2, IVec2) {
 /// Fill the rectangle between `a` and `b` with the brush tiled across it.
 pub fn box_fill(map: &mut Tilemap, a: IVec2, b: IVec2, brush: &Brush) -> usize {
     let (lo, hi) = rect(a, b);
+    if box_too_big(lo, hi) {
+        return 0;
+    }
     let size = brush.size().max(IVec2::ONE);
     let mut n = 0;
     for y in lo.y..=hi.y {
@@ -231,6 +248,9 @@ pub fn flood_fill(
 /// The tiles of a rectangle as a brush (Pick tool; empty cells erase when stamped).
 pub fn pick(map: &Tilemap, a: IVec2, b: IVec2) -> Brush {
     let (lo, hi) = rect(a, b);
+    if box_too_big(lo, hi) {
+        return Brush { cells: Vec::new() };
+    }
     let mut cells = Vec::new();
     for y in lo.y..=hi.y {
         for x in lo.x..=hi.x {

@@ -88,10 +88,14 @@ impl Grid {
         }
     }
 
-    /// The cell containing a local position.
+    /// Largest cell coordinate a position maps to.
+    pub const CELL_LIMIT: i32 = 1 << 20;
+
+    /// The cell containing a local position (within ±[`Self::CELL_LIMIT`] on each axis: a point
+    /// far outside a tiny-cell grid would otherwise saturate to ±i32::MAX).
     pub fn local_to_cell(&self, p: Vec2) -> IVec2 {
         let pitch = self.pitch();
-        match self.layout {
+        let c = match self.layout {
             GridLayout::Rectangle => (p / pitch).floor().as_ivec2(),
             GridLayout::Isometric => {
                 // Undo the diamond transform relative to cell (0,0)'s bottom corner.
@@ -102,7 +106,11 @@ impl Grid {
                     ((v - u) * 0.5).floor() as i32,
                 )
             }
-        }
+        };
+        c.clamp(
+            IVec2::splat(-Self::CELL_LIMIT),
+            IVec2::splat(Self::CELL_LIMIT),
+        )
     }
 }
 

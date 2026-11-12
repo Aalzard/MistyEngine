@@ -582,3 +582,22 @@ fn scene_round_trip_keeps_tilemaps() {
         TileTransform(5)
     );
 }
+
+#[test]
+fn drags_far_outside_a_tiny_grid_stay_bounded() {
+    let g = Grid {
+        cell_size: Vec2::splat(1e-6),
+        ..Default::default()
+    };
+    let far = g.local_to_cell(Vec2::new(1e30, -1e30));
+    assert_eq!(far, at(Grid::CELL_LIMIT, -Grid::CELL_LIMIT));
+    let mut map = Tilemap::default();
+    let brush = Brush::single("Assets/T.asset", TileTransform::default());
+    let start = std::time::Instant::now();
+    assert_eq!(edit::box_fill(&mut map, -far, far, &brush), 0);
+    assert!(edit::pick(&map, -far, far).cells.is_empty());
+    assert_eq!(edit::line(at(i32::MIN, 0), at(i32::MAX, 0)).len(), 1);
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+    // Ordinary boxes still fill.
+    assert_eq!(edit::box_fill(&mut map, at(0, 0), at(2, 1), &brush), 6);
+}
