@@ -401,6 +401,11 @@ impl AssetSystem {
             return Ok(true);
         };
         for d in &b.dependencies {
+            // A dependency that leads back here (a cycle in the catalog) is not waited for:
+            // both are acquired, and each would wait on the other forever.
+            if catalog.load_order(d).iter().any(|n| n == name) {
+                continue;
+            }
             match self.bundles.get(d).map(|x| x.state) {
                 Some(BundleState::Loaded) => {}
                 Some(BundleState::Failed) => return Err(format!("{name}: dependency {d} failed")),

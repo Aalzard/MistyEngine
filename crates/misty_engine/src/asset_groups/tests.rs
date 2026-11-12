@@ -313,6 +313,24 @@ fn dependency_bundles_load_first() {
 }
 
 #[test]
+fn bundles_that_depend_on_each_other_still_load() {
+    let root = project("cycle");
+    let mut catalog = plan(&root, &settings(), "windows-x64").catalog;
+    // The boss bundle already needs the default one; make the default one need it back.
+    let default = catalog
+        .bundles
+        .iter_mut()
+        .find(|b| b.name == DEFAULT_BUNDLE)
+        .unwrap();
+    default.dependencies.push(BOSS_BUNDLE.to_owned());
+    let mut sim = AssetSystem::new(&root, Provider::Simulated(catalog));
+    let h = sim.load("Boss", HandleKind::Load);
+    assert_eq!(pump(&mut sim, h), Status::Succeeded);
+    let h = sim.load("Enemy/A", HandleKind::Load);
+    assert_eq!(pump(&mut sim, h), Status::Succeeded);
+}
+
+#[test]
 fn database_and_simulated_providers() {
     let root = project("modes");
     let s = settings();
