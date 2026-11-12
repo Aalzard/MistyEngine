@@ -28,6 +28,9 @@
 //!   material is made.
 //! - **No renderer**: a toast says so and nothing changes.
 //!
+//! Asset Files keeps the folder it shows (several textures can be dragged from it one after
+//! another); the toast names the material, which is selected only when it is in that folder.
+//!
 //! Everything is one undo step. Undo takes the assignment (or the normal map) back; a material
 //! file that was made stays, like one made with Assets ▸ Create. On a prefab instance the new
 //! material shows as an override, like any other change to the instance.
@@ -198,14 +201,15 @@ fn new_material(state: &EditorState) -> Material {
     }
 }
 
-/// Show a made material in Asset Files (the scene selection and Properties stay).
+/// Select a made material in Asset Files only when it is already in view (the folder shown,
+/// no search). Asset Files never moves to another folder: that would get in the way of
+/// dragging several textures from one folder one after another. The scene selection and
+/// Properties stay.
 fn show_in_asset_files(state: &mut EditorState, rel: &str) {
     let abs = state.assets.absolute(rel);
-    if let Some(dir) = abs.parent() {
-        state.project.search.clear();
-        state.project.open_folder(dir.to_path_buf());
+    if state.project.search.is_empty() && abs.parent() == Some(state.project.current.as_path()) {
+        state.project.selected = Some(abs);
     }
-    state.project.selected = Some(abs);
 }
 
 /// Toast and Console line for a material that was made or assigned.

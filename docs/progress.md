@@ -3955,8 +3955,10 @@ the top of `crates/misty_editor/src/texture_drop.rs`.
 - **Files**: the `.mat` is written whole (the atomic write of round 33) with the GUIDs of its
   textures; its `.meta` comes from the same asset scan every new asset goes through.
 - **Feedback**: a toast in the status bar ("Created material Rock.mat", "Assigned material
-  Rock.mat", "Set the normal map of Rock.mat") and a Console line; a made material is selected
-  in Asset Files (the scene selection and Properties stay as they were). While a material or
+  Rock.mat", "Set the normal map of Rock.mat") and a Console line; Asset Files keeps the
+  folder it shows, so several textures can be dragged from it one after another (a made
+  material is selected only when Asset Files already shows `Assets/Materials`); the scene
+  selection and Properties stay as they were. While a material or
   texture is dragged, the Scene Tree row under the cursor is outlined and the Editor Scene
   shows the name of the object under the cursor (materials had no such feedback before).
 - **Prefab instances**: the new material is an override of the instance (Mesh Renderer ▸
@@ -3967,7 +3969,9 @@ the top of `crates/misty_editor/src/texture_drop.rs`.
 ### Tests
 `texture_drop/tests.rs`, each in its own temp project: a drop on a cube in the Editor Scene
 (egui harness: the file, the assignment, the toast, one undo step, redo; a drop on empty space
-does nothing); a drop on a Scene Tree row (egui harness); the same texture again reuses the
+does nothing; Asset Files keeps its folder and selection); a drop on a Scene Tree row (egui
+harness); two drops in a row keep Asset Files where it was, and a material made while Asset
+Files shows `Assets/Materials` is selected there; the same texture again reuses the
 material; another material of that name gives `Rock 1.mat`, which is reused afterwards; a
 same-named texture from another folder gets its own; normal maps by name and by import
 settings; a normal map into the object's material with undo and redo; a normal map on

@@ -123,6 +123,11 @@ fn a_drop_on_a_cube_in_the_editor_scene_makes_the_material_and_assigns_it_in_one
     assert_eq!(material_of_cube(h.state(), e), None);
     assert!(!h.state().project.root.join(ROCK_MAT).exists());
 
+    // Asset Files shows the textures, as when they are dragged from there.
+    let textures = h.state().project.root.join("Assets/Textures");
+    h.state_mut().project.open_folder(textures);
+    let folder_before = h.state().project.current.clone();
+    let selected_before = h.state().project.selected.clone();
     drop_at(&mut h, on_cube, ROCK);
     let s = h.state_mut();
     assert_eq!(material_of_cube(s, e).as_deref(), Some(ROCK_MAT));
@@ -137,9 +142,10 @@ fn a_drop_on_a_cube_in_the_editor_scene_makes_the_material_and_assigns_it_in_one
     );
     assert_eq!(s.assets.materials.get(ROCK_MAT), Some(&expected));
     assert_eq!(s.live.current_toast(), Some("Created material Rock.mat"));
-    // Shown in Asset Files; the scene selection is left alone.
-    assert_eq!(s.project.selected, Some(s.project.root.join(ROCK_MAT)));
-    assert_eq!(s.project.current, s.project.root.join(FOLDER));
+    // Asset Files stays in the folder it showed (several textures can be dragged from it one
+    // after another) and selects nothing outside it; the scene selection is left alone.
+    assert_eq!(s.project.current, folder_before);
+    assert_eq!(s.project.selected, selected_before);
 
     // One step; undo takes the assignment back and leaves the file.
     assert_eq!(s.undo.steps().len(), steps + 1);
@@ -189,6 +195,46 @@ fn the_same_texture_again_reuses_its_material() {
         Outcome::Reused(ROCK_MAT.into())
     );
     assert_eq!(s.undo.steps().len(), 2);
+}
+
+#[test]
+fn asset_files_keeps_its_folder_for_several_drops_and_selects_only_what_it_shows() {
+    let (mut s, e) = state("folder");
+    let wall = "Assets/Textures/Wall.png";
+    texture(&s.project.root, wall);
+    s.refresh_assets();
+    let textures = s.project.root.join("Assets/Textures");
+    s.project.open_folder(textures.clone());
+    s.project.selected = Some(s.project.root.join(ROCK));
+
+    // Two textures from the folder in a row: the folder and its selection stay.
+    let other = cube(&mut s, "Barrel");
+    assert_eq!(
+        drop_on_object(&mut s, e, ROCK),
+        Outcome::Created(ROCK_MAT.into())
+    );
+    assert_eq!(s.project.current, textures);
+    assert_eq!(s.project.selected, Some(s.project.root.join(ROCK)));
+    assert_eq!(
+        drop_on_object(&mut s, other, wall),
+        Outcome::Created("Assets/Materials/Wall.mat".into())
+    );
+    assert_eq!(s.project.current, textures);
+    assert_eq!(s.live.current_toast(), Some("Created material Wall.mat"));
+
+    // Asset Files already shows Assets/Materials: the new material is selected there.
+    let folder = s.project.root.join(FOLDER);
+    s.project.open_folder(folder.clone());
+    let third = cube(&mut s, "Pillar");
+    let moss = "Assets/Other/Moss.png";
+    texture(&s.project.root, moss);
+    s.refresh_assets();
+    assert_eq!(
+        drop_on_object(&mut s, third, moss),
+        Outcome::Created("Assets/Materials/Moss.mat".into())
+    );
+    assert_eq!(s.project.current, folder);
+    assert_eq!(s.project.selected, Some(folder.join("Moss.mat")));
 }
 
 #[test]
