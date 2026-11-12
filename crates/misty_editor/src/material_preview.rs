@@ -83,7 +83,8 @@ pub struct MaterialPreviews {
 impl MaterialPreviews {
     /// Thumbnail of the `.mat` file at `path` (None until rendered or when it can't be read).
     pub fn thumbnail(&mut self, path: &Path) -> Option<egui::TextureId> {
-        let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        // The background file watch's stamp (no `stat` on the main thread every frame).
+        let modified = misty_engine::file_watch::cached_modified(path);
         let t = self.thumbs.entry(path.to_path_buf()).or_insert(Thumb {
             modified: None,
             material: None,

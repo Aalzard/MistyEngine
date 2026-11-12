@@ -32,8 +32,8 @@ pub fn load(path: &Path) -> Option<Arc<ProbeData>> {
             return e.data.clone();
         }
         e.checked = Instant::now();
-        let now = modified(path);
-        if now == e.modified {
+        // The background file watch's stamp first; a difference is checked on disk.
+        if crate::file_watch::cached_modified(path) == e.modified || modified(path) == e.modified {
             return e.data.clone();
         }
     }

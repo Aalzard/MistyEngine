@@ -69,6 +69,8 @@ pub fn valid_name(name: &str) -> Result<(), String> {
 
 /// Rename `from` to `new_stem` (keeping its extension). Returns the new path.
 pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
+    // A save still on its way would write the file back at its old place.
+    misty_engine::asset_db::saver::flush();
     valid_name(new_stem)?;
     // Appended, not `set_extension`: a name with a dot ("Red.v2") would lose its last part.
     let to = match from.extension().filter(|_| from.is_file()) {
@@ -103,6 +105,8 @@ fn move_with_meta(from: &Path, to: &Path) -> Result<(), String> {
 
 /// Move `from` into `folder` (same name). Returns the new path.
 pub fn move_into(from: &Path, folder: &Path) -> Result<PathBuf, String> {
+    // A save still on its way would write the file back at its old place.
+    misty_engine::asset_db::saver::flush();
     if folder.starts_with(from) {
         return Err("A folder cannot be moved into itself.".into());
     }
@@ -119,6 +123,8 @@ pub fn move_into(from: &Path, folder: &Path) -> Result<PathBuf, String> {
 
 /// Copy a file or folder next to itself as "Name 1", "Name 2"… Returns the copy's path.
 pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
+    // A save still on its way would write the file back at its old place.
+    misty_engine::asset_db::saver::flush();
     let dir = from.parent().ok_or("no parent folder")?;
     let stem = from
         .file_stem()
@@ -143,12 +149,16 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
 /// `.meta` files.
 #[cfg(not(test))]
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
+    // A save still on its way would write the file back at its old place.
+    misty_engine::asset_db::saver::flush();
     trash::delete_all(with_metas(paths)).map_err(|e| e.to_string())
 }
 
 /// Tests move "deleted" files into a temp folder instead of filling the user's Recycle Bin.
 #[cfg(test)]
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
+    // A save still on its way would write the file back at its old place.
+    misty_engine::asset_db::saver::flush();
     let bin = std::env::temp_dir().join("misty_test_trash");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
     for p in with_metas(paths) {

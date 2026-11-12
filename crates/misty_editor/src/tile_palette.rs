@@ -102,7 +102,7 @@ pub struct SpriteTextures {
 impl SpriteTextures {
     pub fn get(&mut self, ctx: &egui::Context, texture: &str) -> Option<egui::TextureHandle> {
         let abs = misty_engine::assets::absolute(texture);
-        let modified = std::fs::metadata(&abs).and_then(|m| m.modified()).ok();
+        let modified = misty_engine::file_watch::cached_modified(&abs);
         if let Some((m, t)) = self.cache.get(texture)
             && *m == modified
         {

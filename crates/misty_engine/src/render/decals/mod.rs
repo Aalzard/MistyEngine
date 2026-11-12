@@ -164,8 +164,13 @@ impl GraphAssets {
             return;
         }
         self.last_check = Some(now);
-        self.materials.retain(|p, (t, _)| *t == file_time(p));
-        self.graphs.retain(|p, (t, _)| *t == file_time(p));
+        // The background file watch's stamp first; a difference is checked on disk.
+        let same = |p: &str, t: &Option<std::time::SystemTime>| {
+            *t == crate::file_watch::cached_modified(&crate::assets::absolute(p))
+                || *t == file_time(p)
+        };
+        self.materials.retain(|p, (t, _)| same(p, t));
+        self.graphs.retain(|p, (t, _)| same(p, t));
     }
 
     fn material(&mut self, rel: &str) -> Option<crate::assets::Material> {

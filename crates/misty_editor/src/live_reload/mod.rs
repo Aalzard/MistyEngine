@@ -50,6 +50,7 @@ pub struct Stamp {
 
 /// The file's current stamp (`None` when it doesn't exist).
 pub fn stamp(path: &Path) -> Option<Stamp> {
+    misty_engine::profile_scope!("LiveReload.Stat");
     let m = std::fs::metadata(path).ok()?;
     m.is_file().then(|| Stamp {
         modified: m.modified().ok(),
@@ -167,7 +168,11 @@ pub fn frame(s: &mut EditorState, renderer: Vec<String>) -> bool {
     let mut reloaded = renderer;
     if due {
         s.live.last_poll = Some(Instant::now());
-        scenes::poll(s);
+        {
+            misty_engine::profile_scope!("LiveReload.Scenes");
+            scenes::poll(s);
+        }
+        misty_engine::profile_scope!("LiveReload.Assets");
         reloaded.extend(assets::poll(s));
     }
     report(s, reloaded)

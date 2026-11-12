@@ -27,8 +27,12 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// Pause between two background passes over the watched files.
 pub const PASS: Duration = Duration::from_millis(200);
-/// A file nobody asked about for this long stops being watched.
-const FORGET: Duration = Duration::from_secs(30);
+/// A file nobody asked about for this long, while other files were asked about, stops being
+/// watched. Long, because asking again costs a `stat` on the asker's thread: an object selected
+/// again after half a minute froze the editor for seconds while the project's disk was busy. An idle editor draws no frames and asks about nothing: its files stay watched, or
+/// the first frame after a quiet spell would `stat` every one of them on the main thread
+/// (hundreds of files: seconds while the project's disk is busy).
+const FORGET: Duration = Duration::from_secs(600);
 
 /// What a `stat` says about a path (`None` from the functions below: it doesn't exist).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +68,10 @@ type Waker = Box<dyn Fn() + Send + Sync>;
 struct Watch {
     background: AtomicBool,
     entries: Mutex<HashMap<PathBuf, Entry>>,
+    /// Last time a poller asked about any path.
+    asked: Mutex<Option<Instant>>,
+    /// Tests: forget after this long instead of [`FORGET`].
+    forget: Option<Duration>,
     waker: Mutex<Option<Waker>>,
 }
 
@@ -78,8 +86,12 @@ impl Watch {
     /// Returns true when a stamp changed (the waker was called).
     fn pass(&self) -> bool {
         let paths: Vec<PathBuf> = {
+            let asked = *self.asked.lock().unwrap_or_else(|e| e.into_inner());
+            let forget = self.forget.unwrap_or(FORGET);
             let mut map = self.entries();
-            map.retain(|_, e| e.pinned || e.used.elapsed() < FORGET);
+            map.retain(|_, e| {
+                e.pinned || asked.is_none_or(|a| a.saturating_duration_since(e.used) < forget)
+            });
             map.keys().cloned().collect()
         };
         let fresh: Vec<(PathBuf, Option<Meta>)> = paths
@@ -138,11 +150,17 @@ impl Watch {
         if !self.background.load(Ordering::Relaxed) {
             return metadata(path);
         }
+        let now = Instant::now();
+        *self.asked.lock().unwrap_or_else(|e| e.into_inner()) = Some(now);
         if let Some(e) = self.entries().get_mut(path) {
-            e.used = Instant::now();
+            e.used = now;
             return e.meta;
         }
-        let meta = metadata(path);
+        // The one `stat` on the caller's thread: a path nobody asked about before.
+        let meta = {
+            crate::profile_scope!("FileWatch.FirstStat");
+            metadata(path)
+        };
         self.entries().insert(
             path.to_path_buf(),
             Entry {
@@ -215,6 +233,19 @@ pub fn watched() -> usize {
 mod tests {
     use super::*;
 
+    /// Short, so `Instant::now() - TEST_FORGET * 2` exists on a machine that just started.
+    const TEST_FORGET: Duration = Duration::from_secs(30);
+
+    /// A watch with the background mode on (passes are made by the test).
+    fn watching() -> Watch {
+        let w = Watch {
+            forget: Some(TEST_FORGET),
+            ..Default::default()
+        };
+        w.background.store(true, Ordering::Relaxed);
+        w
+    }
+
     fn temp_file(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("misty-file-watch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -236,8 +267,7 @@ mod tests {
 
     #[test]
     fn cached_stamps_change_on_the_next_pass() {
-        let w = Watch::default();
-        w.background.store(true, Ordering::Relaxed);
+        let w = watching();
         let path = temp_file("watched.txt");
         std::fs::write(&path, "a").unwrap();
         // First ask: stat now.
@@ -259,8 +289,7 @@ mod tests {
 
     #[test]
     fn pinned_paths_stay_watched_and_changes_wake() {
-        let w = Watch::default();
-        w.background.store(true, Ordering::Relaxed);
+        let w = watching();
         let dir = temp_file("pinned_dir");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -271,7 +300,7 @@ mod tests {
         }));
         w.pin(vec![dir.clone()]);
         // Nobody asks for it for a long time: still watched.
-        w.entries().get_mut(&dir).unwrap().used = Instant::now() - FORGET * 2;
+        w.entries().get_mut(&dir).unwrap().used = Instant::now() - TEST_FORGET * 2;
         assert!(!w.pass(), "nothing changed yet");
         assert_eq!(w.entries().len(), 1);
         // A file added in the folder changes the folder's stamp: the pass wakes the editor.
@@ -285,7 +314,7 @@ mod tests {
         }
         // Unpinned and unused: forgotten.
         w.pin(Vec::new());
-        w.entries().get_mut(&dir).unwrap().used = Instant::now() - FORGET * 2;
+        w.entries().get_mut(&dir).unwrap().used = Instant::now() - TEST_FORGET * 2;
         w.pass();
         assert!(w.entries().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
@@ -293,13 +322,37 @@ mod tests {
 
     #[test]
     fn unused_paths_stop_being_watched() {
-        let w = Watch::default();
-        w.background.store(true, Ordering::Relaxed);
+        let w = watching();
         let path = temp_file("forgotten.txt");
         w.cached(&path);
         assert_eq!(w.entries().len(), 1);
-        w.entries().get_mut(&path).unwrap().used = Instant::now() - FORGET * 2;
+        w.entries().get_mut(&path).unwrap().used = Instant::now() - TEST_FORGET * 2;
         w.pass();
         assert!(w.entries().is_empty());
+    }
+
+    #[test]
+    fn an_idle_editor_keeps_its_paths_watched() {
+        let w = watching();
+        let (a, b) = (temp_file("idle_a.txt"), temp_file("idle_b.txt"));
+        w.cached(&a);
+        w.cached(&b);
+        // A quiet spell: nobody asked about anything for a long time.
+        let long_ago = Instant::now() - TEST_FORGET * 2;
+        for e in w.entries().values_mut() {
+            e.used = long_ago;
+        }
+        *w.asked.lock().unwrap() = Some(long_ago);
+        w.pass();
+        assert_eq!(
+            w.entries().len(),
+            2,
+            "nothing is forgotten while nobody asks"
+        );
+        // Frames again, asking only about one of them: the other was last used long before.
+        w.cached(&a);
+        w.pass();
+        assert_eq!(w.entries().len(), 1);
+        assert!(w.entries().contains_key(&a));
     }
 }

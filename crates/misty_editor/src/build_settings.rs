@@ -1101,6 +1101,8 @@ pub fn build_profile_at(s: &mut EditorState, i: usize, run: bool, pick: bool) {
         s.console.warn("Stop Play mode before building.");
         return;
     }
+    // The build reads the project's files: saves still on their way go first.
+    misty_engine::asset_db::saver::flush();
     if s.build_window.job.as_ref().is_some_and(BuildJob::running) {
         s.console.warn("A build is already running.");
         return;

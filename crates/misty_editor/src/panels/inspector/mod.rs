@@ -38,7 +38,7 @@ mod occlusion_editors;
 mod overrides;
 pub(in crate::panels) mod particles;
 mod physics_editors;
-mod physics_material_editor;
+pub(crate) mod physics_material_editor;
 mod post_volume;
 mod post_volume_fx;
 mod post_volume_screen;
@@ -134,8 +134,12 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
     }
     area.show(ui, |ui| {
         card::begin_body(ui);
-        header(ui, state, &targets);
+        {
+            misty_engine::profile_scope!("Inspector.Header");
+            header(ui, state, &targets);
+        }
         if targets.len() == 1 {
+            misty_engine::profile_scope!("Inspector.PrefabRow");
             prefab_overrides::begin(state, e);
             prefab_overrides::prefab_row(ui, state, e);
         } else {
@@ -148,6 +152,11 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
         }
         ui.add_space(6.0);
         for name in shared_components(state, &targets) {
+            // One profiler scope per component card ("Inspector: Mesh Renderer").
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || format!("Inspector: {name}"),
+                Some(misty_engine::profiler::Category::Ui),
+            );
             if name == "Scripts" {
                 editors::script_sections(ui, state, e);
             } else {
@@ -155,8 +164,12 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
             }
         }
         prefab_overrides::removed_components(ui, state);
-        material_previews(ui, state, e);
+        {
+            misty_engine::profile_scope!("Inspector.Material");
+            material_previews(ui, state, e);
+        }
         ui.add_space(8.0);
+        misty_engine::profile_scope!("Inspector.AddComponent");
         editors::add_component_button(ui, state, e);
         prefab_overrides::end();
     });
