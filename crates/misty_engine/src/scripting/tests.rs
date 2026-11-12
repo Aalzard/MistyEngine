@@ -383,6 +383,37 @@ return P
     assert!(logs.iter().any(|(_, t)| t == "fov 50.0"), "{logs:?}");
 }
 
+/// `AudioSource.volume = 0/0` (an AmbienceZones Blend Distance of 0 did this) is refused:
+/// NaN passed the clamp and reached the mixer.
+#[test]
+fn a_nan_audio_source_number_is_refused() {
+    let probe = r#"
+local P = {}
+function P:Start()
+    local src = self.gameObject:GetComponent("AudioSource")
+    src.volume = 0.5
+    for _, f in ipairs({ "volume", "pitch", "spatialBlend", "panStereo" }) do
+        Debug.Log(f .. " " .. tostring(pcall(function() src[f] = 0 / 0 end)))
+    end
+    Debug.Log("volume " .. src.volume)
+end
+return P
+"#;
+    let root = project(&[("P.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Speaker", None);
+    scene.add(e, crate::scene::AudioSource::default());
+    attach(&mut scene, e, "P.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    for f in ["volume", "pitch", "spatialBlend", "panStereo"] {
+        assert!(
+            logs.iter().any(|(_, t)| *t == format!("{f} false")),
+            "{f}: {logs:?}"
+        );
+    }
+    assert!(logs.iter().any(|(_, t)| t == "volume 0.5"), "{logs:?}");
+}
+
 #[test]
 fn instantiate_refuses_paths_outside_the_project() {
     let root = project(&[]);
