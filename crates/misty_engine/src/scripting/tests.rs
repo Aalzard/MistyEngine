@@ -292,6 +292,45 @@ return Ball
 }
 
 #[test]
+fn instantiate_refuses_paths_outside_the_project() {
+    let root = project(&[]);
+    // A prefab next to the project folder, and one at an absolute path.
+    let mut asset = Scene::new("asset");
+    let thing = asset.spawn("Outside", None);
+    let prefab = crate::scene::prefab::Prefab::from_scene(&asset, thing);
+    let outside = root.with_extension("outside.prefab");
+    prefab.save(&outside).unwrap();
+    let up = format!("../{}", outside.file_name().unwrap().to_string_lossy());
+    let abs = outside.to_string_lossy().replace('\\', "/");
+    let spawner = format!(
+        r#"
+local Spawner = {{}}
+function Spawner:Start()
+    for _, p in ipairs({{ "{up}", "Assets/../{up}", "{abs}" }}) do
+        local ok = pcall(Instantiate, p)
+        Debug.Log("instantiate", tostring(ok))
+    end
+end
+return Spawner
+"#
+    );
+    std::fs::write(root.join("Assets/Scripts/Spawner.lua"), spawner).unwrap();
+    let mut scene = Scene::new("t");
+    let s = scene.spawn("Spawner", None);
+    attach(&mut scene, s, "Spawner.lua", &[]);
+    let logs = run(&mut scene, root, 2, Input::default());
+    let _ = std::fs::remove_file(&outside);
+    assert_eq!(
+        logs.iter()
+            .filter(|(_, t)| t == "instantiate false")
+            .count(),
+        3,
+        "{logs:?}"
+    );
+    assert!(scene.find_by_name("Outside(Clone)").is_none());
+}
+
+#[test]
 fn scene_manager_and_application_requests() {
     let root = project(&[(
         "Loader.lua",

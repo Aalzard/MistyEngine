@@ -1998,6 +1998,12 @@ impl ScriptHost {
                     log(
                         w,
                         LogKind::Info,
+                    if let Some(Err(e)) =
+                        load.as_ref().map(|p| crate::vfs::project_file(&w.root, p))
+                    {
+                        log(w, LogKind::Error, format!("Network: server scene {e}"));
+                        return;
+                    }
                         format!("Network: connected as client {client_id}"),
                     );
                 });
@@ -2023,6 +2029,11 @@ impl ScriptHost {
             Inbound::SyncDone => {
                 self.with_world(|w| {
                     // Scene objects the server no longer has go away here too.
+                let bad = self.with_world(|w| crate::vfs::project_file(&w.root, &path).err());
+                if let Some(e) = bad {
+                    self.log(LogKind::Error, format!("Network: server scene {e}"));
+                    return;
+                }
                     let bound: HashSet<Entity> = w.network.by_entity.keys().copied().collect();
                     for (e, _) in scene_keys(&w.scene) {
                         if !bound.contains(&e) {

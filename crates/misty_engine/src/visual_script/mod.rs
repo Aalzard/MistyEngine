@@ -205,8 +205,8 @@ pub struct FileResolver(pub std::path::PathBuf);
 
 impl Resolver for FileResolver {
     fn load(&self, path: &str) -> Result<ScriptGraph, String> {
-        let text =
-            crate::vfs::read_to_string(self.0.join(path)).map_err(|e| format!("{path}: {e}"))?;
+        let file = crate::vfs::project_file(&self.0, path)?;
+        let text = crate::vfs::read_to_string(file).map_err(|e| format!("{path}: {e}"))?;
         ScriptGraph::from_json(&text).map_err(|e| format!("{path}: {e}"))
     }
 }

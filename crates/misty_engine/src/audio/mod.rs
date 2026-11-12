@@ -205,7 +205,15 @@ impl Audio {
         params: VoiceParams,
         track: Option<TrackId>,
     ) -> Option<VoiceId> {
-        let path = self.root.join(clip);
+        let path = match crate::vfs::project_file(&self.root, clip) {
+            Ok(p) => p,
+            Err(e) => {
+                if self.bad_clips.insert(clip.to_owned()) {
+                    self.logs.push(format!("Audio clip {clip}: {e}"));
+                }
+                return None;
+            }
+        };
         let paused = self.paused;
         let backend = self.backend()?;
         match backend.play(&path, params, track) {

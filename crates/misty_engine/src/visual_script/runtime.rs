@@ -188,7 +188,8 @@ impl GraphRuntime {
         if let Some(p) = self.programs.get(path) {
             return p.clone();
         }
-        let compiled = ScriptGraph::load(&root.join(path))
+        let compiled = crate::vfs::project_file(root, path)
+            .and_then(|file| ScriptGraph::load(&file))
             .map_err(|e| vec![format!("{path}: {e}")])
             .and_then(|g| {
                 super::compile(&g, &FileResolver(root.to_path_buf())).map_err(|errs| {

@@ -674,7 +674,9 @@ pub fn apply(scene: &mut Scene, data: &SaveData, root: &Path) -> Applied {
             .and_then(|g| g.parse().ok())
             .and_then(crate::asset_db::path_of)
             .unwrap_or_else(|| s.prefab.clone());
-        let prefab = match crate::scene::prefab::Prefab::load(&root.join(&path)) {
+        let loaded = crate::vfs::project_file(root, &path)
+            .and_then(|file| crate::scene::prefab::Prefab::load(&file));
+        let prefab = match loaded {
             Ok(p) => p,
             Err(e) => {
                 out.warnings.push(format!("spawned '{}': {e}", s.name));

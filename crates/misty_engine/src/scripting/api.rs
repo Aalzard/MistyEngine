@@ -983,7 +983,8 @@ enum Source {
 fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
     let e = match source {
         Source::Prefab(path) => {
-            let prefab = Prefab::load(&w.root.join(&path)).map_err(mlua::Error::runtime)?;
+            let file = crate::vfs::project_file(&w.root, &path).map_err(mlua::Error::runtime)?;
+            let prefab = Prefab::load(&file).map_err(mlua::Error::runtime)?;
             // Runtime copies are plain objects, not linked instances.
             let e = w.scene.instantiate_prefab(&prefab, None, None);
             // Save games recreate it from its prefab.

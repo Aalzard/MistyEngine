@@ -223,7 +223,7 @@ impl InputSystem {
     }
 
     pub(super) fn load_asset(&self, path: &str) -> Result<InputActionAsset, String> {
-        InputActionAsset::load(&self.root.join(path))
+        InputActionAsset::load(&crate::vfs::project_file(&self.root, path)?)
     }
 
     /// The shared copy of an asset (`InputActions.Load`): every caller gets the same set.
