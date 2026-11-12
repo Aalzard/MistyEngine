@@ -344,10 +344,8 @@ fn localization_demo2_plays_in_three_languages() {
     use misty_engine::scripting::{Input, LogKind};
     use misty_engine::settings::ProjectSettings;
 
-    let _lock = misty_engine::localization::TEST_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    misty_engine::localization::reset_session();
+    // Restores the session locale and its PlayerPref when the test ends (even on failure).
+    let _session = misty_engine::localization::test_session();
     let root = project();
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     scene.set_scene_path(0, SCENE);
@@ -437,5 +435,4 @@ fn localization_demo2_plays_in_three_languages() {
 
     let problems: Vec<_> = logs.iter().filter(|(k, _)| *k != LogKind::Info).collect();
     assert!(problems.is_empty(), "{problems:?}");
-    misty_engine::localization::reset_session();
 }

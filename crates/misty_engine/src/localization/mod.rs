@@ -7,8 +7,8 @@
 //! - [`LocalizedText`]: drives the UI Text on its object from a key and arguments, and follows
 //!   locale changes. It only writes the Text's string, so it works with any text rendering.
 //!
-//! The current locale belongs to the running game session (it survives scene loads): see
-//! [`session_locale`] / [`set_session_locale`]. Choosing one also stores it in PlayerPrefs, so
+//! The current locale belongs to the running game session (it survives scene loads; one per
+//! thread, the thread that runs the game): see [`session_locale`] / [`set_session_locale`]. Choosing one also stores it in PlayerPrefs, so
 //! the "saved preference" startup mode can restore it next time.
 
 pub mod case;
@@ -17,9 +17,9 @@ pub mod table;
 #[cfg(test)]
 mod tests;
 
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -109,31 +109,36 @@ impl Default for LocalizationSettings {
 
 // ---- the session's locale ------------------------------------------------------------------
 
-static SESSION: Mutex<Option<String>> = Mutex::new(None);
-static GENERATION: AtomicU64 = AtomicU64::new(1);
+thread_local! {
+    // One game runs on one thread (the player's main thread, the editor's UI thread for Play):
+    // the locale is that thread's, so games run side by side (tests, one thread each) never
+    // switch each other's language. Same as the editor UI language (`i18n`).
+    static SESSION: RefCell<Option<String>> = const { RefCell::new(None) };
+    static GENERATION: Cell<u64> = const { Cell::new(1) };
+}
 
-/// Tests that change the session locale hold this.
+/// Tests that change the session locale or its PlayerPrefs key hold this (see [`TestSession`]).
 #[doc(hidden)]
 pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// The locale chosen in this game session (`None` until a game picks one).
 pub fn session_locale() -> Option<String> {
-    SESSION.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    SESSION.with(|s| s.borrow().clone())
 }
 
 /// Change the session's locale (and remember it in PlayerPrefs). Returns whether it changed.
 pub fn set_session_locale(code: &str) -> bool {
-    let changed = {
-        let mut s = SESSION.lock().unwrap_or_else(|e| e.into_inner());
+    let changed = SESSION.with(|s| {
+        let mut s = s.borrow_mut();
         if s.as_deref() == Some(code) {
             false
         } else {
             *s = Some(code.to_owned());
             true
         }
-    };
+    });
     if changed {
-        GENERATION.fetch_add(1, Ordering::Relaxed);
+        GENERATION.with(|g| g.set(g.get() + 1));
         crate::prefs::set(PREF_KEY, crate::prefs::PrefValue::String(code.to_owned()));
     }
     changed
@@ -141,18 +146,47 @@ pub fn set_session_locale(code: &str) -> bool {
 
 /// Set the startup locale without counting it as a change.
 fn init_session_locale(code: &str) {
-    *SESSION.lock().unwrap_or_else(|e| e.into_inner()) = Some(code.to_owned());
+    SESSION.with(|s| *s.borrow_mut() = Some(code.to_owned()));
 }
 
 /// Forget the session's locale: the next game picks one with its startup mode (editor Play).
 pub fn reset_session() {
-    *SESSION.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    GENERATION.fetch_add(1, Ordering::Relaxed);
+    SESSION.with(|s| *s.borrow_mut() = None);
+    GENERATION.with(|g| g.set(g.get() + 1));
 }
 
-/// Bumped on every locale change (cheap "did it change?" checks).
+/// Bumped on every locale change on this thread (cheap "did it change?" checks).
 pub fn generation() -> u64 {
-    GENERATION.load(Ordering::Relaxed)
+    GENERATION.with(Cell::get)
+}
+
+/// For tests that switch locales: holds [`TEST_LOCK`], starts with no session locale, and on
+/// drop forgets the session locale and puts back the saved-locale PlayerPref, so a later
+/// "saved preference" game in the same process doesn't start in the language a test left.
+#[doc(hidden)]
+pub struct TestSession {
+    saved: Option<crate::prefs::PrefValue>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[doc(hidden)]
+pub fn test_session() -> TestSession {
+    let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    reset_session();
+    TestSession {
+        saved: crate::prefs::get(PREF_KEY),
+        _lock: lock,
+    }
+}
+
+impl Drop for TestSession {
+    fn drop(&mut self) {
+        reset_session();
+        match self.saved.take() {
+            Some(v) => crate::prefs::set(PREF_KEY, v),
+            None => crate::prefs::delete_key(PREF_KEY),
+        }
+    }
 }
 
 /// The operating system's language ("fr-FR"), when it can be found.

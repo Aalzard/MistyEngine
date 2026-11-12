@@ -159,9 +159,56 @@ fn smart_strings_fill_arguments_and_plurals() {
     assert_eq!(format("{0:lower}", &a(&["IŞIK"]), "tr"), "ışık");
 }
 
+/// Each thread has its own session locale: a game (or test) switching language on one thread
+/// never changes it under a game on another (the cause of a flaky SaveLocDemo test that saw
+/// Arabic text another test had picked), and the test guard puts the saved locale back.
+#[test]
+fn the_session_locale_belongs_to_one_thread() {
+    let session = test_session();
+    let _prefs = crate::prefs::TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let before = crate::prefs::get(PREF_KEY);
+    set_session_locale("fr");
+    let other = std::thread::spawn(|| {
+        let seen = session_locale();
+        let g = generation();
+        set_session_locale("ar");
+        (seen, g, session_locale())
+    })
+    .join()
+    .unwrap();
+    assert_eq!(other.0, None, "a new thread starts without a locale");
+    assert_eq!(other.2.as_deref(), Some("ar"));
+    assert_eq!(
+        session_locale().as_deref(),
+        Some("fr"),
+        "not switched by the other thread"
+    );
+    let g = generation();
+    std::thread::spawn(|| {
+        reset_session();
+        set_session_locale("es");
+    })
+    .join()
+    .unwrap();
+    assert_eq!(
+        generation(),
+        g,
+        "other threads' changes don't count as changes here"
+    );
+    drop(session);
+    assert_eq!(session_locale(), None);
+    assert_eq!(
+        crate::prefs::get(PREF_KEY),
+        before,
+        "the saved locale is put back"
+    );
+}
+
 #[test]
 fn startup_modes_pick_a_locale() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _session = test_session();
     let _prefs = crate::prefs::TEST_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -200,7 +247,7 @@ fn localized_text_updates_on_locale_change() {
     use crate::scripting::{Input, LogKind};
     use crate::settings::ProjectSettings;
 
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _session = test_session();
     let n = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
