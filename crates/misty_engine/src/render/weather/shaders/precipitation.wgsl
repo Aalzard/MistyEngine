@@ -498,7 +498,7 @@ fn bend_curve(y: f32, shape: f32) -> f32 {
 // Circle of confusion (px) of a point `dist` metres away for a lens focused far off.
 fn defocus_px(dist: f32) -> f32 {
     let c = pr.sizes.y * pr.rain3.y * max(1.0 / max(dist, 0.05) - 1.0 / 14.0, 0.0);
-    return min(c, pr.sizes.y * 0.07);
+    return min(c, pr.sizes.y * 0.05);
 }
 
 @vertex
@@ -587,7 +587,9 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     // sway turn it, so the streak bows or snakes a little (most in turbulent wind, least for
     // the big heavy drops). Out of focus the bend is lost in the blur.
     let bend_share = (0.012 + 0.03 * r2.x * r2.x) * (1.0 - big * 0.5) * (0.8 + pr.rain3.x * 1.0) * (1.0 - soft * 0.8);
-    let bend_px = min(len * bend_share, 2.0 + w * 0.6) * select(-1.0, 1.0, r.y > 0.5);
+    // Kept small across the drop: the quad widens by twice the bend, and wide blurred near
+    // drops are where the fill cost is.
+    let bend_px = min(len * bend_share, 1.5 + w * 0.2) * (1.0 - smoothstep(0.3, 0.7, soft)) * select(-1.0, 1.0, r.y > 0.5);
     let w_draw = w + 2.0 * abs(bend_px);
     let s = mix(sh, st, corner.y) + perp * corner.x * w_draw * 0.5 + d * (corner.y * 2.0 - 1.0) * w * 0.5;
     var out: DropOut;

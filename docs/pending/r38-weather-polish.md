@@ -93,7 +93,17 @@ says exactly where it stands.
 - Note: a `cargo.sh … build8.log` chain left by the first agent was still queued for a slot
   and ran at 23:30 (engine test build): harmless, it builds the current worktree.
 
-## State at hand-over (HEAD = the commit that adds this file, on top of `4f03492c`)
+## Status 2026-11-12 (second agent, end of round)
+- All ten steps done. Full workspace tests passed on E: (editor 872, engine 1466, others);
+  clippy 0 warnings; fmt clean; golden_shots passed under the GPU lock (the golden set has
+  no weather, so the later composite-only tuning can't change it). WeatherDemo regenerated.
+- GPU table and screenshot list: docs/progress.md, Round 38. Rain is 0.1-0.35 ms over the
+  r34 composite (most of it was already in the first agent's lens/DoF shaders).
+- The final composite tweak (narrower bend on wide drops, blur disc cap 5 %) was timed and
+  rendered with the shaders hot-loaded into the built test binary; the binary itself was
+  built one commit earlier (shader text only differs).
+
+## State at first hand-over (HEAD was the commit that added this file, on top of `4f03492c`)
 - Nothing is running; no build slot and no GPU lock is held.
 - **`4f03492c` is not built or rendered**: it holds the coordinator's three review fixes
   (roof blotches → a `Weather Roof` material and a lower film gloss cap; white tufts on the

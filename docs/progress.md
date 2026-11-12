@@ -3805,5 +3805,30 @@ MCP and the renderer; the bug list, routing and status per bug are in
 - `weather_screenshots` takes `MISTY_WEATHER_OUT` / `MISTY_WEATHER_SHOTS`, `weather_demo`
   takes `MISTY_WEATHER_SCENE`; tests can read the composite shaders from disk
   (`MISTY_WEATHER_SHADERS`) to tune the look without rebuilding.
-- **GPU cost and screenshots: not measured yet** (hand-over mid-round; see
-  docs/pending/r38-weather-polish.md for the baseline numbers and the steps left).
+- **GPU cost** (`weather_gpu_timings`, weather composite pass, r34's WeatherDemo view so the
+  numbers compare; the machine was busy with other builds, so ±0.1 ms is noise):
+
+  | Weather | r34 (2026-11-11) | r38 first agent's shaders | r38 final (two runs) |
+  |---|---|---|---|
+  | Heavy Rain | 1.137 ms | 1.250 ms | 1.252 / 1.313 ms |
+  | Downpour | 1.575 ms | 1.854 ms | 1.880 / 1.948 ms |
+  | Thunderstorm | 1.250 ms | 1.466 ms | 1.530 / 1.476 ms |
+  | Blizzard + snow cover | 1.215 ms | 0.772 ms | 0.776 / 0.914 ms |
+
+  Rain costs 0.1–0.35 ms more than r34 (the lens look: blurred-scene reads, depth of field
+  on the near drops, bent streaks); snow is cheaper. The bend is kept narrow on wide blurred
+  drops and the blur disc is capped at 5 % of the picture height to hold it there. The r34
+  binary could not be re-run the same day (its copy was on the failing D: drive), so the
+  r34 column is the day before's measurement. On the new WeatherDemo view (terrain, oak
+  wood) the occlusion map with crowns costs 0.061 ms.
+- **Screenshots** (`docs/screenshots/r38/`): `before_light_rain.jpg` and
+  `before_downpour_mist_splashes.jpg` (r34) against `light_rain.jpg` and `downpour.jpg`;
+  `rain_near_drops.jpg`, `rain_against_sky.jpg`, `rain_looking_down.jpg`,
+  `thunderstorm_looking_down.jpg`, `thunderstorm_night.jpg`, `thunderstorm_night_flash.jpg`,
+  `thunderstorm_day.jpg`, `rain_night_lamp.jpg`, `rain_lamp_day.jpg`, `sleet.jpg`,
+  `wet_lane_puddles.jpg`, `rain_lens_drops.jpg`, `rain.jpg`, `clear.jpg`, snow:
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`, `snow_night_lamp.jpg`.
+- **Not real yet**: near drops are still billboards (no true refraction of the 3D scene, only
+  the flipped blurred screen); puddle reflections are softened, not fixed (the hard edges
+  come from the screen-space reflection / probes); tree crowns block rain as solid
+  ellipsoids (no drip, no thinning); no Inspector values for the bead shape or blur.
