@@ -149,13 +149,13 @@ fn append(list: u32, t: Tree, fade: f32) {
 }
 
 // Share (0..1) of the way to the next level at distance `d` for a switch at `edge`, with a
-// cross-fade band of `width` × `edge` just beyond it (render/lod.rs `distance_fade`).
+// cross-fade band of `width` × `edge` just before it (render/lod.rs `distance_fade`).
 fn fade_at(d: f32, edge: f32, width: f32) -> f32 {
-    let band = max(width, 0.0) * edge;
+    let band = clamp(width, 0.0, 0.9) * edge;
     if (band <= 0.0) {
         return select(0.0, 1.0, d >= edge);
     }
-    return clamp((d - edge) / band, 0.0, 1.0);
+    return clamp((d - (edge - band)) / band, 0.0, 1.0);
 }
 
 // A tree at level `level` (fade 0), or inside a band the outgoing level with its share and
@@ -207,7 +207,7 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
         let w = params.occlusion.w;
         let a = fade_at(dist, params.lod.x * k, w);
         let bb = fade_at(dist, params.lod.y * k, w);
-        let far = fade_at(dist, draw / (1.0 + w), w);
+        let far = fade_at(dist, draw, w);
         if (a < 1.0) {
             append_pair(proto, 0u, 1u, a, t);
         } else if (bb < 1.0) {

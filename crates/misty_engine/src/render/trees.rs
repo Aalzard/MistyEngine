@@ -81,8 +81,8 @@ const TREE_PREPASS_SRC: &str = concat!(
 );
 
 /// The cross-fade band of a terrain's trees: Tree Rendering ▸ LOD Fade (a share of each switch
-/// distance, just beyond it), 0 while cross-fades are off ([`super::lod::fades`]). Inside it a
-/// tree draws both levels (full mesh / lighter mesh / impostor, or fades out at the draw
+/// distance, just before it: the switch completes there), 0 while cross-fades are off
+/// ([`super::lod::fades`]). Inside it a tree draws both levels (full mesh / lighter mesh / impostor, or fades out at the draw
 /// distance) through the shared ordered dither, which TAA's jitter moves every frame (the
 /// interleaved-noise dither used before read as a hatch pattern around the crowns).
 pub(super) fn tree_fade(s: &crate::terrain::trees::TreeSettings) -> f32 {
@@ -109,7 +109,7 @@ pub(super) fn levels_at(
     let mut chosen: [(usize, f32); 2] = [(usize::MAX, 0.0); 2];
     let a = distance_fade(dist, lod_d, w);
     let b = distance_fade(dist, bb_d, w);
-    let far = distance_fade(dist, draw_d / (1.0 + w), w);
+    let far = distance_fade(dist, draw_d, w);
     let pair = |level: usize, x: f32, next: Option<usize>| -> [(usize, f32); 2] {
         if x <= 0.0 {
             return [(level, 0.0), (usize::MAX, 0.0)];
@@ -1295,9 +1295,11 @@ impl TreeRenderer {
             }
             let lod_d = s.lod_distance * f.lod_bias.max(0.1);
             let fade_w = tree_fade(s);
-            // The impostor switch stays past the first cross-fade band.
-            let bb_d =
-                s.billboard_start.max(lod_d * (1.05 + fade_w).max(1.25)) * f.lod_bias.max(0.1);
+            // The impostor band starts past the first switch.
+            let bb_d = s
+                .billboard_start
+                .max(lod_d * (1.05 / (1.0 - fade_w.min(0.5))).max(1.25))
+                * f.lod_bias.max(0.1);
             let draw_d = s.draw_distance;
             if gpu_cull {
                 crate::profile_scope!("Trees.GpuCull");

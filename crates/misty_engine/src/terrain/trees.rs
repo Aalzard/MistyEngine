@@ -69,7 +69,7 @@ pub struct TreeSettings {
     /// Meshes up to here, billboards (impostors) beyond (metres, × the LOD bias).
     pub billboard_start: f32,
     /// Cross-fade band at each switch (lighter mesh, impostor, draw distance) as a share of its
-    /// distance, just beyond it (0 = switch at once). Terrains saved before it existed get the
+    /// distance, just before it (0 = switch at once). Terrains saved before it existed get the
     /// default; it is written only when changed.
     #[serde(
         default = "default_lod_fade",
