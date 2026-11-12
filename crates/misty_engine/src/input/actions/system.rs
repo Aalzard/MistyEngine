@@ -216,6 +216,11 @@ impl InputSystem {
         self.sets.get_mut(id)?.as_mut()
     }
 
+    /// Sets that exist (loaded, instantiated or made in code, not yet dropped).
+    pub fn live_sets(&self) -> usize {
+        self.sets.iter().flatten().count()
+    }
+
     /// Add a set made in code; returns its id.
     pub fn add_set(&mut self, set: ActionSet) -> usize {
         self.sets.push(Some(set));
@@ -278,10 +283,18 @@ impl InputSystem {
             .collect();
         for i in gone.into_iter().rev() {
             let p = self.players.remove(i);
-            if let Some(set) = self.set_mut(p.set) {
-                set.set_all_enabled(false);
+            if self.shared.values().any(|s| *s == p.set) {
+                if let Some(set) = self.set_mut(p.set) {
+                    set.set_all_enabled(false);
+                }
+            } else if let Some(slot) = self.sets.get_mut(p.set) {
+                // A player's own copy: nobody else uses it, and the next start makes a new
+                // one (keeping it would add a set per respawn, each updated every frame).
+                *slot = None;
             }
         }
+        // Players that failed to start and are gone may be new objects next time.
+        self.failed.retain(|f| present.iter().any(|(e, _)| e == f));
         for (e, c) in &present {
             if before.contains(e) || self.failed.contains(e) {
                 continue;
