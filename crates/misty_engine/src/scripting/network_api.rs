@@ -351,6 +351,20 @@ pub fn scene_keys(scene: &Scene) -> Vec<(Entity, String)> {
     out
 }
 
+/// `addr` with port `port`: replaces a port already in it ("host:7777" → "host:9000"; IPv6
+/// literals keep their brackets).
+fn with_port(addr: &str, port: u16) -> String {
+    let host = match addr.rsplit_once(':') {
+        Some((h, p)) if p.parse::<u16>().is_ok() && (!h.contains(':') || h.ends_with(']')) => h,
+        _ => addr,
+    };
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 fn log(w: &mut World, kind: LogKind, text: impl Into<String>) {
     w.logs.push((kind, text.into()));
 }
@@ -935,7 +949,7 @@ impl UserData for LNetwork {
                     if addr.is_empty() {
                         addr = with_world(lua, |w| manager_of(&w.scene).address)?;
                     }
-                    addr = format!("{addr}:{p}");
+                    addr = with_port(&addr, p);
                 }
                 start_from_lua(lua, AutoStart::Client(addr))
             },
@@ -1984,6 +1998,12 @@ impl ScriptHost {
                 self.with_world(|w| {
                     let here = w.scene.active_path();
                     let load = scene.filter(|p| Some(p) != here.as_ref());
+                    if let Some(Err(e)) =
+                        load.as_ref().map(|p| crate::vfs::project_file(&w.root, p))
+                    {
+                        log(w, LogKind::Error, format!("Network: server scene {e}"));
+                        return;
+                    }
                     match load {
                         Some(path) => {
                             w.network.phase = ClientPhase::LoadingScene;
@@ -1998,12 +2018,6 @@ impl ScriptHost {
                     log(
                         w,
                         LogKind::Info,
-                    if let Some(Err(e)) =
-                        load.as_ref().map(|p| crate::vfs::project_file(&w.root, p))
-                    {
-                        log(w, LogKind::Error, format!("Network: server scene {e}"));
-                        return;
-                    }
                         format!("Network: connected as client {client_id}"),
                     );
                 });
@@ -2015,6 +2029,11 @@ impl ScriptHost {
                 );
             }
             Inbound::LoadScene(path) => {
+                let bad = self.with_world(|w| crate::vfs::project_file(&w.root, &path).err());
+                if let Some(e) = bad {
+                    self.log(LogKind::Error, format!("Network: server scene {e}"));
+                    return;
+                }
                 let ids =
                     self.with_world(|w| w.network.objects.keys().copied().collect::<Vec<_>>());
                 for id in ids {
@@ -2029,11 +2048,6 @@ impl ScriptHost {
             Inbound::SyncDone => {
                 self.with_world(|w| {
                     // Scene objects the server no longer has go away here too.
-                let bad = self.with_world(|w| crate::vfs::project_file(&w.root, &path).err());
-                if let Some(e) = bad {
-                    self.log(LogKind::Error, format!("Network: server scene {e}"));
-                    return;
-                }
                     let bound: HashSet<Entity> = w.network.by_entity.keys().copied().collect();
                     for (e, _) in scene_keys(&w.scene) {
                         if !bound.contains(&e) {
@@ -2615,5 +2629,18 @@ impl ScriptHost {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    #[test]
+    fn a_port_replaces_the_one_in_the_address() {
+        use super::with_port;
+        assert_eq!(with_port("example.com", 7777), "example.com:7777");
+        assert_eq!(with_port("example.com:7777", 9000), "example.com:9000");
+        assert_eq!(with_port("127.0.0.1:1", 2), "127.0.0.1:2");
+        assert_eq!(with_port("[::1]:7777", 9000), "[::1]:9000");
+        assert_eq!(with_port("::1", 9000), "[::1]:9000");
     }
 }
