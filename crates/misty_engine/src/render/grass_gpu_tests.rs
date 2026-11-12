@@ -10,7 +10,7 @@ use glam::Vec3;
 
 use crate::quality::QualityLevel;
 use crate::render::gpu_tests::{headless, read_back};
-use crate::render::{RenderTarget, Renderer};
+use crate::render::{Frame, RenderTarget, Renderer};
 use crate::render_scene::GameView;
 use crate::scene::{Light, Scene, Transform};
 use crate::terrain::TerrainDraw;
@@ -630,8 +630,27 @@ pub(in crate::render) fn breakdown(
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
+    // `MISTY_GRASS_CLOCK=1`: the wind's clock runs (1/60 s a frame), so the grass passes pay
+    // for their motion vectors as in play (the views hold the clock still by default).
+    let clock = std::env::var("MISTY_GRASS_CLOCK").is_ok_and(|v| v == "1");
+    let mut environment = frame.environment.clone();
+    let start = environment.grass_time.unwrap_or(0.0);
+    let mut tick = 0u32;
+    let mut render = |r: &mut Renderer| {
+        if clock {
+            tick += 1;
+            environment.grass_time = Some(start + tick as f32 / 60.0);
+            let moving = Frame {
+                environment: &environment,
+                ..view.frame()
+            };
+            r.render(device, queue, &target, &moving);
+        } else {
+            r.render(device, queue, &target, &frame);
+        }
+    };
     for i in 0..settle + 60 {
-        r.render(device, queue, &target, &frame);
+        render(&mut r);
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
         if i >= settle {
             if let Some(ms) = r.gpu_ms() {
@@ -644,7 +663,7 @@ pub(in crate::render) fn breakdown(
     let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
     if r.set_pass_timing(device, queue, true) {
         for _ in 0..60 {
-            r.render(device, queue, &target, &frame);
+            render(&mut r);
             let mut seen: Vec<(&'static str, f32)> = Vec::new();
             for &(label, ms) in r.pass_times() {
                 match seen.iter_mut().find(|(l, _)| *l == label) {

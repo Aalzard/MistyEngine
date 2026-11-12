@@ -10,7 +10,8 @@
 //
 // Core WebGPU can't multisample integer targets: the blade id goes into an R32Float target
 // as raw bits (bit 30 set, so it is never a denormal or NaN), the triangle and facing into
-// an Rgba16Float target whose alpha is the coverage (alpha to coverage reads target 0).
+// an Rgba8Unorm target whose alpha is the coverage (alpha to coverage reads target 0). Four
+// bytes a sample, not eight: the raster and the resolve move a third less memory.
 
 // Visibility id: bit 30 set, terrain (draw.z, 3 bits) at 24, page at 21, index in the page.
 fn grass_vis_id(entry: u32) -> u32 {
@@ -81,7 +82,8 @@ fn vis_out(vi: u32, ii: u32, b: BladeIn) -> VisOut {
 }
 
 struct VisTargets {
-    // x = first vertex of the triangle, y = 1 front / -1 back face, w = coverage.
+    // x = first vertex of the triangle / 255 (`vis_tri`), y = 1 front / 0 back face,
+    // w = coverage.
     @location(0) card: vec4<f32>,
     // `grass_vis_id` as raw bits.
     @location(1) id: f32,
@@ -101,7 +103,7 @@ fn fs_grass_vis(in: VisOut, @builtin(front_facing) front: bool) -> VisTargets {
         discard;
     }
     var out: VisTargets;
-    out.card = vec4<f32>(f32(in.tri), select(-1.0, 1.0, front), 0.0, coverage);
+    out.card = vec4<f32>(f32(in.tri) / 255.0, select(0.0, 1.0, front), 0.0, coverage);
     out.id = bitcast<f32>(in.id);
     return out;
 }
@@ -219,10 +221,16 @@ fn vis_card_uv(a: GrassOut, b: GrassOut, c: GrassOut, m: vec3<f32>) -> vec2<f32>
     return a.uv.xy * m.x + b.uv.xy * m.y + c.uv.xy * m.z;
 }
 
-// Shade the blade `id` seen through triangle `card.x` at pixel `px`.
+// The first vertex of the triangle a card texel names (vertex indices stay under 255: a card
+// has ten vertices, a coarse one starts at 100).
+fn vis_tri(card: vec4<f32>) -> u32 {
+    return u32(round(card.x * 255.0));
+}
+
+// Shade the blade `id` seen through triangle `vis_tri(card)` at pixel `px`.
 fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
     let b = vis_blade(id);
-    let tri = u32(card.x);
+    let tri = vis_tri(card);
     // The triangle's three vertices as the vertex stage made them (`grass_vertex`), the
     // blade's shared work done once per wind time.
     let now = grass_blade_frame(b, grass.origin.w);
@@ -259,7 +267,7 @@ fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
     let leaf = grass_atlas_uv(in.uv.xy);
     var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, i32(leaf.w), gx, gy);
     tex.a *= leaf.z;
-    var out = grass_lit(in, card.y > 0.0, tex, leaf.xy, gx, gy, card.w);
+    var out = grass_lit(in, card.y > 0.5, tex, leaf.xy, gx, gy, card.w);
     out.velocity = velocity_of(in.clip, in.clip_prev);
     return out;
 }
