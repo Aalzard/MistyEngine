@@ -718,6 +718,16 @@ fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainD
                 "",
                 false,
             );
+            ch |= kit::slider(
+                ui,
+                &tr!("Occlusion"),
+                &tr!("Sky light reaching this layer: 1 on open ground, lower under a canopy"),
+                &mut layer.occlusion,
+                0.0..=1.0,
+                def.occlusion,
+                "",
+                false,
+            );
         },
     );
     if ch {

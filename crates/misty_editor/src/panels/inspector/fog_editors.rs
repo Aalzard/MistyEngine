@@ -94,6 +94,11 @@ pub fn fog_override(ui: &mut Ui, f: &mut FogOverride) -> bool {
         ui.add(Slider::new(&mut f.ambient_dimmer, 0.0..=1.0))
             .changed()
     });
+    ch |= row(ui, "Sky Haze", |ui| {
+        ui.add(Slider::new(&mut f.sky_haze, 0.0..=1.0))
+            .on_hover_text("Far fog takes the horizon sky's colour (aerial perspective)")
+            .changed()
+    });
     ch |= row(ui, "Volumetric", |ui| {
         ui.checkbox(&mut f.volumetric, "").changed()
     });

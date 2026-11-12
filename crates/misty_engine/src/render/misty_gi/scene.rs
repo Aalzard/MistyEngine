@@ -257,60 +257,222 @@ fn terrain_height(d: &crate::terrain::TerrainData, u: f32, v: f32) -> f32 {
     top * (1.0 - fz) + bottom * fz
 }
 
-/// Trunk and crown proxies of a terrain's trees.
-fn tree_instances(t: &crate::terrain::TerrainDraw, out: &mut Vec<Instance>) {
-    let d = &t.data;
-    let protos: Vec<Option<std::sync::Arc<crate::trees::store::Built>>> = d
-        .trees
-        .prototypes
-        .iter()
-        .map(|p| crate::trees::store::get(&p.tree))
-        .collect();
-    for inst in &d.trees.instances {
-        let Some(Some(built)) = protos.get(inst.prototype as usize) else {
-            continue;
-        };
-        let a = &built.asset;
-        let foot = t.position
-            + Vec3::new(
+/// Trees lower than this get no proxy (ferns and groundcover: too small to matter for the
+/// clipmaps' voxels, and a forest's undergrowth outnumbers its trees).
+const MIN_PROXY_HEIGHT: f32 = 1.5;
+/// Side of the square cells a terrain's tree proxies are bucketed in (metres).
+const PROXY_CELL: f32 = 64.0;
+
+type Protos = Vec<Option<std::sync::Arc<crate::trees::store::Built>>>;
+
+/// A terrain's tree proxies (a trunk capsule and a crown ellipsoid each), built once per
+/// terrain data, position and prototype set and bucketed in square cells, so a frame visits
+/// only the cells near the clipmap levels instead of every tree (a forest of 100 000 trees
+/// cost milliseconds a frame before).
+struct TreeProxies {
+    data: std::sync::Weak<crate::terrain::TerrainData>,
+    version: u64,
+    position: Vec3,
+    protos: Protos,
+    cols: usize,
+    rows: usize,
+    /// Largest crown half width plus margin (a tree's box reaches this far past its cell).
+    reach: f32,
+    /// Per cell: its items and their height range.
+    cells: Vec<(std::ops::Range<u32>, f32, f32)>,
+    /// Each tree's cull box and its two proxies, cell by cell.
+    items: Vec<((Vec3, Vec3), [Instance; 2])>,
+}
+
+impl TreeProxies {
+    fn matches(&self, t: &crate::terrain::TerrainDraw, protos: &Protos) -> bool {
+        self.data
+            .upgrade()
+            .is_some_and(|d| std::sync::Arc::ptr_eq(&d, &t.data))
+            && self.version == t.version
+            && self.position == t.position
+            && self.protos.len() == protos.len()
+            && self.protos.iter().zip(protos).all(|(a, b)| match (a, b) {
+                (Some(a), Some(b)) => std::sync::Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            })
+    }
+
+    fn new(t: &crate::terrain::TerrainDraw, protos: Protos) -> Self {
+        let d = &t.data;
+        let cols = ((d.size.x / PROXY_CELL).ceil() as usize).max(1);
+        let rows = ((d.size.z / PROXY_CELL).ceil() as usize).max(1);
+        let mut reach = 1.0f32;
+        let mut tagged: Vec<(u32, (Vec3, Vec3), [Instance; 2])> = Vec::new();
+        for inst in &d.trees.instances {
+            let Some(Some(built)) = protos.get(inst.prototype as usize) else {
+                continue;
+            };
+            let a = &built.asset;
+            let height = a.height * inst.height_scale;
+            if height < MIN_PROXY_HEIGHT {
+                continue;
+            }
+            let local = Vec3::new(
                 inst.position.x * d.size.x,
                 terrain_height(d, inst.position.x, inst.position.y) * d.size.y,
                 inst.position.y * d.size.z,
             );
-        let height = a.height * inst.height_scale;
-        let width = a.crown_width * a.height * inst.width_scale;
-        let crown_base = a.crown_base.clamp(0.0, 0.95) * height;
-        let trunk_r = (a.trunk_radius * inst.width_scale).max(0.05);
-        // Trunk up to the middle of the crown.
-        let trunk_top = crown_base + (height - crown_base) * 0.5;
-        let half = trunk_top * 0.5;
-        out.push(Instance::analytic(
-            KIND_CAPSULE,
-            foot + Vec3::Y * half,
-            Quat::IDENTITY,
-            Vec3::new(trunk_r, (half - trunk_r).max(0.0), 0.0),
-            Vec3::new(trunk_r, half, trunk_r),
-            Vec3::from(BARK_ALBEDO),
-            Vec3::ZERO,
-        ));
-        let radii = Vec3::new(width * 0.5, (height - crown_base) * 0.5, width * 0.5) * CROWN_SHRINK;
-        let leaf = Vec3::from(srgb_to_linear(a.leaf_color)) * LEAF_DARKEN;
-        out.push(Instance::analytic(
-            KIND_ELLIPSOID,
-            foot + Vec3::Y * (crown_base + (height - crown_base) * 0.5),
-            Quat::IDENTITY,
-            radii,
-            radii,
-            leaf,
-            Vec3::ZERO,
-        ));
+            let foot = t.position + local;
+            let width = a.crown_width * a.height * inst.width_scale;
+            let r = Vec3::new(width, 0.0, width) * 0.5 + Vec3::splat(1.0);
+            reach = reach.max(r.x);
+            let bounds = (foot - r, foot + r + Vec3::Y * height);
+            let crown_base = a.crown_base.clamp(0.0, 0.95) * height;
+            let trunk_r = (a.trunk_radius * inst.width_scale).max(0.05);
+            // Trunk up to the middle of the crown.
+            let trunk_top = crown_base + (height - crown_base) * 0.5;
+            let half = trunk_top * 0.5;
+            let trunk = Instance::analytic(
+                KIND_CAPSULE,
+                foot + Vec3::Y * half,
+                Quat::IDENTITY,
+                Vec3::new(trunk_r, (half - trunk_r).max(0.0), 0.0),
+                Vec3::new(trunk_r, half, trunk_r),
+                Vec3::from(BARK_ALBEDO),
+                Vec3::ZERO,
+            );
+            // Thin crowns (Leaf Density under 1.3) let more sky through: a smaller proxy.
+            let thin = (a.leaf_density / 1.3).clamp(0.6, 1.0);
+            let radii = Vec3::new(width * 0.5, (height - crown_base) * 0.5, width * 0.5)
+                * CROWN_SHRINK
+                * thin;
+            let leaf = Vec3::from(srgb_to_linear(a.leaf_color)) * LEAF_DARKEN;
+            let crown = Instance::analytic(
+                KIND_ELLIPSOID,
+                foot + Vec3::Y * (crown_base + (height - crown_base) * 0.5),
+                Quat::IDENTITY,
+                radii,
+                radii,
+                leaf,
+                Vec3::ZERO,
+            );
+            let cx = ((local.x.max(0.0) / PROXY_CELL) as usize).min(cols - 1);
+            let cz = ((local.z.max(0.0) / PROXY_CELL) as usize).min(rows - 1);
+            tagged.push(((cz * cols + cx) as u32, bounds, [trunk, crown]));
+        }
+        // Bucket by cell (stable: trees keep their order within a cell).
+        tagged.sort_by_key(|(c, _, _)| *c);
+        let mut cells = vec![(0u32..0u32, f32::MAX, f32::MIN); cols * rows];
+        let mut items = Vec::with_capacity(tagged.len());
+        for (i, (c, bounds, proxies)) in tagged.into_iter().enumerate() {
+            let cell = &mut cells[c as usize];
+            if cell.0.is_empty() {
+                cell.0 = i as u32..i as u32;
+            }
+            cell.0.end = i as u32 + 1;
+            cell.1 = cell.1.min(bounds.0.y);
+            cell.2 = cell.2.max(bounds.1.y);
+            items.push((bounds, proxies));
+        }
+        Self {
+            data: std::sync::Arc::downgrade(&t.data),
+            version: t.version,
+            position: t.position,
+            protos,
+            cols,
+            rows,
+            reach,
+            cells,
+            items,
+        }
     }
+
+    /// Push the proxies of the trees whose boxes touch `region` (all of them without one).
+    fn gather(&self, region: Option<(Vec3, Vec3)>, out: &mut Vec<Instance>) {
+        let Some((lo, hi)) = region else {
+            out.extend(self.items.iter().flat_map(|(_, p)| *p));
+            return;
+        };
+        let (l, h) = (lo - self.position, hi - self.position);
+        let size = Vec3::new(self.cols as f32, 0.0, self.rows as f32) * PROXY_CELL;
+        if h.x + self.reach < 0.0
+            || h.z + self.reach < 0.0
+            || l.x - self.reach > size.x
+            || l.z - self.reach > size.z
+        {
+            return;
+        }
+        let cell = |v: f32, n: usize| ((v / PROXY_CELL).floor().max(0.0) as usize).min(n - 1);
+        let (x0, x1) = (
+            cell(l.x - self.reach, self.cols),
+            cell(h.x + self.reach, self.cols),
+        );
+        let (z0, z1) = (
+            cell(l.z - self.reach, self.rows),
+            cell(h.z + self.reach, self.rows),
+        );
+        for cz in z0..=z1 {
+            for cx in x0..=x1 {
+                let (range, y0, y1) = &self.cells[cz * self.cols + cx];
+                if range.is_empty() || *y0 > hi.y || *y1 < lo.y {
+                    continue;
+                }
+                for (bounds, proxies) in &self.items[range.start as usize..range.end as usize] {
+                    if bounds.0.cmpgt(hi).any() || bounds.1.cmplt(lo).any() {
+                        continue;
+                    }
+                    out.extend_from_slice(proxies);
+                }
+            }
+        }
+    }
+}
+
+/// The tree proxies of the terrains drawn lately (a few: views of several scenes share it).
+static TREE_PROXIES: std::sync::Mutex<Vec<std::sync::Arc<TreeProxies>>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Trunk and crown proxies of a terrain's trees (those that can reach `region`, the world box
+/// the clipmap levels cover: the rest would be culled from every level anyway).
+fn tree_instances(
+    t: &crate::terrain::TerrainDraw,
+    region: Option<(Vec3, Vec3)>,
+    out: &mut Vec<Instance>,
+) {
+    let protos: Protos = (t.data.trees.prototypes.iter())
+        .map(|p| crate::trees::store::get(&p.tree))
+        .collect();
+    let cached = {
+        let mut cache = TREE_PROXIES.lock().unwrap_or_else(|e| e.into_inner());
+        cache.retain(|c| c.data.strong_count() > 0);
+        match cache.iter().find(|c| c.matches(t, &protos)) {
+            Some(c) => c.clone(),
+            None => {
+                let c = std::sync::Arc::new(TreeProxies::new(t, protos));
+                if cache.len() >= 4 {
+                    cache.remove(0);
+                }
+                cache.push(c.clone());
+                c
+            }
+        }
+    };
+    cached.gather(region, out);
 }
 
 /// The frame's shapes and lights. `terrain_region` places (and uploads) a terrain's heights;
 /// `mesh_brick` returns a mesh's baked SDF (baking it when needed).
+#[cfg(test)]
 pub fn build(
     frame: &Frame,
+    mesh_brick: &mut dyn FnMut(&MeshRef) -> Option<Brick>,
+    terrain_region: &mut dyn FnMut(&crate::terrain::TerrainDraw) -> Option<TerrainRegion>,
+) -> SceneList {
+    build_within(frame, None, mesh_brick, terrain_region)
+}
+
+/// The frame's shapes and lights with the trees limited to those that can reach `reach` (the
+/// levels' world box, margins included; every tree without one).
+pub fn build_within(
+    frame: &Frame,
+    reach: Option<(Vec3, Vec3)>,
     mesh_brick: &mut dyn FnMut(&MeshRef) -> Option<Brick>,
     terrain_region: &mut dyn FnMut(&crate::terrain::TerrainDraw) -> Option<TerrainRegion>,
 ) -> SceneList {
@@ -343,7 +505,7 @@ pub fn build(
             aabb_min: v4(t.position + Vec3::new(0.0, lo - 1000.0, 0.0), 0.0),
             aabb_max: v4(t.position + Vec3::new(size.x, hi, size.z), 0.0),
         });
-        tree_instances(t, &mut list.instances);
+        tree_instances(t, reach, &mut list.instances);
     }
     list.lights = lights(frame);
     list

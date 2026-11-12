@@ -91,6 +91,24 @@ const FADE: f32 = 0.0001;
 /// per map (cascade or virtual shadow map page), not from the camera's distance: a tree
 /// crossing its LOD distance used to switch its shadow in cascade 0 at once (no cross-fade),
 /// and the shadow jumped while the player walked.
+/// Plants smaller than this (bounding radius of the model, metres) are small plants: ferns,
+/// groundcover. Their level-of-detail and draw distances shrink with their size (they cover
+/// few pixels sooner), and they cast only into the cascades whose texels are fine enough for
+/// their shadow (`SMALL_TEXELS` texels across their radius).
+pub(super) const SMALL_PLANT: f32 = 2.0;
+pub(super) const SMALL_TEXELS: f32 = 16.0;
+
+/// Distance factor of a prototype of bounding radius `radius` (1 for trees and bushes).
+pub(super) fn size_factor(radius: f32) -> f32 {
+    (radius / SMALL_PLANT).clamp(0.25, 1.0)
+}
+
+/// Does a placed plant of model radius `model_radius` (scaled: `radius`) cast into a cascade
+/// of texel size `texel`?
+pub(super) fn casts_into(model_radius: f32, radius: f32, texel: f32) -> bool {
+    model_radius >= SMALL_PLANT || texel * SMALL_TEXELS <= radius
+}
+
 pub(super) fn shadow_lod(texel: f32) -> u8 {
     if texel <= 0.03 {
         0
@@ -123,6 +141,7 @@ struct ParamsGpu {
     motion: [f32; 4],
     impostor: [f32; 4],
     light: [f32; 4],
+    shade: [f32; 4],
 }
 
 fn vertex_layouts() -> [wgpu::VertexBufferLayout<'static>; 2] {
@@ -164,9 +183,12 @@ enum Part {
 /// The tree pipelines: (bark, leaves, impostor) for the main pass, shadows and the prepass.
 struct Pipelines {
     main: [wgpu::RenderPipeline; 3],
-    /// The leaves' depth (coverage only) and the lit leaves testing for equal depth after it.
+    /// The leaves' depth (coverage only) and the lit leaves testing for equal depth after it;
+    /// the same for the impostors.
     leaves_depth: wgpu::RenderPipeline,
     leaves_equal: wgpu::RenderPipeline,
+    impostor_depth: wgpu::RenderPipeline,
+    impostor_equal: wgpu::RenderPipeline,
     shadow: [wgpu::RenderPipeline; 3],
     prepass: [wgpu::RenderPipeline; 3],
 }
@@ -342,6 +364,32 @@ impl Pipelines {
                 true,
             )
         });
+        let impostor_depth = main_pass(Spec {
+            fs: Some("fs_tree_impostor_depth"),
+            velocity: false,
+            color_writes: wgpu::ColorWrites::ALPHA,
+            ..main_spec(
+                "tree impostor depth",
+                &lit,
+                "vs_tree_impostor",
+                "fs_tree_impostor_depth",
+                &imp,
+                None,
+                true,
+            )
+        });
+        let impostor_equal = main_pass(Spec {
+            depth: Depth::main(false, wgpu::CompareFunction::Equal),
+            ..main_spec(
+                "tree impostor (depth equal)",
+                &lit,
+                "vs_tree_impostor",
+                "fs_tree_impostor",
+                &imp,
+                None,
+                true,
+            )
+        });
         let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
             build(
@@ -409,6 +457,8 @@ impl Pipelines {
             main,
             leaves_depth,
             leaves_equal,
+            impostor_depth,
+            impostor_equal,
             shadow,
             prepass,
         }
@@ -728,6 +778,9 @@ struct Batch {
     part: Part,
     lod: usize,
     instances: Range<u32>,
+    /// Culled on the GPU: (index into the frame's GPU terrains, list) drawn indirectly
+    /// (`instances` unused).
+    list: Option<(usize, usize)>,
 }
 
 /// A placed tree's key for the near layer's membership.
@@ -756,6 +809,8 @@ pub(super) struct TreeFrame<'a> {
     /// The virtual shadow map's page rectangles this frame (render/vsm): view-projection and
     /// the level of detail for their texel. Their lists follow the cascades'.
     pub vsm_views: &'a [(Mat4, u8)],
+    /// Last frame's depth for the GPU culling's occlusion test (None = off).
+    pub occlusion: Option<&'a super::trees_cull::TreeOcclusion<'a>>,
     /// The virtual shadow map's near layer (view-projection, half side): trees close to the
     /// camera go into it (their swaying leaves and limbs) instead of the cached pages. Its
     /// list follows the virtual shadow map's.
@@ -805,6 +860,11 @@ pub(super) struct TreeRenderer {
     near_count: usize,
     /// Trees within the near layer's reach this frame (it is needed).
     near_candidates: usize,
+    /// GPU culling (trees_cull.rs): its pipelines, every terrain's trees on the GPU, and the
+    /// terrains culled this frame (index = `Batch::list.0`).
+    cull_pipelines: Option<super::trees_cull::CullPipelines>,
+    gpu_terrains: HashMap<String, super::trees_cull::TerrainCull>,
+    gpu_frame: Vec<String>,
 }
 
 /// A tree joins the near layer when its box, seen from the light, lies within this share of
@@ -879,6 +939,38 @@ impl TreeRenderer {
             near_changes: Vec::new(),
             near_count: 0,
             near_candidates: 0,
+            cull_pipelines: None,
+            gpu_terrains: HashMap::new(),
+            gpu_frame: Vec::new(),
+        }
+    }
+
+    /// The tree cull dispatches of this frame's GPU-culled terrains (before any pass draws
+    /// trees).
+    pub fn encode_cull(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+        let Some(p) = &self.cull_pipelines else {
+            return;
+        };
+        for key in &self.gpu_frame {
+            if let Some(t) = self.gpu_terrains.get_mut(key) {
+                t.encode(p, encoder);
+                // The lists' counts, read back for the statistics.
+                t.copy_counts(device, encoder);
+            }
+        }
+    }
+
+    /// Were trees culled on the GPU this frame (their occlusion test wants the depth)?
+    pub fn gpu_culled(&self) -> bool {
+        !self.gpu_frame.is_empty()
+    }
+
+    /// After the frame's submit: map the GPU-culled lists' counts it copied.
+    pub fn cull_submitted(&self) {
+        for key in &self.gpu_frame {
+            if let Some(t) = self.gpu_terrains.get(key) {
+                t.counts_submitted();
+            }
         }
     }
 
@@ -988,7 +1080,11 @@ impl TreeRenderer {
 
     /// Uploaded tree assets and their GPU bytes (Memory module).
     pub fn memory(&self) -> (usize, u64) {
-        (self.trees.len(), self.trees.values().map(|t| t.bytes).sum())
+        let culled: u64 = self.gpu_terrains.values().map(|t| t.bytes()).sum();
+        (
+            self.trees.len(),
+            self.trees.values().map(|t| t.bytes).sum::<u64>() + culled,
+        )
     }
 
     /// GPU bytes of the uploaded trees' textures (bark, leaves, impostors).
@@ -1013,6 +1109,17 @@ impl TreeRenderer {
         self.shadows.clear();
         self.near_count = 0;
         self.near_candidates = 0;
+        for t in self.gpu_terrains.values_mut() {
+            t.collect_counts();
+        }
+        self.gpu_frame.clear();
+        let mut gpu_main: Vec<Batch> = Vec::new();
+        let mut gpu_shadows: Vec<Vec<Batch>> = vec![Vec::new(); f.cascades.len()];
+        // GPU culling with cascaded shadows (the virtual shadow map's views stay on the CPU).
+        let gpu_cull = fast_paths::tree_gpu_cull()
+            && f.vsm_views.is_empty()
+            && f.near.is_none()
+            && f.near_reach <= 0.0;
         let mut near_now: std::collections::HashSet<u64> = Default::default();
         let shadow_views = f.cascades.len() + f.vsm_views.len() + f.near.is_some() as usize;
         self.shadows.resize(shadow_views, Vec::new());
@@ -1130,6 +1237,21 @@ impl TreeRenderer {
             let lod_d = s.lod_distance * f.lod_bias.max(0.1);
             let bb_d = s.billboard_start.max(lod_d * 1.25) * f.lod_bias.max(0.1);
             let draw_d = s.draw_distance;
+            if gpu_cull {
+                crate::profile_scope!("Trees.GpuCull");
+                self.prepare_gpu_terrain(
+                    device,
+                    queue,
+                    t,
+                    f,
+                    &protos,
+                    [lod_d, bb_d, draw_d],
+                    shadow_reach,
+                    &mut gpu_main,
+                    &mut gpu_shadows,
+                );
+                continue;
+            }
             let cache = &self.terrains[&t.key];
             for p in &cache.placed {
                 let Some(Some((group, tree))) = protos.get(p.prototype as usize).copied() else {
@@ -1139,8 +1261,12 @@ impl TreeRenderer {
                 let m_bounds = (m.min, m.max);
                 let scale = p.height.max(p.width);
                 let center = p.foot + Vec3::Y * (m.max.y * 0.5 * p.height);
-                let radius = m.bounding_radius() * scale;
+                let model_radius = m.bounding_radius();
+                let radius = model_radius * scale;
                 let dist = center.distance(f.camera);
+                // Small plants: nearer levels of detail and draw distance.
+                let k = size_factor(model_radius);
+                let (lod_d, bb_d, draw_d) = (lod_d * k, bb_d * k, draw_d * k);
                 // Past the draw distance only the virtual shadow map's pages take the tree.
                 let beyond = dist > draw_d + radius;
                 if beyond && vsm_frusta.is_empty() {
@@ -1199,10 +1325,12 @@ impl TreeRenderer {
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
                 if s.cast_shadows && t.cast_shadows && !beyond && dist < shadow_reach + radius {
                     for (slot, cf) in cascade_frusta.iter().enumerate() {
-                        if !cf.intersects(&bounds) {
+                        if !cf.intersects(&bounds)
+                            || !casts_into(model_radius, radius, f.cascades[slot].texel)
+                        {
                             continue;
                         }
-                        let lod = shadow_lod(f.cascades[slot].texel) as usize;
+                        let lod = shadow_lod(f.cascades[slot].texel / s.shadow_detail) as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
@@ -1338,6 +1466,7 @@ impl TreeRenderer {
                         part,
                         lod,
                         instances: start..all.len() as u32,
+                        list: None,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -1346,6 +1475,16 @@ impl TreeRenderer {
             .chain(shadow_lists)
             .map(&mut take)
             .collect();
+        // The GPU-culled terrains' indirect draws join the lists, in the same order.
+        batches[0].extend(gpu_main);
+        for (slot, list) in gpu_shadows.into_iter().enumerate() {
+            if let Some(b) = batches.get_mut(slot + 1) {
+                b.extend(list);
+            }
+        }
+        for b in &mut batches {
+            b.sort_by_key(|b| (b.part, b.lod, b.group));
+        }
         self.main = batches.remove(0);
         self.shadows = batches;
         if all.is_empty() {
@@ -1376,20 +1515,64 @@ impl TreeRenderer {
         pipelines: [&wgpu::RenderPipeline; 3],
         stats: &mut RenderStats,
     ) {
-        let Some(instances) = &self.instance_buffer else {
-            return;
-        };
+        let instances = self.instance_buffer.as_ref();
         let mut bound: Option<Part> = None;
         for b in list {
             let Some(gpu) = self.frame_trees.get(b.tree).and_then(|k| self.trees.get(k)) else {
                 continue;
             };
+            let culled = b
+                .list
+                .and_then(|(t, l)| Some((self.gpu_terrains.get(self.gpu_frame.get(t)?)?, l)));
+            if b.list.is_some() && culled.is_none() {
+                continue;
+            }
+            if culled.is_none() && instances.is_none() {
+                continue;
+            }
             if bound != Some(b.part) {
                 pass.set_pipeline(pipelines[part_index(b.part)]);
                 stats.set_pass += 1;
                 bound = Some(b.part);
             }
             pass.set_bind_group(2, &self.groups[b.group][part_index(b.part)], &[]);
+            if let Some((t, l)) = culled {
+                let info = t.lists[l];
+                if info.capacity == 0 {
+                    continue;
+                }
+                let size = std::mem::size_of::<InstanceGpu>() as u64;
+                let slice = t
+                    .instances
+                    .slice(info.base as u64 * size..(info.base + info.capacity) as u64 * size);
+                // (Instances: the latest counts read back, a frame or two old.)
+                let count = t.counts.get(l).copied().unwrap_or(0).min(info.capacity);
+                if b.part == Part::Impostor {
+                    pass.set_vertex_buffer(0, slice);
+                    pass.draw_indirect(&t.args, info.args_offset(false));
+                    stats.draw(count, 6, 6);
+                    continue;
+                }
+                let mesh = &gpu.lods[b.lod.min(1)];
+                let leaves = b.part == Part::Leaves;
+                let range = if leaves {
+                    mesh.leaves.clone()
+                } else {
+                    mesh.bark.clone()
+                };
+                if range.is_empty() {
+                    continue;
+                }
+                pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                pass.set_vertex_buffer(1, slice);
+                pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed_indirect(&t.args, info.args_offset(leaves));
+                stats.draw(count, range.len() as u32, mesh.vertex_count);
+                continue;
+            }
+            let Some(instances) = instances else {
+                continue;
+            };
             let count = b.instances.len() as u32;
             let size = std::mem::size_of::<InstanceGpu>() as u64;
             let slice =
@@ -1432,13 +1615,15 @@ impl TreeRenderer {
         // coverage, nothing shaded), then the trees with the lit leaves testing for equal
         // depth, so each sample is shaded once, by the leaf it shows, and bark behind leaves is
         // not shaded at all. Same samples written as drawing them lit in one go (performance
-        // round 22). (Counted once: the depth draws go into a throwaway counter.)
-        let leaf_batches = self.main.iter().filter(|b| b.part == Part::Leaves);
+        // round 22). The impostors likewise: a far wooded hillside overlaps each pixel several
+        // times. (Counted once: the depth draws go into a throwaway counter.)
+        let crowns = self.main.iter().filter(|b| b.part != Part::Bark);
         let mut uncounted = RenderStats::default();
-        let depth = &p.leaves_depth;
-        self.draw_list(pass, leaf_batches, [depth, depth, depth], &mut uncounted);
+        let (depth, imp_depth) = (&p.leaves_depth, &p.impostor_depth);
+        self.draw_list(pass, crowns, [depth, depth, imp_depth], &mut uncounted);
         stats.set_pass += uncounted.set_pass;
-        self.draw_list(pass, &self.main, [bark, &p.leaves_equal, impostor], stats);
+        let lit = [bark, &p.leaves_equal, &p.impostor_equal];
+        self.draw_list(pass, &self.main, lit, stats);
     }
 
     /// Build the wireframe pipelines for `path` (the main pass's, with edges).
@@ -1505,6 +1690,125 @@ impl TreeRenderer {
     }
 }
 
+impl TreeRenderer {
+    /// A GPU-culled terrain's frame: its trees uploaded when they changed, the cull inputs,
+    /// and an indirect draw per (view, prototype, level, part) into `main` / `shadows`.
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_gpu_terrain(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        t: &TerrainDraw,
+        f: &TreeFrame,
+        protos: &[Option<(usize, usize)>],
+        lod: [f32; 3],
+        shadow_reach: f32,
+        main: &mut Vec<Batch>,
+        shadows: &mut [Vec<Batch>],
+    ) {
+        use super::trees_cull::{CullPipelines, ProtoGpu, TerrainCull, TreeGpu, list_index};
+        let pipelines = self
+            .cull_pipelines
+            .get_or_insert_with(|| CullPipelines::new(device));
+        let s = &t.data.trees;
+        let n = s.prototypes.len();
+        let current = self
+            .gpu_terrains
+            .get(&t.key)
+            .is_some_and(|c| c.version == t.version && c.position == t.position);
+        if !current {
+            let cache = &self.terrains[&t.key];
+            let trees: Vec<TreeGpu> = cache
+                .placed
+                .iter()
+                .map(|p| TreeGpu {
+                    foot: [p.foot.x, p.foot.y, p.foot.z, p.yaw],
+                    scale: [p.height, p.width, p.color, p.prototype as f32],
+                })
+                .collect();
+            let c = TerrainCull::new(device, queue, pipelines, &trees, n, t.version, t.position);
+            self.gpu_terrains.insert(t.key.clone(), c);
+        }
+        let index = self.gpu_frame.len();
+        self.gpu_frame.push(t.key.clone());
+        let bounds: Vec<ProtoGpu> = protos
+            .iter()
+            .map(|p| match p {
+                Some((_, tree)) => {
+                    let m = &self.trees[&self.frame_trees[*tree]].built.model;
+                    let r = m.bounding_radius();
+                    ProtoGpu {
+                        bounds: [m.max.y * 0.5, r, 1.0, size_factor(r)],
+                    }
+                }
+                None => ProtoGpu::default(),
+            })
+            .collect();
+        let casts = s.cast_shadows && t.cast_shadows;
+        let cascades: Vec<(Mat4, u8, f32)> = match casts {
+            true => f
+                .cascades
+                .iter()
+                .map(|c| (c.view_proj, shadow_lod(c.texel / s.shadow_detail), c.texel))
+                .collect(),
+            false => Vec::new(),
+        };
+        let c = self.gpu_terrains.get_mut(&t.key).expect("made above");
+        c.update(
+            device,
+            queue,
+            pipelines,
+            f.occlusion,
+            f.camera,
+            f.view_proj,
+            lod,
+            &cascades,
+            shadow_reach,
+            &bounds,
+            |proto, level| match protos.get(proto) {
+                Some(Some((_, tree))) => {
+                    let mesh = &self.trees[&self.frame_trees[*tree]].lods[level.min(1)];
+                    [mesh.bark.clone(), mesh.leaves.clone()]
+                }
+                _ => [0..0, 0..0],
+            },
+        );
+        let batches = |view: usize, out: &mut Vec<Batch>, only: Option<u8>| {
+            for (proto, p) in protos.iter().enumerate() {
+                let Some((group, tree)) = *p else {
+                    continue;
+                };
+                for lod in 0..3 {
+                    if only.is_some_and(|l| l as usize != lod) {
+                        continue;
+                    }
+                    let parts: &[Part] = if lod == 2 {
+                        &[Part::Impostor]
+                    } else {
+                        &[Part::Bark, Part::Leaves]
+                    };
+                    for &part in parts {
+                        out.push(Batch {
+                            group,
+                            tree,
+                            part,
+                            lod,
+                            instances: 0..0,
+                            list: Some((index, list_index(n, view, proto, lod))),
+                        });
+                    }
+                }
+            }
+        };
+        batches(0, main, None);
+        for (slot, (_, lod, _)) in cascades.iter().enumerate() {
+            if let Some(out) = shadows.get_mut(slot) {
+                batches(slot + 1, out, Some(*lod));
+            }
+        }
+    }
+}
+
 /// The parameters a tree of terrain `t` draws with this frame.
 fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
     let a = &gpu.built.asset;
@@ -1534,6 +1838,14 @@ fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
             impostor::VIEWS as f32,
         ],
         light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
+        // y: a small plant (understory) passes no sunlight through its leaves where something
+        // else shades it (a tree's own crown only dims its transmitted light).
+        shade: [
+            a.crown_shading,
+            f32::from(m.bounding_radius() < SMALL_PLANT),
+            0.0,
+            0.0,
+        ],
     }
 }
 

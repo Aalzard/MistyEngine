@@ -1403,7 +1403,11 @@ def main() -> None:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--only", choices=SPECIES)
     parser.add_argument("--preview", action="store_true")
+    parser.add_argument("--size", type=int, default=1024,
+                        help="bark map side in pixels (default 1024; the leaf atlas stays 1024)")
     args = parser.parse_args()
+    global SIZE
+    SIZE = args.size
     selected = [args.only] if args.only else list(SPECIES)
     start = time.perf_counter()
     generate(args.out_dir, selected, args.preview)

@@ -62,6 +62,7 @@ mod terrain_layers;
 mod terrain_lod;
 pub mod texture;
 mod trees;
+mod trees_cull;
 pub mod ui;
 mod variants;
 pub(crate) mod vfx;
@@ -1664,7 +1665,19 @@ impl Renderer {
             let vsm_views: Vec<(Mat4, u8)> = (self.vsm.frame.iter())
                 .flat_map(|f| f.rects.iter().map(|r| (r.view_proj, r.tree_lod)))
                 .collect();
+            // Last frame's depth, while the view has hardly changed.
+            let tree_hiz = target.tree_hiz.lock().unwrap_or_else(|e| e.into_inner());
+            let occlusion = (tree_hiz.as_ref())
+                .filter(|_| fast_paths::tree_occlusion())
+                .filter(|h| h.usable(target.size(), camera, frame.camera.forward()))
+                .map(|h| trees_cull::TreeOcclusion {
+                    pyramid: h.state.pyramid_view(),
+                    view_proj: h.view_proj,
+                    mips: h.state.mips(),
+                    size: target.size(),
+                });
             let tree_frame = trees::TreeFrame {
+                occlusion: occlusion.as_ref(),
                 terrains: frame.terrains,
                 camera,
                 view_proj: &view_proj,
@@ -1698,6 +1711,7 @@ impl Renderer {
                 },
             };
             (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
+            drop(tree_hiz);
             (lists, plan, rebuilt, near_sun)
         };
         // The near-camera grass shadow map follows the camera (off: its uniform says so).
@@ -1838,6 +1852,8 @@ impl Renderer {
         self.terrains
             .encode_grass_cull(frame.terrains, &mut encoder);
         self.mark(&mut encoder, "Grass culling");
+        self.trees.encode_cull(device, &mut encoder);
+        self.mark(&mut encoder, "Tree culling");
         if frame.shaded
             && !frame.water.is_empty()
             && frame_debug::whole(
@@ -2031,6 +2047,29 @@ impl Renderer {
                     &mut stats,
                     split,
                 );
+                // GPU-culled trees: this frame's depth as a Hi-Z pyramid, for next frame's
+                // occlusion test.
+                if let Some(culler) = self.culler.as_ref().filter(|_| {
+                    self.trees.gpu_culled() && target.samples() > 1 && fast_paths::tree_occlusion()
+                }) {
+                    let mut h = target.tree_hiz.lock().unwrap_or_else(|e| e.into_inner());
+                    let size = target.size();
+                    let fresh = || trees_cull::TreeHiz {
+                        state: gpu_culling::TargetState::new(device, size),
+                        view_proj,
+                        camera: frame.camera.position,
+                        forward: frame.camera.forward(),
+                    };
+                    if !h.as_ref().is_some_and(|h| h.state.fits(size)) {
+                        *h = Some(fresh());
+                    }
+                    let h = h.as_mut().expect("made above");
+                    culler.build_pyramid(device, &mut encoder, &h.state, target.depth_view());
+                    h.view_proj = view_proj;
+                    h.camera = frame.camera.position;
+                    h.forward = frame.camera.forward();
+                    self.mark(&mut encoder, "Tree Hi-Z");
+                }
             }
         }
         self.mark(&mut encoder, "Main pass (rest)");
@@ -2119,6 +2158,7 @@ impl Renderer {
             queue.submit([commands]);
         }
         self.vgeo.stats_submitted();
+        self.trees.cull_submitted();
         let vg = self.vgeo.collect_stats();
         stats.vgeo_instances = vg.instances;
         stats.vgeo_clusters = vg.clusters;
@@ -4061,6 +4101,8 @@ mod hitch_tests;
 mod made_textures_tests;
 #[cfg(test)]
 mod meadow_perf_tests;
+#[cfg(test)]
+mod noon_valley_tests;
 #[cfg(test)]
 mod rocks_gpu_tests;
 #[cfg(test)]

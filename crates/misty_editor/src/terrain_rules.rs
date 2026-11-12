@@ -359,6 +359,13 @@ pub fn details_section(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Ter
                     );
                     ch |= slider(
                         ui,
+                        "Depth Shading",
+                        "Deep shade at the feet of the stems, bright sunlit tips (a high sun).",
+                        &mut s.depth_shading,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
                         "Patch Size",
                         "Size of the soft lush / dry and taller / shorter patches.",
                         &mut s.patch_scale,

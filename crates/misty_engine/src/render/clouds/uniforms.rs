@@ -184,7 +184,12 @@ pub(super) fn march_uniform(m: &MarchInputs) -> MarchUniform {
             m.time,
         ],
         wind: [drift.x, drift.y, detail.x, detail.y],
-        wind_dir: [wind.x, wind.y, (top - base) * 0.25, 0.0],
+        wind_dir: [
+            wind.x,
+            wind.y,
+            (top - base) * 0.25,
+            o.cumulus.clamp(0.0, 1.0),
+        ],
         sun_dir: sun.extend(o.silver_lining.clamp(0.0, 1.0)).to_array(),
         sun_color: sun_color.extend(if has_sun { 1.0 } else { 0.0 }).to_array(),
         ambient_top: (sky_top.lerp(sky_side, 0.3) * ambient)

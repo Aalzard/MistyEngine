@@ -225,6 +225,9 @@ fn shade_grass(
             continue;
         }
         atten *= fast_shadow_factor(i, li, world, n, l) * direct_occlusion(ssao);
+        if (kind == 0u && li.spot.z > 0.5) {
+            atten *= far_sun_shadow(world, n, l);
+        }
         if (kind == 0u) {
             // Blades shade each other near the camera (the near grass shadow map), softly
             // and never fully dark inside the canopy: light scatters through the blades.
@@ -397,10 +400,13 @@ fn grass_lit(
     // Dips of the rolling turf lie in the shade of the crests around them.
     let dip = mix(0.84, 1.06, in.canopy.w);
     // Soft depth: broad darkening towards the feet of the stems and deep in the canopy.
-    let occlusion = mix(0.4, 1.0, canopy) * dip;
+    // Depth shading deepens it (a high sun reaches only the tips) and brightens the tips.
+    let k = grass.depth.x;
+    let deep = pow(canopy, 1.0 + 1.2 * k);
+    let occlusion = mix(mix(0.4, 0.16, k), 1.0, deep) * dip;
     // Sunlight is blocked down there too (not just sky light), though the short turf's
     // feet are never far from the light.
-    let lit = albedo * mix(0.62, 1.0, canopy) * dip;
+    let lit = albedo * mix(mix(0.62, 0.22, k), 1.0 + 0.12 * k, deep) * dip;
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);

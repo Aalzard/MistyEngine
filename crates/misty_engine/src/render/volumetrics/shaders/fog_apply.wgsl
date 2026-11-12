@@ -18,7 +18,7 @@ struct VolumetricFog {
     sun_dir: vec4<f32>,
     // rgb = linear sun colour × intensity × volumetric multiplier.
     sun_color: vec4<f32>,
-    // rgb = ambient light × dimmer.
+    // rgb = ambient light × dimmer, w = sky haze (0..1).
     ambient: vec4<f32>,
     // rgb = global fog albedo (linear).
     albedo: vec4<f32>,
@@ -61,13 +61,20 @@ fn vfog_optical_depth(a: vec3<f32>, b: vec3<f32>) -> f32 {
 
 // Unshadowed light the height fog scatters towards the eye along view direction `v`.
 fn vfog_analytic_light(v: vec3<f32>) -> vec3<f32> {
-    var light = vfog.ambient.rgb;
+    var light = vfog.ambient.rgb * vfog.albedo.rgb;
+    if (vfog.ambient.w > 0.0) {
+        // Aerial perspective: the sky's colour just above the horizon this way, so far
+        // ground fades into the horizon sky behind it.
+        let flat_v = normalize(vec3<f32>(v.x, 0.0, v.z) + vec3<f32>(0.0, 0.03, 0.0));
+        light = mix(light, sky_color(flat_v), vfog.ambient.w);
+    }
     if (vfog.sun_dir.w > 0.5) {
         // Clouds above the eye dim the sunlight the fog scatters.
         let sun = vfog.sun_color.rgb * cloud_shadow(view.camera_pos.xyz);
-        light += sun * vfog_phase(vfog.height_fog.w, dot(v, vfog.sun_dir.xyz)) * 3.14159265;
+        light += sun * vfog_phase(vfog.height_fog.w, dot(v, vfog.sun_dir.xyz)) * 3.14159265
+            * vfog.albedo.rgb;
     }
-    return light * vfog.albedo.rgb;
+    return light;
 }
 
 // rgb = light scattered towards the eye, a = transmittance, between the eye and `world`

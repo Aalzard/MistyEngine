@@ -46,6 +46,11 @@ pub struct TerrainLayer {
     pub smoothness: f32,
     /// Greyscale height texture for height-based blending (None = the albedo's luminance).
     pub height_map: Option<String>,
+    /// Ambient (sky) light reaching the layer, 0..1: 1 = open ground, lower for ground under a
+    /// canopy or in crevices (like the occlusion channel of a mask map). Left out of the file
+    /// at 1, so terrains saved before it stay as they were.
+    #[serde(skip_serializing_if = "is_one")]
+    pub occlusion: f32,
     /// Auto Paint rules; `rules.enabled` marks the layer rule-driven (Generate repaints it).
     pub rules: AutoPaintRules,
 }
@@ -62,9 +67,14 @@ impl Default for TerrainLayer {
             metallic: 0.0,
             smoothness: 0.0,
             height_map: None,
+            occlusion: 1.0,
             rules: AutoPaintRules::default(),
         }
     }
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
 }
 
 #[derive(Clone, Debug, PartialEq)]

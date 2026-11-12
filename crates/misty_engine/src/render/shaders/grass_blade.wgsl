@@ -40,6 +40,8 @@ struct GrassParams {
     // x = shortest and y = tallest blade of the turf (m), z = height variation, w = the
     // quality level's share of the blades (the rest grow wider).
     canopy: vec4<f32>,
+    // x = depth shading (0..1).
+    depth: vec4<f32>,
     // The grass species' (dryness, tint): layer 2i in xy, layer 2i + 1 in zw.
     species: array<vec4<f32>, 8>,
 };

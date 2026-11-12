@@ -113,6 +113,12 @@ pub struct FogOverride {
     pub anisotropy: f32,
     /// Scales the sky ambient the fog picks up.
     pub ambient_dimmer: f32,
+    /// 0..1: aerial perspective: the height fog beyond the volumetric part takes the sky's own
+    /// colour just above the horizon in each direction instead of the flat ambient, so far
+    /// hills fade into the horizon sky (pale blue, brighter towards the sun). Left out of the
+    /// file at 0.
+    #[serde(skip_serializing_if = "defaults::is_default")]
+    pub sky_haze: f32,
     /// Lit froxel volume with shadows; off = cheap analytic height fog.
     pub volumetric: bool,
     /// How far the froxel volume reaches (metres); analytic fog continues past it.
@@ -144,6 +150,7 @@ impl Default for FogOverride {
             albedo: [1.0, 1.0, 1.0],
             anisotropy: 0.4,
             ambient_dimmer: 1.0,
+            sky_haze: 0.0,
             volumetric: true,
             volumetric_distance: 64.0,
             quality: FogQuality::Medium,

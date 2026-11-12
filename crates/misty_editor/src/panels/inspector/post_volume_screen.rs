@@ -39,6 +39,9 @@ pub fn sections(ui: &mut Ui, v: &mut PostProcessVolume) -> bool {
             ui.add(egui::Slider::new(&mut c.sample_count, 4..=64))
                 .changed()
         });
+        ch |= row(ui, "Distant Shadows", |ui| {
+            slider(ui, &mut c.far_shadows, 0.0..=1.0)
+        });
         ch
     });
     if c.active {

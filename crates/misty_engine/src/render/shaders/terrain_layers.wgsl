@@ -317,8 +317,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
     s.normal = vec3<f32>(0.0);
     s.metallic = 0.0;
     s.smoothness = 0.0;
+    var occlusion = 0.0;
     for (var i = 0u; i < 4u; i++) {
         if (w[i] > 0.0) {
+            occlusion += terrain.surface[ids[i]].w * w[i];
             s.albedo += harmonize(layers[i].albedo, terrain.harmony[ids[i]]) * w[i];
             s.normal += layers[i].normal * w[i];
             s.metallic += terrain.surface[ids[i]].x * w[i];
@@ -386,7 +388,8 @@ fn terrain_surface(in: MeshOut) -> Surface {
     s.alpha = 1.0;
     s.emission = vec3<f32>(0.0);
     s.receive_shadows = true;
-    s.occlusion = 1.0;
+    // The layers' own ambient occlusion (ground under a canopy); none without layers.
+    s.occlusion = select(1.0, clamp(occlusion, 0.0, 1.0), count > 0u);
     s.premultiply = false;
     s.draw = in.draw;
     return s;

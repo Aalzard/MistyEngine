@@ -713,6 +713,19 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             )
             .changed();
         ui.end_row();
+        if l.kind == LightType::Directional {
+            prop_label(ui, tr!("Intensity from Sun Height")).on_hover_text(tr!(
+                "Dimmer and warmer as the sun nears the horizon, with the sky following; Intensity and Color are the values with the sun overhead"
+            ));
+            ch |= mixed::checkbox(
+                ui,
+                "intensity_from_sun_height",
+                &mut l.intensity_from_sun_height,
+                "",
+            )
+            .changed();
+            ui.end_row();
+        }
         ch
     });
     super::card::sub_header(ui, "Shadow Settings");

@@ -1,20 +1,22 @@
 //! Switches for the look-preserving shortcuts of performance rounds 3 and 22
 //! (docs/pending/perf3.md, docs/pending/r22-perf.md).
-//! All on by default; the timing and look harnesses turn them off one at a time to measure
-//! what each saves and to check that the picture stays the same. `MISTY_FAST_OFF=a,b` (or
+//! All on by default but `tree_occlusion`; the timing and look harnesses turn them off one at
+//! a time to measure what each saves and to check that the picture stays the same. `MISTY_FAST_OFF=a,b` (or
 //! `all`) in the environment turns them off in any build (the editor and the player too).
 
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 6] = [
+pub const NAMES: [&str; 8] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
     "grass_vis_depth",
     "shaft_cascades",
     "tree_depth",
+    "tree_gpu_cull",
+    "tree_occlusion",
 ];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
@@ -23,6 +25,9 @@ static GI_SETTLE: AtomicBool = AtomicBool::new(true);
 static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
+static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
+// Off by default (see `tree_occlusion`).
+static TREE_OCCLUSION: AtomicBool = AtomicBool::new(false);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -32,6 +37,8 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "grass_vis_depth" => Some(&GRASS_VIS_DEPTH),
         "shaft_cascades" => Some(&SHAFT_CASCADES),
         "tree_depth" => Some(&TREE_DEPTH),
+        "tree_gpu_cull" => Some(&TREE_GPU_CULL),
+        "tree_occlusion" => Some(&TREE_OCCLUSION),
         _ => None,
     }
 }
@@ -40,6 +47,9 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
 fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
+        if std::env::var("MISTY_TREE_OCCLUSION").is_ok_and(|v| v == "1") {
+            TREE_OCCLUSION.store(true, Ordering::Relaxed);
+        }
         let names = std::env::var("MISTY_FAST_OFF").unwrap_or_default();
         for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
             for f in NAMES {
@@ -97,4 +107,20 @@ pub fn shaft_cascades() -> bool {
 /// `draw_main`).
 pub fn tree_depth() -> bool {
     get(&TREE_DEPTH)
+}
+
+/// Terrain trees are culled and sorted into their lists on the GPU and drawn indirectly
+/// (trees_cull.rs) instead of a per-tree loop on the CPU every frame (with cascaded shadows;
+/// the virtual shadow map keeps the CPU lists).
+pub fn tree_gpu_cull() -> bool {
+    get(&TREE_GPU_CULL)
+}
+
+/// GPU-culled trees hidden behind last frame's depth (a Hi-Z pyramid) are left out of the
+/// camera's lists while the view has hardly moved (trees_cull.rs). The one shortcut that is
+/// off by default (`MISTY_TREE_OCCLUSION=1` turns it on): in NoonValley and MeadowDemo it
+/// saves about what its pyramid costs (0.2–0.4 ms against ~0.5 ms at 1080p), and on Low it
+/// drops trees that MeadowDemo's golden shots show (close and behind), not yet understood.
+pub fn tree_occlusion() -> bool {
+    get(&TREE_OCCLUSION)
 }

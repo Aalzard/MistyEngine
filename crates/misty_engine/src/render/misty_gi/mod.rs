@@ -714,9 +714,22 @@ impl MistyGi {
         let mut steps = Vec::new();
         if update {
             // The frame's shapes and lights.
-            let list = scene::build(frame, &mut |m| meshes.brick(queue, m), &mut |t| {
-                terrains.region(queue, t)
-            });
+            // The world box every level covers (with its cull margin): trees outside it are
+            // left out of the list.
+            let mut region = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+            for k in 0..sizes.levels {
+                let focus = level_focus(&sizes, k, camera, frame.camera.forward());
+                let (origin, v) = level_box(&sizes, k, focus);
+                let margin = Vec3::splat(8.0 * v);
+                let hi = origin + Vec3::splat(sizes.dim as f32 * v);
+                region = (region.0.min(origin - margin), region.1.max(hi + margin));
+            }
+            let list = scene::build_within(
+                frame,
+                Some(region),
+                &mut |m| meshes.brick(queue, m),
+                &mut |t| terrains.region(queue, t),
+            );
             let mut lists: Vec<u32> = Vec::new();
             let mut levels = [LevelUniform::zeroed(); MAX_LEVELS];
             let mut dirty = Vec::new();

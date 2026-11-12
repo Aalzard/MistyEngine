@@ -14,6 +14,8 @@ pub struct ContactShadowSettings {
     pub distance_fade: f32,
     pub opacity: f32,
     pub sample_count: u32,
+    /// Distant shadows past the shadow maps (0..1, 0 = off).
+    pub far: f32,
 }
 
 impl Default for ContactShadowSettings {
@@ -30,11 +32,17 @@ impl ContactShadowSettings {
             distance_fade: o.distance_fade.max(0.1),
             opacity: o.opacity.clamp(0.0, 1.0),
             sample_count: o.sample_count.clamp(4, 64),
+            far: o.far_shadows.clamp(0.0, 1.0),
         }
     }
 
     pub fn active(&self) -> bool {
         self.enabled && self.length > 0.0 && self.opacity > 0.0
+    }
+
+    /// Distant shadows run (the volume's Contact Shadows on with a Distant Shadows amount).
+    pub fn far_active(&self) -> bool {
+        self.enabled && self.far > 0.0
     }
 
     /// How far behind a surface a ray sample still counts as blocked (the shader adds 1% of

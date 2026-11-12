@@ -14,7 +14,7 @@ struct Clouds {
     shape: vec4<f32>,
     // xy = wind offset of the base shape (m, xz), zw = wind offset of the detail noise.
     wind: vec4<f32>,
-    // xy = wind direction (xz, unit), z = lean of the tops downwind (m).
+    // xy = wind direction (xz, unit), z = lean of the tops downwind (m), w = cumulus (0..1).
     wind_dir: vec4<f32>,
     // xyz = direction towards the sun, w = silver lining (0..1).
     sun_dir: vec4<f32>,
@@ -82,7 +82,10 @@ fn height_fraction(p: vec3<f32>) -> f32 {
 fn local_coverage(p: vec3<f32>) -> vec2<f32> {
     let w = textureSampleLevel(weather_map, repeat_linear, (p.xz + cl.wind.xy) / WEATHER_TILE, 0.0);
     let c = cl.shape.x;
-    let cov = clamp((w.r - 0.5) * 0.9 + c * 1.15 - 0.05, 0.0, 1.0);
+    // Fair-weather cumulus dot the whole sky evenly: the weather map's fronts (clear regions,
+    // overcast ones) weigh much less.
+    let fronts = mix(0.9, 0.22, cl.wind_dir.w);
+    let cov = clamp((w.r - 0.5) * fronts + c * 1.15 - 0.05, 0.0, 1.0);
     return vec2<f32>(cov * smoothstep(0.0, 0.25, c), w.g);
 }
 
@@ -92,19 +95,30 @@ fn height_profile(h: f32, kind: f32) -> f32 {
     return smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(top * 0.55, top, h));
 }
 
+// Cumulus profile: full at the base, a dome towards the top. Applied before the coverage
+// carve, so each heap is widest low down and narrows to a rounded top.
+fn cumulus_profile(h: f32) -> f32 {
+    return sqrt(max(1.0 - pow(h, 1.6), 0.0));
+}
+
 // Base-shape density (no detail erosion) at `p`, 0..1. `cov` from `local_coverage`.
 fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
     if (cov.x <= 0.0) {
         return 0.0;
     }
     let lean = cl.wind_dir.xy * cl.wind_dir.z * h;
-    let q = vec3<f32>(p.x + cl.wind.x + lean.x, p.y, p.z + cl.wind.y + lean.y) / BASE_TILE;
+    // Cumulus are separate heaps a few hundred metres across: a finer base shape.
+    let tile = BASE_TILE * mix(1.0, 0.5, cl.wind_dir.w);
+    let q = vec3<f32>(p.x + cl.wind.x + lean.x, p.y, p.z + cl.wind.y + lean.y) / tile;
     let n = textureSampleLevel(base_noise, repeat_linear, q, 0.0);
     let low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
     var d = clamp(remap(n.r, low - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);
-    d *= height_profile(h, cov.y);
+    let cumulus = cl.wind_dir.w;
+    d *= mix(height_profile(h, cov.y), cumulus_profile(h), cumulus);
     // Coverage carves the shapes: low coverage keeps only the densest cores.
     d = clamp(remap(d, 1.0 - cov.x, 1.0, 0.0, 1.0), 0.0, 1.0) * cov.x;
+    // Cumulus sit on a flat base: cut sharply after the carve.
+    d *= mix(1.0, smoothstep(0.0, 0.03, h), cumulus);
     return d;
 }
 

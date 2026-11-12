@@ -1,0 +1,44 @@
+{
+  "seed": 33,
+  "height": 22.0,
+  "crown_shape": "Oval",
+  "crown_width": 0.36,
+  "crown_base": 0.52,
+  "trunk_radius": 0.2,
+  "leader": 1.0,
+  "trunk_bend": 0.3,
+  "branches": 16,
+  "branch_angle": 48.0,
+  "branch_curve": -0.25,
+  "twigs": 8,
+  "leaf_density": 1.6,
+  "leaf_size": 0.95,
+  "leaf_color": [
+    0.9,
+    0.9,
+    0.85
+  ],
+  "leaf_variation": 0.5,
+  "translucency": 0.8,
+  "crown_shading": 0.7,
+  "clumping": 0.4,
+  "bark_color": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "bark_texture": "Assets/NoonValley/Textures/BirchBark.png",
+  "bark_normal": "Assets/NoonValley/Textures/BirchBarkNormal.png",
+  "leaf_texture": "Assets/Trees/Textures/BirchLeaves.png",
+  "leaf_normal": "Assets/Trees/Textures/BirchLeavesNormal.png",
+  "bark_roughness": "Assets/NoonValley/Textures/BirchBarkRoughness.png",
+  "bark_occlusion": "Assets/NoonValley/Textures/BirchBarkAO.png",
+  "bark_height": "Assets/NoonValley/Textures/BirchBarkHeight.png",
+  "leaf_roughness": "Assets/Trees/Textures/BirchLeavesRoughness.png",
+  "leaf_translucency": "Assets/Trees/Textures/BirchLeavesTranslucency.png",
+  "wind": {
+    "trunk_bend": 1.2,
+    "branch_sway": 1.3,
+    "leaf_flutter": 1.4
+  }
+}

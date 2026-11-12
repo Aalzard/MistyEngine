@@ -69,6 +69,19 @@ pub struct TreeSettings {
     /// Meshes up to here, billboards (impostors) beyond (metres, × the LOD bias).
     pub billboard_start: f32,
     pub cast_shadows: bool,
+    /// 0.1..1: detail of the trees in the sun's shadow cascades (1 = each cascade's level of
+    /// detail by its texel size; lower = lighter meshes and impostors in finer cascades: a
+    /// dense forest's shadows cost much less).
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub shadow_detail: f32,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
 }
 
 impl Default for TreeSettings {
@@ -80,6 +93,7 @@ impl Default for TreeSettings {
             lod_distance: 30.0,
             billboard_start: 110.0,
             cast_shadows: true,
+            shadow_detail: 1.0,
         }
     }
 }
@@ -155,6 +169,11 @@ impl TreeSettings {
         fix(&mut self.draw_distance, 10.0, 20_000.0);
         fix(&mut self.lod_distance, 1.0, 1000.0);
         fix(&mut self.billboard_start, 2.0, 5000.0);
+        self.shadow_detail = if self.shadow_detail.is_finite() {
+            self.shadow_detail.clamp(0.1, 1.0)
+        } else {
+            1.0
+        };
     }
 
     /// Remove prototype `index` and the trees placed with it (later indices move down).

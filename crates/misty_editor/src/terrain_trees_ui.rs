@@ -510,6 +510,18 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                 &mut s.cast_shadows,
                 def.cast_shadows,
             );
+            ch |= kit::slider(
+                ui,
+                &tr!("Shadow Detail"),
+                &tr!(
+                    "Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)"
+                ),
+                &mut s.shadow_detail,
+                0.1..=1.0,
+                def.shadow_detail,
+                "",
+                false,
+            );
         },
     );
     if ch {
@@ -518,6 +530,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             d.trees.lod_distance = s.lod_distance;
             d.trees.billboard_start = s.billboard_start;
             d.trees.cast_shadows = s.cast_shadows;
+            d.trees.shadow_detail = s.shadow_detail;
         });
     }
 }

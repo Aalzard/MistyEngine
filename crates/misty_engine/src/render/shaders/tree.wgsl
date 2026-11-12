@@ -46,6 +46,25 @@ fn tree_tint(c: vec3<f32>, v: f32) -> vec3<f32> {
     return c * vec3<f32>(1.0 + 0.18 * k, 1.0 + 0.06 * k, 1.0 - 0.16 * k) * (1.0 + 0.22 * k);
 }
 
+// Share of the sunlight that reaches the fragment beyond the shadow maps' own shade (crown
+// shading: set by the leaves and impostors before `shade_tree`, 1 = all).
+var<private> tree_sun_reach: f32 = 1.0;
+
+// Crown shading (tree.shade.x): inner clusters (low baked occlusion `ao`) and low ones
+// (`height` share of the tree) sit in the shade of the outer dome under a high sun. Returns
+// (sun reach, occlusion for the sky light).
+fn tree_crown_shade(ao: f32, height: f32) -> vec2<f32> {
+    let k = tree.shade.x;
+    if (k <= 0.0) {
+        return vec2<f32>(1.0, ao);
+    }
+    let outer = smoothstep(0.3, 0.92, ao);
+    let low = smoothstep(0.15, 0.85, height);
+    let sun = mix(1.0, outer * mix(0.5, 1.0, low), k);
+    let sky = pow(ao * mix(1.0, mix(0.55, 1.0, low), k), 1.0 + k);
+    return vec2<f32>(sun, sky);
+}
+
 // Sun visibility over a wide disk (soft dappled light in the crown, no crisp speckle).
 fn tree_shadow(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>, radius: f32) -> f32 {
     if (li.shadow.x < 0.5) {
@@ -113,15 +132,23 @@ fn shade_tree(world: vec3<f32>, albedo_in: vec3<f32>, n: vec3<f32>, occlusion: f
         if (atten <= 0.0) {
             continue;
         }
-        let shadow = tree_shadow(i, li, world, n, l, shadow_radius);
+        var shadow = tree_shadow(i, li, world, n, l, shadow_radius);
+        if (kind == 0u && li.spot.z > 0.5) {
+            shadow *= far_sun_shadow(world, n, l);
+        }
         // Light through the leaves: forward scattering towards the eye against the light,
         // plus diffuse light through the back of the cluster. It passes several layers of
         // leaves, so the crown's own shadow only dims it.
         // Soft: a wide forward lobe, and diffuse light through the back wrapping round.
         let back = pow(clamp(dot(v, -l), 0.0, 1.0), 2.5);
         let through = clamp((dot(-n, l) + 0.35) / 1.35, 0.0, 1.0);
-        color += transmission * li.color.rgb * atten * mix(0.35, 1.0, shadow) * (back * 1.6 + through * through * 0.7);
+        // (Under a canopy a small plant's shade is not its own: nothing comes through.)
+        let shade_floor = select(0.35, 0.0, tree.shade.y > 0.5);
+        color += transmission * li.color.rgb * atten * mix(shade_floor, 1.0, shadow) * (back * 1.6 + through * through * 0.7);
         atten *= shadow * direct_occlusion(ssao);
+        if (kind == 0u) {
+            atten *= tree_sun_reach;
+        }
         // Wrapped diffuse: leaves scatter light around the crown's terminator.
         let n_dot_l = (dot(n, l) + wrap) / (1.0 + wrap);
         if (n_dot_l <= 0.0) {
@@ -273,7 +300,11 @@ fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTarget
     // face the sun (the leaves' own normals break the dome's highlight up), matte undersides;
     // duller far away (no sparkle).
     let smoothness = (1.0 - material.b) * mix(0.85, 0.5, far / 0.3);
-    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, smoothness, 0.35);
+    let crown = tree_crown_shade(ao, in.misc.y);
+    tree_sun_reach = crown.x;
+    // A sharper terminator with crown shading: sunlit tops, dark undersides.
+    let wrap = mix(0.45, 0.2, tree.shade.x);
+    var out = shade_tree(in.world, albedo, n, crown.y, transmission, wrap, smoothness, 0.35);
     out.color.a = coverage;
     out.glow.a = coverage;
     out.velocity = velocity_of(in.clip, in.clip_prev);
@@ -308,6 +339,26 @@ fn vs_tree_impostor(@builtin(vertex_index) vi: u32, inst: TreeInstance) -> Impos
     return out;
 }
 
+// The impostors' depth, drawn with the leaves' before the trees (render/trees.rs `draw_main`):
+// the coverage of `fs_tree_impostor` only. A far hillside of impostors overlaps each pixel
+// several times; the lit impostors then test for equal depth and shade each sample once.
+@fragment
+fn fs_tree_impostor_depth(in: ImpostorOut) -> MeshTargets {
+    let a = mix(
+        textureSampleBias(tree_albedo, tree_sampler, in.uv0, view.view_tan.z).a,
+        textureSampleBias(tree_albedo, tree_sampler, in.uv1, view.view_tan.z).a,
+        in.misc.x,
+    );
+    let coverage = leaf_coverage(a, in.clip, 0.3);
+    if (coverage < 0.01 || tree_faded(in.misc.z, in.clip.xy)) {
+        discard;
+    }
+    var out: MeshTargets;
+    out.color = vec4<f32>(0.0, 0.0, 0.0, coverage);
+    out.glow = vec4<f32>(0.0);
+    return out;
+}
+
 @fragment
 fn fs_tree_impostor(in: ImpostorOut) -> MeshTargets {
     // The two nearest baked views, blended (both sampled: smooth derivatives, no popping
@@ -334,7 +385,12 @@ fn fs_tree_impostor(in: ImpostorOut) -> MeshTargets {
     albedo = tree_tint(albedo, in.misc.y);
     let ao = nt.a;
     let transmission = albedo * vec3<f32>(1.05, 1.0, 0.6) * tree.leaf.w * mix(0.35, 1.0, ao);
-    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, 0.12, 0.6);
+    // Height share of the tree at this texel (the quad's v runs down the impostor).
+    let height = (tree.impostor.z + (1.0 - in.uv0.y) * tree.impostor.y) / max(tree.bark.w, 1e-3);
+    let crown = tree_crown_shade(ao, height);
+    tree_sun_reach = crown.x;
+    let wrap = mix(0.45, 0.2, tree.shade.x);
+    var out = shade_tree(in.world, albedo, n, crown.y, transmission, wrap, 0.12, 0.6);
     out.color.a = coverage;
     out.glow.a = coverage;
     out.velocity = velocity_of(in.clip, in.clip_prev);

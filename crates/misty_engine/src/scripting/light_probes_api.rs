@@ -18,7 +18,8 @@ fn color(c: Vec3) -> LColor {
 /// The scene's ambient light as SH (what objects without probes get).
 fn ambient(scene: &Scene) -> [Vec3; 9] {
     let lights = crate::render_scene::lights(scene);
-    crate::render::Environment::new(scene.render_settings.clone(), &lights).ambient_sh()
+    crate::render::Environment::new(crate::render_scene::render_settings(scene), &lights)
+        .ambient_sh()
 }
 
 fn probe_table(lua: &Lua, coefficients: [Vec3; 9], baked: bool) -> Result<Table> {

@@ -3,7 +3,8 @@
 // depth. With both effects off the header is zero and every term is exactly 1.
 
 struct ScreenSpace {
-    // x = 1 when AO is on, y = direct lighting strength, z = 1 for the AO debug view.
+    // x = 1 when AO is on, y = direct lighting strength, z = 1 for the AO debug view,
+    // w = distant shadows (0 = off).
     ao: vec4<f32>,
     // x = 1 when contact shadows are on, y = ray length, z = opacity, w = sample count.
     contact: vec4<f32>,
@@ -126,6 +127,45 @@ fn contact_shadow(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -
             let t = (f32(i) + jitter) / f32(steps);
             let near = 1.0 - 0.6 * t * t;
             return 1.0 - screen.contact.z * fade * grazing * near;
+        }
+    }
+    return 1.0;
+}
+
+// Distant shadows of the sun at `world` (shadows.wgsl's maps end at the shadow distance):
+// a ray towards the sun through the prepass depth, its length growing with the distance
+// (tens of metres far away), with an occluder thickness to match (whole tree crowns). Blends
+// in over the last 15% of the shadow distance, where the maps fade out. 1 = lit.
+fn far_sun_shadow(world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -> f32 {
+    let k = screen.ao.w;
+    if (k <= 0.0) {
+        return 1.0;
+    }
+    let z0 = screen_depth(world);
+    let reach = shadow_params.view_axis.w;
+    let blend = smoothstep(reach * 0.85, reach, z0);
+    if (blend <= 0.0) {
+        return 1.0;
+    }
+    let px0 = screen_pixel(world);
+    if (px0.z < 0.5) {
+        return 1.0;
+    }
+    let jitter = fract(52.9829189 * fract(dot(px0.xy, vec2<f32>(0.06711056, 0.00583715))));
+    let len = clamp(0.06 * z0, 8.0, 90.0);
+    let start = world + n * (0.004 * z0) + l * (0.006 * z0);
+    let steps = 12u;
+    for (var i = 0u; i < steps; i++) {
+        let t = (f32(i) + jitter) / f32(steps);
+        let q = start + l * (t * t * len + 0.5);
+        let px = screen_pixel(q);
+        if (px.z < 0.5) {
+            break;
+        }
+        let surface = screen_texel(px.xy).y;
+        let behind = screen_depth(q) - surface;
+        if (behind > 0.002 * surface + 0.2 && behind < 0.03 * surface + 12.0) {
+            return 1.0 - k * blend;
         }
     }
     return 1.0;
