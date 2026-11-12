@@ -548,6 +548,50 @@ fn two_scenes_with_the_same_tilemap_id_keep_their_chunks() {
     assert_eq!(builds() - before, 4);
 }
 
+/// Loading or registering some other tile asset (a palette, another tilemap, a test running
+/// alongside) rebuilds no chunk and no collider; changing a tile the map uses does. (A global
+/// counter in every hash rebuilt all of them, and made the chunk tests flaky.)
+#[test]
+fn only_a_change_to_a_used_tile_rebuilds_chunks() {
+    let used = plain("unrelated", "Used", SQUARE);
+    let mut s = Scene::new("Map");
+    let grid = s.spawn("Grid", None);
+    s.add(grid, Grid::default());
+    let tm = s.spawn("Tiles", Some(grid));
+    let mut map = Tilemap::default();
+    map.set(at(5, 5), Some(&used), TileTransform::default());
+    map.set(at(CHUNK * 2, 0), Some(&used), TileTransform::default());
+    s.add(tm, map);
+    s.add(tm, TilemapRenderer::default());
+    let builds = || chunks::BUILDS.with(|b| b.get());
+    let before = builds();
+    chunks::scene_draws(&s);
+    assert_eq!(builds() - before, 2);
+    let signature = collider::signature(&s.world.get::<&Tilemap>(tm).unwrap());
+    plain("unrelated", "Other", CIRCLE);
+    chunks::scene_draws(&s);
+    assert_eq!(
+        builds() - before,
+        2,
+        "another tile registered: nothing rebuilt"
+    );
+    assert_eq!(
+        collider::signature(&s.world.get::<&Tilemap>(tm).unwrap()),
+        signature
+    );
+    tile::register(&used, TileAsset::sprite(CIRCLE));
+    chunks::scene_draws(&s);
+    assert_eq!(
+        builds() - before,
+        4,
+        "the used tile changed: its chunks rebuilt"
+    );
+    assert_ne!(
+        collider::signature(&s.world.get::<&Tilemap>(tm).unwrap()),
+        signature
+    );
+}
+
 #[test]
 fn paint_erase_and_flood_fill() {
     let a = plain("paint", "A", SQUARE);

@@ -172,7 +172,13 @@ pub fn signature(map: &Tilemap) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     map.tiles.0.hash(&mut h);
     map.tile_anchor.to_array().map(f32::to_bits).hash(&mut h);
-    tile::generation().hash(&mut h);
+    // The versions of the tile assets it uses (not every tile's load anywhere).
+    let mut seen = std::collections::HashSet::new();
+    for cell in map.tiles.0.values() {
+        if seen.insert(cell.tile.clone()) {
+            (cell.tile.clone(), tile::version(&cell.tile)).hash(&mut h);
+        }
+    }
     h.finish()
 }
 

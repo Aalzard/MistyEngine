@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use glam::{IVec2, Mat4, Vec2, Vec3};
 use hecs::Entity;
@@ -202,39 +202,63 @@ struct Cache {
 
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(Default::default);
 
-/// Hash of each chunk's own cells.
-fn chunk_hashes(map: &Tilemap) -> HashMap<IVec2, u64> {
+/// Versions of the tile assets a map uses, looked up once per draw.
+#[derive(Default)]
+struct Versions(HashMap<Arc<str>, u64>);
+
+impl Versions {
+    fn of(&mut self, tile: &Arc<str>) -> u64 {
+        *self
+            .0
+            .entry(tile.clone())
+            .or_insert_with(|| tile::version(tile))
+    }
+}
+
+/// Hash of each chunk's own cells (and the versions of their tile assets).
+fn chunk_hashes(map: &Tilemap, versions: &mut Versions) -> HashMap<IVec2, u64> {
     let mut hashers: HashMap<IVec2, std::collections::hash_map::DefaultHasher> = HashMap::new();
     for (&(x, y), cell) in &map.tiles.0 {
         let h = hashers.entry(chunk_of(IVec2::new(x, y))).or_default();
         (x, y).hash(h);
         cell.hash(h);
+        versions.of(&cell.tile).hash(h);
     }
     hashers.into_iter().map(|(k, h)| (k, h.finish())).collect()
 }
 
 /// Chunk hash including the ring of cells around it (Rule Tiles at the border see them), the
 /// grid, anchor and tile asset versions.
-fn full_hash(own: &HashMap<IVec2, u64>, chunk: IVec2, map: &Tilemap, grid: &Grid) -> u64 {
+fn full_hash(
+    own: &HashMap<IVec2, u64>,
+    chunk: IVec2,
+    map: &Tilemap,
+    grid: &Grid,
+    versions: &mut Versions,
+) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     own.get(&chunk).hash(&mut h);
     let lo = chunk * CHUNK - IVec2::ONE;
     let hi = lo + IVec2::splat(CHUNK + 1);
+    let mut ring = |c: IVec2, h: &mut std::collections::hash_map::DefaultHasher| {
+        let cell = map.get(c);
+        cell.hash(h);
+        cell.map(|cell| versions.of(&cell.tile)).hash(h);
+    };
     for x in lo.x..=hi.x {
         for y in [lo.y, hi.y] {
-            map.get(IVec2::new(x, y)).hash(&mut h);
+            ring(IVec2::new(x, y), &mut h);
         }
     }
     for y in lo.y + 1..hi.y {
         for x in [lo.x, hi.x] {
-            map.get(IVec2::new(x, y)).hash(&mut h);
+            ring(IVec2::new(x, y), &mut h);
         }
     }
     [grid.cell_size, grid.cell_gap, map.tile_anchor]
         .map(|v| v.to_array().map(f32::to_bits))
         .hash(&mut h);
     (grid.layout as u8).hash(&mut h);
-    tile::generation().hash(&mut h);
     h.finish()
 }
 
@@ -283,7 +307,8 @@ pub fn draws(
         let id = e.to_bits().get();
         let frame = cache.frame;
         cache.seen.insert(id, frame);
-        let own = chunk_hashes(&map);
+        let mut versions = Versions::default();
+        let own = chunk_hashes(&map, &mut versions);
         let mut stale = Vec::new();
         // Chunk versions of this tilemap not drawn for a while (chunks that no longer hold
         // tiles, the other scene's version once it is gone).
@@ -302,7 +327,7 @@ pub fn draws(
         let mut chunks: Vec<IVec2> = own.keys().copied().collect();
         chunks.sort_by_key(|c| (c.y, c.x));
         for chunk in chunks {
-            let hash = full_hash(&own, chunk, &map, &grid);
+            let hash = full_hash(&own, chunk, &map, &grid, &mut versions);
             let versions = cache.chunks.entry((id, chunk)).or_default();
             let at = match versions.iter().position(|c| c.hash == hash) {
                 Some(i) => i,
@@ -315,8 +340,7 @@ pub fn draws(
                         .into_iter()
                         .enumerate()
                         .map(|(i, cm)| {
-                            let name =
-                                format!("tilemap/{id}/{}_{}/{i}/{hash:x}", chunk.x, chunk.y);
+                            let name = format!("tilemap/{id}/{}_{}/{i}/{hash:x}", chunk.x, chunk.y);
                             let key = crate::models::runtime::register_new(&name, cm.data);
                             (key, cm.texture, cm.color)
                         })
