@@ -130,14 +130,14 @@ fn spread_around(
     let (area, perimeter) = area_perimeter(&q);
     // Screen heights → q space (×2).
     let sigmas = SIGMAS.map(|s| s * reach(spread) * 2.0);
-    let far = sigmas[2] * REACH_SIGMAS;
+    let w = weights(area, perimeter, sigmas, energy);
+    let far = reach_until_faint(sigmas, w, color.max_element());
     let (lo, hi) = q.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), p| {
         (lo.min(*p), hi.max(*p))
     });
     if lo.x - far > aspect || hi.x + far < -aspect || lo.y - far > 1.0 || hi.y + far < -1.0 {
         return None;
     }
-    let w = weights(area, perimeter, sigmas, energy);
     let size = (hi - lo).max_element();
     Some(SpreadInstance {
         c01: [q[0].x, q[0].y, q[1].x, q[1].y],
@@ -147,6 +147,26 @@ fn spread_around(
         weight: [w[0], w[1], w[2], (size * 0.25).clamp(0.003, 0.08)],
         center: center.0.extend(if center.1 { 1.0 } else { 0.0 }).to_array(),
     })
+}
+
+/// Below this linear brightness the halo is not drawn (dim lights get a smaller quad).
+const FAINT: f32 = 2e-4;
+
+/// How far past the outline the halo reaches: [`REACH_SIGMAS`] widest sigmas, or less where
+/// its brightness (`peak` × the Gaussians) has fallen below [`FAINT`].
+fn reach_until_faint(sigmas: [f32; 3], w: [f32; 3], peak: f32) -> f32 {
+    let max = sigmas[2] * REACH_SIGMAS;
+    let at = |d: f32| -> f32 {
+        (0..3)
+            .map(|i| w[i] * (-d * d / (2.0 * sigmas[i] * sigmas[i])).exp())
+            .sum::<f32>()
+            * peak
+    };
+    const STEPS: usize = 32;
+    (1..=STEPS)
+        .map(|k| max * k as f32 / STEPS as f32)
+        .find(|d| at(*d) < FAINT)
+        .unwrap_or(max)
 }
 
 /// q space of a clip-space point (its w kept at least `min_w`).
