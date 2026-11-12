@@ -362,6 +362,28 @@ return L
 }
 
 #[test]
+fn a_nan_field_of_view_is_refused() {
+    let probe = r#"
+local P = {}
+function P:Start()
+    local cam = self.gameObject:GetComponent("Camera")
+    cam.fieldOfView = 50
+    Debug.Log("nan " .. tostring(pcall(function() cam.fieldOfView = 0 / 0 end)))
+    Debug.Log("fov " .. cam.fieldOfView)
+end
+return P
+"#;
+    let root = project(&[("P.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Cam", None);
+    scene.add(e, crate::scene::Camera::default());
+    attach(&mut scene, e, "P.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    assert!(logs.iter().any(|(_, t)| t == "nan false"), "{logs:?}");
+    assert!(logs.iter().any(|(_, t)| t == "fov 50.0"), "{logs:?}");
+}
+
+#[test]
 fn instantiate_refuses_paths_outside_the_project() {
     let root = project(&[]);
     // A prefab next to the project folder, and one at an absolute path.
