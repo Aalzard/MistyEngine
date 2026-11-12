@@ -4275,3 +4275,31 @@ B3 (internal tile edges), B6 (chunk cache key, perf), T6 (terrain hole indices, 
 `asset.read_text` reading whole files, and the X items listed in the pending notes. Physics
 exit events for destroyed objects stay as they are (as in the familiar engine). F10 belongs
 to `r40-freeze`.
+
+## Round 45 — Cheaper grass on the GPU, grass LOD without pops (branch r45-grass-gpu)
+
+### Done (docs/pending/r45-grass-gpu.md)
+- **Grass visibility card target in 8 bits** (`grass_vis.rs`, `grass_vis.wgsl`): triangle,
+  facing and coverage in an Rgba8Unorm target (4 bytes a sample, was 8): the 4× MSAA raster
+  and the resolve move a third less memory. Same picture (mean 0.07/255).
+- **Grass LOD fades** (`grass_blade.wgsl`, `grass_cull.wgsl`, `grass_prepass.wgsl`): the fine
+  cards slide their rows onto the coarse card's before their chunk switches (the switch
+  showed as a band across the meadow at 1.5 LOD distances: forced-switch difference 0.121 →
+  0.003/255); every blade's width fades with the draw-distance fade and nothing past the
+  draw distance is drawn (the flat fans kept their width to the end of the last chunk); the
+  screen-space prepass's blades thin out over the last quarter of its range instead of
+  ending at whole chunks.
+- Diagnostics of where the grass time goes (table in the pending doc), harness additions:
+  `MISTY_GRASS_CLOCK=1` (wind clock running in the timings), `noon_valley_dolly`, test knobs
+  `MISTY_GRASS_COARSE_FROM` / `MISTY_GRASS_DROP_BEYOND`.
+- High 1920×1080, sum of GPU passes: NoonValley hero 13.48 → 12.85 ms (grass visibility
+  2.37 → 2.07, shading 2.00 → 1.89, screen-space prepass 1.31 → 1.13), down 12.89 → 11.94,
+  inside 11.94 → 11.73, MeadowDemo 14.37 → 13.59 (visibility 2.51 → 2.17, prepass 0.51 →
+  0.35). Images: golden measure ≤ 0.43 on every view (limit 0.5); the hero's difference is
+  the band where the fine cards take the coarse shape.
+
+### Not done
+- Hero still above 12 ms. Tried and dropped: per-pixel composite with sample masks (slower),
+  two-segment far cards and one-segment fans (no gain), motion vectors for sample 0 only
+  (no gain), a smooth leaf count (changes the turf beyond the golden tolerance). Next costs:
+  the near grass shadow map (0.7 ms), grass in the prepass, sun shafts (1.0 ms).
