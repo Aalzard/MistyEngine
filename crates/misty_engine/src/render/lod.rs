@@ -17,11 +17,12 @@ use crate::camera::{Camera, Projection};
 /// 4 × 4 ordered (Bayer) dither ranks, row by row (`lod_dither` in common.wgsl).
 pub const BAYER4: [u8; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
-/// Dither threshold (0..1) of pixel `p` with the pattern shifted by `shift` (TAA moves the
-/// shift every frame; `lod_dither` in common.wgsl).
-pub fn dither(p: [u32; 2], shift: [u32; 2]) -> f32 {
-    let (x, y) = ((p[0] + shift[0]) % 4, (p[1] + shift[1]) % 4);
-    (BAYER4[(y * 4 + x) as usize] as f32 + 0.5) / 16.0
+/// Dither threshold (0..1) of pixel `p` in frame phase `phase` (0..7: TAA's jitter phase,
+/// each step adds 1/8 to every threshold; `lod_dither` in common.wgsl).
+pub fn dither(p: [u32; 2], phase: u32) -> f32 {
+    let (x, y) = (p[0] % 4, p[1] % 4);
+    let t = (BAYER4[(y * 4 + x) as usize] as f32 + 0.5) / 16.0 + (phase % 8) as f32 / 8.0;
+    t.fract()
 }
 
 /// Is a pixel of dither threshold `t` dropped by a draw of fade value `fade`? A fade of 0 is
@@ -273,13 +274,13 @@ mod tests {
         }
     }
 
-    /// Pixels of a 4 × 4 tile (with every shift) a draw of state `s` keeps.
-    fn kept(s: LodState, shift: [u32; 2]) -> [bool; 16] {
+    /// Pixels of a 4 × 4 tile (in frame phase `phase`) a draw of state `s` keeps.
+    fn kept(s: LodState, phase: u32) -> [bool; 16] {
         let mut out = [false; 16];
         if let Some(f) = fade_of(s) {
             for (i, k) in out.iter_mut().enumerate() {
                 let p = [i as u32 % 4, i as u32 / 4];
-                *k = !dithered_out(f, dither(p, shift));
+                *k = !dithered_out(f, dither(p, phase));
             }
         }
         out
@@ -331,10 +332,10 @@ mod tests {
                 1
             };
             assert_eq!(drawn, expect, "h {h}: {states:?}");
-            for shift in [[0, 0], [2, 1], [3, 2]] {
+            for phase in [0, 3, 6] {
                 let mut count = [0u8; 16];
                 for s in &states {
-                    for (c, k) in count.iter_mut().zip(kept(*s, shift)) {
+                    for (c, k) in count.iter_mut().zip(kept(*s, phase)) {
                         *c += k as u8;
                     }
                 }
@@ -350,7 +351,7 @@ mod tests {
                 }
             }
             // Moving away, LOD 0's share of the pixels only falls.
-            let share = kept(states[0], [0, 0]).iter().filter(|k| **k).count();
+            let share = kept(states[0], 0).iter().filter(|k| **k).count();
             assert!(share <= last_share, "h {h}: {share} after {last_share}");
             last_share = share;
             h *= 0.995;
@@ -358,24 +359,22 @@ mod tests {
     }
 
     /// The outgoing level's pattern and the incoming one's are complements: at every fade
-    /// value, shift and pixel exactly one of them keeps the pixel, and the outgoing level
+    /// value, frame phase and pixel exactly one of them keeps the pixel, and the outgoing level
     /// keeps about `fade` of the pixels.
     #[test]
     fn complementary_dithers_sum_to_full_coverage() {
         for step in 1..64 {
             let keep = step as f32 / 64.0;
-            for sx in 0..4 {
-                for sy in 0..4 {
-                    let mut out_kept = 0;
-                    for i in 0..16u32 {
-                        let t = dither([i % 4, i / 4], [sx, sy]);
-                        let a = !dithered_out(keep, t);
-                        let b = !dithered_out(keep - 1.0, t);
-                        assert!(a ^ b, "fade {keep}, pixel {i}, shift {sx},{sy}");
-                        out_kept += a as u32;
-                    }
-                    assert!((out_kept as f32 / 16.0 - keep).abs() <= 1.0 / 16.0 + 1e-6);
+            for phase in 0..8 {
+                let mut out_kept = 0;
+                for i in 0..16u32 {
+                    let t = dither([i % 4, i / 4], phase);
+                    let a = !dithered_out(keep, t);
+                    let b = !dithered_out(keep - 1.0, t);
+                    assert!(a ^ b, "fade {keep}, pixel {i}, phase {phase}");
+                    out_kept += a as u32;
                 }
+                assert!((out_kept as f32 / 16.0 - keep).abs() <= 1.0 / 16.0 + 1e-6);
             }
         }
         // Every threshold of the tile is distinct: the pattern has 16 levels.
@@ -383,7 +382,41 @@ mod tests {
         ranks.sort();
         assert_eq!(ranks, std::array::from_fn(|i| i as u8));
         // Not fading: drawn whole.
-        assert!((0..16).all(|i| !dithered_out(0.0, dither([i % 4, i / 4], [0, 0]))));
+        assert!((0..16).all(|i| !dithered_out(0.0, dither([i % 4, i / 4], 0))));
+    }
+
+    /// With TAA every pixel's threshold walks through the jitter cycle: the eight phases the
+    /// camera's jitter gives (as the shader derives them) are all different, and over them a
+    /// pixel of a half-faded pair shows each level in half the frames, so the history averages
+    /// the two instead of keeping a fixed pattern.
+    #[test]
+    fn the_dither_moves_with_the_taa_jitter() {
+        let phases: Vec<u32> = (0..8)
+            .map(|n| {
+                let j = super::super::taa::jitter_pixels(n, 8).x;
+                ((j + 0.5).fract() * 8.0).floor().clamp(0.0, 7.0) as u32
+            })
+            .collect();
+        let mut sorted = phases.clone();
+        sorted.sort();
+        assert_eq!(sorted, (0..8).collect::<Vec<_>>(), "{phases:?}");
+        for i in 0..16u32 {
+            let shown = phases
+                .iter()
+                .filter(|&&k| !dithered_out(0.5, dither([i % 4, i / 4], k)))
+                .count();
+            assert_eq!(shown, 4, "pixel {i}");
+        }
+        // Consecutive frames change the pattern.
+        for w in phases.windows(2) {
+            let a: Vec<bool> = (0..16)
+                .map(|i| dithered_out(0.5, dither([i % 4, i / 4], w[0])))
+                .collect();
+            let b: Vec<bool> = (0..16)
+                .map(|i| dithered_out(0.5, dither([i % 4, i / 4], w[1])))
+                .collect();
+            assert_ne!(a, b, "phases {w:?}");
+        }
     }
 
     /// The shader's dither matrix is the one tested here.
