@@ -256,13 +256,21 @@ pub fn write_slot(
     Ok(path)
 }
 
+/// Largest uncompressed save read back (a damaged or crafted file can claim to expand
+/// a thousandfold).
+pub const MAX_SAVE_TEXT: u64 = 256 << 20;
+
 /// Text of a save file, uncompressing it when needed.
-fn decode(bytes: &[u8]) -> Result<String, String> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<String, String> {
     if bytes.starts_with(&[0x1f, 0x8b]) {
         let mut s = String::new();
         flate2::read::GzDecoder::new(bytes)
+            .take(MAX_SAVE_TEXT + 1)
             .read_to_string(&mut s)
             .map_err(|e| format!("corrupt compressed save: {e}"))?;
+        if s.len() as u64 > MAX_SAVE_TEXT {
+            return Err(format!("the save expands past {} MB", MAX_SAVE_TEXT >> 20));
+        }
         Ok(s)
     } else {
         String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())
