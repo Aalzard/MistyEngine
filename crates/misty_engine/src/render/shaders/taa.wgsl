@@ -157,8 +157,10 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     // never feeds back into the accumulation).
     let history = to_ycocg(taa_compress(taa_history_at(prev_uv)));
 
-    // Disocclusion: the history there saw a surface at another depth than this one would
-    // have had last frame.
+    // Disocclusion: the history there saw a nearer surface than this one would have had last
+    // frame (it has moved away and uncovered this). A surface nearer than what the history
+    // saw (it has come in front) keeps the history and leaves it to the clip: the scattered
+    // pixels of a dithered LOD cross-fade are such surfaces, and threw their history away.
     let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
     let world = taa.inv_view_proj * ndc;
     let prev_clip = taa.prev_view_proj * vec4<f32>(world.xyz / world.w, 1.0);
@@ -167,7 +169,7 @@ fn fs_taa(in: FullscreenOut) -> @location(0) vec4<f32> {
     // foreground edge's vector lands on foreground history by design, and the clip handles it.)
     let seen = taa_history_tap(prev_uv).a;
     let own = all(nearest_p == p);
-    let disoccluded = own && abs(seen - expected) > 0.1 * max(expected, 0.1) + 0.02;
+    let disoccluded = own && expected - seen > 0.1 * max(expected, 0.1) + 0.02;
 
     // Clip the history towards the box of what the pixel can be now. A still view keeps a
     // slightly wider box (less flicker from the jitter walking across thin detail); motion
@@ -285,7 +287,7 @@ fn fs_taau(in: FullscreenOut) -> @location(0) vec4<f32> {
     let expected = select(prev_clip.w, z, taa.info.w > 0.5);
     let seen = taa_history_tap(prev_uv).a;
     let own = all(nearest_p == centre);
-    if (own && abs(seen - expected) > 0.1 * max(expected, 0.1) + 0.02) {
+    if (own && expected - seen > 0.1 * max(expected, 0.1) + 0.02) {
         return vec4<f32>(taa_expand(clamp(from_ycocg(spatial), vec3<f32>(0.0), vec3<f32>(0.999))), near_z);
     }
 
