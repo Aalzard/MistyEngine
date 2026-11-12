@@ -3703,7 +3703,7 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   triangles in the first view.
 - Timings, High 1920 × 1080, r20: first view GPU 18.6 ms / CPU 1.8 ms, inside the wood GPU
   12.2 ms / CPU 1.7 ms (r14: 20.0 / 2.4 and 14.4 / 2.9).
-- Shots: `docs/screenshots/r26/level_r20_*.jpg` and `level_r20_sheet.jpg`.
+- Shots: `docs/screenshots/r26/level_r20_*.jpg`.
 
 ### Not done yet
 - First view GPU time is 18.6 ms against the 12 ms goal: grass is ~7 ms of it (visibility
