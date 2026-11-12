@@ -300,6 +300,26 @@ fn dropdown_opens_a_list_and_picks_an_option() {
 }
 
 #[test]
+fn dropdown_whose_item_is_its_template_does_not_open() {
+    let (mut s, c) = canvas();
+    let dd = presets::dropdown(&mut s, "Quality", c);
+    let template = s.world.get::<&UiDropdown>(dd).unwrap().template.unwrap();
+    // Item Text set to the Template itself, which has a Toggle.
+    s.add(template, UiToggle::default());
+    {
+        let mut d = s.world.get::<&mut UiDropdown>(dd).unwrap();
+        d.options = vec!["Low".into(), "High".into()];
+        d.item_text = Some(template);
+    }
+    let mut d = Driver::new(&mut s);
+    let before = s.walk().len();
+    let p = centre(&s, dd);
+    d.click(&mut s, p);
+    assert!(d.ui.dropdown.is_none());
+    assert_eq!(s.walk().len(), before, "no half-built list left behind");
+}
+
+#[test]
 fn scroll_rect_drags_clamps_and_syncs_its_scrollbar() {
     let (mut s, c) = canvas();
     let sv = presets::scroll_view(&mut s, "Scroll View", c);
