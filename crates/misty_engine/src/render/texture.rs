@@ -587,10 +587,15 @@ impl TextureCache {
         queue: &wgpu::Queue,
         rel: &str,
         kind: TextureKind,
-        usage: sprites::compress::Use,
-        bc: bool,
+        ahead: Option<sprites::compress::Upload>,
     ) {
         let key = (rel.to_owned(), kind);
+        let bc = BC.load(std::sync::atomic::Ordering::Relaxed);
+        let usage = match kind {
+            TextureKind::Color => sprites::compress::Use::Color,
+            TextureKind::Normal => sprites::compress::Use::Normal,
+            TextureKind::Linear => sprites::compress::Use::Linear,
+        };
         if !self.pending.insert(key) {
             return;
         }
@@ -601,7 +606,11 @@ impl TextureCache {
         crate::load_queue::imports().push(rel.clone(), move |ticket| {
             crate::profile_scope!(format!("Import.Texture: {rel}"));
             // Decoded, its mips made and uploaded here: the frame only binds it.
-            let result = sprites::compress::texture_upload(&rel, usage, bc).map(|up| match up {
+            let decoded = match ahead {
+                Some(up) => Ok(up),
+                None => sprites::compress::texture_upload(&rel, usage, bc),
+            };
+            let result = decoded.map(|up| match up {
                 sprites::compress::Upload::Compressed(c) => {
                     upload_compressed(&device, &queue, &rel, &c)
                 }
@@ -646,7 +655,10 @@ impl TextureCache {
             return c.view.clone();
         }
         crate::profile_scope!(format!("Import.Texture: {rel}"));
-        let imp = sprites::importer(rel);
+        let imp = {
+            crate::profile_scope!("Texture.Importer");
+            sprites::importer(rel)
+        };
         let srgb = kind == TextureKind::Color && imp.is_srgb();
         // Block-compressed (cached in Library/TextureCache) when the device supports BC.
         let bc = device
@@ -668,13 +680,15 @@ impl TextureCache {
             );
             return Some(view);
         }
-        let upload = match take_ahead(rel, kind) {
+        let ahead = take_ahead(rel, kind);
+        if self.background {
+            // Decoded (unless read ahead), its mips made and uploaded on the import queue; the
+            // 1×1 default stands in until then.
+            self.queue_load(device, queue, rel, kind, ahead);
+            return None;
+        }
+        let upload = match ahead {
             Some(up) => Ok(up),
-            None if self.background => {
-                // Decoded on the import queue; the 1×1 default stands in until then.
-                self.queue_load(device, queue, rel, kind, usage, bc);
-                return None;
-            }
             None => sprites::compress::texture_upload(rel, usage, bc),
         };
         let view = match upload {

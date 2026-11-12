@@ -994,17 +994,28 @@ impl Renderer {
             shadows: Shadows::Soft,
             shadow: Default::default(),
             volumetric: Default::default(),
-            contact_shadows: false,
+            contact_shadows: true,
             area: Default::default(),
         }];
         let environment = Environment::default();
+        // The screen-space effects scenes often turn on (their passes are made on first use).
+        let mut post = PostSettings::default();
+        post.ao.enabled = true;
+        post.ao.intensity = post.ao.intensity.max(1.0);
+        post.contact_shadows.enabled = true;
+        post.contact_shadows.length = post.contact_shadows.length.max(0.1);
+        post.contact_shadows.opacity = post.contact_shadows.opacity.max(1.0);
+        post.ssgi.enabled = true;
+        post.ssgi.intensity = post.ssgi.intensity.max(1.0);
+        post.ssr.enabled = true;
+        post.ssr.intensity = post.ssr.intensity.max(1.0);
         let frame = Frame {
             camera: &camera,
             grid: None,
             skybox: true,
             background: [0.1; 3],
             environment: &environment,
-            post: PostSettings::default(),
+            post,
             lines: &[],
             overlay: &[],
             meshes: &meshes,
@@ -1021,6 +1032,7 @@ impl Renderer {
         self.set_background_loads(was);
         // The pipelines started on workers when the renderer was made (trees, grass,
         // clouds, volumetrics): a first frame with terrain waited seconds for them.
+        self.warm_screen_space(device);
         crate::profile_scope!("Renderer.WaitPrebuilt");
         self.trees.wait_prebuilt();
         self.terrains.wait_prebuilt();
