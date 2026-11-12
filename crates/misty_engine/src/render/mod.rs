@@ -1637,6 +1637,8 @@ impl Renderer {
             // (Before the frame lists: the virtual shadow map's pages follow the terrain chunks'
             // detail.)
             (self.terrains).set_shadow_reach(shadow_settings.distance.min(frame.camera.far));
+            let prepass = screen_space::grass_prepass_range(self.quality.ambient_occlusion);
+            (self.terrains).set_grass_prepass_range(prepass);
             (self.terrains).select(
                 device,
                 queue,

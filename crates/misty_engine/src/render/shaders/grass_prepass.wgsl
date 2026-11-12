@@ -17,13 +17,26 @@ struct GrassPrepassTargets {
     @location(1) velocity: vec2<f32>,
 };
 
+// Past three quarters of the prepass's range its blades thin out, each blade in or out whole
+// (a random share by its phase), none at the range: the effects lose the blades gradually
+// instead of at the edge of the last whole chunk drawn.
+fn grass_prepass_out(b: BladeIn) -> bool {
+    let range = grass.depth.y;
+    if (range <= 0.0) {
+        return false;
+    }
+    let dist = distance(grass.origin.xyz + b.position.xyz, grass.camera.xyz);
+    let keep = 1.0 - smoothstep(range * 0.75, range, dist);
+    return fract(b.shape.w * 7.13 + 0.31) >= keep;
+}
+
 @vertex
 fn vs_grass_prepass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassPrepassOut {
     let b = grass_fetch(ii);
     var out: GrassPrepassOut;
     // Blades out of view skip the rest, and so do the flat fans of the blades the LOD shrank
     // away (`grass_flat`): they lie on the ground the prepass already has.
-    if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
+    if (grass_flat(b) || grass_outside(b, view.view_proj, true) || grass_prepass_out(b)) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
         return out;
     }

@@ -1558,6 +1558,13 @@ impl Grass {
                 let world = Aabb::new(c.bounds.min + origin, c.bounds.max + origin);
                 let dist = camera.clamp(world.min, world.max).distance(camera);
                 let near = limit.is_none_or(|l| dist < l.range);
+                // (Tests: `MISTY_GRASS_DROP_BEYOND=<m>` leaves out the chunks starting past
+                // that distance, as when they had not come into reach: nothing may change
+                // when that is the draw distance, noon_valley_tests `grass_lod_switches`.)
+                #[cfg(test)]
+                if test_knob("MISTY_GRASS_DROP_BEYOND").is_some_and(|m| dist > m) {
+                    return None;
+                }
                 (near && frustum.intersects(&world)).then_some((dist, *k, c))
             })
             .collect();
@@ -1573,7 +1580,15 @@ impl Grass {
                 if count == 0 {
                     return None;
                 }
-                let (first_vertex, verts) = if coarse_only || dist > lod_distance * COARSE_FROM {
+                // (The LOD distance as the shaders take it, `GrassParams::look.x`: the fine
+                // cards have morphed into the coarse card's shape by this distance,
+                // grass_blade.wgsl `grass_coarse_morph`.)
+                let coarse_from = lod_distance.max(1.0) * COARSE_FROM;
+                // (Tests: `MISTY_GRASS_COARSE_FROM=<LOD distances>` moves the switch.)
+                #[cfg(test)]
+                let coarse_from = test_knob("MISTY_GRASS_COARSE_FROM")
+                    .map_or(coarse_from, |k| lod_distance.max(1.0) * k);
+                let (first_vertex, verts) = if coarse_only || dist > coarse_from {
                     (100, COARSE_VERTICES)
                 } else {
                     (0, BLADE_VERTICES)
@@ -1854,6 +1869,12 @@ impl Grass {
             + self.arena.as_ref().map_or(0, Arena::bytes)
             + self.cull.as_ref().map_or(0, CullFrame::bytes)
     }
+}
+
+/// A number from the environment (test builds: LOD switch checks).
+#[cfg(test)]
+fn test_knob(key: &str) -> Option<f32> {
+    std::env::var(key).ok()?.parse().ok()
 }
 
 /// Give a dropped chunk's blades back (its cull records go with them).
@@ -2370,6 +2391,13 @@ impl GrassParams {
     }
 
     /// The terrain's number in the grass visibility ids (grass_vis.wgsl `grass_vis_id`).
+    /// How far the screen-space prepass draws grass (0 = not at all; `depth.y`): its blades
+    /// thin out over the last quarter of that range (grass_prepass.wgsl).
+    pub fn with_prepass(mut self, range: f32) -> Self {
+        self.depth[1] = range.max(0.0);
+        self
+    }
+
     pub fn with_vis_index(mut self, index: u32) -> Self {
         self.draw[2] = index;
         self
