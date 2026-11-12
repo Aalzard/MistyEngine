@@ -1490,6 +1490,8 @@ impl ScriptHost {
             self.instances.retain(|i| !doomed.contains(&i.entity));
             save_api::untrack(&self.lua, &doomed);
             unregister_script_instances(&self.lua, &doomed);
+            ui_widgets_api::forget(&self.lua, &doomed);
+            input_actions_api::forget(&self.lua, &doomed);
         }
     }
 

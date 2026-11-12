@@ -243,3 +243,31 @@ return W
         "{logs:?}"
     );
 }
+
+#[test]
+fn listeners_of_destroyed_objects_are_dropped() {
+    let src = r#"
+local W = {}
+function W:Update()
+    local copy = Instantiate(GameObject.Find("Slider"))
+    copy:GetComponent("Slider").onValueChanged:AddListener(function() Debug.Log(self) end)
+    Destroy(copy)
+end
+return W
+"#;
+    let mut u = ui();
+    let physics = Physics::build(&u.scene, Vec3::ZERO);
+    let mut h = ScriptHost::start(&mut u.scene, physics, project(src));
+    let mut time = Time::default();
+    for _ in 0..50 {
+        frame(&mut h, &mut u.scene, &mut time, Input::default());
+    }
+    let errors: Vec<_> = h
+        .take_logs()
+        .into_iter()
+        .filter(|(k, _)| *k == LogKind::Error)
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+    let n = crate::scripting::ui_widgets_api::listener_count(&h.lua);
+    assert!(n <= 1, "{n} listener lists kept for destroyed objects");
+}

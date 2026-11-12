@@ -39,6 +39,12 @@ fn registry_table(lua: &Lua, name: &str) -> Result<Table> {
     }
 }
 
+/// Drop the PlayerInput listeners of destroyed objects (see
+/// [`super::ui_widgets_api::forget_listeners`]).
+pub(super) fn forget(lua: &Lua, doomed: &[Entity]) {
+    super::ui_widgets_api::forget_listeners(lua, LISTENERS, "p", doomed);
+}
+
 fn listeners(lua: &Lua, key: &str) -> Vec<Function> {
     let Ok(t) = registry_table(lua, LISTENERS) else {
         return Vec::new();
