@@ -434,6 +434,84 @@ fn tilemap_collider_stops_a_falling_body() {
     assert!(s.world_position(ball).y < -1.0, "fell through the hole");
 }
 
+/// A box sliding along a tile floor, with no friction, keeps its speed and stays on the floor:
+/// it no longer catches on the seams between tiles (round 2's B3: with one box per cell it
+/// stopped dead within 8 cells). Both collider modes.
+#[test]
+fn bodies_slide_across_tile_seams_without_catching() {
+    use crate::physics2d::Physics2D;
+    use crate::scene::{BoxCollider2D, Collider2DCommon, PhysicsMaterial2D, Rigidbody2D};
+    let solid = plain("seams", "Solid", SQUARE);
+    for composite in [false, true] {
+        let mut s = Scene::new("Slide");
+        let grid = s.spawn("Grid", None);
+        s.add(grid, Grid::default());
+        let tm = s.spawn("Floor", Some(grid));
+        let mut map = Tilemap::default();
+        // A floor with a step-free top and uneven cells underneath.
+        edit::box_fill(
+            &mut map,
+            at(-2, -1),
+            at(60, -1),
+            &Brush::single(&solid, Default::default()),
+        );
+        for x in (-2..60).step_by(3) {
+            map.set(at(x, -2), Some(&solid), TileTransform::default());
+        }
+        s.add(tm, map);
+        let ice = Collider2DCommon {
+            material: PhysicsMaterial2D {
+                friction: 0.0,
+                bounciness: 0.0,
+            },
+            ..Default::default()
+        };
+        s.add(
+            tm,
+            TilemapCollider2D {
+                common: ice,
+                used_by_composite: composite,
+            },
+        );
+        let slider = s.spawn("Slider", None);
+        s.set_transform(slider, Transform::from_position(Vec3::new(0.5, 0.5, 0.0)));
+        s.add(
+            slider,
+            Rigidbody2D {
+                freeze_rotation: true,
+                ..Default::default()
+            },
+        );
+        s.add(
+            slider,
+            BoxCollider2D {
+                common: ice,
+                size: Vec2::ONE,
+                ..Default::default()
+            },
+        );
+        let mut p = Physics2D::build(&s, &Default::default(), &Default::default());
+        for _ in 0..30 {
+            p.step();
+        }
+        p.set_velocity(slider, Vec2::new(12.0, 0.0));
+        let (mut slowest, mut highest) = (f32::MAX, f32::MIN);
+        for _ in 0..200 {
+            p.step();
+            let v = p.velocity(slider).unwrap();
+            slowest = slowest.min(v.x);
+            highest = highest.max(v.y.abs());
+        }
+        p.sync_out(&mut s);
+        let x = s.world_position(slider).x;
+        assert!(
+            slowest > 11.5 && highest < 0.5,
+            "composite {composite}: caught on a seam (slowest {slowest:.2} m/s, vertical {highest:.2} m/s, at x {x:.1})"
+        );
+        assert!(x > 35.0, "composite {composite}: slid to {x}");
+    }
+}
+
 /// Two scenes drawn in turn whose tilemaps have the same entity id but different tiles keep
 /// their chunk meshes: no chunk is rebuilt after the first frame of each (round 2's B6: the
 /// cache was keyed by entity id alone, so each scene rebuilt the other's chunks every frame).
