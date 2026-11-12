@@ -434,6 +434,42 @@ fn tilemap_collider_stops_a_falling_body() {
     assert!(s.world_position(ball).y < -1.0, "fell through the hole");
 }
 
+/// Two scenes drawn in turn whose tilemaps have the same entity id but different tiles keep
+/// their chunk meshes: no chunk is rebuilt after the first frame of each (round 2's B6: the
+/// cache was keyed by entity id alone, so each scene rebuilt the other's chunks every frame).
+#[test]
+fn two_scenes_with_the_same_tilemap_id_keep_their_chunks() {
+    let solid = plain("two_scenes", "Solid", SQUARE);
+    let scene = |cells: &[IVec2]| {
+        let mut s = Scene::new("Map");
+        let grid = s.spawn("Grid", None);
+        s.add(grid, Grid::default());
+        let tm = s.spawn("Tiles", Some(grid));
+        let mut map = Tilemap::default();
+        for c in cells {
+            map.set(*c, Some(&solid), TileTransform::default());
+        }
+        s.add(tm, map);
+        s.add(tm, TilemapRenderer::default());
+        (s, tm)
+    };
+    // The same chunk with different tiles, and a chunk only the second scene has.
+    let (a, ta) = scene(&[at(0, 0), at(1, 0)]);
+    let (b, tb) = scene(&[at(0, 0), at(2, 3), at(CHUNK * 3, 1)]);
+    assert_eq!(ta, tb, "same entity ids");
+    let builds = || chunks::BUILDS.with(|b| b.get());
+    let before = builds();
+    for _ in 0..10 {
+        assert!(!chunks::scene_draws(&a).is_empty());
+        assert!(!chunks::scene_draws(&b).is_empty());
+    }
+    assert_eq!(builds() - before, 3, "one build per chunk of each scene");
+    // Editing still rebuilds.
+    let (c, _) = scene(&[at(0, 0)]);
+    chunks::scene_draws(&c);
+    assert_eq!(builds() - before, 4);
+}
+
 #[test]
 fn paint_erase_and_flood_fill() {
     let a = plain("paint", "A", SQUARE);
