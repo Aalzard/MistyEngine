@@ -81,6 +81,15 @@ says exactly where it stands.
 - Presets: Sleet thicker (rain 22 drops/m³ 1.3 mm, snow 11 flakes/m³), Thunderstorm by day
   lighter (sun dimming 0.78, ambient 0.48).
 - New shot `rain_against_sky`.
+- **D: is failing (2026-11-12, coordinator): nothing goes on D: any more.** Target
+  `E:\MistyTargets\r38-weather` (fresh), TMP/TEMP `C:\MistyTry\r38tmp`, renders and logs
+  `E:\MistyTargets\r38-shots` (`before/` holds the two r34 JPEGs copied off D:), slots
+  `/e/MistyTargets/build-slot.sh`. Helper scripts now in the session scratchpad `r38/`
+  (cargo.sh, gpu.sh). The r34 baseline binary stayed on D:: the before numbers are the ones
+  measured on 2026-11-11 below. The D: target `b` was corrupt (serde_derive, rmeta decode
+  errors); `c` built and passed clippy (0 warnings) at 935d4cf6 before the move.
+- The run on `c` had 3 hub test failures ("A folder named Quick/Jumper/Meadow already
+  exists"): leftovers in the old TMP on D:, not this branch's code.
 - Note: a `cargo.sh … build8.log` chain left by the first agent was still queued for a slot
   and ran at 23:30 (engine test build): harmless, it builds the current worktree.
 

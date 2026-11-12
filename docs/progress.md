@@ -3781,7 +3781,7 @@ MCP and the renderer; the bug list, routing and status per bug are in
   crown near the camera (the upper half of the ellipsoid the GI uses, at 0.8 of its size,
   `occlusion_crowns.wgsl`), so it no longer rains through the oaks and the ground under
   them stays drier.
-- **Presets**: Sleet is thicker (22 drops and 11 flakes per m³), Thunderstorm by day lets
+- **Presets**: Sleet is thicker (22 drops and 18 flakes per m³), Thunderstorm by day lets
   more light through (sun dimming 0.78, ambient 0.48; nights stay dark).
 - **Night storms are dark**: the test's night is a real one (sun under the horizon, r27's
   moon and night sky); rain is lit by lamps and lightning. The flash lights the cloud base
