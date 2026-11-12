@@ -39,6 +39,7 @@ Forked from `r26-noon-meadow` at 80e185bb.
 
 | round | hero GPU / CPU | inside GPU / CPU | notes |
 |---|---|---|---|
+| r23 + main | 13.45 / 1.8 ms | 11.7 / 1.5 ms | after the main merge (61957076), same scene |
 | r23 | 13.3 / 3.3 ms | 11.6 / 2.8 ms | impostor depth pass, grass 360 × 5.8 cm, LOD 4, draw 130; hero: grass visibility 2.36, shading 1.96, trees 0.71, prepass 1.30, sun shafts 0.96 |
 | r21 | 18.0 / 2.0 ms | 12.0 / 1.8 ms | as r20 + carpets and cliffs |
 
