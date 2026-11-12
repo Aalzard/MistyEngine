@@ -89,58 +89,77 @@ through the MCP bridge, with `MISTY_PROFILE`.
   `render/pipelines.rs`; building them on a thread with a placeholder draw is a renderer-wide
   change, not done here.
 
-## Checks (state at the hand-over, 2026-11-11 23:15)
+## The hung test run (2026-11-12)
 
-Nothing of r40 is running and no build slot is held. HEAD builds (release editor built at
-0296451d; the commit after it only changes a test constant and these notes).
+Cause: not a lock deadlock and not the disk alone. `edit_stall_tests` installed the GUID
+database of their own temp project (1500 files, no meta files) with `asset_db::install` and
+left it installed for the rest of the test process. `AssetDatabase::refresh` called
+`asset_db::rescan()`, which rescans *whatever* database is open: every later test that
+refreshed (Project window, Code Editor, World Builder...) scanned the edit-stall project and
+wrote a meta file per asset, each through `write_atomic` with `sync_all`. With TEMP on D: at
+1-3 s per flushed write, and several tests doing it at once and again on every refresh, 16
+tests ran for an hour.
+
+Measured (TMP/TEMP `C:\MistyTry\r40tmp`, branch at 20cb44b2):
+- The 16 tests alone: 16 passed in 176 s (several over 60 s, as before this branch: they are
+  heavy harness tests run 16 at a time).
+- The 16 plus `edit_stall_tests`: 18 passed in 177 s, but other tests had written 360 meta
+  files into the edit-stall project (`misty_edit_stall_<pid>/Assets/Bulk/...`) while it ran.
+- The same 16 on the branch base (3609d4e2): not measured; that run waited for the shared
+  target's build lock and hit its time limit while compiling (the base never installs a
+  database in editor tests, so it cannot take this path).
+
+Fix (e895a3b7):
+- `asset_db::rescan(root)` and `asset_db::poll(root)` take the caller's project and do
+  nothing while the open database is another project's (`AssetDatabase` passes its root).
+- Scans run without a lock; their result replaces the database only if the slot still holds
+  the same project (`replace_if_same`), so a project installed meanwhile is not overwritten.
+  `compare` (the watcher) does the same. No lock is held across a scan, flush or join (the
+  watcher's walk is joined only once finished).
+- `edit_stall_tests` install their database one at a time (a mutex) and put the previous one
+  back when done.
+- Regression tests: `asset_db::tests::rescanning_a_project_leaves_another_projects_database_alone`
+  (rescan and 20 polls for project B while A's database is open: no meta files in A, a 60 s
+  limit on a thread), `a_database_installed_during_a_rescan_is_kept`, and
+  `edit_stall_tests::refreshing_a_project_leaves_another_projects_database_alone` (an
+  `AssetDatabase` refresh + poll of B with A's 300-file database installed: no meta files in A,
+  120 s limit). Without the fix the old `rescan()` scans A: the meta count fails on an SSD
+  and the time limit trips on a slow disk.
+
+## Checks (2026-11-12, at e895a3b7 plus these notes)
+
+D: (the old target and TEMP) is failing (Windows: "Full Repair Needed", bad blocks): builds
+there read back corrupt `.rmeta` files (rustc ICEs decoding `sha2`, `rapier2d`, `exr`, `egui`
+even after a clean). Everything below ran with target `E:\MistyTargets\r40-freeze` (fresh
+build), TMP/TEMP `C:\MistyTry\r40tmp`, slots from `/e/MistyTargets/build-slot.sh`, `-j 4`,
+logs in `C:\MistyTry\r40logs`.
 
 - `cargo fmt --all --check`: clean.
-- `cargo clippy --workspace --all-targets --release`: 0 warnings (at 43346d46, log
-  `D:\MistyTargets40-logs\clippy.log`).
-- Targeted tests at 0296451d: `cargo test --release -p misty_editor -p misty_engine --
-  edit_stall physics_material file_watch saver live_reload material`: 34 + 48 passed
-  (`D:\MistyTargets40-logs	1.log`).
-- **Full test run: NOT finished, and it needs a look before merging.**
-  `cargo test --workspace --release --no-fail-fast` (log `D:\MistyTargets40-logs	est.log`)
-  passed 441 of the editor's 956 tests in 7 minutes, then printed nothing for an hour with 16
-  tests "running for over 60 seconds" and never finishing; I stopped it. No failure or panic in
-  the log. The 16: `panels::code_editor::tests::` clicking_a_console_error_opens_the_line,
-  closing_a_modified_file_asks_to_save, double_click_in_project_opens_the_script,
-  f5_plays_and_completion_accepts_with_tab, new_scripts_open_and_follow_renames,
-  syntax_errors_show_after_a_pause, typing_marks_dirty_and_ctrl_s_saves;
-  `panels::project::tests::` create_duplicate_and_delete_from_the_context_menu,
-  moving_and_renaming_scenes_updates_build_settings,
-  renaming_a_material_updates_scenes_and_the_open_scene; `panels::world_builder::tests::`
-  live_in_scene_view_pushes_the_preview_and_reverts, preview_card_shows_modes_and_live_toggle,
-  preview_follows_edits_coarse_then_sharp, stamp_inspector_edits_the_component,
-  template_picker_applies_a_template_as_one_undo_step,
-  terrain_inspector_button_opens_the_world_builder.
-  Not known which it is:
-  1. A deadlock from this branch. First suspect: `edit_stall_tests` call
-     `asset_db::install` (a write lock on the global GUID database) while other tests read it;
-     a test thread that takes the read lock twice (`with_project` -> `guid_of`...) deadlocks
-     when a writer queues between the two. The background saver and file watch are off in
-     tests.
-  2. The disk: TEMP was on D: (1.5-3 s per read at the time) and every asset save calls
-     `sync_all` again since the revert.
-  Next step: run those 16 tests alone, with TEMP on C:, on this branch and on main; if they
-  hang only here, give `edit_stall_tests` their own database handling (or drop the `install`
-  loop) and rerun.
-- Golden shots: not run (`cargo test --release -p misty_engine --lib golden_shots -- --ignored
-  --nocapture --test-threads=1` under `MistyWork/gpu-timing.lock`). The `render/` changes are
-  file stamp checks in `terrain_layers.rs`, `probes/store.rs`, `decals/mod.rs`.
-- The new timing test was not run against the old code.
+- `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- Targeted: `asset_db saver file_watch` (engine) 26 passed; `edit_stall_tests`, Code Editor,
+  Project window, World Builder and `assets::` tests (editor) 31 passed, the editor ones in
+  12 s.
+- Without the fix (old `rescan()` restored for one run): the new
+  `refreshing_a_project_leaves_another_projects_database_alone` fails with 300 meta files
+  written into the other project.
+- `cargo test --workspace --release --no-fail-fast`: 2374 passed, 1 failed. The editor's 873
+  passed in 227 s (no test over 60 s in the Code Editor / Project / World Builder groups that
+  hung before). The failure: `render::vgeo::gpu_tests::auto_picks_one_phase_and_lit_for_a_few_rocks`
+  (line 353, `stats.visibility` false: the Auto visibility buffer decides by GPU counters read
+  back "a frame or two ago", 8 frames). Alone on this branch: failed once, then passed twice;
+  on the base 3609d4e2: passed three times. Not touched by this branch (no `vgeo` change); a
+  SubCraft build was using the same GPU. Flaky under GPU load.
+- Golden shots (`cargo test --release -p misty_engine --lib golden_shots -- --ignored
+  --nocapture --test-threads=1` under `MistyWork/gpu-timing.lock`): 20 of 20 ok (largest mean
+  0.39, at most 0.03 % changed).
 
 ## Next steps
 
-1. The hung test run above.
-2. Golden shots.
-3. Full `cargo test --workspace --release --no-fail-fast` to the end.
-4. Optional: asynchronous pipeline builds; `model_settings` reading the importer every frame.
+Merge. Optional later: asynchronous pipeline builds; `model_settings` reading the importer
+every frame; the vgeo test could render more frames before reading the Auto choice.
 
-Use only `/d/MistyTargets/build-slot.sh` for slots. Target `D:\MistyTargets40-freeze`, a
-built editor at `C:\MistyTry40\misty-r40.exe` (0296451d), run automated editors with
-`MISTY_WINDOW_SIZE=1100x650`.
+Built editor of the earlier state at `C:\MistyTry\r40\misty-r40.exe` (0296451d); run automated
+editors with `MISTY_WINDOW_SIZE=1100x650`.
 
 ## Left
 
@@ -152,4 +171,4 @@ built editor at `C:\MistyTry40\misty-r40.exe` (0296451d), run automated editors
 - `asset_db::poll` rescans (reads every meta file) on the main thread when files appear.
 - Direct `stat`s remain in panels that are rarely open (World Builder preview, search index,
   Code Editor poll every second) and in `trees::cache`, `terrain::harmony::layer_mean`.
-- Keep projects off D: while builds run there.
+- Keep projects and build targets off D: (failing disk).
