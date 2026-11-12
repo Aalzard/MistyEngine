@@ -13,7 +13,7 @@ The script writes, under ``<project_dir>/Assets/Audio``:
   ``storm_heavy_rain_loop.ogg``: each loop is checked for a click at its seam
   (high-passed energy over the seam against its neighbourhood); a loop that
   clicks gets a 40 ms equal-power crossfade there.  All loops are brought to
-  the same loudness (-24 LUFS, ITU-R BS.1770 gating) under a -1 dBFS look-ahead
+  the same loudness (-24 LUFS for the ambience, -17 / -16 LUFS for the rain; ITU-R BS.1770 gating) under a -1 dBFS look-ahead
   limiter run circularly, so the seam stays seamless, and are encoded as Ogg
   Vorbis (libvorbis through PyAV), then decoded again to check the length and
   the seam survived.
@@ -41,14 +41,14 @@ from scipy import signal
 
 RATE = 48_000
 LOOPS = [
-    # (source, folder, name, bit rate)
-    ("meadow_ambience_loop_30s.wav", "Ambience", "meadow_ambience_loop", 112_000),
-    ("forest_birds_loop_30s.wav", "Ambience", "forest_birds_loop", 112_000),
-    ("breeze_grass_loop_30s.wav", "Ambience", "breeze_grass_loop", 112_000),
-    ("rain_steady_loop_30s.wav", "Weather", "rain_steady_loop", 128_000),
-    ("storm_heavy_rain_loop_30s.wav", "Weather", "storm_heavy_rain_loop", 128_000),
+    # (source, folder, name, bit rate, loudness in LUFS)
+    ("meadow_ambience_loop_30s.wav", "Ambience", "meadow_ambience_loop", 112_000, -24.0),
+    ("forest_birds_loop_30s.wav", "Ambience", "forest_birds_loop", 112_000, -24.0),
+    ("breeze_grass_loop_30s.wav", "Ambience", "breeze_grass_loop", 112_000, -24.0),
+    # Rain is a foreground sound (and drums on a roof): louder than the background ambience.
+    ("rain_steady_loop_30s.wav", "Weather", "rain_steady_loop", 128_000, -17.0),
+    ("storm_heavy_rain_loop_30s.wav", "Weather", "storm_heavy_rain_loop", 128_000, -16.0),
 ]
-LOOP_LUFS = -24.0
 CEILING_DB = -1.0
 STEPS = 6
 STEP_LUFS = -20.0
@@ -185,14 +185,14 @@ def write_meta(path: Path, settings: dict | None = None) -> None:
 
 
 def loops(sfx: Path, audio: Path) -> None:
-    for src, folder, name, bit_rate in LOOPS:
+    for src, folder, name, bit_rate, target in LOOPS:
         x = read_wav(sfx / src)
         before = seam_ratio(x)
         fixed = before > CLICK_RATIO
         if fixed:
             x = crossfade_seam(x)
         loud = lufs(x)
-        x = x * 10 ** ((LOOP_LUFS - loud) / 20)
+        x = x * 10 ** ((target - loud) / 20)
         x = limit(x, 10 ** (CEILING_DB / 20), circular=True)
         out = audio / folder / f"{name}.ogg"
         out.parent.mkdir(parents=True, exist_ok=True)

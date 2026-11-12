@@ -287,7 +287,9 @@ pub struct WeatherAudio {
 }
 
 /// Default [`WeatherAudio::under_cover`].
-pub const UNDER_COVER: f32 = 0.35;
+/// Rain on a roof (or a car) is still loud, a drumming close overhead: a roof takes only a
+/// little of the volume away.
+pub const UNDER_COVER: f32 = 0.8;
 
 fn is_under_cover_default(v: &f32) -> bool {
     *v == UNDER_COVER

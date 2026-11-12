@@ -4368,3 +4368,11 @@ now part of the sample and the engine; details and numbers in `docs/pending/r49-
   follow distance, ambience areas match the Lua maths and cover NoonValley's woods.
 - **Left**: no thunder recording (generated thunder plays); tree crowns without colliders don't
   muffle rain; one footstep set for every surface.
+
+## Round 50: rain is loud enough under a roof or in a car
+
+- The user found the rain barely audible inside a car. The car roof counts as cover, which cut the
+  rain to 35 %, and the rain loops sat at the ambience's -24 LUFS. Now Under Cover defaults to 0.8
+  (rain drums on a roof), and the rain loops are mastered louder (steady -17.6, storm -16.3 LUFS,
+  `tools/sample_sounds.py` has a loudness per loop). The engine's cached copies are renamed `_v2` so
+  old `Library/Weather` copies are not reused.

@@ -665,6 +665,8 @@ fn rain_volume_follows_intensity_and_drops_under_cover() {
         let roof = power(rain_volumes(r, 1.0, under));
         assert!(roof < half && half < open, "{r}");
         assert!(approx(roof, open * under, 1e-5), "{r}");
+        // Rain drums on a roof or a car: still clearly heard under one.
+        assert!(roof >= open * 0.75, "{r}: a roof keeps most of the rain");
     }
     // Wind under cover keeps more than the rain.
     let mut w = WeatherWorld::default();
@@ -699,7 +701,7 @@ fn weather_sounds_crossfade_ease_and_stop() {
     );
     let played = log.lock().unwrap().played.clone();
     assert!(
-        played.iter().any(|p| p.ends_with("rain_steady_v1.ogg")),
+        played.iter().any(|p| p.ends_with("rain_steady_v2.ogg")),
         "{played:?}"
     );
     // A downpour crossfades into the storm loop.
@@ -714,14 +716,15 @@ fn weather_sounds_crossfade_ease_and_stop() {
             .unwrap()
             .played
             .iter()
-            .any(|p| p.ends_with("rain_storm_v1.ogg"))
+            .any(|p| p.ends_with("rain_storm_v2.ogg"))
     );
-    // Under a roof: quieter; with Sheltered Areas off the cover is ignored.
+    // Under a roof: a little quieter (rain drums on it); with Sheltered Areas off the cover is
+    // ignored.
     for _ in 0..50 {
         d.update(&mut a, &mut w, 0.1, 1.0);
     }
     let (covered, cover) = d.levels();
-    assert!(cover > 0.99 && covered[1] < storm[1] * 0.5, "{covered:?}");
+    assert!(cover > 0.99 && covered[1] < storm[1] * 0.9, "{covered:?}");
     w.effects.occlusion = false;
     for _ in 0..50 {
         d.update(&mut a, &mut w, 0.1, 1.0);

@@ -215,8 +215,8 @@ fn write_bundled(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 pub fn ensure_clips() -> Clips {
     let dir = clip_dir();
     Clips {
-        rain_steady: write_bundled(&dir, "rain_steady_v1.ogg", RAIN_STEADY_OGG),
-        rain_storm: write_bundled(&dir, "rain_storm_v1.ogg", RAIN_STORM_OGG),
+        rain_steady: write_bundled(&dir, "rain_steady_v2.ogg", RAIN_STEADY_OGG),
+        rain_storm: write_bundled(&dir, "rain_storm_v2.ogg", RAIN_STORM_OGG),
         wind: write(&dir, "wind_v1.wav", || wind(10.0, 13)),
         thunder_near: [
             write(&dir, "thunder_near_a_v1.wav", || thunder(true, 21)),
