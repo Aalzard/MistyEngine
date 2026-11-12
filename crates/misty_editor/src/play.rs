@@ -21,6 +21,10 @@ pub struct PlaySession {
     /// Terrain data from before its first edit in Play mode (Inspector buttons, settings):
     /// put back on Stop, like the scene.
     terrains: Vec<crate::terrain_tools::TerrainSnapshot>,
+    /// What the (maybe locked) Inspector showed and which Hierarchy rows were open: objects
+    /// spawned or reloaded while playing are gone after Stop, so these come back too.
+    inspector_targets: Vec<misty_engine::hecs::Entity>,
+    expanded: std::collections::HashSet<misty_engine::hecs::Entity>,
 }
 
 impl PlaySession {
@@ -64,6 +68,8 @@ pub fn start(s: &mut EditorState) {
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
         terrains: Vec::new(),
+        inspector_targets: s.inspector_targets.clone(),
+        expanded: s.hierarchy.expanded.clone(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -114,6 +120,9 @@ pub fn stop(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
     s.scene_dirty = session.dirty;
+    s.inspector_targets = session.inspector_targets;
+    s.inspector_targets.retain(|e| s.scene.contains(*e));
+    s.hierarchy.expanded = session.expanded;
     for t in session.terrains {
         misty_engine::terrain::store::insert(&t.path, t.data);
     }
@@ -287,6 +296,26 @@ mod tests {
             Some("Before Play"),
             "undo history is the edit-mode one"
         );
+    }
+
+    /// Stop puts back what the Inspector showed (it may be locked) and the open Hierarchy
+    /// rows, not the play-only objects they moved to.
+    #[test]
+    fn stop_restores_the_inspector_targets_and_open_rows() {
+        let mut s = state();
+        let cam = s.scene.roots()[0];
+        s.inspector_locked = true;
+        s.inspector_targets = vec![cam];
+        s.hierarchy.expanded.insert(cam);
+        start(&mut s);
+        let extra = s.scene.spawn("Spawned in play", None);
+        s.inspector_targets = vec![extra];
+        s.hierarchy.expanded.clear();
+        s.hierarchy.expanded.insert(extra);
+        stop(&mut s);
+        assert_eq!(s.inspector_targets, vec![cam]);
+        assert!(s.hierarchy.expanded.contains(&cam));
+        assert!(!s.hierarchy.expanded.contains(&extra));
     }
 
     #[test]
