@@ -530,7 +530,7 @@ impl UserData for LRebind {
         m.add_function(
             "WithTargetBinding",
             |lua, (r, index): (mlua::UserDataRef<LRebind>, usize)| {
-                edit_rebind(lua, r.0, |x| x.flat = index)?;
+                with_world(lua, |w| w.input_system.retarget_rebind(r.0, index))?.map_err(err)?;
                 Ok(*r)
             },
         );

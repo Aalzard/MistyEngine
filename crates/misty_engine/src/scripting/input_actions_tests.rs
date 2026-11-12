@@ -362,3 +362,27 @@ return P
     );
     assert_eq!(host.take_rumble(), Some(vec![(0, 0.25, 0.75)]));
 }
+
+#[test]
+fn rebinding_to_a_missing_binding_is_an_error() {
+    let root = root("retarget");
+    std::fs::write(
+        root.join("Retarget.lua"),
+        r#"
+local R = {}
+function R:Start()
+    local jump = InputActions.Load("Assets/Player.inputactions"):FindAction("Jump")
+    local op = jump:PerformInteractiveRebinding(0)
+    Debug.Log("far " .. tostring(pcall(function() op:WithTargetBinding(99) end)))
+    Debug.Log("first " .. tostring(pcall(function() op:WithTargetBinding(0) end)))
+end
+return R
+"#,
+    )
+    .unwrap();
+    let mut scene = Scene::new("t");
+    scripted(&mut scene, "Menu", "Retarget.lua");
+    let frames = [Input::default(), Input::default()];
+    let (_, logs) = play(&root, &mut scene, &ProjectSettings::default(), &frames);
+    assert_eq!(logs, ["far false", "first true"]);
+}
