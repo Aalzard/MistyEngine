@@ -226,3 +226,77 @@ fn cached_meshes_resolve_through_mesh_refs() {
     assert_eq!(bounds(&cube), Some((Vec3::splat(-0.5), Vec3::splat(0.5))));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A `.gltf` with one node `nodes` (JSON array) and, when `times` is not empty, one
+/// translation animation on node 0 with those key times and `values` (VEC3 per key, or three
+/// per key for CUBICSPLINE).
+fn write_anim_gltf(
+    dir: &Path,
+    nodes: &str,
+    times: &[f32],
+    values: &[f32],
+    interp: &str,
+) -> PathBuf {
+    let mut bin: Vec<u8> = Vec::new();
+    for f in times.iter().chain(values) {
+        bin.extend_from_slice(&f.to_le_bytes());
+    }
+    std::fs::write(dir.join("anim.bin"), &bin).unwrap();
+    let (tl, vl) = (times.len() * 4, values.len() * 4);
+    let animations = if times.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#","buffers": [{{ "uri": "anim.bin", "byteLength": {len} }}],
+  "bufferViews": [
+    {{ "buffer": 0, "byteOffset": 0, "byteLength": {tl} }},
+    {{ "buffer": 0, "byteOffset": {tl}, "byteLength": {vl} }}
+  ],
+  "accessors": [
+    {{ "bufferView": 0, "componentType": 5126, "count": {tc}, "type": "SCALAR",
+       "min": [{tmin}], "max": [{tmax}] }},
+    {{ "bufferView": 1, "componentType": 5126, "count": {vc}, "type": "VEC3" }}
+  ],
+  "animations": [{{
+    "channels": [{{ "sampler": 0, "target": {{ "node": 0, "path": "translation" }} }}],
+    "samplers": [{{ "input": 0, "output": 1, "interpolation": "{interp}" }}]
+  }}]"#,
+            len = bin.len(),
+            tc = times.len(),
+            vc = values.len() / 3,
+            tmin = times[0],
+            tmax = times[times.len() - 1],
+        )
+    };
+    let json = format!(
+        r#"{{ "asset": {{ "version": "2.0" }}, "scene": 0, "scenes": [{{ "nodes": [0] }}],
+  "nodes": {nodes}{animations} }}"#
+    );
+    let path = dir.join("Anim.gltf");
+    std::fs::write(&path, json).unwrap();
+    path
+}
+
+#[test]
+fn gltf_animations_with_too_few_values_import_without_panicking() {
+    let dir = temp_dir("gltf_short_anim");
+    let nodes = r#"[{ "name": "A" }]"#;
+    // Two keys, one translation.
+    let path = write_anim_gltf(&dir, nodes, &[0.0, 1.0], &[1.0, 2.0, 3.0], "LINEAR");
+    let model = load(&path).unwrap();
+    assert!(model.animations.iter().all(|a| a.clip.curves.is_empty()));
+    // Cubic splines need three values per key: two keys with two values each are too few.
+    let path = write_anim_gltf(&dir, nodes, &[0.0, 1.0], &[0.0; 6], "CUBICSPLINE");
+    assert!(load(&path).is_ok());
+    // Well-formed: the track imports.
+    let path = write_anim_gltf(
+        &dir,
+        nodes,
+        &[0.0, 1.0],
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        "LINEAR",
+    );
+    let model = load(&path).unwrap();
+    assert!(!model.animations[0].clip.curves.is_empty());
+    std::fs::remove_dir_all(dir).ok();
+}

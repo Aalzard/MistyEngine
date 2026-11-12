@@ -291,7 +291,16 @@ pub fn animations(
                     }
                     None => continue,
                 };
-                if dim == 0 || times.is_empty() {
+                let per_key = match ch.sampler().interpolation() {
+                    gltf::animation::Interpolation::CubicSpline => 3 * dim,
+                    _ => dim,
+                };
+                // Malformed files: fewer values than keys, or key times that are not numbers.
+                if dim == 0
+                    || times.is_empty()
+                    || values.len() < times.len() * per_key
+                    || times.iter().any(|t| !t.is_finite())
+                {
                     continue;
                 }
                 let track = Track {
