@@ -574,7 +574,7 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     let drop_px = pr.rain.w * size * near_boost * px_per_metre(dist);
     // Depth: near drops are big; about half of them are out of focus (wide and soft), the
     // rest stay sharp and clearly seen, so the rain has a near, a middle and a far.
-    let coc = defocus_px(dist) * mix(0.12, 1.0, smoothstep(0.35, 0.65, r.z));
+    let coc = defocus_px(dist) * mix(0.3, 1.0, smoothstep(0.15, 0.45, r.z));
     let width_px = drop_px + coc;
     let w = max(width_px, 2.2);
     // Thinner than a pixel: fade instead of shrinking (no aliasing).
@@ -582,7 +582,7 @@ fn vs_rain(@builtin(vertex_index) vi: u32) -> DropOut {
     // Out of focus the drop's light spreads over the blur disc (some is kept so the big
     // near drops still read as water).
     let soft = coc / max(width_px, 1e-3);
-    let spread_out = mix(drop_px / max(width_px, 1e-3), 1.0, 0.45);
+    let spread_out = mix(drop_px / max(width_px, 1e-3), 1.0, 0.3);
     // A drop's path through one exposure is not a ruled line: it wobbles, the eddies and the
     // sway turn it, so the streak bows or snakes a little (most in turbulent wind, least for
     // the big heavy drops). Out of focus the bend is lost in the blur.
@@ -700,12 +700,13 @@ fn fs_rain(in: DropOut) -> @location(0) vec4<f32> {
     var col = seen * clear + around * (1.0 - clear) * 1.2;
     // Every drop carries a highlight of the sky (a bright line off its middle): it is what
     // shows the rain against dark ground. At night there is no sky to mirror.
-    let shine = exp(-(x - 0.4) * (x - 0.4) * 14.0) * mix(0.35, 1.0, thick);
+    // A thick near drop is mostly clear: its highlight is a thin line, not a white body.
+    let shine = exp(-(x - 0.4) * (x - 0.4) * 14.0) * mix(0.35, 0.55, thick) * (1.0 - soft * 0.6);
     col += haze_col * shine * (1.0 - over_sky) * 0.55;
     // Light shining through the drop: the sun ahead and lamps. Lightning lasts a
     // thousandth of a second: it freezes the drop where it is (the head of the streak).
     var glint = sun_scatter(in.world, v, 0.8) * 0.8;
-    glint += local_scatter(in.world, v, 0.7);
+    glint += local_scatter(in.world, v, 0.7) * 0.6;
     glint += flash_scatter(v, 0.6) * 0.9 * (1.0 - smoothstep(0.02, 0.1, y));
     // Glints sit in the drop's bright core (a thin line down a thick streak); out of focus
     // the core spreads over the whole blur.

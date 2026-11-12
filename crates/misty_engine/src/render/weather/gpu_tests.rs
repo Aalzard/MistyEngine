@@ -367,7 +367,7 @@ fn weather_screenshots() {
     let lamp_view: Setup = |s| {
         move_camera(s, Vec3::new(-6.5, 1.6, -3.2), Vec3::new(-12.0, 62.0, 0.0));
     };
-    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 19] = [
+    let shots: [(&str, WeatherPreset, f32, f32, Option<Setup>); 20] = [
         ("clear", WeatherPreset::Clear, 0.0, 0.0, None),
         ("light_rain", WeatherPreset::LightRain, 0.5, 0.0, None),
         ("rain", WeatherPreset::Rain, 0.8, 0.0, None),
@@ -438,6 +438,17 @@ fn weather_screenshots() {
             0.0,
             Some(|s: &mut Scene| {
                 move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(-14.0, 25.0, 0.0));
+            }),
+        ),
+        (
+            // Level, towards the dark wood behind the shelter: the near drops (some sharp,
+            // most out of focus and see-through) against a dark background.
+            "rain_near_drops",
+            WeatherPreset::HeavyRain,
+            1.0,
+            0.0,
+            Some(|s: &mut Scene| {
+                move_camera(s, Vec3::new(-1.5, 1.7, -6.4), Vec3::new(2.0, 25.0, 0.0));
             }),
         ),
         (
