@@ -1245,6 +1245,29 @@ fn run_time_errors_are_logged_once_with_the_node() {
     assert!(p.infos().is_empty());
 }
 
+#[test]
+fn run_time_errors_with_changing_values_stop_logging() {
+    let mut g = G::new();
+    let update = g.n("OnUpdate");
+    let list = g.np("MakeList", &[("count", "1")]);
+    g.v(list, "Item 0", Literal::Int(1));
+    let item = g.n("ListGet");
+    g.w(list, "List", item, "List");
+    let frame = g.api("Time", "frameCount", "get");
+    g.w(frame, "Value", item, "Index");
+    let log = g.log();
+    g.w(item, "Item", log, "Message");
+    g.w(update, "Out", log, "In");
+    let (mut p, _) = play("changing_errors", &g.0);
+    p.frames(40);
+    let errors = p.errors();
+    assert!(
+        (1..=4).contains(&errors.len()),
+        "{} errors: {errors:?}",
+        errors.len()
+    );
+}
+
 // ---- files --------------------------------------------------------------------------------------
 
 #[test]

@@ -143,8 +143,9 @@ pub struct GraphRuntime {
     pub instances: Vec<GraphInstance>,
     rng: u64,
     pub debug: Debugger,
-    /// Errors already logged: (graph, node, message).
-    logged: HashSet<(Rc<str>, u32, String)>,
+    /// Errors already logged per (graph, node): at most [`MESSAGES_PER_NODE`] different
+    /// messages each, since messages may carry run-time values ("index 41 is outside…").
+    logged: HashMap<(Rc<str>, u32), HashSet<String>>,
     hits: Vec<(u32, Rc<str>)>,
 }
 
@@ -155,7 +156,7 @@ impl Default for GraphRuntime {
             instances: Vec::new(),
             rng: 0x9E37_79B9_7F4A_7C15,
             debug: Debugger::default(),
-            logged: HashSet::new(),
+            logged: HashMap::new(),
             hits: Vec::new(),
         }
     }
@@ -181,6 +182,9 @@ fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Option<R> {
 fn same_kind(a: &EventKind, b: &EventKind) -> bool {
     std::mem::discriminant(a) == std::mem::discriminant(b)
 }
+
+/// Different error messages logged for one node before it goes quiet.
+const MESSAGES_PER_NODE: usize = 4;
 
 impl GraphRuntime {
     /// The compiled graph at `path`; problems are logged once.
@@ -377,10 +381,8 @@ impl GraphRuntime {
         if self.debug.path.as_deref() == Some(&*inst.path) {
             self.debug.errors.insert(node, message.clone());
         }
-        if !self
-            .logged
-            .insert((inst.path.clone(), node, message.clone()))
-        {
+        let seen = self.logged.entry((inst.path.clone(), node)).or_default();
+        if seen.len() >= MESSAGES_PER_NODE || !seen.insert(message.clone()) {
             return;
         }
         let title = inst.prog.titles.get(&node).cloned().unwrap_or_default();
