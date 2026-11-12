@@ -78,7 +78,13 @@ Prepared offline by `tools/sample_sounds.py <sfx_dir> SampleProject` (numpy, sci
 
 ## Checks
 
-(filled in below as they run)
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- `cargo test --workspace --release --no-fail-fast`: all pass (editor 924, engine 1533,
+  player and integration tests; 0 failed).
+- `docs/api` regenerated (`PlayClipAtPoint` pitch argument).
+- Golden shots: not run, no render code changed (the weather's Rust audio side only;
+  `precipitation.wgsl` and `weather/mod.rs` untouched).
 
 ## Left
 
