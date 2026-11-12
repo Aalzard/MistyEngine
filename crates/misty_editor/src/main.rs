@@ -241,6 +241,7 @@ mod terrain_trees_ui;
 mod terrain_ui_tests;
 #[cfg(test)]
 mod test_util;
+mod texture_drop;
 mod theme;
 mod thumbnails;
 mod tile_palette;

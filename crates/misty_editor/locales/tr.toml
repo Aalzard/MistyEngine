@@ -1401,3 +1401,9 @@
 "Click: choose · Right-click: clear · Ctrl+click: show in Asset Files" = "Tıklama: seç · Sağ tıklama: temizle · Ctrl+tıklama: Varlık Dosyaları'nda göster"
 "None" = "Yok"
 "No textures match" = "Eşleşen doku yok"
+# Round 41: a texture dropped on an object becomes its material
+"Created material {name}" = "{name} malzemesi oluşturuldu"
+"Assigned material {name}" = "{name} malzemesi atandı"
+"Could not create the material" = "Malzeme oluşturulamadı"
+"Set the normal map of {name}" = "{name} malzemesinin normal haritası ayarlandı"
+"{name} has no renderer to put a texture on" = "{name} nesnesinde doku uygulanacak bir işleyici yok"

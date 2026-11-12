@@ -1399,3 +1399,9 @@
 "Click: choose · Right-click: clear · Ctrl+click: show in Asset Files" = "نقرة: اختيار · نقرة يمنى: مسح · Ctrl+نقرة: إظهار في ملفات الأصول"
 "None" = "لا شيء"
 "No textures match" = "لا توجد خامات مطابقة"
+# Round 41: a texture dropped on an object becomes its material
+"Created material {name}" = "تم إنشاء المادة {name}"
+"Assigned material {name}" = "تم تعيين المادة {name}"
+"Could not create the material" = "تعذّر إنشاء المادة"
+"Set the normal map of {name}" = "تم تعيين خريطة العموديات للمادة {name}"
+"{name} has no renderer to put a texture on" = "لا يحتوي {name} على عارض لوضع الخامة عليه"

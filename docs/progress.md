@@ -3997,3 +3997,63 @@ sample project):
   the height the row at that index had the frame before.
 - The sample project's `Bumps.png` is not imported as a normal map, so materials that use it
   show the warning until Fix Now is pressed.
+## Round 41 — A texture dropped on an object becomes its material (branch r41-texture-drop)
+
+Drag a texture from Asset Files onto an object, in the Editor Scene or on its Scene Tree row:
+the editor makes a material for it in `Assets/Materials` and assigns it. The rule is written at
+the top of `crates/misty_editor/src/texture_drop.rs`.
+
+### What happens
+- **Colour texture**: `Assets/Materials/<TextureName>.mat` (the folder is made when missing)
+  with the default lit settings (the project's default Material preset when there is one) and
+  the texture as its albedo map, assigned to element 0 of the object's Materials.
+- **Reuse**: a material of that name whose albedo map is that texture is assigned instead of
+  making another. Materials are read through their GUID table, so the comparison follows a
+  texture that was moved or renamed. A different material of that name is left alone and
+  `<TextureName> 1.mat` (then 2, 3…) is tried the same way.
+- **Normal map**: Texture Type: Normal Map in the import settings, or a name ending in
+  `_Normal`, `_NormalMap`, `_Normals`, `_Nrm`, `_Nor` or `_N` (any case; after `_`, `-`, `.`
+  or a space). It goes into the Normal Map slot of the material the object has now, edited in
+  place when that material is a writable asset under `Assets/` (every object using it shows
+  it). On Default-Material, a read-only package material or a missing one, a copy with the
+  normal map is made in `Assets/Materials` and assigned (`Rock_Normal.png` on Default-Material
+  gives `Rock.mat`).
+- **Renderers**: Mesh Renderer and Skinned Mesh Renderer take the material. A Sprite Renderer
+  (no mesh renderer on the object) takes the texture as its sprite and no material is made.
+  An object without any of them gets a toast and nothing changes.
+- **Element**: always element 0. Extra Materials elements draw the whole mesh again and the
+  Editor Scene picks by bounds, so there is no element under the cursor to find.
+- **Undo**: one step ("Assign Material", "Assign Normal Map" or "Assign Sprite"). The material
+  file that was made stays, as with Assets ▸ Create.
+- **Files**: the `.mat` is written whole (the atomic write of round 33) with the GUIDs of its
+  textures; its `.meta` comes from the same asset scan every new asset goes through.
+- **Feedback**: a toast in the status bar ("Created material Rock.mat", "Assigned material
+  Rock.mat", "Set the normal map of Rock.mat") and a Console line; Asset Files keeps the
+  folder it shows, so several textures can be dragged from it one after another (a made
+  material is selected only when Asset Files already shows `Assets/Materials`); the scene
+  selection and Properties stay as they were. While a material or
+  texture is dragged, the Scene Tree row under the cursor is outlined and the Editor Scene
+  shows the name of the object under the cursor (materials had no such feedback before).
+- **Prefab instances**: the new material is an override of the instance (Mesh Renderer ▸
+  material), like any other change to it.
+- New texts are in Turkish and Arabic; the User Guide (Layout ▸ Asset Files) has a line on it
+  in English and Arabic.
+
+### Tests
+`texture_drop/tests.rs`, each in its own temp project: a drop on a cube in the Editor Scene
+(egui harness: the file, the assignment, the toast, one undo step, redo; a drop on empty space
+does nothing; Asset Files keeps its folder and selection); a drop on a Scene Tree row (egui
+harness); two drops in a row keep Asset Files where it was, and a material made while Asset
+Files shows `Assets/Materials` is selected there; the same texture again reuses the
+material; another material of that name gives `Rock 1.mat`, which is reused afterwards; a
+same-named texture from another folder gets its own; normal maps by name and by import
+settings; a normal map into the object's material with undo and redo; a normal map on
+Default-Material; no renderer; a Sprite Renderer; a prefab instance override; the `.mat` holds
+the texture's GUID and gets a `.meta`.
+
+### Not done
+- Asset Files drags one asset at a time, so "several textures at once" cannot happen yet.
+- A normal map dropped on an object edits the shared material asset; there is no question
+  asked first.
+- Metallic, occlusion and emission maps are not detected by name; they become albedo
+  materials.
