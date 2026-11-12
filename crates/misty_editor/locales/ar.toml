@@ -253,6 +253,10 @@
 "Pause ({shortcut})" = "إيقاف مؤقت ({shortcut})"
 "Step ({shortcut})" = "خطوة ({shortcut})"
 "Baking GI distance fields ({count} left)" = "جارٍ تجهيز حقول المسافة للإضاءة العامة (المتبقي: {count})"
+"Importing {done}/{total}" = "جارٍ الاستيراد {done}/{total}"
+"Starting the renderer: compiling shaders ({count} done)" = "جارٍ تشغيل العارض: تجميع المظللات (اكتمل {count})"
+"Compiling shaders {done}/{total}" = "جارٍ تجميع المظللات {done}/{total}"
+"Compiling shaders…" = "جارٍ تجميع المظللات…"
 "🔍 Search" = "🔍 بحث"
 
 [hierarchy]

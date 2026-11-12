@@ -350,6 +350,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         None => {
             ui.painter()
                 .rect_filled(rect, 0.0, Color32::from_rgb(70, 75, 82));
+            // The renderer compiles its shaders on a worker when a project opens.
+            if crate::viewport::renderer_starting().is_some() {
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    crate::i18n::tr("Compiling shaders…"),
+                    egui::FontId::proportional(16.0),
+                    Color32::from_gray(210),
+                );
+            }
         }
     }
 

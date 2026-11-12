@@ -171,6 +171,11 @@ pub(crate) struct Volumetrics {
 }
 
 impl Volumetrics {
+    /// Wait for the pipelines being built on a worker (see `Prebuilt::wait`).
+    pub(in crate::render) fn wait_prebuilt(&mut self) {
+        self.prebuilt.wait();
+    }
+
     pub fn new(device: &wgpu::Device) -> Self {
         let uniform = |label, size: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {

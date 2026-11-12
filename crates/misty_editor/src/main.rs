@@ -30,6 +30,8 @@ mod console;
 mod edit_stall_tests;
 mod editor_scripts;
 mod explorer;
+#[cfg(test)]
+mod first_open_tests;
 mod fps_player;
 mod game_input;
 mod gizmos;

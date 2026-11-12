@@ -136,29 +136,59 @@ pub(crate) fn upload_with(
     srgb: bool,
     mips: bool,
 ) -> wgpu::TextureView {
-    let (w, h) = image.dimensions();
-    let chain = if mips {
-        mip_chain(image, srgb)
-    } else {
-        vec![image]
-    };
-    let data: Vec<u8> = chain
-        .iter()
-        .flat_map(|m| m.as_raw().iter().copied())
-        .collect();
+    upload_levels(device, queue, label, &Levels::new(image, srgb, mips))
+}
+
+/// An image and its mips, ready to upload (made on the import queue in the editor).
+pub(crate) struct Levels {
+    width: u32,
+    height: u32,
+    count: u32,
+    srgb: bool,
+    data: Vec<u8>,
+}
+
+impl Levels {
+    pub(crate) fn new(image: RgbaImage, srgb: bool, mips: bool) -> Self {
+        let (width, height) = image.dimensions();
+        let chain = if mips {
+            mip_chain(image, srgb)
+        } else {
+            vec![image]
+        };
+        let data: Vec<u8> = chain
+            .iter()
+            .flat_map(|m| m.as_raw().iter().copied())
+            .collect();
+        Self {
+            width,
+            height,
+            count: chain.len() as u32,
+            srgb,
+            data,
+        }
+    }
+}
+
+fn upload_levels(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    l: &Levels,
+) -> wgpu::TextureView {
     let texture = device.create_texture_with_data(
         queue,
         &wgpu::TextureDescriptor {
             label: Some(label),
             size: wgpu::Extent3d {
-                width: w,
-                height: h,
+                width: l.width,
+                height: l.height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: chain.len() as u32,
+            mip_level_count: l.count,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: if srgb {
+            format: if l.srgb {
                 wgpu::TextureFormat::Rgba8UnormSrgb
             } else {
                 wgpu::TextureFormat::Rgba8Unorm
@@ -167,7 +197,7 @@ pub(crate) fn upload_with(
             view_formats: &[],
         },
         wgpu::util::TextureDataOrder::LayerMajor,
-        &data,
+        &l.data,
     );
     texture.create_view(&Default::default())
 }
@@ -461,7 +491,21 @@ pub struct TextureCache {
     quality: u64,
     /// Video frames and other textures published at runtime (`video://…`).
     runtime: super::runtime_tex::RuntimeTextures,
+    /// Decode textures on the import queue: until one is there, its sets use the 1×1 default
+    /// ([`super::Renderer::set_background_loads`]).
+    background: bool,
+    /// Textures queued and not picked up yet.
+    pending: std::collections::HashSet<(String, TextureKind)>,
+    /// Decoded there: (path, kind, quality generation, what to upload).
+    arrived: Arrived,
+    /// Picked up, waiting for their first use.
+    loaded: HashMap<(String, TextureKind), wgpu::TextureView>,
 }
+
+/// Textures decoded on the import queue: (path, kind, quality generation, result).
+type Arrived = std::sync::Arc<
+    std::sync::Mutex<Vec<(String, TextureKind, u64, Result<wgpu::TextureView, String>)>>,
+>;
 
 impl TextureCache {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -481,7 +525,102 @@ impl TextureCache {
             warnings: Vec::new(),
             quality: crate::quality::generation(),
             runtime: Default::default(),
+            background: false,
+            pending: Default::default(),
+            arrived: Default::default(),
+            loaded: HashMap::new(),
         }
+    }
+
+    /// Decode textures on the import queue from now on (see [`TextureCache::pending`]).
+    pub fn set_background(&mut self, on: bool) {
+        self.background = on;
+    }
+
+    /// Textures being decoded on the import queue.
+    pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Pick up the textures the import queue decoded: the bind groups that used a 1×1
+    /// stand-in for them are made again on their next use. True if any arrived.
+    pub fn take_loaded(&mut self) -> bool {
+        let arrived = std::mem::take(&mut *self.arrived.lock().unwrap_or_else(|e| e.into_inner()));
+        if arrived.is_empty() {
+            return false;
+        }
+        let quality = crate::quality::generation();
+        for (rel, kind, generation, result) in arrived {
+            let key = (rel, kind);
+            self.pending.remove(&key);
+            // (Loaded in place meanwhile by a render without background loads: keep that.)
+            if generation != quality || self.textures.contains_key(&key) {
+                continue;
+            }
+            match result {
+                Ok(up) => {
+                    self.loaded.insert(key, up);
+                }
+                Err(e) => {
+                    // Remembered as failed, as a load in place would be.
+                    self.warnings.push(format!("Could not load texture {e}"));
+                    let modified = stamps(&key.0);
+                    self.textures.insert(
+                        key,
+                        Cached {
+                            modified,
+                            view: None,
+                        },
+                    );
+                }
+            }
+        }
+        self.sets.clear();
+        self.lit_sets.clear();
+        true
+    }
+
+    /// Decode `rel` on the import queue (once).
+    fn queue_load(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rel: &str,
+        kind: TextureKind,
+        usage: sprites::compress::Use,
+        bc: bool,
+    ) {
+        let key = (rel.to_owned(), kind);
+        if !self.pending.insert(key) {
+            return;
+        }
+        let arrived = self.arrived.clone();
+        let (device, queue) = (device.clone(), queue.clone());
+        let generation = crate::quality::generation();
+        let rel = rel.to_owned();
+        crate::load_queue::imports().push(rel.clone(), move |ticket| {
+            crate::profile_scope!(format!("Import.Texture: {rel}"));
+            // Decoded, its mips made and uploaded here: the frame only binds it.
+            let result = sprites::compress::texture_upload(&rel, usage, bc).map(|up| match up {
+                sprites::compress::Upload::Compressed(c) => {
+                    upload_compressed(&device, &queue, &rel, &c)
+                }
+                sprites::compress::Upload::Rgba(img) => {
+                    let imp = sprites::importer(&rel);
+                    let srgb = kind == TextureKind::Color && imp.is_srgb();
+                    let levels = Levels::new(img, srgb, imp.generate_mip_maps);
+                    upload_levels(&device, &queue, &rel, &levels)
+                }
+            });
+            // (A failure reaches the Console from `take_loaded`, as a load in place would.)
+            ticket.publish(|| {
+                arrived
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push((rel, kind, generation, result))
+            });
+            Ok(())
+        });
     }
 
     /// Upload runtime textures (video frames) published since the last frame.
@@ -506,6 +645,7 @@ impl TextureCache {
         if let Some(c) = self.textures.get(&key) {
             return c.view.clone();
         }
+        crate::profile_scope!(format!("Import.Texture: {rel}"));
         let imp = sprites::importer(rel);
         let srgb = kind == TextureKind::Color && imp.is_srgb();
         // Block-compressed (cached in Library/TextureCache) when the device supports BC.
@@ -518,8 +658,23 @@ impl TextureCache {
             TextureKind::Linear => sprites::compress::Use::Linear,
         };
         BC.store(bc, std::sync::atomic::Ordering::Relaxed);
+        if let Some(view) = self.loaded.remove(&key) {
+            self.textures.insert(
+                key,
+                Cached {
+                    modified: stamps(rel),
+                    view: Some(view.clone()),
+                },
+            );
+            return Some(view);
+        }
         let upload = match take_ahead(rel, kind) {
             Some(up) => Ok(up),
+            None if self.background => {
+                // Decoded on the import queue; the 1×1 default stands in until then.
+                self.queue_load(device, queue, rel, kind, usage, bc);
+                return None;
+            }
             None => sprites::compress::texture_upload(rel, usage, bc),
         };
         let view = match upload {
@@ -585,6 +740,7 @@ impl TextureCache {
         if quality != self.quality {
             self.quality = quality;
             self.textures.clear();
+            self.loaded.clear();
             self.sets.clear();
             self.lit_sets.clear();
             self.samplers.clear();

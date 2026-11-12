@@ -20,6 +20,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(500));
             }
+            background_progress(ui);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 let text = match state.console.last() {
                     Some(e) => {
@@ -35,6 +36,47 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             });
         });
     });
+}
+
+/// What the background queues are doing: the renderer starting, shader variants compiling,
+/// models and textures importing (a project's first open; round 44).
+fn background_progress(ui: &mut Ui) {
+    use misty_engine::load_queue;
+    let mut busy = false;
+    let imports = load_queue::imports().progress();
+    if imports.busy() {
+        let text = crate::i18n::tr!(
+            "Importing {done}/{total}",
+            done = imports.done,
+            total = imports.total
+        );
+        ui.label(RichText::new(text).weak());
+        busy = true;
+    }
+    if let Some(compiled) = crate::viewport::renderer_starting() {
+        let text = crate::i18n::tr!(
+            "Starting the renderer: compiling shaders ({count} done)",
+            count = compiled
+        );
+        ui.label(RichText::new(text).weak());
+        busy = true;
+    } else {
+        let shaders = load_queue::shaders().progress();
+        if shaders.busy() {
+            let text = crate::i18n::tr!(
+                "Compiling shaders {done}/{total}",
+                done = shaders.done,
+                total = shaders.total
+            );
+            ui.label(RichText::new(text).weak());
+            busy = true;
+        }
+    }
+    if busy {
+        ui.spinner();
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
+    }
 }
 
 fn first_line(s: &str) -> &str {

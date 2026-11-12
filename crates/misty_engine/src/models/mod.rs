@@ -336,6 +336,7 @@ pub fn model(rel: &str) -> Result<Arc<Model>, String> {
     if let Some(e) = library().entries.get(rel) {
         return e.model.clone();
     }
+    crate::profile_scope!(format!("Import.Model: {rel}"));
     let abs = assets::absolute(rel);
     let settings = ModelImporter::load(&abs);
     let entry = Entry {

@@ -66,6 +66,41 @@ impl<T: Send + 'static> Prebuilt<T> {
         }
     }
 
+    /// The worker is still building (a value is on the way): a frame drawing with the
+    /// background loads on leaves its user out instead of waiting ([`Self::take`]).
+    pub fn building(&mut self) -> bool {
+        let Ok(slot) = self.rx.get_mut() else {
+            return false;
+        };
+        let Some(rx) = slot.as_ref() else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok(value) => {
+                // Done: handed to the next `take` through a ready channel.
+                let (tx, ready) = std::sync::mpsc::channel();
+                let _ = tx.send(value);
+                *slot = Some(ready);
+                false
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => false,
+        }
+    }
+
+    /// Wait (on the calling thread) until the worker is done; the value stays for
+    /// [`Self::take`]. The editor's renderer worker calls this, so no frame waits.
+    pub fn wait(&mut self) {
+        let Ok(slot) = self.rx.get_mut() else {
+            return;
+        };
+        if let Some(value) = slot.as_ref().and_then(|rx| rx.recv().ok()) {
+            let (tx, ready) = std::sync::mpsc::channel();
+            let _ = tx.send(value);
+            *slot = Some(ready);
+        }
+    }
+
     /// The value from the worker, waiting for it when it is not done yet; None when nothing
     /// was started (or it already was taken, or the worker failed): build in place then.
     pub fn take(&mut self) -> Option<T> {

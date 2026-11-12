@@ -121,6 +121,28 @@ pub struct CustomShaders {
     errors: Vec<String>,
     /// Clock value of the previous render (for the frame delta).
     last_time: f64,
+    /// Compiles queued on the shader queue (background loads, see
+    /// [`super::Renderer::set_background_loads`]): (cache key, asset generation).
+    pending: std::collections::HashSet<(String, u64)>,
+    built: Built,
+}
+
+/// A compile finished on the shader queue: what [`CustomShaders::take_built`] needs.
+struct BuiltShader {
+    cache: String,
+    generation: u64,
+    shader: String,
+    variant: String,
+    result: Result<Compiled, ShaderError>,
+}
+
+type Built = Arc<std::sync::Mutex<Vec<BuiltShader>>>;
+
+/// The layouts a custom shader pipeline is made with (cloned for the shader queue).
+struct Layouts {
+    view: wgpu::BindGroupLayout,
+    mesh: wgpu::BindGroupLayout,
+    globals: wgpu::BindGroupLayout,
 }
 
 fn pixel(
@@ -309,6 +331,8 @@ impl CustomShaders {
             defaults: HashMap::new(),
             errors: Vec::new(),
             last_time: crate::clock::now(),
+            pending: Default::default(),
+            built: Default::default(),
         };
         for d in [
             TextureDefault::White,
@@ -420,71 +444,59 @@ impl CustomShaders {
         asset: Arc<ShaderAsset>,
         generation: u64,
     ) -> Result<Compiled, ShaderError> {
-        let wrapped = wrap(&asset);
-        validate(&wrapped)?;
-        let mut entries = vec![
-            entry(wrap::UNIFORM_BINDING, uniform_type()),
-            entry(
-                wrap::SAMPLER_BINDING,
-                wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-            ),
-        ];
-        for (_, binding, _) in &wrapped.props.textures {
-            entries.push(entry(*binding, texture_type(true)));
+        compile(device, &self.layouts(p), asset, generation)
+    }
+
+    fn layouts(&self, p: &Pipelines) -> Layouts {
+        Layouts {
+            view: p.view_layout.clone(),
+            mesh: p.mesh_layout.clone(),
+            globals: self.globals_layout.clone(),
         }
-        let settings: ShaderSettings = asset.settings;
-        scoped(device, || {
-            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("misty custom material"),
-                entries: &entries,
-            });
-            let layouts = [
-                &p.view_layout,
-                &p.mesh_layout,
-                &layout,
-                &self.globals_layout,
-            ];
-            let [mesh] = pipelines::mesh_buffers();
-            let color = [wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Unorm8x4,
-                offset: 0,
-                shader_location: wrap::COLOR_LOCATION,
-            }];
-            let buffers = [
-                mesh,
-                wgpu::VertexBufferLayout {
-                    array_stride: 4,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &color,
-                },
-            ];
-            let pipeline = pipelines::build(
-                device,
-                Spec {
-                    vs: "vs_custom",
-                    fs: Some("fs_custom"),
-                    buffers: &buffers,
-                    cull: cull_face(settings.cull),
-                    depth: Depth::main(settings.zwrite, wgpu::CompareFunction::Less),
-                    blend: blend_state(settings.blend),
-                    glow: Some(true),
-                    velocity: settings.zwrite,
-                    ..Spec::new("custom shader", &wrapped.body, &layouts)
-                },
-            );
-            Compiled {
-                generation,
-                asset: asset.clone(),
-                layout,
-                pipeline,
-                props: wrapped.props.clone(),
+    }
+
+    /// Compiles still running on the shader queue.
+    pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Take the compiles the shader queue finished (a failed one draws with the error shader
+    /// and leaves its message for the Console, as a compile in place does).
+    pub fn take_built(&mut self, device: &wgpu::Device, p: &Pipelines) {
+        let built = std::mem::take(&mut *self.built.lock().unwrap_or_else(|e| e.into_inner()));
+        for b in built {
+            self.pending.remove(&(b.cache.clone(), b.generation));
+            let current = self
+                .shaders
+                .get(&b.cache)
+                .is_some_and(|c| c.generation == b.generation);
+            if current {
+                continue;
             }
-        })
-        .map_err(|message| ShaderError {
-            line: 0,
-            column: 0,
-            message,
-        })
+            let compiled = match b.result {
+                Ok(c) => c,
+                Err(mut e) => {
+                    if !b.variant.is_empty() {
+                        e.message = format!("{} (variant {})", e.message, b.variant);
+                    }
+                    self.errors.push(console_line(&b.shader, &e));
+                    self.error_copy(device, p, b.generation)
+                }
+            };
+            self.shaders.insert(b.cache, compiled);
+        }
+    }
+
+    /// The error shader, as the compiled shader of a failed `generation`.
+    fn error_copy(&mut self, device: &wgpu::Device, p: &Pipelines, generation: u64) -> Compiled {
+        let fallback = self.error_shader(device, p);
+        Compiled {
+            generation,
+            asset: fallback.asset.clone(),
+            layout: fallback.layout.clone(),
+            pipeline: fallback.pipeline.clone(),
+            props: fallback.props.clone(),
+        }
     }
 
     fn error_shader(&mut self, device: &wgpu::Device, p: &Pipelines) -> &Compiled {
@@ -508,15 +520,44 @@ impl CustomShaders {
         p: &Pipelines,
         textures: &mut TextureCache,
         m: &CustomMaterial,
+        background: bool,
     ) {
         let loaded = shader_asset::load_variant(&m.shader, &m.variant);
         let generation = shader_asset::generation(&m.shader);
         let cache = m.cache_key();
-        if self
+        let stale = self
             .shaders
             .get(&cache)
-            .is_none_or(|c| c.generation != generation)
+            .is_none_or(|c| c.generation != generation);
+        if stale
+            && background
+            && let Ok(asset) = &loaded
         {
+            // Compiled on the shader queue: the draw waits (or keeps the shader's previous
+            // compile) until `take_built` picks it up.
+            if self.pending.insert((cache.clone(), generation)) {
+                let (device, layouts, built) =
+                    (device.clone(), self.layouts(p), self.built.clone());
+                let (asset, shader, variant) = (asset.clone(), m.shader.clone(), m.variant.clone());
+                let job_cache = cache.clone();
+                crate::load_queue::shaders().push(m.shader.clone(), move |ticket| {
+                    let result = compile(&device, &layouts, asset, generation);
+                    ticket.publish(|| {
+                        built
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push(BuiltShader {
+                                cache: job_cache,
+                                generation,
+                                shader,
+                                variant,
+                                result,
+                            })
+                    });
+                    Ok(())
+                });
+            }
+        } else if stale {
             let built = loaded.and_then(|asset| self.build(device, p, asset, generation));
             let compiled = match built {
                 Ok(c) => c,
@@ -644,4 +685,74 @@ impl CustomShaders {
             .get(&m.cache_key())
             .is_some_and(|c| c.asset.uses_scene)
     }
+}
+
+/// Compile a custom shader's pipeline (on the calling thread: the render thread, or the shader
+/// queue).
+fn compile(
+    device: &wgpu::Device,
+    l: &Layouts,
+    asset: Arc<ShaderAsset>,
+    generation: u64,
+) -> Result<Compiled, ShaderError> {
+    let wrapped = wrap(&asset);
+    validate(&wrapped)?;
+    let mut entries = vec![
+        entry(wrap::UNIFORM_BINDING, uniform_type()),
+        entry(
+            wrap::SAMPLER_BINDING,
+            wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        ),
+    ];
+    for (_, binding, _) in &wrapped.props.textures {
+        entries.push(entry(*binding, texture_type(true)));
+    }
+    let settings: ShaderSettings = asset.settings;
+    scoped(device, || {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("misty custom material"),
+            entries: &entries,
+        });
+        let layouts = [&l.view, &l.mesh, &layout, &l.globals];
+        let [mesh] = pipelines::mesh_buffers();
+        let color = [wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Unorm8x4,
+            offset: 0,
+            shader_location: wrap::COLOR_LOCATION,
+        }];
+        let buffers = [
+            mesh,
+            wgpu::VertexBufferLayout {
+                array_stride: 4,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &color,
+            },
+        ];
+        let pipeline = pipelines::build(
+            device,
+            Spec {
+                vs: "vs_custom",
+                fs: Some("fs_custom"),
+                buffers: &buffers,
+                cull: cull_face(settings.cull),
+                depth: Depth::main(settings.zwrite, wgpu::CompareFunction::Less),
+                blend: blend_state(settings.blend),
+                glow: Some(true),
+                velocity: settings.zwrite,
+                ..Spec::new("custom shader", &wrapped.body, &layouts)
+            },
+        );
+        Compiled {
+            generation,
+            asset: asset.clone(),
+            layout,
+            pipeline,
+            props: wrapped.props.clone(),
+        }
+    })
+    .map_err(|message| ShaderError {
+        line: 0,
+        column: 0,
+        message,
+    })
 }

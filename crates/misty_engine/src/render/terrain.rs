@@ -744,6 +744,10 @@ struct GrassFrameParams {
 }
 
 impl TerrainCache {
+    /// Wait for the grass cull pipelines being built on a worker (see `Prebuilt::wait`).
+    pub(super) fn wait_prebuilt(&mut self) {
+        self.grass_cull_prebuilt.wait();
+    }
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
             entries: HashMap::new(),

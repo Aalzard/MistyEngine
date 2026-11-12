@@ -26,7 +26,7 @@ pub fn pool() -> &'static rayon::ThreadPool {
 }
 
 #[cfg(windows)]
-fn lower_priority() {
+pub(crate) fn lower_priority() {
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetCurrentThread() -> isize;
@@ -40,7 +40,7 @@ fn lower_priority() {
 }
 
 #[cfg(not(windows))]
-fn lower_priority() {}
+pub(crate) fn lower_priority() {}
 
 #[cfg(test)]
 mod tests {
