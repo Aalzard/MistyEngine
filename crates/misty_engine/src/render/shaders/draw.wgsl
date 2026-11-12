@@ -43,17 +43,5 @@ fn draw_uv(d: Draw, uv: vec2<f32>) -> vec2<f32> {
     return r * d.uv_st.xy + d.uv_st.zw;
 }
 
-// LOD cross-fade: should this pixel be dropped? (4×4 ordered dither, complementary for the
-// fading-in level so the two levels together cover every pixel once.)
-fn lod_dithered_out(fade: f32, pixel: vec2<f32>) -> bool {
-    if (fade == 0.0) {
-        return false;
-    }
-    let p = vec2<u32>(pixel) % vec2<u32>(4u);
-    var bayer = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-    let t = (bayer[p.y * 4u + p.x] + 0.5) / 16.0;
-    if (fade > 0.0) {
-        return t >= fade;
-    }
-    return t < 1.0 + fade;
-}
+// The LOD cross-fade's dither (`lod_dithered_out`) lives in common.wgsl: it follows the view's
+// TAA jitter, and this file is also included by compute shaders without the view.

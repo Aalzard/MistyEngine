@@ -409,3 +409,103 @@ fn lod_levels_switch_with_distance_and_cross_fade() {
         shot(&far, &only(PrimitiveMesh::Cube))
     );
 }
+
+/// A camera dolly across a LOD switch (a red cube for LOD 0, the same cube in blue for LOD 1):
+/// with a cross-fade the object's colour changes over many small steps, never all at once,
+/// and at every step its silhouette is covered completely (the two dithers are complements:
+/// no background shows through, nothing is drawn twice). Without a fade one step flips it.
+#[test]
+fn lod_cross_fade_dolly_changes_gradually_and_covers_the_object() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let colored = |c: [f32; 4]| MaterialParams {
+        color: c,
+        ..Default::default()
+    };
+    let (red, blue) = (
+        colored([0.9, 0.1, 0.1, 1.0]),
+        colored([0.1, 0.1, 0.9, 1.0]),
+    );
+    let model = Mat4::from_translation(Vec3::Y);
+    let level = |m: &MaterialParams, min, max, fade| MeshDraw {
+        lod: Some(LodRange {
+            center: Vec3::new(0.0, 1.0, 0.0),
+            size: 2.0,
+            min,
+            max,
+            fade,
+            virtual_lod: None,
+        }),
+        ..draw(PrimitiveMesh::Cube, model, m.clone())
+    };
+    let group = |fade| {
+        vec![
+            level(&red, 0.5, f32::INFINITY, fade),
+            level(&blue, 0.0, 0.5, fade),
+        ]
+    };
+    let lights = sun(Shadows::None);
+    let mut renderer = Renderer::with_queue(&device, &queue);
+    let tan = 25f32.to_radians().tan();
+    // Screen height h at distance d: 2 / (2 d tan) → the band 0.5..0.6 (fade 0.2).
+    let dist = |h: f32| 2.0 / (2.0 * h * tan);
+    // Share of the object's pixels that are red, and pixels of the silhouette left empty,
+    // per step of the dolly from h = 0.7 to 0.4.
+    let mut run = |fade: f32| -> Vec<(f32, usize)> {
+        (0..=60)
+            .map(|i| {
+                let h = 0.7 - 0.3 * i as f32 / 60.0;
+                let cam = camera(Vec3::new(0.0, 1.0, -dist(h)), 0.0);
+                let empty = render(&device, &queue, &mut renderer, &cam, &[], &lights, 1).0;
+                let both = render(&device, &queue, &mut renderer, &cam, &group(fade), &lights, 1).0;
+                let alone = render(
+                    &device,
+                    &queue,
+                    &mut renderer,
+                    &cam,
+                    &[draw(PrimitiveMesh::Cube, model, red.clone())],
+                    &lights,
+                    1,
+                )
+                .0;
+                let mut object = 0usize;
+                let mut reds = 0usize;
+                let mut holes = 0usize;
+                for ((p, a), e) in both.chunks(4).zip(alone.chunks(4)).zip(empty.chunks(4)) {
+                    // Silhouette: where the cube alone covers the background.
+                    if a == e {
+                        continue;
+                    }
+                    object += 1;
+                    if p == e {
+                        holes += 1;
+                    } else if p[0] > p[2] {
+                        reds += 1;
+                    }
+                }
+                (reds as f32 / object.max(1) as f32, holes)
+            })
+            .collect()
+    };
+    let instant = run(0.0);
+    let faded = run(0.2);
+    let biggest_step = |s: &[(f32, usize)]| {
+        s.windows(2)
+            .map(|w| (w[0].0 - w[1].0).abs())
+            .fold(0.0f32, f32::max)
+    };
+    let (jump, smooth) = (biggest_step(&instant), biggest_step(&faded));
+    eprintln!("LOD dolly: biggest change in one step {jump:.3} instant, {smooth:.3} cross-faded");
+    // Both start all red and end all blue.
+    for s in [&instant, &faded] {
+        assert!(s[0].0 > 0.9 && s[60].0 < 0.1, "{:?} … {:?}", s[0], s[60]);
+    }
+    assert!(jump > 0.8, "the instant switch flips in one step: {jump}");
+    assert!(smooth < 0.2, "the cross-fade changes gradually: {smooth}");
+    // Some steps really are mixed, and none leaves a hole in the silhouette.
+    assert!(faded.iter().filter(|s| s.0 > 0.1 && s.0 < 0.9).count() >= 8);
+    let holes: usize = faded.iter().map(|s| s.1).sum();
+    assert_eq!(holes, 0, "pixels of the object left empty during the fade");
+}

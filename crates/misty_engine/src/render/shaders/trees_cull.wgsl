@@ -1,7 +1,8 @@
 // Terrain tree culling on the GPU (render/trees_cull.rs). Every placed tree of a terrain lives
 // in a persistent buffer (uploaded when the terrain's trees change); one thread per tree tests
 // it against every view of the frame (the camera, then the sun's cascades): the camera picks the
-// level of detail by distance (full mesh, lighter mesh, impostor), each cascade uses its own
+// level of detail by distance (full mesh, lighter mesh, impostor; inside a cross-fade band a
+// tree goes into both levels' lists with complementary dither values), each cascade uses its own
 // level (by its texel size). A visible tree is appended to the list of its (view, prototype,
 // level), whose count lives in the list's indirect draw arguments; the passes then draw every
 // list with one indirect draw (bark and leaves share a mesh list). The CPU no longer touches
@@ -15,7 +16,8 @@ struct Params {
     lod: vec4<f32>,
     // x = views (1 + cascades), y = prototypes, z = lists.
     counts: vec4<u32>,
-    // x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels).
+    // x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels), w = the LOD
+    // cross-fade band (a share of each switch distance; 0 = instant).
     occlusion: vec4<f32>,
     // The view-projection the Hi-Z pyramid's depth was drawn with (last frame's).
     hiz_view_proj: mat4x4<f32>,
@@ -135,20 +137,40 @@ fn intersects(v: u32, center: vec3<f32>, half: f32) -> bool {
     return true;
 }
 
-fn append(list: u32, t: Tree) {
+fn append(list: u32, t: Tree, fade: f32) {
     let l = lists[list];
     let slot = atomicAdd(&args[l.args + 1u], 1u);
     if (l.mesh == 1u) {
         atomicAdd(&args[l.args + 6u], 1u);
     }
     if (slot < l.capacity) {
-        instances[l.base + slot] = Instance(t.foot, vec4<f32>(t.scale.x, t.scale.y, t.scale.z, 0.0));
+        instances[l.base + slot] = Instance(t.foot, vec4<f32>(t.scale.x, t.scale.y, t.scale.z, fade));
     }
 }
 
-// Share of a level's distance past which the next level takes over (trees.rs `FADE`): the
-// CPU path switches at `edge × (1 + FADE)`.
-const FADE: f32 = 0.0001;
+// Share (0..1) of the way to the next level at distance `d` for a switch at `edge`, with a
+// cross-fade band of `width` × `edge` centred on it (render/lod.rs `distance_fade`).
+fn fade_at(d: f32, edge: f32, width: f32) -> f32 {
+    let half = max(width, 0.0) * 0.5 * edge;
+    if (half <= 0.0) {
+        return select(0.0, 1.0, d >= edge);
+    }
+    return clamp((d - (edge - half)) / (2.0 * half), 0.0, 1.0);
+}
+
+// A tree at level `level` (fade 0), or inside a band the outgoing level with its share and
+// the incoming one with the complementary dither (trees.rs `levels_at`; `next` 3 = none).
+fn append_pair(proto: u32, level: u32, next: u32, x: f32, t: Tree) {
+    if (x <= 0.0) {
+        append(proto * 3u + level, t, 0.0);
+        return;
+    }
+    append(proto * 3u + level, t, clamp(1.0 - x, 0.001, 0.999));
+    if (next < 3u) {
+        append(proto * 3u + next, t, clamp(-x, -0.999, -0.001));
+    }
+}
+
 // trees.rs `SMALL_PLANT`, `SMALL_TEXELS`.
 const SMALL_PLANT: f32 = 2.0;
 const SMALL_TEXELS: f32 = 16.0;
@@ -182,16 +204,16 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     // The camera: level by distance (unless hidden behind last frame's depth; a little
     // margin for the camera's jitter and the leaves' sway).
     if (intersects(0u, center, radius) && !occluded(center, radius * 1.1 + 0.3)) {
-        var lod = 3u;
-        if (dist < params.lod.x * k * (1.0 + FADE)) {
-            lod = 0u;
-        } else if (dist < params.lod.y * k * (1.0 + FADE)) {
-            lod = 1u;
-        } else if (dist < draw * (1.0 - FADE) * (1.0 + FADE)) {
-            lod = 2u;
-        }
-        if (lod < 3u) {
-            append(proto * 3u + lod, t);
+        let w = params.occlusion.w;
+        let a = fade_at(dist, params.lod.x * k, w);
+        let bb = fade_at(dist, params.lod.y * k, w);
+        let far = fade_at(dist, draw * (1.0 - w * 0.5), w);
+        if (a < 1.0) {
+            append_pair(proto, 0u, 1u, a, t);
+        } else if (bb < 1.0) {
+            append_pair(proto, 1u, 2u, bb, t);
+        } else if (far < 1.0) {
+            append_pair(proto, 2u, 3u, far, t);
         }
     }
     // The cascades: their own level, within their reach.
@@ -202,7 +224,7 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
             let small = b.y < SMALL_PLANT && views[v].misc.y * SMALL_TEXELS > radius;
             if (!small && intersects(v, center, radius)) {
                 let lod = u32(views[v].misc.x);
-                append((v * protos_n + proto) * 3u + lod, t);
+                append((v * protos_n + proto) * 3u + lod, t, 0.0);
             }
         }
     }

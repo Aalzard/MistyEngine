@@ -38,7 +38,8 @@ struct Params {
     camera: [f32; 4],
     lod: [f32; 4],
     counts: [u32; 4],
-    /// x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels).
+    /// x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels), w = the
+    /// LOD cross-fade band (trees.rs `tree_fade`).
     occlusion: [f32; 4],
     /// The view-projection the Hi-Z pyramid's depth was drawn with.
     hiz_view_proj: [[f32; 4]; 4],
@@ -462,7 +463,7 @@ impl TerrainCull {
     }
 
     /// This frame's inputs: the camera, its view-projection, the LOD distances (full mesh end,
-    /// impostor start, draw distance), the cascades (view-projection, level of detail) and
+    /// impostor start, draw distance, cross-fade band), the cascades (view-projection, level of detail) and
     /// their reach, the prototypes' bounds, and each list's draw arguments with zero
     /// instances (`mesh_ranges(proto, lod)` = bark and leaves index ranges of a mesh level).
     #[allow(clippy::too_many_arguments)]
@@ -474,7 +475,7 @@ impl TerrainCull {
         occlusion: Option<&TreeOcclusion>,
         camera: Vec3,
         view_proj: &Mat4,
-        lod: [f32; 3],
+        lod: [f32; 4],
         cascades: &[(Mat4, u8, f32)],
         reach: f32,
         protos: &[ProtoGpu],
@@ -491,8 +492,8 @@ impl TerrainCull {
                 0,
             ],
             occlusion: match occlusion {
-                Some(o) => [o.mips as f32, o.size.0 as f32, o.size.1 as f32, 0.0],
-                None => [0.0; 4],
+                Some(o) => [o.mips as f32, o.size.0 as f32, o.size.1 as f32, lod[3]],
+                None => [0.0, 0.0, 0.0, lod[3]],
             },
             hiz_view_proj: occlusion
                 .map_or(Mat4::IDENTITY, |o| o.view_proj)
