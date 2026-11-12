@@ -1424,3 +1424,11 @@
 "Could not create the material" = "تعذّر إنشاء المادة"
 "Set the normal map of {name}" = "تم تعيين خريطة العموديات للمادة {name}"
 "{name} has no renderer to put a texture on" = "لا يحتوي {name} على عارض لوضع الخامة عليه"
+
+[light_glow]
+"Soft Core" = "نواة ناعمة"
+"Turn on Show Emitter to see the light's glow." = "شغّل إظهار المُصدِر لترى توهج الضوء."
+"Point and spot lights glow through their Halo: turn it on to see it." = "تتوهج الأضواء النقطية والكشافة عبر هالتها: شغّلها لتراه."
+"How strongly the light's visible shape glows, independent of how much it lights the scene." = "مدى قوة توهج الشكل المرئي للضوء، بشكل مستقل عن مقدار إضاءته للمشهد."
+"0 = tight, 1 = wide and soft: the same glow over a wider, smoother falloff, so its core is less harsh. Adds no brightness." = "0 = ضيق، 1 = واسع وناعم: التوهج نفسه موزع على تلاشٍ أوسع وأنعم، فيصبح مركزه أقل حدة. لا يضيف سطوعًا."
+"Tones down the blown-out white core of the light's visible shape. Its glow stays." = "يخفف المركز الأبيض المحترق للشكل المرئي للضوء. يبقى توهجه كما هو."

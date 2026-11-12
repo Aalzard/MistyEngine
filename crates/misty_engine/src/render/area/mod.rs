@@ -14,7 +14,7 @@ pub mod table;
 use glam::{Mat3, Mat4, Vec2, Vec3};
 
 use super::{LightData, MaterialParams, MeshDraw};
-use crate::scene::{LightType, PrimitiveMesh};
+use crate::scene::{LightGlow, LightType, PrimitiveMesh};
 
 /// Size and orientation of a rectangle light (unused by other light types).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,6 +28,8 @@ pub struct AreaShape {
     pub two_sided: bool,
     /// Draw the rectangle as an emissive quad.
     pub show_emitter: bool,
+    /// Light ▸ Glow of the emitter quad (its bloom, spread halo and soft core).
+    pub glow: LightGlow,
 }
 
 impl Default for AreaShape {
@@ -38,6 +40,7 @@ impl Default for AreaShape {
             up: Vec3::Y,
             two_sided: false,
             show_emitter: false,
+            glow: LightGlow::default(),
         }
     }
 }
@@ -110,6 +113,7 @@ pub fn emitter_draws(lights: &[LightData]) -> Vec<MeshDraw> {
         .filter(|l| l.kind == LightType::Rectangle && l.area.show_emitter && l.intensity > 0.0)
         .map(|l| {
             let a = &l.area;
+            let g = a.glow.clamped();
             let forward = a.right.cross(a.up).normalize_or(Vec3::Z);
             // The quad faces -Z: turn it half a turn about up so it faces the light's forward.
             let model = Mat4::from_cols(
@@ -127,6 +131,7 @@ pub fn emitter_draws(lights: &[LightData]) -> Vec<MeshDraw> {
                     emission: l.color,
                     emission_intensity: l.intensity,
                     double_sided: a.two_sided,
+                    light_glow: [1.0 - super::glow::emitter_feed(&g), g.soft_core],
                     ..Default::default()
                 },
                 cast_shadows: false,

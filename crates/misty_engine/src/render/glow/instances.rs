@@ -7,6 +7,9 @@ use glam::{Vec3, Vec4Swizzles};
 
 use super::GlowSource;
 use super::fog::{extinction_at, fogginess};
+use super::spread::{
+    HaloSprite, SpreadInstance, halo_energy, halo_glow, halo_spread, spread_instance,
+};
 use crate::render::{Frame, srgb_to_linear};
 use crate::scene::{LensFlare, LightHalo, LightType};
 
@@ -18,7 +21,8 @@ pub(super) struct GlowInstance {
     pub center: [f32; 4],
     /// rgb = linear HDR colour, w = occlusion bias in metres.
     pub color: [f32; 4],
-    /// Halo: x = softness. Flare: x = element kind, y = position on the screen-centre axis
+    /// Halo: x = softness, y = how much of the hot core is taken out (Soft Core), z = share
+    /// kept out of bloom (Glow Spread). Flare: x = element kind, y = position on the screen-centre axis
     /// (1 = at the light, -1 = mirrored), z = size (fraction of the screen height), w = x stretch.
     pub shape: [f32; 4],
 }
@@ -32,6 +36,7 @@ const GHOST: f32 = 4.0;
 /// Upper bounds per render (beyond these the farthest are dropped).
 pub(super) const MAX_HALOS: usize = 256;
 pub(super) const MAX_FLARES: usize = 32;
+pub(super) const MAX_SPREADS: usize = 64;
 
 /// Halos widen by up to this factor in thick fog …
 const FOG_WIDEN: f32 = 1.5;
@@ -45,11 +50,13 @@ const FLARE_GAIN: f32 = 0.6;
 pub(super) struct Instances {
     pub halos: Vec<GlowInstance>,
     pub flares: Vec<GlowInstance>,
+    /// Glow Spread halos of Rectangle lights.
+    pub spreads: Vec<SpreadInstance>,
 }
 
 impl Instances {
     pub fn is_empty(&self) -> bool {
-        self.halos.is_empty() && self.flares.is_empty()
+        self.halos.is_empty() && self.flares.is_empty() && self.spreads.is_empty()
     }
 }
 
@@ -80,9 +87,12 @@ fn light_color(s: &GlowSource) -> Vec3 {
 pub(super) fn halo(frame: &Frame, s: &GlowSource, h: &LightHalo) -> Option<GlowInstance> {
     // Directional lights have no position; rectangles show their emitter quad instead.
     let pointlike = matches!(s.kind, LightType::Point | LightType::Spot);
-    if !h.enabled || !pointlike || h.size <= 0.0 || h.intensity <= 0.0 {
+    if !h.enabled || !pointlike || h.size <= 0.0 || h.intensity <= 0.0 || s.glow.intensity <= 0.0 {
         return None;
     }
+    // Light ▸ Glow: Soft Core dims the hot centre (energy kept), × Glow Intensity.
+    let softness = h.softness.clamp(0.0, 1.0);
+    let (core, glow) = halo_glow(&s.glow, softness);
     let cam = frame.camera;
     let face = facing(s, cam.position);
     if face <= 0.0 {
@@ -103,13 +113,17 @@ pub(super) fn halo(frame: &Frame, s: &GlowSource, h: &LightHalo) -> Option<GlowI
         return None;
     }
     let tint = Vec3::from(srgb_to_linear(h.color.unwrap_or(s.color)));
-    let gain = h.intensity * (CLEAR_GAIN + FOG_GAIN * g) * face;
+    let gain = h.intensity * (CLEAR_GAIN + FOG_GAIN * g) * face * glow;
     let color = tint * s.intensity.max(0.0) * gain;
-    let softness = h.softness.clamp(0.0, 1.0);
     Some(GlowInstance {
         center: s.position.extend(radius).to_array(),
         color: color.extend(occlusion_bias(radius)).to_array(),
-        shape: [softness + (1.0 - softness) * 0.5 * g, 0.0, 0.0, 0.0],
+        shape: [
+            softness + (1.0 - softness) * 0.5 * g,
+            1.0 - core,
+            s.glow.clamped().spread,
+            0.0,
+        ],
     })
 }
 
@@ -194,12 +208,19 @@ pub(super) fn flare(
     }
 }
 
-/// Every instance of this render. `flares` = the Quality level allows lens flares.
-pub(super) fn build(frame: &Frame, aspect: f32, flares: bool) -> Instances {
+/// Every instance of this render. `flares` = the Quality level allows lens flares;
+/// `bloom_gain` = bloom's energy gain (see [`super::spread::bloom_gain`]).
+pub(super) fn build(frame: &Frame, aspect: f32, flares: bool, bloom_gain: f32) -> Instances {
     let mut out = Instances::default();
     if !frame.shaded {
         return out;
     }
+    out.spreads = frame
+        .lights
+        .iter()
+        .filter_map(|l| spread_instance(frame, l, aspect, bloom_gain))
+        .take(MAX_SPREADS)
+        .collect();
     let eye = frame.camera.position;
     let mut sources: Vec<&GlowSource> = frame.environment.glows.iter().collect();
     // Nearest first, so the caps drop the far ones.
@@ -215,6 +236,18 @@ pub(super) fn build(frame: &Frame, aspect: f32, flares: bool) -> Instances {
             && let Some(i) = halo(frame, s, h)
         {
             out.halos.push(i);
+            // Glow Spread: its share of the halo's bloom, as Gaussians around it.
+            let sprite = HaloSprite {
+                position: s.position,
+                radius: i.center[3],
+                color: Vec3::new(i.color[0], i.color[1], i.color[2]),
+                falloff: halo_energy(i.shape[0], 1.0 - i.shape[1]),
+            };
+            if out.spreads.len() < MAX_SPREADS
+                && let Some(sp) = halo_spread(frame, &sprite, &s.glow, aspect, bloom_gain)
+            {
+                out.spreads.push(sp);
+            }
         }
         if flares
             && flaring < MAX_FLARES

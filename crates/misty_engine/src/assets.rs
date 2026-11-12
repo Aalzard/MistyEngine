@@ -297,6 +297,7 @@ impl Material {
             lightmap: None,
             light_probes: false,
             contribute_gi: true,
+            light_glow: [0.0; 2],
             extras: self.features.extras().map(Arc::new),
         }
     }

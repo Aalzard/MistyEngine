@@ -34,6 +34,7 @@ fn source(kind: LightType, position: Vec3, direction: Vec3) -> GlowSource {
         spot_angle: 40.0,
         color: [1.0, 0.8, 0.6],
         intensity: 3.0,
+        glow: Default::default(),
         halo: Some(halo()),
         flare: None,
     }
@@ -96,15 +97,15 @@ fn fog_widens_and_brightens_halos() {
         glows: vec![source(LightType::Point, Vec3::new(0.0, 2.0, 5.0), Vec3::Z)],
         ..Default::default()
     };
-    let clear = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true);
-    let thick = instances::build(&frame(&cam, &env, foggy(8.0)), 1.6, true);
+    let clear = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true, 3.6);
+    let thick = instances::build(&frame(&cam, &env, foggy(8.0)), 1.6, true, 3.6);
     let (a, b) = (clear.halos[0], thick.halos[0]);
     assert!(b.center[3] > a.center[3] * 1.4, "radius {a:?} → {b:?}");
     assert!(b.color[0] > a.color[0] * 3.0, "brightness {a:?} → {b:?}");
     assert!(b.shape[0] > a.shape[0], "softer in fog");
     // Fog Response 0 ignores the fog.
     env.glows[0].halo.as_mut().unwrap().fog_response = 0.0;
-    let ignored = instances::build(&frame(&cam, &env, foggy(8.0)), 1.6, true);
+    let ignored = instances::build(&frame(&cam, &env, foggy(8.0)), 1.6, true, 3.6);
     assert_eq!(ignored.halos[0], a);
 }
 
@@ -118,7 +119,7 @@ fn halos_behind_the_camera_and_directional_lights_are_skipped() {
         ],
         ..Default::default()
     };
-    let list = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true);
+    let list = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true, 3.6);
     assert!(list.halos.is_empty());
 }
 
@@ -131,11 +132,11 @@ fn flares_follow_quality_and_fade_at_screen_edges() {
     s.flare = Some(LensFlare::default());
     env.glows = vec![s];
     let f = frame(&cam, &env, PostSettings::default());
-    let on = instances::build(&f, 1.6, true);
+    let on = instances::build(&f, 1.6, true, 3.6);
     // Glow + streak + ring + 4 ghosts.
     assert_eq!(on.flares.len(), 7);
     assert!(
-        instances::build(&f, 1.6, false).is_empty(),
+        instances::build(&f, 1.6, false, 3.6).is_empty(),
         "Low: no flares"
     );
     assert_eq!(edge_fade(Vec2::ZERO), 1.0);
@@ -144,7 +145,7 @@ fn flares_follow_quality_and_fade_at_screen_edges() {
     // Off screen to the side: nothing.
     env.glows[0].position = Vec3::new(40.0, 2.0, 0.0);
     let f = frame(&cam, &env, PostSettings::default());
-    assert!(instances::build(&f, 1.6, true).flares.is_empty());
+    assert!(instances::build(&f, 1.6, true, 3.6).flares.is_empty());
 }
 
 #[test]
@@ -160,7 +161,7 @@ fn sun_flares_sit_opposite_the_light_direction() {
         ..Default::default()
     });
     env.glows = vec![sun];
-    let list = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true);
+    let list = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true, 3.6);
     // Light travelling -Z comes from +Z: in front of the camera (which looks along +Z).
     assert_eq!(list.flares.len(), 1);
     assert!(list.flares[0].center[2] > 50.0);

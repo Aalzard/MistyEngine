@@ -1,13 +1,14 @@
-//! Inspector editors for light glows: the Light's collapsible Halo section and the
+//! Inspector editors for light glows: the Light's collapsible Halo and Glow sections and the
 //! Lens Flare component.
 
 use egui::{CollapsingHeader, DragValue, Slider, Ui};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::light_glow::MAX_GHOSTS;
-use misty_engine::scene::{LensFlare, Light, LightType};
+use misty_engine::scene::{LensFlare, Light, LightGlow, LightType};
 
 use super::editors::{color_rgb, grid};
 use super::mixed;
+use crate::i18n::tr;
 use crate::state::EditorState;
 
 /// Names of the components handled here.
@@ -111,6 +112,72 @@ pub fn halo_section(ui: &mut Ui, l: &mut Light) -> bool {
                 );
                 ch
             })
+        })
+        .body_returned
+        .unwrap_or(false)
+}
+
+/// Light ▸ Glow (point, spot and Rectangle lights): how the light's visible shape glows.
+/// Folded away while untouched.
+pub fn glow_section(ui: &mut Ui, l: &mut Light) -> bool {
+    let rect = l.kind == LightType::Rectangle;
+    if !rect && !matches!(l.kind, LightType::Point | LightType::Spot) {
+        return false;
+    }
+    // Rectangles glow through their emitter, point and spot lights through their halo.
+    let shape = if rect { l.show_emitter } else { l.halo.enabled };
+    let g = &mut l.glow;
+    CollapsingHeader::new(crate::theme::bold(ui.ctx(), tr!("Glow")))
+        .id_salt("light_glow")
+        .default_open(!g.is_default())
+        .show(ui, |ui| {
+            if !shape {
+                ui.weak(if rect {
+                    tr!("Turn on Show Emitter to see the light's glow.")
+                } else {
+                    tr!("Point and spot lights glow through their Halo: turn it on to see it.")
+                });
+            }
+            let mut ch = grid(ui, "light_glow_grid", |ui| {
+                let mut ch = row(
+                    ui,
+                    true,
+                    &tr!("Intensity"),
+                    &tr!("How strongly the light's visible shape glows, independent of how much it lights the scene."),
+                    |ui| {
+                        let dv = DragValue::new(&mut g.intensity)
+                            .speed(0.01)
+                            .range(0.0..=10.0);
+                        ui.add(mixed::drag("glow/intensity", dv)).changed()
+                    },
+                );
+                ch |= row(
+                    ui,
+                    true,
+                    &tr!("Spread"),
+                    &tr!("0 = tight, 1 = wide and soft: the same glow over a wider, smoother falloff, so its core is less harsh. Adds no brightness."),
+                    |ui| {
+                        let s = Slider::new(&mut g.spread, 0.0..=1.0);
+                        ui.add(mixed::slider("glow/spread", s)).changed()
+                    },
+                );
+                ch |= row(
+                    ui,
+                    true,
+                    &tr!("Soft Core"),
+                    &tr!("Tones down the blown-out white core of the light's visible shape. Its glow stays."),
+                    |ui| {
+                        let s = Slider::new(&mut g.soft_core, 0.0..=1.0);
+                        ui.add(mixed::slider("glow/soft_core", s)).changed()
+                    },
+                );
+                ch
+            });
+            if !g.is_default() && ui.small_button(tr!("Reset")).clicked() {
+                *g = LightGlow::default();
+                ch = true;
+            }
+            ch
         })
         .body_returned
         .unwrap_or(false)

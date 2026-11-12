@@ -24,6 +24,7 @@ fn rect(position: Vec3, right: Vec3, up: Vec3, size: Vec2, two_sided: bool) -> L
             up,
             two_sided,
             show_emitter: false,
+            glow: Default::default(),
         },
     }
 }

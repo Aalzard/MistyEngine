@@ -264,6 +264,10 @@ pub struct MaterialParams {
     /// light to others through Screen Space GI. Off for meshes that only show a light's
     /// emitter (the light already lights the scene; tracing its glow too counts it twice).
     pub contribute_gi: bool,
+    /// Per-object, Rectangle light emitters (Light ▸ Glow): x = share of the emission kept
+    /// out of bloom (0 = all of it glows, negative = more), y = Soft Core (0..1, compresses
+    /// the visible emission but not its glow). `[0, 0]` for everything else.
+    pub light_glow: [f32; 2],
     /// Optional Standard features (detail maps, parallax, clear coat, translucency,
     /// anisotropy, specular tint): `None` for materials that use none of them, which then
     /// draw with the plain Standard variants (see [`material_v2`]).
@@ -298,6 +302,7 @@ impl Default for MaterialParams {
             lightmap: None,
             light_probes: false,
             contribute_gi: true,
+            light_glow: [0.0; 2],
             extras: None,
         }
     }
@@ -4020,8 +4025,8 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32, prev_model: Mat4) -> DrawUniform {
         lightmap: [
             m.lightmap.map_or(0.0, |l| l.index as f32 + 1.0),
             if m.contribute_gi { 0.0 } else { 1.0 },
-            0.0,
-            0.0,
+            m.light_glow[0],
+            m.light_glow[1],
         ],
         prev_model: prev_model.to_cols_array_2d(),
     }

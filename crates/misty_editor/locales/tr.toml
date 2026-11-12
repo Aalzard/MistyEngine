@@ -1426,3 +1426,11 @@
 "Could not create the material" = "Malzeme oluşturulamadı"
 "Set the normal map of {name}" = "{name} malzemesinin normal haritası ayarlandı"
 "{name} has no renderer to put a texture on" = "{name} nesnesinde doku uygulanacak bir işleyici yok"
+
+[light_glow]
+"Soft Core" = "Yumuşak Çekirdek"
+"Turn on Show Emitter to see the light's glow." = "Işığın ışıltısını görmek için Yayıcıyı Göster'i açın."
+"Point and spot lights glow through their Halo: turn it on to see it." = "Nokta ve spot ışıklar Haleleriyle parlar: görmek için Haleyi açın."
+"How strongly the light's visible shape glows, independent of how much it lights the scene." = "Işığın görünen şeklinin ne kadar güçlü parladığı; sahneyi ne kadar aydınlattığından bağımsızdır."
+"0 = tight, 1 = wide and soft: the same glow over a wider, smoother falloff, so its core is less harsh. Adds no brightness." = "0 = dar, 1 = geniş ve yumuşak: aynı ışıltı daha geniş ve daha yumuşak bir azalmaya yayılır, böylece merkezi daha az serttir. Parlaklık eklemez."
+"Tones down the blown-out white core of the light's visible shape. Its glow stays." = "Işığın görünen şeklinin patlamış beyaz merkezini yumuşatır. Işıltısı aynı kalır."

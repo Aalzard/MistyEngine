@@ -67,6 +67,7 @@ fn light(kind: LightType, position: Vec3, intensity: f32) -> LightData {
             up: Vec3::Z,
             two_sided: false,
             show_emitter: false,
+            glow: Default::default(),
         },
         shadow: LightShadow::default(),
         volumetric: Default::default(),

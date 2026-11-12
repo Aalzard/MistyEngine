@@ -112,6 +112,7 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                     up: rot * Vec3::Y,
                     two_sided: l.two_sided,
                     show_emitter: l.show_emitter,
+                    glow: l.glow,
                 },
             })
         })
@@ -202,6 +203,7 @@ pub fn glow_sources(scene: &Scene) -> Vec<GlowSource> {
                 spot_angle: l.spot_angle,
                 color: l.color,
                 intensity: l.intensity,
+                glow: l.glow,
                 halo,
                 flare,
             })

@@ -53,7 +53,7 @@ pub use components::*;
 pub use decal::DecalProjector;
 pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride, SunShaftsQuality};
 pub use hierarchy_folder::HierarchyFolder;
-pub use light_glow::{LensFlare, LightHalo};
+pub use light_glow::{LensFlare, LightGlow, LightHalo};
 pub use lightmapping::{LightMode, LightmapSettings, ReceiveGi};
 pub use lod_group::{LodFadeMode, LodGroup, LodLevel};
 pub use multi_scene::{SceneEntry, SceneId};

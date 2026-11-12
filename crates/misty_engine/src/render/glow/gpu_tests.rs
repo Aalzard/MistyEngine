@@ -33,6 +33,7 @@ fn lamp(position: Vec3) -> GlowSource {
         spot_angle: 30.0,
         color: [1.0, 0.9, 0.7],
         intensity: 2.0,
+        glow: Default::default(),
         halo: Some(LightHalo {
             enabled: true,
             size: 1.5,

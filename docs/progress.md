@@ -4376,3 +4376,30 @@ now part of the sample and the engine; details and numbers in `docs/pending/r49-
   (rain drums on a roof), and the rain loops are mastered louder (steady -17.6, storm -16.3 LUFS,
   `tools/sample_sounds.py` has a loudness per loop). The engine's cached copies are renamed `_v2` so
   old `Library/Weather` copies are not reused.
+## Round 48 — Light ▸ Glow: soft glow spread per light (branch r48-light-glow)
+
+- **The harsh glow** around bright lights (Rectangle lights especially) is bloom of the
+  light's visible shape, not fog or the Halo: bloom adds its 6 levels at weight 1 (default
+  Scatter 0.7), so the bloom image carries 3.6× the emitter's energy, the narrow levels pile
+  into a blob as bright as the emitter, and the tail ends at the widest level (a hard edge).
+  Volumetric fog in-scattering stays smooth.
+- **Light ▸ Glow** (point, spot and Rectangle lights, folded away while untouched; Turkish and
+  Arabic): **Intensity** (glow of the visible shape, independent of the lighting), **Spread**
+  (0..1: that share of the light's bloom goes to a halo of its own, three Gaussians of the
+  screen distance to the projected emitter or around the Halo, normalised to the energy taken
+  out of bloom using bloom's real gain, threshold, clamp and tint; the core cools and the tail
+  widens with no extra brightness), **Soft Core** (compresses the emitter's visible
+  highlights, glow unchanged; dims a Halo's hot centre at the same energy).
+- Drawn in the glow pass (`glow.wgsl` `vs_spread` / `fs_spread`, HDR only, halo occlusion and
+  fog); emitters get their glow share and Soft Core through `lightmap.zw` of the draw uniform
+  (`mesh.wgsl` `light_glow_surface`). Defaults change nothing: the field is left out of files
+  while untouched, old files load the same, golden shots 20/20 unchanged.
+- **Measured**: on-screen glow energy at spread 0.5 / 1 = 91 % / 72 % of spread 0 (spread 1
+  reaches past the frame; the full-plane integral matches to 3 %), glow at the emitter's edge
+  0.157 → 0.139 → 0.084. GPU: 16 full-screen spread halos at 1080p add about 1.1 ms (RTX
+  4060), about 0.07 ms per light; dim lights get smaller quads.
+- **Tests**: glow not saved while untouched / old lights load unchanged; weights carry the
+  requested energy; bloom gain; defaults identical; Soft Core keeps the halo energy; GPU energy
+  and core/tail test; defaults draw no spread halo. Shots: `glow_spread_shots`
+  (`MISTY_GLOW_SHOTS=<dir>`), cost: `glow_spread_benchmark`. Notes:
+  `docs/pending/r48-light-glow.md`.

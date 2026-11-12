@@ -142,7 +142,7 @@ impl PostSettings {
     }
 
     /// Weight of each smaller bloom level when upsampling (1 at the default scatter 0.7).
-    fn scatter_weight(&self) -> f32 {
+    pub(crate) fn scatter_weight(&self) -> f32 {
         0.3 + self.bloom_scatter.clamp(0.0, 1.0)
     }
 
