@@ -77,7 +77,26 @@ pub(in crate::render) fn noon_view(name: &str) -> Option<GameView> {
 
 /// [`noon_view`] of the scene after `edit`.
 fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
-    let v = views().into_iter().find(|v| v.name == name)?;
+    // `pose` (in MISTY_NOON_VIEWS) with `MISTY_NOON_POSE=yaw,pitch,right,ahead[,up]`: any spot
+    // (`up` metres above the ground there).
+    let pose = (name == "pose")
+        .then(|| std::env::var("MISTY_NOON_POSE").ok())
+        .flatten()
+        .map(|s| {
+            s.split(',')
+                .filter_map(|v| v.trim().parse::<f32>().ok())
+                .collect::<Vec<_>>()
+        })
+        .filter(|p| p.len() >= 4)
+        .map(|p| {
+            view(
+                "pose",
+                p[0],
+                p[1],
+                Vec3::new(p[2], p.get(4).copied().unwrap_or(0.0), p[3]),
+            )
+        });
+    let v = pose.or_else(|| views().into_iter().find(|v| v.name == name))?;
     let mut scene = scene();
     edit(&mut scene);
     let materials = crate::assets::AssetCache::open(&root());
@@ -116,6 +135,33 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
     if let Ok(edits) = std::env::var("MISTY_NOON_GRASS") {
         let t = &mut gv.terrains[0];
         let mut d = (*t.data).clone();
+        // `treekeep:0.5,treefrom:150`: keep that share of the trees farther than `treefrom`
+        // metres (default 150), the kept ones bigger by 1/√keep (the canopy as closed).
+        let num = |key: &str| {
+            (edits.split(','))
+                .filter_map(|e| e.split_once(':'))
+                .find(|(k, _)| *k == key)
+                .and_then(|(_, v)| v.parse::<f32>().ok())
+        };
+        if let Some(keep) = num("treekeep") {
+            let from = num("treefrom").unwrap_or(150.0);
+            let (pos, size) = (t.position, d.size);
+            let eye = gv.camera.position;
+            let grow = 1.0 / keep.max(0.01).sqrt();
+            let mut n = 0u32;
+            d.trees.instances.retain_mut(|i| {
+                n = n.wrapping_add(1);
+                let w =
+                    glam::Vec2::new(pos.x + i.position.x * size.x, pos.z + i.position.y * size.z);
+                if w.distance(glam::Vec2::new(eye.x, eye.z)) < from {
+                    return true;
+                }
+                let h = (n.wrapping_mul(2_654_435_761) >> 8) as f32 / (1u32 << 24) as f32;
+                i.height_scale *= grow.sqrt();
+                i.width_scale *= grow;
+                h < keep
+            });
+        }
         for e in edits.split(',') {
             let Some((k, v)) = e.split_once(':') else {
                 continue;
@@ -131,6 +177,7 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
                 "billboards" => d.trees.billboard_start = v,
                 "treelod" => d.trees.lod_distance = v,
                 "shadowdetail" => d.trees.shadow_detail = v,
+                "treekeep" | "treefrom" => {}
                 _ => eprintln!("(MISTY_NOON_GRASS: {k} unknown)"),
             }
         }

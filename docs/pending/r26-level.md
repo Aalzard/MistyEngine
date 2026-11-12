@@ -5,6 +5,53 @@ Scene content only (generator `crates/misty_editor/src/sample_noon_valley.rs`,
 Engine code stays on `r26-noon-meadow` (merge it in now and then: `git merge r26-noon-meadow`).
 Forked from `r26-noon-meadow` at 80e185bb.
 
+## Fifth agent (2026-11-12, from 05:40): r21–r23 on E:, hero 18.0 → 13.3 ms
+
+- **Disks:** target `E:/MistyTargets/r26-level` (fresh, 14 + 7 min at `-j 4`), TMP
+  `C:\MistyTry\r26tmp`, scripts `E:/MistyTargets/r26-scratch` (`env.sh`, `round.sh`,
+  `times.sh`, `pose.sh`, `tvar.sh`, `stats.py`, `clippy.sh`), shots `E:/MistyTargets/r26-shots/<round>`.
+  Nothing written on D:.
+- **r21** (8cef57b1): regenerated from 2508087f's generator, rendered. Groundcover carpets show
+  in `inside`; the cliff faces barely show from the meadow (a thin pale streak).
+- **Checks after r21:** the six earlier failures all pass alone (`noon_valley_matches_its_generator`,
+  `sun_height` test, `live_reload` prefab test, `asset_index` background build, `updater` offline
+  check, `tutorials` world builder): the four were load. Clippy `--workspace --all-targets
+  --release`: 0 warnings.
+- **Harness:** `MISTY_NOON_VIEWS=pose` with `MISTY_NOON_POSE=yaw,pitch,right,ahead[,up]` (any
+  spot, `up` metres above the ground); `MISTY_NOON_GRASS=treekeep:0.5,treefrom:150` keeps that
+  share of the trees beyond `treefrom` m (kept ones bigger). Aerial poses showed the r21 faces
+  as thin white walls hidden behind the crowns on the ledge below them.
+- **Hero cost:** far trees beyond 400 m cost 2.9 ms of the 3.6 ms "Main: trees"; tree LOD,
+  billboard start and shadow detail changed nothing. Cause: impostors were drawn lit with
+  no depth pass, a wooded hillside overlapping each pixel several times. **Engine change**
+  (`render/trees.rs`, `shaders/tree.wgsl`): impostors get the leaves' treatment, a coverage-only
+  depth draw (`fs_tree_impostor_depth`) with the leaves, then the lit impostors at equal depth.
+  Main: trees 3.62 → 0.71 ms, hero image unchanged (mean abs diff 0.018/255). Golden shots
+  not rerun yet.
+- **Grass** (timed on hero): density 400 −0.9 ms, LOD 4 −0.9, shadows off −1.7 (but the turf
+  turns flat and bright: kept on), draw 120 −0.2. Chosen: 360 cards of 5.8 cm, LOD 4, draw
+  130 m (looks as dense as 520 × 5 cm in `hero` / `down`).
+- **r22/r23:** cliff sites' faces are broad ~60° slabs (face share 0.27 + 0.18·site, was
+  0.27 − 0.12·site), the ledge trees only on the outer 18 % of a step in the cores and half
+  of them dropped; limestone albedo about half (`limestone()` base [0.24, 0.23, 0.205], stains
+  and lichen darker; note `write_noon_valley` writes `Limestone.png` itself).
+  Cliff band colour in the hero 182/184/183 (r22, old texture) → 153/159/161 sRGB.
+
+| round | hero GPU / CPU | inside GPU / CPU | notes |
+|---|---|---|---|
+| r23 | 13.3 / 3.3 ms | 11.6 / 2.8 ms | impostor depth pass, grass 360 × 5.8 cm, LOD 4, draw 130; hero: grass visibility 2.36, shading 1.96, trees 0.71, prepass 1.30, sun shafts 0.96 |
+| r21 | 18.0 / 2.0 ms | 12.0 / 1.8 ms | as r20 + carpets and cliffs |
+
+**Still differs (r23 against the references):**
+- Cliffs: ours are thin, broken grey bands with reddish bare spots; the reference shows a few
+  broad tan-grey slabs with texture. Next: wider sites cores with one continuous face per
+  site (fewer, taller steps), warmer tint (the reference's sunlit rock is ~122/116/97).
+- Forest `inside2`: still bare litter with big pale sun patches (lower-half median luminance
+  0.06 against 0.028); the carpets do not reach that spot. `inside` is close.
+- Meadow: our grass is lighter and yellower than the reference (near 68/89/16 vs 51/68/17),
+  the far range bluer and brighter (119/146/166 vs 92/116/143).
+- Hero 13.3 ms against 12: what is left is mostly grass (4.3 ms), prepass 1.3, sun shafts 1.0.
+
 ## Fourth agent (2026-11-12 05:20): stopped, D: is failing
 
 - **D: (disk 0, Seagate ST4000DM004 HDD) is failing:** System log since 11 Nov: 17 × disk 7

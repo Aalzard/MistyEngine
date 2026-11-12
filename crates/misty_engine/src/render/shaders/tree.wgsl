@@ -335,6 +335,26 @@ fn vs_tree_impostor(@builtin(vertex_index) vi: u32, inst: TreeInstance) -> Impos
     return out;
 }
 
+// The impostors' depth, drawn with the leaves' before the trees (render/trees.rs `draw_main`):
+// the coverage of `fs_tree_impostor` only. A far hillside of impostors overlaps each pixel
+// several times; the lit impostors then test for equal depth and shade each sample once.
+@fragment
+fn fs_tree_impostor_depth(in: ImpostorOut) -> MeshTargets {
+    let a = mix(
+        textureSampleBias(tree_albedo, tree_sampler, in.uv0, view.view_tan.z).a,
+        textureSampleBias(tree_albedo, tree_sampler, in.uv1, view.view_tan.z).a,
+        in.misc.x,
+    );
+    let coverage = leaf_coverage(a, in.clip, 0.3);
+    if (coverage < 0.01 || tree_faded(in.misc.z, in.clip.xy)) {
+        discard;
+    }
+    var out: MeshTargets;
+    out.color = vec4<f32>(0.0, 0.0, 0.0, coverage);
+    out.glow = vec4<f32>(0.0);
+    return out;
+}
+
 @fragment
 fn fs_tree_impostor(in: ImpostorOut) -> MeshTargets {
     // The two nearest baked views, blended (both sampled: smooth derivatives, no popping

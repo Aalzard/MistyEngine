@@ -151,7 +151,7 @@ fn hill_m(x: f32, z: f32) -> f32 {
 
 /// The terraces on the hillside at (x, z): weight 0..1 (limestone ledges in patches on the
 /// slope and in the [`CLIFFS`] sites), step height (m) and the share of each step that is
-/// face. In the sites the steps are 45–60 m with steep faces, seen from the meadow.
+/// face. In the sites the steps are 45–60 m with broad faces, seen from the meadow.
 fn cliff_steps(x: f32, z: f32) -> (f32, f32, f32) {
     let p = rel(x, z);
     let u = hill_side(x, z);
@@ -160,9 +160,11 @@ fn cliff_steps(x: f32, z: f32) -> (f32, f32, f32) {
         * smooth(140.0, 220.0, u)
         * smooth(650.0, 500.0, u)
         * smooth(1100.0, 800.0, p.y))
-        .max(site);
+    .max(site);
     let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29) + 24.0 * site;
-    (cliffs, step, 0.27 - 0.12 * site)
+    // (In the sites the faces are broad slabs of ~60°, not walls: a wall hides behind the
+    // crowns on the ledge below it when seen from the meadow far beneath.)
+    (cliffs, step, 0.27 + 0.18 * site)
 }
 
 /// Height in metres at terrain-local (x, z).
@@ -268,11 +270,12 @@ fn grass() -> details::DetailSettings {
         },
         on_layer: Some(0),
         // (Fewer, wider cards than MeadowDemo's 800 of 4 cm: the blades are 2.5 times taller,
-        // so they cover the ground as well at two thirds of the cost.)
-        density: 520.0,
-        draw_distance: 160.0,
+        // so they cover the ground as well at under half the cost; past 130 m the turf
+        // texture reads the same.)
+        density: 360.0,
+        draw_distance: 130.0,
         height: [0.16, 0.5],
-        width: 0.05,
+        width: 0.058,
         healthy_color: [0.54, 0.64, 0.2],
         dry_color: [0.66, 0.66, 0.36],
         wind_strength: 0.18,
@@ -283,7 +286,7 @@ fn grass() -> details::DetailSettings {
         bend: 0.8,
         translucency: 0.6,
         tip_dryness: 0.4,
-        lod_distance: 5.8,
+        lod_distance: 4.0,
         patch_scale: 30.0,
         lush_color: [0.2, 0.3, 0.08],
         lush_amount: 0.45,
@@ -430,7 +433,7 @@ fn maps(n: usize, color: &[[f32; 3]], height: &[f32], strength: f32) -> [RgbaIma
 /// Side of the generated limestone and forest floor textures in pixels (they tile).
 const TEX: usize = 1024;
 
-/// Pale weathered limestone, as a cliff face seen from the side (v = down the face): massive
+/// Grey weathered limestone, as a cliff face seen from the side (v = down the face): massive
 /// beds of uneven thickness with a few ragged joints, rounded, pitted blocks, grey water
 /// streaks under the ledges, ochre stains, lichen and a little moss. Albedo (sRGB), height
 /// and normal.
@@ -483,7 +486,9 @@ fn limestone() -> [RgbaImage; 3] {
             let stain = smooth(0.55, 0.75, tile_fbm(u, v, 4, 3, 112));
             let lichen = smooth(0.62, 0.72, tile_fbm(u, v, 10, 3, 113));
             let moss = smooth(0.68, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.95, bed);
-            let mut c = [0.43, 0.41, 0.365].map(|k| {
+            // (Grey, about half as bright as fresh limestone: weathered faces seen from the
+            // meadow read mid-grey through the haze, not white.)
+            let mut c = [0.24, 0.23, 0.205].map(|k| {
                 k * (0.84 + 0.22 * bed_tone)
                     * (0.78 + 0.4 * blocks)
                     * (0.9 + 0.2 * lumps)
@@ -493,8 +498,8 @@ fn limestone() -> [RgbaImage; 3] {
                     * (1.0 - 0.3 * pits)
                     * (1.0 - 0.35 * streak.min(1.0))
             });
-            let oc = [0.42, 0.33, 0.2];
-            let lc = [0.34, 0.35, 0.28];
+            let oc = [0.25, 0.2, 0.12];
+            let lc = [0.2, 0.21, 0.17];
             let mc = [0.1, 0.14, 0.05];
             for i in 0..3 {
                 c[i] += (oc[i] - c[i]) * stain * 0.3;
@@ -940,13 +945,16 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             }
             // The cliff faces stay bare rock, and so does the ledge at each face's foot
             // (crowns there would hide the face from the meadow); the ledge above a face
-            // carries heavy trees on its rim.
+            // carries heavy trees on its rim, sparse in the sites' cores.
             let site = cliff_site(p.x, p.y);
             let mut heavy = 1.0;
             if site > 0.12 {
                 let (_, step, _) = cliff_steps(p.x, p.y);
                 let f = (hill_m(p.x, p.y) / step).fract();
-                if slope > 35.0 || f > 0.4 {
+                if slope > 35.0 || f > 0.4 - 0.22 * smooth(0.12, 0.5, site) {
+                    continue;
+                }
+                if r(13) < 0.55 * smooth(0.35, 0.7, site) {
                     continue;
                 }
                 heavy = 1.0 + 0.3 * smooth(0.12, 0.4, site);

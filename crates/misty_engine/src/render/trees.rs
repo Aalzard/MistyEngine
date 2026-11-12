@@ -177,9 +177,12 @@ enum Part {
 /// The tree pipelines: (bark, leaves, impostor) for the main pass, shadows and the prepass.
 struct Pipelines {
     main: [wgpu::RenderPipeline; 3],
-    /// The leaves' depth (coverage only) and the lit leaves testing for equal depth after it.
+    /// The leaves' depth (coverage only) and the lit leaves testing for equal depth after it;
+    /// the same for the impostors.
     leaves_depth: wgpu::RenderPipeline,
     leaves_equal: wgpu::RenderPipeline,
+    impostor_depth: wgpu::RenderPipeline,
+    impostor_equal: wgpu::RenderPipeline,
     shadow: [wgpu::RenderPipeline; 3],
     prepass: [wgpu::RenderPipeline; 3],
 }
@@ -355,6 +358,32 @@ impl Pipelines {
                 true,
             )
         });
+        let impostor_depth = main_pass(Spec {
+            fs: Some("fs_tree_impostor_depth"),
+            velocity: false,
+            color_writes: wgpu::ColorWrites::ALPHA,
+            ..main_spec(
+                "tree impostor depth",
+                &lit,
+                "vs_tree_impostor",
+                "fs_tree_impostor_depth",
+                &imp,
+                None,
+                true,
+            )
+        });
+        let impostor_equal = main_pass(Spec {
+            depth: Depth::main(false, wgpu::CompareFunction::Equal),
+            ..main_spec(
+                "tree impostor (depth equal)",
+                &lit,
+                "vs_tree_impostor",
+                "fs_tree_impostor",
+                &imp,
+                None,
+                true,
+            )
+        });
         let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
             build(
@@ -422,6 +451,8 @@ impl Pipelines {
             main,
             leaves_depth,
             leaves_equal,
+            impostor_depth,
+            impostor_equal,
             shadow,
             prepass,
         }
@@ -1578,13 +1609,15 @@ impl TreeRenderer {
         // coverage, nothing shaded), then the trees with the lit leaves testing for equal
         // depth, so each sample is shaded once, by the leaf it shows, and bark behind leaves is
         // not shaded at all. Same samples written as drawing them lit in one go (performance
-        // round 22). (Counted once: the depth draws go into a throwaway counter.)
-        let leaf_batches = self.main.iter().filter(|b| b.part == Part::Leaves);
+        // round 22). The impostors likewise: a far wooded hillside overlaps each pixel several
+        // times. (Counted once: the depth draws go into a throwaway counter.)
+        let crowns = self.main.iter().filter(|b| b.part != Part::Bark);
         let mut uncounted = RenderStats::default();
-        let depth = &p.leaves_depth;
-        self.draw_list(pass, leaf_batches, [depth, depth, depth], &mut uncounted);
+        let (depth, imp_depth) = (&p.leaves_depth, &p.impostor_depth);
+        self.draw_list(pass, crowns, [depth, depth, imp_depth], &mut uncounted);
         stats.set_pass += uncounted.set_pass;
-        self.draw_list(pass, &self.main, [bark, &p.leaves_equal, impostor], stats);
+        let lit = [bark, &p.leaves_equal, &p.impostor_equal];
+        self.draw_list(pass, &self.main, lit, stats);
     }
 
     /// Build the wireframe pipelines for `path` (the main pass's, with edges).
