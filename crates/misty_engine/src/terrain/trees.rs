@@ -69,12 +69,10 @@ pub struct TreeSettings {
     /// Meshes up to here, billboards (impostors) beyond (metres, × the LOD bias).
     pub billboard_start: f32,
     /// Cross-fade band at each switch (lighter mesh, impostor, draw distance) as a share of its
-    /// distance, just before it (0 = switch at once). Terrains saved before it existed get the
-    /// default; it is written only when changed.
-    #[serde(
-        default = "default_lod_fade",
-        skip_serializing_if = "is_default_lod_fade"
-    )]
+    /// distance, just before it (0 = switch at once). New terrains get [`DEFAULT_LOD_FADE`];
+    /// terrains saved before it existed load with 0 and keep switching at once, as LOD Groups
+    /// saved without a fade mode do (written whenever it is not 0).
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub lod_fade: f32,
     pub cast_shadows: bool,
     /// 0.1..1: detail of the trees in the sun's shadow cascades (1 = each cascade's level of
@@ -92,15 +90,11 @@ fn is_one(v: &f32) -> bool {
     *v == 1.0
 }
 
-/// Tree Rendering ▸ LOD Fade of new (and older) terrains: a tenth of each switch distance.
+/// Tree Rendering ▸ LOD Fade of new terrains: a tenth of each switch distance.
 pub const DEFAULT_LOD_FADE: f32 = 0.1;
 
-fn default_lod_fade() -> f32 {
-    DEFAULT_LOD_FADE
-}
-
-fn is_default_lod_fade(v: &f32) -> bool {
-    *v == DEFAULT_LOD_FADE
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Default for TreeSettings {
@@ -573,13 +567,14 @@ mod tests {
 
     #[test]
     fn lod_fade_loads_from_old_files_and_round_trips() {
-        // Saved before LOD Fade existed: the default band.
+        // Saved before LOD Fade existed: switches at once, as before.
         let old: TreeSettings =
             serde_json::from_str(r#"{"draw_distance":500.0,"lod_distance":40.0}"#).unwrap();
-        assert_eq!(old.lod_fade, DEFAULT_LOD_FADE);
-        // The default is not written, so unchanged terrains save as before.
+        assert_eq!(old.lod_fade, 0.0);
+        // New terrains cross-fade, and say so in the file.
         let text = serde_json::to_string(&TreeSettings::default()).unwrap();
-        assert!(!text.contains("lod_fade"), "{text}");
+        assert!(text.contains("\"lod_fade\":0.1"), "{text}");
+        assert_eq!(TreeSettings::default().lod_fade, DEFAULT_LOD_FADE);
         for v in [0.0, 0.25] {
             let s = TreeSettings {
                 lod_fade: v,

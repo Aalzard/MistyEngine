@@ -67,42 +67,18 @@ in the session scratchpad `r47/` (`env.sh`, `build_engine.sh`).
 - Harness (ignored): `noon_valley_tests::lod_fade_dolly` — camera dolly, fades off / on,
   pop pixels from the per-pixel second difference; `MISTY_NOON_GRASS=treefade:x`.
 
-## Status (paused 2026-11-12 18:25 at the coordinator's request)
+## Status (2026-11-13): done, mergeable
 
-Last commit is `[WIP]`: the tree band moved to *just before* each switch distance (as LOD
-Groups), not built or tested yet.
-
-Done and verified (on earlier commits):
-- Build, unit tests (lod, lod_group, trees, detail layers, tree shaders), GPU checks
-  (`lod_cross_fade_dolly...`: biggest one-step change 0.98 instant vs 0.08 faded, 0 holes;
-  `tree_gpu_cull_matches_the_cpu_lists` passes with fades).
-- fmt pass; clippy `--workspace --all-targets --release` 0 warnings (before the last two
-  commits; re-run).
-- Workspace tests (at c1bf8f69): editor 918/1 and engine 1537/1 failing; both failures pass
-  alone (`sample_saveloc::saveloc_demo_plays`, `world_partition::...a_big_cell_is_added...`:
-  load). Every `*_matches_its_generator` test passes with the Cross Fade sample rocks.
-- Timings (round A, main vs branch, same scenes, two interleaved rounds, High 1080p, sum of
-  GPU parts): NoonValley hero 13.45 → 13.46 ms, inside 11.78 → 11.97 (trees 1.75 → 1.85),
-  MeadowDemo behind 14.81 → 15.01 (trees 0.42 → 0.57), oak 12.62 → 12.93 (trees 0.21 → 0.45).
-  Later timing runs were swamped by other GPU load (hero 60-260 ms): ignore them.
-- Dolly proof (NoonValley treeline): biggest one-frame step of a switching 32 px block
-  41 levels instant → 5.7 faded; strips in `docs/screenshots/r47/`, frames in
-  `E:/MistyTargets/r47-shots/` (~0.9 GB, delete when done), tools `tools/lod_dolly_*.py`.
-
-Golden shots — the open problem:
-- With fades off (`MISTY_LOD_FADE=0`) the high shots pass: the TAA changes alone are fine.
-- Centred tree band (0.1): meadow_high_close 0.45/0.42 %, high_behind 0.68/1.13 %,
-  high_oak 0.71/1.39 % DRIFT (limit mean 0.5, changed 0.2 %). The oak in `oak` sits inside
-  High's band (lod 30 m × bias 1.5 = 45 m) and is drawn half LOD 0, half LOD 1.
-- Band beyond the switch (1d3f8bab): worse (high_oak 1.20/2.20 %, high_close 0.84 %,
-  low_behind 0.40 %) → the oak is just beyond 45 m.
-- Band before the switch (this WIP): should leave everything beyond each distance as on main;
-  not tested yet.
-
-Next:
-1. Build (`build_engine.sh`), run `variant.sh v3` (golden + treeline dolly) under the lock.
-2. If golden still drifts: narrower default tree band (0.05) or exclude... then explain the
-   remaining change (fading trees in a band are a mix of two levels) within tolerance.
-3. Re-run clippy, the lod/trees unit tests, `tree_gpu_cull_matches_the_cpu_lists`, golden 20.
-4. Final timings when the GPU is quiet (base_engine.exe vs new, interleaved, `times.sh`).
-5. Fix the progress.md Round 47 numbers/wording to the final band; drop `[WIP]`.
+- Tree band: just *before* each switch distance (the switch is complete at it, as a LOD
+  Group's band). New terrains get LOD Fade 0.1; terrains saved without the field load with 0
+  (instant, as before). NoonValley is switched on in its terrain file; MeadowDemo is left as
+  saved: its golden views have trees standing right on a switch (`golden_tree_bands`, an
+  ignored probe in golden_tests.rs, prints them: e.g. an oak at 0.995–1.0 × 45 m on High), and
+  any band, before, around or after the switch, redrew one of them half-and-half (golden
+  drift up to mean 1.2 / 2.4 %). Turning it on there needs new golden images (user's call).
+- Golden shots 20/20 within tolerance (largest mean 0.39, changed 0.03 %).
+- Dolly (NoonValley treeline, final build): biggest one-frame step of a switching block 40.9
+  → 4.3 levels; strips in `docs/screenshots/r47/` regenerated from the final build; scratch
+  frames deleted.
+- fmt pass, clippy 0 warnings, unit / GPU tests and timings: see the Round 47 section in
+  docs/progress.md.

@@ -4350,11 +4350,15 @@ once: no blending, no sorting), and the shadow casters take the camera's state. 
   load as None, so old scenes look as before. A LOD Group over a virtual geometry mesh also
   fades out above its cull height. Opaque levels in a band draw with the cutout variant; the
   shadow casters get the same fade, so shadows switch with what the camera sees.
-- **Terrain trees**: Tree Rendering ▸ **LOD Fade** (default 0.1, written only when changed):
-  full mesh → lighter mesh → impostor fade over the band just beyond each set distance (the
-  finer level stays whole up to it), and impostors fade out by the draw distance; CPU lists
-  and the GPU cull do the same. Tree shadows keep their per-cascade level (texel size), which
-  never follows the camera's switch, and the cascades blend across borders.
+- **Terrain trees**: Tree Rendering ▸ **LOD Fade** (0.1 for new terrains): full mesh →
+  lighter mesh → impostor fade over the band just before each set distance (the switch is
+  complete at it, as a LOD Group's), and impostors fade out by the draw distance; CPU lists and
+  the GPU cull do the same. Terrains saved before it load with 0 (switch at once, as before),
+  like LOD Groups without a fade mode: NoonValley is switched on (0.1); MeadowDemo is left as
+  saved because its golden views have trees standing right on a switch distance (an oak at
+  45 m on High), which any fade band would redraw half-and-half — turn it on there when the
+  golden images may be retaken. Tree shadows keep their per-cascade level (texel size),
+  which never follows the camera's switch, and the cascades blend across borders.
 - **Detail meshes** thin out over the last tenth of their draw distance instead of vanishing.
 - **TAA**: the history keeps the nearest depth of its 3 × 3 neighbourhood and rejects itself
   only where it saw a nearer surface (something moved away), so the scattered pixels of a
@@ -4367,12 +4371,16 @@ once: no blending, no sorting), and the shadow casters take the camera's state. 
   (largest one-step change 0.98 of the object instant vs 0.08 cross-faded, no hole in the
   silhouette). Harness `lod_fade_dolly` (fades off / on, frames to disk) and
   `tools/lod_dolly_pops.py` / `tools/lod_dolly_strip.py`.
-- **Proof** (NoonValley `treeline`, 72 frames dollying back 0.25 m a frame, High 720p): in
-  the tree blocks that switch, the biggest one-frame change of a 32 px block's brightness was
-  41 levels (of 255) instant and 5.7 cross-faded; strips in `docs/screenshots/r47/`.
-- **Cost** (High 1920 × 1080, sum of the GPU parts, two interleaved rounds against main):
-  NoonValley hero 13.45 → 13.46 ms, inside 11.78 → 11.97 ms (trees 1.75 → 1.85), MeadowDemo
-  behind 14.81 → 15.01 ms (trees 0.42 → 0.57), oak 12.62 → 12.93 ms (trees 0.21 → 0.45).
+- **Proof** (NoonValley `treeline`, 72 frames dollying back 0.25 m a frame, High 720p, final
+  build): in the tree blocks that switch, the biggest one-frame change of a 32 px block's
+  brightness was 40.9 levels (of 255) instant and 4.3 cross-faded; strips in
+  `docs/screenshots/r47/`. Golden shots 20/20 (largest mean 0.39, changed 0.03 %).
+- **Cost** (High 1920 × 1080, sum of the GPU parts). Two interleaved rounds against main with
+  tree fades on in both scenes: NoonValley hero 13.45 → 13.46 ms, inside 11.78 → 11.97 ms
+  (trees 1.75 → 1.85), MeadowDemo behind 14.81 → 15.01 ms (trees 0.42 → 0.57), oak 12.62 →
+  12.93 ms (trees 0.21 → 0.45). Final build, one round on a loaded machine (±0.6 ms noise):
+  trees part NoonValley hero 0.71 → 0.71, inside 1.96 → 2.01 ms; MeadowDemo (tree fade off as
+  saved) unchanged at 0.42 / 0.21 ms.
 - **Left**: no time-based fade for camera cuts (a jump lands in the new state at once); the
   dither still shows as fine noise on a crown edge against the sky while it is in a band
   (TAA averages it, not fully, and not on the screen border).
