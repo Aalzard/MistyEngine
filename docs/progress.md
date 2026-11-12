@@ -4201,4 +4201,9 @@ material variants and decoded its textures in one frame. Now the window draws fr
   with no `Library/` and reports the first frame and the longest frame; plus its parser).
 - **Measured** (fresh SampleProject copy, `Library/` removed, freshly named exe so the
   driver's cache is cold, `MISTY_WINDOW_SIZE=1100x650`, RTX 4060 Vulkan, other agents
-  building): see the table in `docs/pending/r44-first-open.md`.
+  building; table in `docs/pending/r44-first-open.md`): SampleScene's first frame 8.7-12.3 s
+  → 1.1-1.4 s after start, the longest main-thread stall 8-11.5 s → 150-180 ms; MeadowDemo
+  10.3 s → 1.2 s, its longest stall 9.6 s → 0.45 s. Golden shots 20/20.
+- **Left**: model imports still load on the calling thread (no placeholder meshes);
+  feature and blended variants have no stand-in; a 150-180 ms `Editor.RefreshAssets` once
+  after opening; `Editor.State` (0.2 s) before the first frame.
