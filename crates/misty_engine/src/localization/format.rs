@@ -55,10 +55,20 @@ fn is_ident(s: &str) -> bool {
 
 /// Fill in `text`'s placeholders for `locale`.
 pub fn format(text: &str, args: &Args, locale: &str) -> String {
-    format_inner(text, args, locale, None)
+    format_inner(text, args, locale, None, 0)
 }
 
-fn format_inner(text: &str, args: &Args, locale: &str, number: Option<&str>) -> String {
+/// Deepest plural form inside a plural form that is filled in (deeper ones stay literal), so
+/// a malformed table cell can't overflow the stack.
+const MAX_NESTING: usize = 16;
+
+fn format_inner(
+    text: &str,
+    args: &Args,
+    locale: &str,
+    number: Option<&str>,
+    depth: usize,
+) -> String {
     let mut out = String::with_capacity(text.len());
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -80,14 +90,14 @@ fn format_inner(text: &str, args: &Args, locale: &str, number: Option<&str>) -> 
             continue;
         }
         // Find the matching close brace (forms may nest placeholders).
-        let mut depth = 0;
+        let mut open = 0;
         let mut end = None;
         for (j, &d) in chars.iter().enumerate().skip(i) {
             match d {
-                '{' => depth += 1,
+                '{' => open += 1,
                 '}' => {
-                    depth -= 1;
-                    if depth == 0 {
+                    open -= 1;
+                    if open == 0 {
                         end = Some(j);
                         break;
                     }
@@ -101,14 +111,20 @@ fn format_inner(text: &str, args: &Args, locale: &str, number: Option<&str>) -> 
             break;
         };
         let inner: String = chars[i + 1..end].iter().collect();
-        out.push_str(&placeholder(&inner, args, locale, number));
+        out.push_str(&placeholder(&inner, args, locale, number, depth));
         i = end + 1;
     }
     out
 }
 
 /// One `{…}`: `name`, empty (the plural's number) or `name:formatter:options`.
-fn placeholder(inner: &str, args: &Args, locale: &str, number: Option<&str>) -> String {
+fn placeholder(
+    inner: &str,
+    args: &Args,
+    locale: &str,
+    number: Option<&str>,
+    depth: usize,
+) -> String {
     let (name, rest) = match inner.split_once(':') {
         Some((n, r)) => (n.trim(), Some(r)),
         None => (inner.trim(), None),
@@ -131,7 +147,10 @@ fn placeholder(inner: &str, args: &Args, locale: &str, number: Option<&str>) -> 
             let n: f64 = value.trim().parse().unwrap_or(0.0);
             let index = plural_index(locale, n, forms.len());
             let form = forms.get(index).copied().unwrap_or("");
-            format_inner(form, args, locale, Some(value))
+            if depth >= MAX_NESTING {
+                return form.to_owned();
+            }
+            format_inner(form, args, locale, Some(value), depth + 1)
         }
         "upper" => super::case::to_upper(value, locale),
         "lower" => super::case::to_lower(value, locale),

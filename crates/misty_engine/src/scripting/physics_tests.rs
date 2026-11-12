@@ -176,3 +176,44 @@ fn rigidbody_move_position_rotation_and_gravity_from_lua() {
     let yaw = scene.transform(e).euler().y;
     assert!((yaw - 90.0).abs() < 1.0, "{yaw}");
 }
+
+/// A Rigidbody handle kept after `Destroy`: its members raise a Lua error instead of
+/// panicking (mlua re-raises Rust panics, which aborted the game).
+#[test]
+fn rigidbody_of_a_destroyed_object_errors_in_lua() {
+    let src = r#"
+local Keeper = { frames = 0 }
+local function check(name, f)
+    local ok, err = pcall(f)
+    Debug.Log(name, ok, string.find(tostring(err), "destroyed", 1, true) ~= nil)
+end
+function Keeper:Start()
+    local box = GameObject.Find("Box")
+    self.rb = box:GetComponent("Rigidbody")
+    Destroy(box)
+end
+function Keeper:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local rb = self.rb
+        check("position", function() return rb.position end)
+        check("MovePosition", function() rb:MovePosition(Vector3.new(1, 2, 3)) end)
+        check("MoveRotation", function() rb:MoveRotation(Vector3.new(0, 90, 0)) end)
+    end
+end
+return Keeper
+"#;
+    let root = project("Keeper.lua", src);
+    let mut scene = Scene::new("t");
+    let b = solid(&mut scene, "Box", Vec3::new(0.0, 5.0, 0.0), Vec3::ONE);
+    scene.add(b, Rigidbody::default());
+    let keeper = scene.spawn("Keeper", None);
+    script(&mut scene, keeper, "Keeper.lua");
+    let logs = run(&mut scene, root, 5);
+    for name in ["position", "MovePosition", "MoveRotation"] {
+        assert!(
+            logs.contains(&format!("{name} false true")),
+            "{name}: {logs:?}"
+        );
+    }
+}

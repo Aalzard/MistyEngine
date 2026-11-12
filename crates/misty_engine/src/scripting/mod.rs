@@ -58,6 +58,7 @@ pub mod vehicle_api;
 pub mod vfx_api;
 pub mod video_api;
 pub mod water_api;
+pub mod weather_api;
 pub mod world_partition_api;
 
 use std::collections::{HashMap, HashSet};
@@ -462,7 +463,9 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
-        let lua = Lua::new();
+        let lua = game_lua();
+        install_deadline(&lua);
+        arm_deadline(&lua, true);
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
@@ -520,6 +523,7 @@ impl ScriptHost {
             w.video_events.extend(ev);
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
+        arm_deadline(&host.lua, false);
         host
     }
 
@@ -1054,9 +1058,20 @@ impl ScriptHost {
 
     /// One game frame: Start (first frame), FixedUpdate + physics steps, Update, LateUpdate, Destroy.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        arm_deadline(&self.lua, true);
+        self.update_frame(scene, time, input);
+        arm_deadline(&self.lua, false);
+    }
+
+    fn update_frame(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
+            // Weather events reach scripts and graphs like broadcast custom events
+            // (OnLightning, OnThunder, OnWeatherChanged; scripting/weather_api.rs).
+            for e in w.scene.weather.take_events() {
+                w.graph_events.push(weather_api::custom_event(&e));
+            }
             w.time = *time;
             w.save.mark_time(time.time);
             // Axis smoothing runs on real time, so it works while the game is paused.
@@ -1475,6 +1490,8 @@ impl ScriptHost {
             self.instances.retain(|i| !doomed.contains(&i.entity));
             save_api::untrack(&self.lua, &doomed);
             unregister_script_instances(&self.lua, &doomed);
+            ui_widgets_api::forget(&self.lua, &doomed);
+            input_actions_api::forget(&self.lua, &doomed);
         }
     }
 
@@ -1653,6 +1670,80 @@ impl ScriptHost {
     }
 }
 
+/// Longest the game scripts of one frame (or of `Awake`/`Start` when the game starts) may run
+/// before the running script is stopped with an error: `while true do end` in an `Update`
+/// would otherwise freeze the editor (Play runs on its UI thread) or the game for good.
+pub const FRAME_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// When the scripts running now must stop (checked by an instruction-count hook).
+struct Deadline(std::cell::Cell<Option<std::time::Instant>>);
+
+fn install_deadline(lua: &Lua) {
+    lua.set_app_data(Deadline(std::cell::Cell::new(None)));
+    let _ = lua.set_global_hook(
+        mlua::HookTriggers::new().every_nth_instruction(10_000),
+        |lua, debug| {
+            if let Some(d) = lua.app_data_ref::<Deadline>()
+                && let Some(t) = d.0.get()
+                && std::time::Instant::now() > t
+            {
+                // A little more time so the error can unwind through the script's pcalls.
+                d.0.set(Some(
+                    std::time::Instant::now() + std::time::Duration::from_millis(200),
+                ));
+                let at = debug
+                    .source()
+                    .short_src
+                    .map(|s| format!("{s}:{}: ", debug.current_line().unwrap_or(0)))
+                    .unwrap_or_default();
+                return Err(mlua::Error::runtime(format!(
+                    "{at}stopped after running for {} s in one frame (an endless loop?)",
+                    FRAME_LIMIT.as_secs()
+                )));
+            }
+            Ok(mlua::VmState::Continue)
+        },
+    );
+}
+
+/// Start (`on`) or stop the clock of [`FRAME_LIMIT`].
+fn arm_deadline(lua: &Lua, on: bool) {
+    if let Some(d) = lua.app_data_ref::<Deadline>() {
+        d.0.set(on.then(|| std::time::Instant::now() + FRAME_LIMIT));
+    }
+}
+
+/// Standard libraries game scripts get (`debug`, `io` and `package` are left out).
+pub fn game_libs() -> mlua::StdLib {
+    use mlua::StdLib as L;
+    L::TABLE | L::STRING | L::MATH | L::UTF8 | L::COROUTINE | L::OS
+}
+
+/// A Lua state for game scripts: [`game_libs`], then [`sandbox`].
+pub fn game_lua() -> Lua {
+    let lua = Lua::new_with(game_libs(), mlua::LuaOptions::default())
+        .expect("the safe standard libraries load");
+    sandbox(&lua).expect("the sandbox chunk runs");
+    lua
+}
+
+/// Take away what lets a game script touch the machine: files (`dofile`, `loadfile`), modules
+/// (`require`), processes and the environment (`os` keeps only `time`, `clock`, `date` and
+/// `difftime`), and precompiled chunks (`load` takes source text only: crafted bytecode can
+/// crash Lua).
+pub fn sandbox(lua: &Lua) -> mlua::Result<()> {
+    lua.load(
+        r#"
+local os_, load_ = os, load
+os = os_ and { time = os_.time, clock = os_.clock, date = os_.date, difftime = os_.difftime }
+io, package, require, dofile, loadfile = nil, nil, nil, nil, nil
+load = function(chunk, name, mode, ...) return load_(chunk, name, "t", ...) end
+"#,
+    )
+    .set_name("=sandbox")
+    .exec()
+}
+
 fn load_class(lua: &Lua, root: &std::path::Path, path: &str) -> Result<Table, String> {
     let source = crate::vfs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
     // `--#if DEFINE` blocks of the Build Profile's scripting defines.
@@ -1698,7 +1789,7 @@ pub struct ScriptInfo {
 
 /// Public fields of a script with their Inspector attributes.
 pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
-    let lua = Lua::new();
+    let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
     let class = eval_class(&lua, source, path)?;
     let attributes = attributes::parse(&class);
@@ -1741,7 +1832,7 @@ pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
 /// objects are unavailable, but `Vector3`, `Mathf` and the classes' own functions work).
 /// Returns the chunk's error, if any.
 pub fn test_scripts(scripts: &[(&str, &str)], chunk: &str) -> Result<(), String> {
-    let lua = Lua::new();
+    let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
     for (name, source) in scripts {
         let class = eval_class(&lua, source, name)?;

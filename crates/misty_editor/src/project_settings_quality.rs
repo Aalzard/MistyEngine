@@ -533,6 +533,12 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "Weather",
+        "Rain and snow particles, splashes and the sheltered-area map (Off = no particles; wet surfaces and lightning stay).",
+        |ui| combo(ui, "q_weather", &mut l.weather, &Tier::ALL, Tier::label),
+    );
+    edited |= row(
+        ui,
         "Reflection Probes",
         "Resolution of reflections from Reflection Probes (Off = sky only).",
         |ui| {

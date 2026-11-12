@@ -44,6 +44,12 @@ const TREE_SRC: &str = concat!(
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_common.wgsl"),
+    "
+",
+    include_str!("weather/shaders/weather_surface.wgsl"),
     "\n",
     include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",

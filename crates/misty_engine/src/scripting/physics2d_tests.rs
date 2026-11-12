@@ -173,3 +173,53 @@ fn gravity_impulse_and_move_position() {
     // MovePosition placed it at y = 0 on frame 30; it kept its 2 m/s upwards since (no gravity).
     assert!(p.y > 0.25 && p.y < 0.45, "kept rising without gravity: {p}");
 }
+
+/// Rigidbody2D and Collider2D handles kept after `Destroy` raise a Lua error instead of
+/// panicking.
+#[test]
+fn rigidbody2d_and_collider2d_of_a_destroyed_object_error_in_lua() {
+    let src = r#"
+local Keeper = { frames = 0 }
+local function check(name, f)
+    local ok, err = pcall(f)
+    Debug.Log(name, ok, string.find(tostring(err), "destroyed", 1, true) ~= nil)
+end
+function Keeper:Start()
+    local box = GameObject.Find("Box")
+    self.rb = box:GetComponent("Rigidbody2D")
+    self.col = box:GetComponent("BoxCollider2D")
+    Destroy(box)
+end
+function Keeper:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local rb, col = self.rb, self.col
+        check("position", function() return rb.position end)
+        check("CompareTag", function() return col:CompareTag("Player") end)
+    end
+end
+return Keeper
+"#;
+    let root = project("Keeper.lua", src);
+    let mut scene = Scene::new("t");
+    let b = object(&mut scene, "Box", Vec2::new(0.0, 5.0));
+    scene.add(b, Rigidbody2D::default());
+    scene.add(b, BoxCollider2D::default());
+    let keeper = scene.spawn("Keeper", None);
+    scene.add(
+        keeper,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/Keeper.lua".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    let logs = run(&mut scene, root, 5);
+    for name in ["position", "CompareTag"] {
+        assert!(
+            logs.contains(&format!("{name} false true")),
+            "{name}: {logs:?}"
+        );
+    }
+}

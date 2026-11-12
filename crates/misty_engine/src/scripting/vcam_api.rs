@@ -76,6 +76,9 @@ impl UserData for LVirtualCamera {
         });
         f.add_field_method_get("fieldOfView", |lua, c| with_vcam(lua, c.0, |v| v.lens.fov));
         f.add_field_method_set("fieldOfView", |lua, c, fov: f32| {
+            if !fov.is_finite() {
+                return Err(mlua::Error::runtime("fieldOfView must be a finite number"));
+            }
             with_vcam(lua, c.0, |v| v.lens.fov = fov.clamp(1.0, 179.0))
         });
         f.add_field_method_get("dutch", |lua, c| with_vcam(lua, c.0, |v| v.lens.dutch));

@@ -88,7 +88,11 @@ fn tree_shadow(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f3
 
 // Lighting of a tree surface: hemisphere ambient (baked crown occlusion and SSAO), the lights
 // with wide soft shadows, cloud shadows, light through the leaves, fog.
-fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32, transmission: vec3<f32>, wrap: f32, smoothness: f32, shadow_radius: f32) -> MeshTargets {
+fn shade_tree(world: vec3<f32>, albedo_in: vec3<f32>, n: vec3<f32>, occlusion: f32, transmission: vec3<f32>, wrap: f32, smoothness_in: f32, shadow_radius: f32) -> MeshTargets {
+    // Wet and snowy foliage (render/weather).
+    let weathered = weather_foliage(world, n, albedo_in, smoothness_in);
+    let albedo = weathered.rgb;
+    let smoothness = weathered.a;
     let v = normalize(view.camera_pos.xyz - world);
     var ambient: vec3<f32>;
     if (n.y >= 0.0) {

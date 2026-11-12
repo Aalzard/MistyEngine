@@ -47,7 +47,7 @@ fn cleanup(s: EditorState) {
 
 fn errors(s: &EditorState) -> Vec<String> {
     s.console
-        .entries
+        .entries()
         .iter()
         .filter(|e| e.level == LogLevel::Error)
         .map(|e| e.message.clone())
@@ -649,7 +649,7 @@ fn scripts_reload_when_they_change_and_new_ones_appear() {
     assert_eq!(paths, ["Tools/New"]);
     assert!(
         s.console
-            .entries
+            .entries()
             .iter()
             .any(|e| e.message == format!("Editor scripts reloaded ({rel} changed)."))
     );

@@ -122,6 +122,11 @@ struct MeshOut {
     @location(5) lightmap_uv: vec2<f32>,
     // Last frame's clip position (xyw) of this vertex, for the motion vectors (common.wgsl).
     @location(6) clip_prev: vec3<f32>,
+    // `uv` interpolated at the centroid of the covered samples (fs_unlit only). With MSAA a
+    // pixel on a quad's edge is shaded at its centre, outside the quad: a tile's uv there
+    // reaches past its atlas cell into the next one (seams between tilemap/sprite tiles).
+    // Lit materials keep the centre `uv`, whose derivatives (mip selection) stay smooth.
+    @location(7) @interpolate(perspective, centroid) uv_centroid: vec2<f32>,
 };
 
 @vertex
@@ -134,6 +139,7 @@ fn vs_main(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {
     out.world = world.xyz;
     out.normal = (d.normal * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = draw_uv(d, in.uv);
+    out.uv_centroid = out.uv;
     out.draw = draw_index;
     out.tangent = vec4<f32>((d.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w * d.emission.w);
     out.lightmap_uv = in.uv2 * d.lightmap_st.xy + d.lightmap_st.zw;
@@ -338,7 +344,15 @@ fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
 @fragment
 fn fs_unlit(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
-    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z);
+    // Centroid uv: sprites and tiles stay inside their atlas cell on MSAA edge pixels; the
+    // gradients of the centre uv keep the mip choice smooth.
+    let base = textureSampleGrad(
+        albedo_map,
+        material_sampler,
+        in.uv_centroid,
+        dpdx(in.uv) * exp2(view.view_tan.z),
+        dpdy(in.uv) * exp2(view.view_tan.z),
+    );
     var color = srgb_to_linear(d.color.rgb) * base.rgb;
     let alpha = d.color.a * base.a;
     // Sprite-Lit-Default: 2D lights of the draw's Sorting Layer (none in the scene = unlit).
@@ -475,8 +489,9 @@ fn coat_ambient(s: Surface, world: vec3<f32>, v: vec3<f32>, ambient: vec3<f32>, 
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
 fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
-    // Decals (render/decals) change the surface before it is lit.
-    let s = decal_surface(world, surface);
+    // Decals (render/decals) change the surface before it is lit, then the weather (wet,
+    // puddles, snow, lightning; render/weather).
+    let s = weather_surface(world, decal_surface(world, surface));
     let albedo = s.albedo;
     let metallic = clamp(s.metallic, 0.0, 1.0);
     let smoothness = clamp(s.smoothness, 0.0, 1.0);

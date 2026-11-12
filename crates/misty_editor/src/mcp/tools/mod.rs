@@ -232,6 +232,32 @@ pub fn validate(schema: &Value, args: &Value) -> Result<(), String> {
             let list: Vec<String> = choices.iter().map(Value::to_string).collect();
             return Err(format!("\"{name}\" must be one of {}", list.join(", ")));
         }
+        // The limits the schema advertises.
+        if let Some(x) = v.as_f64() {
+            if let Some(min) = p.get("minimum").and_then(Value::as_f64)
+                && x < min
+            {
+                return Err(format!("\"{name}\" must be at least {min}"));
+            }
+            if let Some(max) = p.get("maximum").and_then(Value::as_f64)
+                && x > max
+            {
+                return Err(format!("\"{name}\" must be at most {max}"));
+            }
+        }
+        if let Some(items) = v.as_array() {
+            let n = items.len() as u64;
+            if let Some(min) = p.get("minItems").and_then(Value::as_u64)
+                && n < min
+            {
+                return Err(format!("\"{name}\" needs at least {min} items"));
+            }
+            if let Some(max) = p.get("maxItems").and_then(Value::as_u64)
+                && n > max
+            {
+                return Err(format!("\"{name}\" takes at most {max} items"));
+            }
+        }
     }
     Ok(())
 }
@@ -412,4 +438,30 @@ pub fn vec3_schema(what: &str) -> Value {
         "maxItems": 3,
         "description": what,
     })
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+
+    #[test]
+    fn advertised_limits_are_enforced() {
+        let schema = object_schema(
+            json!({
+                "width": { "type": "integer", "minimum": 16, "maximum": 2048 },
+                "color": { "type": "array", "minItems": 3, "maxItems": 4 },
+            }),
+            &[],
+        );
+        assert!(validate(&schema, &json!({ "width": 16, "color": [1, 1, 1] })).is_ok());
+        assert!(validate(&schema, &json!({ "width": 2048, "color": [1, 1, 1, 1] })).is_ok());
+        for bad in [
+            json!({ "width": 15 }),
+            json!({ "width": 100000 }),
+            json!({ "color": [1, 1] }),
+            json!({ "color": [1, 1, 1, 1, 1] }),
+        ] {
+            assert!(validate(&schema, &bad).is_err(), "{bad} was accepted");
+        }
+    }
 }

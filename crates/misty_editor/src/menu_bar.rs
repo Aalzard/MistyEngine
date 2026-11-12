@@ -436,7 +436,7 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         item(ui, s, "Audio Source", "", create(Create::AudioSource));
     });
     sub(ui, "Rendering", |ui| {
-        for what in [Create::FogVolume, Create::DecalProjector] {
+        for what in [Create::FogVolume, Create::DecalProjector, Create::Weather] {
             item(ui, s, what.default_name(), "", create(what));
         }
     });

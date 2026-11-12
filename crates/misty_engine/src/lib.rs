@@ -29,6 +29,7 @@ pub mod material_features;
 pub mod memory_snapshot;
 pub mod mesh_builder;
 pub mod models;
+pub mod moon;
 pub mod navigation;
 pub mod network;
 pub mod occlusion;
@@ -69,6 +70,7 @@ pub mod vgeo;
 pub mod video;
 pub mod visual_script;
 pub mod water;
+pub mod weather;
 pub mod world_gen;
 pub mod world_partition;
 

@@ -205,7 +205,15 @@ impl Audio {
         params: VoiceParams,
         track: Option<TrackId>,
     ) -> Option<VoiceId> {
-        let path = self.root.join(clip);
+        let path = match crate::vfs::project_file(&self.root, clip) {
+            Ok(p) => p,
+            Err(e) => {
+                if self.bad_clips.insert(clip.to_owned()) {
+                    self.logs.push(format!("Audio clip {clip}: {e}"));
+                }
+                return None;
+            }
+        };
         let paused = self.paused;
         let backend = self.backend()?;
         match backend.play(&path, params, track) {
@@ -369,7 +377,12 @@ impl Audio {
     /// `AudioSource.PlayClipAtPoint(clip, position [, volume])`: a fully 3D one-shot at a
     /// fixed world position with the default rolloff, straight to the listener.
     pub fn play_clip_at_point(&mut self, scene: &Scene, clip: &str, at: Vec3, volume: f32) -> bool {
-        let volume = volume.clamp(0.0, 1.0);
+        // `clamp` keeps NaN: a NaN volume reached the audio thread.
+        let volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         let params = spatial::mix(&point_source(volume), at, listener(scene), self.muted);
         match self.start_voice(clip, params, None) {
             Some(id) => {
@@ -389,6 +402,54 @@ impl Audio {
         let id = self.start_voice(clip, params, None);
         self.clips.extend(id);
         id.is_some()
+    }
+
+    /// A 2D voice outside any Audio Source (ambience: weather loops, thunder) through the
+    /// mixer group `output` ("Assets/Audio/Main.mixer#SFX"; empty = straight to the output).
+    /// `clip` is project-relative or absolute.
+    pub fn play_ambient(
+        &mut self,
+        clip: &str,
+        output: &str,
+        volume: f32,
+        looping: bool,
+    ) -> Option<VoiceId> {
+        self.backend();
+        let group = if output.is_empty() {
+            None
+        } else {
+            self.resolve_output(output)
+        };
+        let track = group.and_then(|(m, g)| self.mixers.get(m)?.tracks.get(&g).copied());
+        let params = VoiceParams {
+            volume: if self.muted { 0.0 } else { volume.max(0.0) },
+            looping,
+            ..Default::default()
+        };
+        let id = self.start_voice(clip, params, track)?;
+        self.clips.push(id);
+        Some(id)
+    }
+
+    /// New volume of a voice from [`Audio::play_ambient`].
+    pub fn set_voice_volume(&mut self, id: VoiceId, volume: f32, looping: bool) {
+        let muted = self.muted;
+        if let Some(b) = self.backend.as_mut() {
+            let params = VoiceParams {
+                volume: if muted { 0.0 } else { volume.max(0.0) },
+                looping,
+                ..Default::default()
+            };
+            b.set(id, params);
+        }
+    }
+
+    /// Stop a voice from [`Audio::play_ambient`].
+    pub fn stop_voice(&mut self, id: VoiceId) {
+        if let Some(b) = self.backend.as_mut() {
+            b.stop(id);
+        }
+        self.clips.retain(|c| *c != id);
     }
 
     fn all_ids(&self) -> impl Iterator<Item = VoiceId> + '_ {

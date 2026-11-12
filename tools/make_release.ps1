@@ -15,9 +15,14 @@
      <zip>.sha256.txt ("<hash>  <zip name>", what the updater checks)
   4. <OutDir>\MistyEngine-Setup-v<version>-windows-x64.exe, the installer, built with Inno Setup 6
      from tools\installer\MistyEngine.iss (skipped with a warning if Inno Setup is not
-     installed, or with -NoInstaller)
+     installed, or with -NoInstaller), and <setup>.sha256.txt
 
   The version is the workspace version in Cargo.toml.
+
+  Published releases are built, signed and uploaded by GitHub Actions
+  (.github\workflows\release-windows.yml), which runs this script with -Strict, with -ExeDir
+  once the exes are signed, and with -HashOnly after the installer is signed. Run by hand it
+  makes an unsigned test build.
 
 .PARAMETER OutDir
   Where the package goes. Default: a MistyRelease folder next to the repository.
@@ -27,37 +32,101 @@
 
 .PARAMETER SkipBuild
   Package the exes already in <TargetDir>\release.
+
+.PARAMETER ExeDir
+  Package MistyEngine.exe and misty_player.exe from this folder instead of building (the
+  release workflow passes the folder of signed exes). Nothing is built or renamed.
+
+.PARAMETER NoInstaller
+  Leave the installer out.
+
+.PARAMETER Strict
+  For the release workflow: stop with an error where a test build only warns (Inno Setup
+  missing; an exe without the "Misty Engine" product name and version in its version info,
+  which the signing service would refuse).
+
+.PARAMETER HashOnly
+  Only write the .sha256.txt files again for the zip and the installer already in <OutDir>
+  (the release workflow does this last, after the installer is signed).
 #>
 param(
     [string]$OutDir,
     [string]$TargetDir,
     [switch]$SkipBuild,
-    [switch]$NoInstaller
+    [string]$ExeDir,
+    [switch]$NoInstaller,
+    [switch]$Strict,
+    [switch]$HashOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = Join-Path (Split-Path -Parent $Repo) 'MistyRelease' }
 if (-not $TargetDir) { $TargetDir = Join-Path $Repo 'target' }
+# Full paths: Inno Setup reads relative ones from the .iss folder, not from here.
+$full = { param($p) $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p) }
+$OutDir = & $full $OutDir
+$TargetDir = & $full $TargetDir
+if ($ExeDir) { $ExeDir = & $full $ExeDir }
 
 $toml = [IO.File]::ReadAllText((Join-Path $Repo 'Cargo.toml'))
 if ($toml -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'No workspace version in Cargo.toml.' }
 $Version = $Matches[1]
 $Name = "MistyEngine-v$Version-windows-x64"
+$SetupName = "MistyEngine-Setup-v$Version-windows-x64.exe"
 Write-Host "Misty Engine $Version -> $OutDir\$Name"
+
+# "<hash>  <file name>" next to the file (what the updater checks for the zip).
+function Write-Sha256([string]$File) {
+    $hash = (Get-FileHash $File -Algorithm SHA256).Hash.ToLower()
+    $leaf = Split-Path -Leaf $File
+    [IO.File]::WriteAllText("$File.sha256.txt", "$hash  $leaf`n", (New-Object Text.ASCIIEncoding))
+    Write-Host ("{0}  {1:N1} MB  sha256 {2}" -f $leaf, ((Get-Item $File).Length / 1MB), $hash)
+}
+
+if ($HashOnly) {
+    $zipFile = Join-Path $OutDir "$Name.zip"
+    if (-not (Test-Path $zipFile)) { throw "$zipFile not found." }
+    Write-Sha256 $zipFile
+    $setupFile = Join-Path $OutDir $SetupName
+    if (Test-Path $setupFile) { Write-Sha256 $setupFile }
+    elseif ($Strict -and -not $NoInstaller) { throw "$setupFile not found." }
+    return
+}
+
+# bsdtar from Windows itself (10 and newer): it writes zips. A GNU tar earlier in PATH (Git for
+# Windows has one) would write a tar file named .zip.
+$Tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+if (-not (Test-Path $Tar)) { $Tar = 'tar' }
 
 $dirty = & git -C $Repo status --porcelain -- crates Cargo.toml Cargo.lock
 if ($dirty) { Write-Warning "Uncommitted changes in the engine source; the exes include them:`n$dirty" }
 
-if (-not $SkipBuild) {
-    $env:CARGO_INCREMENTAL = '0'
-    & cargo build --release -p misty_editor -p misty_player `
-        --manifest-path (Join-Path $Repo 'Cargo.toml') --target-dir $TargetDir
-    if ($LASTEXITCODE -ne 0) { throw 'cargo build failed.' }
+if ($ExeDir) {
+    # Ready exes under their release names (signed ones in the release workflow).
+    $EditorExe = Join-Path $ExeDir 'MistyEngine.exe'
+    $PlayerExe = Join-Path $ExeDir 'misty_player.exe'
+} else {
+    if (-not $SkipBuild) {
+        $env:CARGO_INCREMENTAL = '0'
+        & cargo build --release -p misty_editor -p misty_player `
+            --manifest-path (Join-Path $Repo 'Cargo.toml') --target-dir $TargetDir
+        if ($LASTEXITCODE -ne 0) { throw 'cargo build failed.' }
+    }
+    $Bin = Join-Path $TargetDir 'release'
+    $EditorExe = Join-Path $Bin 'misty.exe'
+    $PlayerExe = Join-Path $Bin 'misty_player.exe'
 }
-$Bin = Join-Path $TargetDir 'release'
-foreach ($exe in 'misty.exe', 'misty_player.exe') {
-    if (-not (Test-Path (Join-Path $Bin $exe))) { throw "$exe not found in $Bin." }
+foreach ($exe in $EditorExe, $PlayerExe) {
+    if (-not (Test-Path $exe)) { throw "$exe not found." }
+    # The version info comes from crates\misty_editor\build_icon.rs (needs the Windows SDK's
+    # rc.exe). The signing service refuses exes whose product name or version differ.
+    $info = (Get-Item $exe).VersionInfo
+    if ($info.ProductName -ne 'Misty Engine' -or $info.ProductVersion -ne $Version) {
+        $msg = "$exe has product name '$($info.ProductName)' and version '$($info.ProductVersion)'; " +
+            "expected 'Misty Engine' and '$Version'."
+        if ($Strict) { throw $msg } else { Write-Warning $msg }
+    }
 }
 
 # --- the folder ---------------------------------------------------------------------------
@@ -65,8 +134,8 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 $Pkg = Join-Path $OutDir $Name
 if (Test-Path $Pkg) { Remove-Item -Recurse -Force $Pkg }
 New-Item -ItemType Directory -Force $Pkg | Out-Null
-Copy-Item (Join-Path $Bin 'misty.exe') (Join-Path $Pkg 'MistyEngine.exe')
-Copy-Item (Join-Path $Bin 'misty_player.exe') (Join-Path $Pkg 'misty_player.exe')
+Copy-Item $EditorExe (Join-Path $Pkg 'MistyEngine.exe')
+Copy-Item $PlayerExe (Join-Path $Pkg 'misty_player.exe')
 
 # The example project exactly as committed.
 $Examples = Join-Path $Pkg 'Examples'
@@ -74,7 +143,7 @@ New-Item -ItemType Directory -Force $Examples | Out-Null
 $tarFile = Join-Path $OutDir "$Name-examples.tar"
 & git -C $Repo archive --format=tar -o $tarFile HEAD SampleProject
 if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
-& tar -x -f $tarFile -C $Examples
+& $Tar -x -f $tarFile -C $Examples
 if ($LASTEXITCODE -ne 0) { throw 'tar -x failed.' }
 Remove-Item $tarFile
 foreach ($skip in 'Library', 'Builds') {
@@ -97,14 +166,13 @@ Write-Text (Join-Path $Pkg 'LICENSE.txt') $license
 $Zip = Join-Path $OutDir "$Name.zip"
 if (Test-Path $Zip) { Remove-Item -Force $Zip }
 # bsdtar (Windows 10+) writes a deflate zip with forward slashes, which every unzip reads.
-& tar -a -c -f $Zip -C $OutDir $Name
+& $Tar -a -c -f $Zip -C $OutDir $Name
 if ($LASTEXITCODE -ne 0) { throw 'tar -a (zip) failed.' }
-$hash = (Get-FileHash $Zip -Algorithm SHA256).Hash.ToLower()
-$sumFile = "$Zip.sha256.txt"
-[IO.File]::WriteAllText($sumFile, "$hash  $Name.zip`n", (New-Object Text.ASCIIEncoding))
-
-$size = (Get-Item $Zip).Length
-Write-Host ("{0}.zip  {1:N1} MB  sha256 {2}" -f $Name, ($size / 1MB), $hash)
+$magic = New-Object byte[] 2
+$zipStream = [IO.File]::OpenRead($Zip)
+try { [void]$zipStream.Read($magic, 0, 2) } finally { $zipStream.Dispose() }
+if ($magic[0] -ne 0x50 -or $magic[1] -ne 0x4B) { throw "$Zip is not a zip file (wrong tar in use?)." }
+Write-Sha256 $Zip
 
 # --- the installer (Inno Setup 6) --------------------------------------------------------
 if (-not $NoInstaller) {
@@ -114,13 +182,21 @@ if (-not $NoInstaller) {
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $iscc) {
-        Write-Warning 'Inno Setup 6 not found; skipping the installer (https://jrsoftware.org/isinfo.php).'
+        $onPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+        if ($onPath) { $iscc = $onPath.Source }
+    }
+    if (-not $iscc) {
+        $msg = 'Inno Setup 6 not found (https://jrsoftware.org/isinfo.php).'
+        if ($Strict) { throw $msg }
+        Write-Warning "$msg Skipping the installer."
     } else {
         $iss = Join-Path $Repo 'tools\installer\MistyEngine.iss'
         $ico = Join-Path $Repo 'crates\misty_editor\assets\branding\misty.ico'
-        & $iscc /Q "/DVersion=$Version" "/DPkgDir=$Pkg" "/DIconFile=$ico" "/O$OutDir" $iss
+        # The installer's own version info wants four numbers (0.3.2 -> 0.3.2.0).
+        $numeric = ((($Version -split '[-+]')[0] -split '\.') + '0', '0', '0', '0')[0..3] -join '.'
+        & $iscc /Q "/DVersion=$Version" "/DNumericVersion=$numeric" "/DPkgDir=$Pkg" "/DIconFile=$ico" `
+            "/O$OutDir" $iss
         if ($LASTEXITCODE -ne 0) { throw 'Inno Setup (ISCC) failed.' }
-        $setup = Join-Path $OutDir "MistyEngine-Setup-v$Version-windows-x64.exe"
-        Write-Host ("{0}  {1:N1} MB" -f (Split-Path -Leaf $setup), ((Get-Item $setup).Length / 1MB))
+        Write-Sha256 (Join-Path $OutDir $SetupName)
     }
 }

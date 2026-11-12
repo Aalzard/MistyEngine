@@ -39,7 +39,31 @@ pub fn to_lua(lua: &Lua, v: &Value) -> mlua::Result<LuaValue> {
 
 /// A Lua value for a graph: numbers, strings, booleans, Vector3, GameObjects (and Transforms)
 /// convert; array tables become lists; anything else is kept as an opaque Lua value.
+///
+/// Tables that contain themselves, nest deeper than [`MAX_DEPTH`], or hold more than
+/// [`MAX_ITEMS`] values in all (a table shared many times at each level) are kept opaque past
+/// that point instead of recursing without end.
 pub fn from_lua(lua: &Lua, v: LuaValue) -> Value {
+    let mut walk = Walk {
+        path: Vec::new(),
+        items: 0,
+    };
+    convert(lua, v, &mut walk)
+}
+
+/// Deepest nesting of tables converted to lists.
+pub const MAX_DEPTH: usize = 64;
+/// Most values converted from one Lua value (lists included).
+pub const MAX_ITEMS: usize = 100_000;
+
+/// The tables being converted (outermost first) and the values converted so far.
+struct Walk {
+    path: Vec<*const std::ffi::c_void>,
+    items: usize,
+}
+
+fn convert(lua: &Lua, v: LuaValue, walk: &mut Walk) -> Value {
+    walk.items += 1;
     match v {
         LuaValue::Nil => Value::Nil,
         LuaValue::Boolean(b) => Value::Bool(b),
@@ -60,10 +84,16 @@ pub fn from_lua(lua: &Lua, v: LuaValue) -> Value {
         }
         LuaValue::Table(t) => {
             let n = t.raw_len();
-            if n > 0 || t.is_empty() {
+            let id = t.to_pointer();
+            let open = walk.path.len() < MAX_DEPTH
+                && !walk.path.contains(&id)
+                && walk.items.saturating_add(n) <= MAX_ITEMS;
+            if open && (n > 0 || t.is_empty()) {
+                walk.path.push(id);
                 let items = (1..=n)
-                    .map(|i| from_lua(lua, t.raw_get(i).unwrap_or(LuaValue::Nil)))
+                    .map(|i| convert(lua, t.raw_get(i).unwrap_or(LuaValue::Nil), walk))
                     .collect();
+                walk.path.pop();
                 Value::List(Rc::new(items))
             } else {
                 keep(lua, LuaValue::Table(t))

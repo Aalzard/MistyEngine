@@ -292,6 +292,137 @@ return Ball
 }
 
 #[test]
+fn game_scripts_cannot_reach_files_processes_or_bytecode() {
+    let probe = r#"
+local Probe = {}
+function Probe:Start()
+    Debug.Log("io", type(io), "package", type(package), "require", type(require))
+    Debug.Log("dofile", type(dofile), "loadfile", type(loadfile), "debug", type(debug))
+    Debug.Log("execute", type(os.execute), "remove", type(os.remove), "getenv", type(os.getenv))
+    Debug.Log("exit", type(os.exit), "time", type(os.time()), "clock", type(os.clock()))
+    local f = load(string.dump(function() return 1 end))
+    Debug.Log("bytecode", type(f), "text", load("return 2")())
+end
+return Probe
+"#;
+    let root = project(&[("Probe.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Probe", None);
+    attach(&mut scene, e, "Probe.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    for want in [
+        "io nil package nil require nil",
+        "dofile nil loadfile nil debug nil",
+        "execute nil remove nil getenv nil",
+        "exit nil time number clock number",
+        "bytecode nil text 2",
+    ] {
+        assert!(logs.iter().any(|(_, t)| t == want), "{want}: {logs:?}");
+    }
+    // The Inspector reads a script's fields by running its top level: same sandbox.
+    let info = crate::scripting::inspect_script(
+        "local S = { opened = type(io) .. type(os.execute) }\nreturn S",
+        "S.lua",
+    )
+    .unwrap();
+    assert_eq!(
+        info.fields,
+        vec![("opened".to_owned(), ScriptValue::Text("nilnil".into()))]
+    );
+}
+
+#[test]
+fn an_endless_loop_in_update_is_stopped() {
+    let looper = r#"
+local L = {}
+function L:Update()
+    if Time.frameCount == 2 then while true do end end
+    Debug.Log("frame", Time.frameCount)
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Looper", None);
+    attach(&mut scene, e, "Looper.lua", &[]);
+    let start = std::time::Instant::now();
+    let logs = run(&mut scene, root, 4, Input::default());
+    assert!(
+        start.elapsed() < crate::scripting::FRAME_LIMIT * 4,
+        "{:?}",
+        start.elapsed()
+    );
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
+    // Later frames run normally.
+    assert!(logs.iter().any(|(_, t)| t == "frame 4"), "{logs:?}");
+}
+
+#[test]
+fn a_nan_field_of_view_is_refused() {
+    let probe = r#"
+local P = {}
+function P:Start()
+    local cam = self.gameObject:GetComponent("Camera")
+    cam.fieldOfView = 50
+    Debug.Log("nan " .. tostring(pcall(function() cam.fieldOfView = 0 / 0 end)))
+    Debug.Log("fov " .. cam.fieldOfView)
+end
+return P
+"#;
+    let root = project(&[("P.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Cam", None);
+    scene.add(e, crate::scene::Camera::default());
+    attach(&mut scene, e, "P.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    assert!(logs.iter().any(|(_, t)| t == "nan false"), "{logs:?}");
+    assert!(logs.iter().any(|(_, t)| t == "fov 50.0"), "{logs:?}");
+}
+
+#[test]
+fn instantiate_refuses_paths_outside_the_project() {
+    let root = project(&[]);
+    // A prefab next to the project folder, and one at an absolute path.
+    let mut asset = Scene::new("asset");
+    let thing = asset.spawn("Outside", None);
+    let prefab = crate::scene::prefab::Prefab::from_scene(&asset, thing);
+    let outside = root.with_extension("outside.prefab");
+    prefab.save(&outside).unwrap();
+    let up = format!("../{}", outside.file_name().unwrap().to_string_lossy());
+    let abs = outside.to_string_lossy().replace('\\', "/");
+    let spawner = format!(
+        r#"
+local Spawner = {{}}
+function Spawner:Start()
+    for _, p in ipairs({{ "{up}", "Assets/../{up}", "{abs}" }}) do
+        local ok = pcall(Instantiate, p)
+        Debug.Log("instantiate", tostring(ok))
+    end
+end
+return Spawner
+"#
+    );
+    std::fs::write(root.join("Assets/Scripts/Spawner.lua"), spawner).unwrap();
+    let mut scene = Scene::new("t");
+    let s = scene.spawn("Spawner", None);
+    attach(&mut scene, s, "Spawner.lua", &[]);
+    let logs = run(&mut scene, root, 2, Input::default());
+    let _ = std::fs::remove_file(&outside);
+    assert_eq!(
+        logs.iter()
+            .filter(|(_, t)| t == "instantiate false")
+            .count(),
+        3,
+        "{logs:?}"
+    );
+    assert!(scene.find_by_name("Outside(Clone)").is_none());
+}
+
+#[test]
 fn scene_manager_and_application_requests() {
     let root = project(&[(
         "Loader.lua",

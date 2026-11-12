@@ -48,10 +48,7 @@ pub(crate) fn prefab_thumb(state: &mut EditorState, rel: &str) -> Thumb {
     let abs = state.assets.absolute(rel);
     let mut h = std::collections::hash_map::DefaultHasher::new();
     ("prefab", rel).hash(&mut h);
-    std::fs::metadata(&abs)
-        .and_then(|m| m.modified())
-        .ok()
-        .hash(&mut h);
+    misty_engine::file_watch::cached_modified(&abs).hash(&mut h);
     let key = h.finish();
     let mut job = || {
         let prefab = state.assets.prefab(rel).ok()?;

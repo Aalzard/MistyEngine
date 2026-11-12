@@ -431,12 +431,16 @@ impl Scene {
         Ok((scene, report))
     }
 
-    /// Write the scene to disk.
+    /// Write the scene to disk: with other scenes loaded additively, only the active scene's
+    /// objects (each scene has its own file; see [`Scene::save_scene`]).
     pub fn save(&self, path: &Path) -> Result<(), String> {
+        if self.loaded_scenes().len() > 1 {
+            return self.save_scene(self.active_scene(), path);
+        }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+        crate::asset_db::write_atomic(path, crate::asset_db::embed_json(&self.to_json()))
             .map_err(|e| format!("{}: {e}", path.display()))
     }
 

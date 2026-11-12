@@ -76,6 +76,15 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
             changed = true;
         }
     });
+    section(ui, &p, &tr!("Updates"), |ui| {
+        // Shared with the editor (Edit ▸ Preferences ▸ Check for updates at startup).
+        let mut check = hub.config.check_updates_at_startup();
+        if crate::updater::ui::startup_check_row(ui, &mut check) {
+            hub.config.set_check_updates_at_startup(check);
+            hub.updater.check_at_startup = check;
+            changed = true;
+        }
+    });
     if let Some(path) = &hub.config_path {
         ui.label(
             RichText::new(tr!("Settings are saved in {file}", file = path.display()))

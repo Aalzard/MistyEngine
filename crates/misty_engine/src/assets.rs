@@ -19,6 +19,15 @@ static PROJECT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// The renderer, model importer and physics read textures and models through it.
 pub fn set_project_root(root: &Path) {
     *PROJECT_ROOT.write().unwrap_or_else(|e| e.into_inner()) = Some(root.to_path_buf());
+    ROOT_SETS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// How many times the project root was set: tests that read assets by project path compare
+/// it before and after, to tell a root moved by a test running alongside from a real failure.
+static ROOT_SETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn root_generation() -> u64 {
+    ROOT_SETS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Absolute path of a project-relative asset path (unchanged when already absolute or no root is set).
@@ -300,7 +309,15 @@ impl Material {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         let text = crate::asset_db::embed_json(&text);
-        std::fs::write(path, text).map_err(|e| e.to_string())
+        crate::asset_db::write_atomic(path, text).map_err(|e| e.to_string())
+    }
+
+    /// [`Self::save`] through the background writer (see [`crate::asset_db::saver`]): for
+    /// edits that save on every change, like a slider being dragged in the Inspector.
+    pub fn save_later(&self, path: &Path) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let text = crate::asset_db::embed_json(&text);
+        crate::asset_db::saver::save_later(path, text.into_bytes()).map_err(|e| e.to_string())
     }
 }
 

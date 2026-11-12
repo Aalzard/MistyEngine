@@ -372,6 +372,7 @@ fn held(count: u32, stamp: u64) -> Chunk {
         store: None,
         count,
         level: 0,
+        prefix: [count; super::LEVELS],
         stamp,
         bounds: Aabb::new(Vec3::ZERO, Vec3::ONE),
         arena: None,
@@ -387,6 +388,8 @@ fn result(g: &Grass, key: (u32, u32), stamp: u64, blades: usize) -> Done {
         generation: g.generation,
         stamp,
         blades: vec![bytemuck::Zeroable::zeroed(); blades],
+        prefix: [blades as u32; super::LEVELS],
+        bias: 0,
         scatter_ms: 0.0,
     }
 }
@@ -563,6 +566,7 @@ fn tile_jobs_waiting_are_replaced() {
         owner: 7,
         order,
         first: x == 9,
+        bias: 0,
         reply: tx.clone(),
     };
     q.send(job(1, 1, 0));
@@ -601,6 +605,7 @@ fn edited_chunks_jump_the_workers_queue() {
         owner: 1,
         order: 0,
         first: false,
+        bias: 0,
         reply: tx.clone(),
     };
     pool.send(job(1, false));

@@ -3302,6 +3302,62 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+## Round 27 — The moon, moonlight and stars (branch r27-moon)
+
+### Done (docs/pending/r27-moon.md)
+- Lighting ▸ Environment ▸ **Moon** (Procedural and HDRI skies; on by default, left out of scene
+  files while default): Position Follow Sun (Phase × 360° east of the sun on its daily circle),
+  Manual (azimuth, altitude, Phase) or Date and Time (real sun and moon from a date, local time,
+  UTC offset, latitude and longitude: Meeus low-precision ephemerides with the moon's
+  parallax); Size, Brightness, Earthshine, Texture, Moonlight intensity / colour, Stars.
+- The disc is a sphere lit from the sun's direction: correct terminator, waxing / waning,
+  crescent to full from one texture; earthshine on the dark side; crater relief near the
+  terminator from the built-in height map. Drawn in the skybox before clouds and fog are
+  blended over it (clouds in front hide it, haze dims it), reddened low by the air mass, hidden
+  below the horizon, over HDRI skies too.
+- Night sky: below −1° the procedural sky blends to a dark blue night sky that brightens under a
+  high full moon; sky ambient, reflections and the clouds' sky light follow. A fixed star field
+  fades in behind the moon. Daytime skies are unchanged.
+- Moonlight reuses the main Directional Light and its shadows: below the horizon the sun fades
+  out (0° to −3.4°), then the light turns to the moon and fades in (to −11.5°), cool, scaled by
+  Allen's phase law (dark at new moon) and the air mass. No pop, no second shadow map. The
+  volumetric clouds and their shadow map take the moon as their light at night.
+- Built-in texture made by `moon::texture_gen` (2048 × 1024, albedo + height: the real maria,
+  power-law craters with rims, peaks, ejecta and rays, named landmarks), regenerate test; project
+  images (2:1 equirectangular or a square near-side photo) override it.
+- Lua: `RenderSettings.moon*`, `stars`, read-only `moonIllumination` / `moonDirection`.
+- Sample `Scenes/MoonDemo.scene` (moonlit valley, standing stones, cabin, `MoonCycle.lua` runs the
+  phases), generator + `matches_its_generator` + play test.
+- Tests: phase fraction vs angle, phase law, Follow Sun placement, moonlight new vs full,
+  smooth twilight, Meeus reference values and the 2024 Dallas eclipse, GPU disc phases.
+
+- Night Sky section: star density, magnitude spread, glow, colour variation, twinkle, fade in a
+  bright sky, Night Sky Darkness; a procedural Milky Way placed from the galactic pole and
+  centre (core, dust lanes, width, tint); light pollution; an animated ray-marched aurora
+  (colours, height, thickness, curtains, waviness, rays, direction, distance, speed, pulse,
+  scene light); meteors. Stars and Milky Way turn with sidereal time. Lua for all of it, sample
+  `Scenes/NightSkyDemo.scene`, GPU test.
+- GPU cost of the night sky (`render::moon::gpu_tests::moon_gpu_cost`, whole frame, 1080p, GPU
+  median ms, RTX 4060, two rounds):
+
+  | Night sky | High, round 0 | High, round 1 |
+  |-----------|---------------|---------------|
+  | nothing | 0.848 | 0.800 |
+  | stars | 0.836 | 0.842 |
+  | moon | 0.804 | 0.807 |
+  | Milky Way | 1.194 | 1.198 |
+  | aurora (4 curtains) | 2.982 | 2.983 |
+  | everything | 3.530 | 3.531 |
+  | Low path: nothing | 0.800 | 0.801 |
+  | Low path: everything | 2.224 | 2.219 |
+
+  Stars and the moon are free within the noise, the Milky Way costs ~0.4 ms, the aurora ~2.2 ms
+  on High (the Low path takes fewer steps and octaves: everything for ~1.4 ms).
+
+### Not done yet
+- No moon shafts or flare; no star catalogue; aurora not in water reflections;
+  the air-mass code should merge with r26's sun-height intensity once both land.
+
 ## Round 28 — 2D Platformer template (branch r28-template2d)
 
 ### Done
@@ -3660,3 +3716,562 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   separate ferns), the litter texture is procedural and reads flat close up, trunks have
   stumpy flared feet and no visible branching, sunlit litter is paler.
 - Hi-Z tree occlusion stays off (the Low golden drift's cause was not found).
+
+## Round 35 — FPS drops after walking through the grass (branch r35-grass-fps)
+
+Report: playing MeadowDemo is smooth, then after walking forwards through the grass the frame
+rate falls from 60 to 20 and stays there until the scene is reopened; looking back does it
+too.
+
+### Cause
+- A grass chunk kept the finest density level it ever had until it was one and a half draw
+  distances away. Walking left a trail of full-density chunks behind the camera: in
+  MeadowDemo (800 blades/m², full density up to 6.5 m, drawn to 160 m) a chunk near the camera
+  holds 204 800 blades where one 37 m away needs 3 200, and it stayed that big for 240 m.
+- Standing still holds 3.0 M blades. The four blade pages (1.86 M blades each) were full
+  after 70 m of walking. From 115 m on, new chunks got buffers of their own, which the grass
+  visibility buffer can't name, so the lit grass fell back to the old lit pass whenever one
+  was in view (also when looking back at the trail). From 150 m on the cull records ran out
+  too, and one chunk without records sent every grass pass to the CPU path.
+- Measured with the new harness (below): GPU 17 ms → 40 ms ("Main: grass lit" 27–30 ms where
+  visibility + shading + composite took 5 ms), 16 M blades and 1.4 GB of grass on the GPU at
+  the peak, and it never recovered. v0.3.2 has the same code and does the same.
+- Everything else stayed flat over the 2.8 km walk (terrain, shadow maps, Misty GI, clouds,
+  TAA, trees, textures 294 MB, CPU render 4 ms): those were measured, not assumed.
+
+### Fix
+- **Chunks left behind give their blades back** (`Grass::trim`): a chunk more than one level
+  finer than its nearest remembered camera needs keeps the prefix of the level it needs (a
+  chunk's blades are in drop-out key order, so a coarser level is a prefix: `level_counts`,
+  worked out on the scatter worker). The blades kept are copied on the GPU into a smaller run
+  and the old run is freed whole; at most 128 k blades move per frame. Nothing drawn changes
+  (a pass draws at most the prefix a chunk's distance keeps).
+- **Nothing outside the blade pages.** A chunk the pages have no room for is refused and
+  scattered again one level coarser (`Pressure`); the same happens when the blades held pass
+  75 % of the pages. The grass goes finer again after ten seconds with room for it, waiting
+  longer after each failed try. So a field too dense for the pages gets thinner grass at
+  full speed instead of full grass at a third of the speed. `Store::Own` is gone.
+- **Pages by kind**: short runs (far chunks) and long runs (chunks near the camera) live in
+  pages of their own, best fit, so a short run never lands in the room the next long run
+  needs. A page left empty for ten seconds gives its memory back; no grass, no pages.
+- **Cull records mirror the pages** (`BladePool::record_at`): one free list instead of two,
+  and the records can't run out before the pages.
+- Stats: `RenderStats::grass_chunks`, `grass_blades`, `grass_coarser`, and a "Grass: N chunks
+  X M blades" line in the Stats overlay (it says so when the grass was thinned for room).
+
+### Numbers
+MeadowDemo, High, 1920×1080, headless, one frame per 1/60 s, walking 5 m/s (the machine was
+shared with other builds, so absolute times are high; `grass_walk_report`):
+
+| | start | 500 m | 500 m, looking back | 2 km | 2 km, looking back | end (2.8 km) |
+|---|---|---|---|---|---|---|
+| Before: frame ms (FPS) | 22.3 (45) | 55.7 (18) | 49.0 (20) | 52.0 (19) | 44.8 (22) | 37.6 (27) |
+| After: frame ms (FPS) | 18.6 (54) | 20.2 (49) | 18.7 (54) | 19.0 (53) | 19.1 (52) | 19.1 (52) |
+| Before: GPU ms | 16.5 | 40.7 | 39.9 | 40.6 | 36.3 | 34.1 |
+| After: GPU ms | 15.0 | 15.3 | 14.2 | 15.2 | 14.1 | 14.4 |
+| Before: blades held | 2.96 M | 10.2 M | 10.2 M | 10.2 M | 10.2 M | 13.5 M |
+| After: blades held | 2.96 M | 3.85 M | 3.85 M | 3.85 M | 3.85 M | 4.21 M |
+| Before: grass on the GPU | 354 MB | 953 MB | 953 MB | 967 MB | 967 MB | 1163 MB |
+| After: grass on the GPU | 354 MB | 592 MB | 592 MB | 628 MB | 628 MB | 628 MB |
+| Before: device allocator | 1441 MB | 2041 MB | 2041 MB | 2055 MB | 2055 MB | 2251 MB |
+| After: device allocator | 1441 MB | 1679 MB | 1679 MB | 1715 MB | 1715 MB | 1715 MB |
+| Before: process private | 2370 MB | 2893 MB | 2895 MB | 3138 MB | 3138 MB | 3138 MB |
+| After: process private | 2348 MB | 2614 MB | 2614 MB | 2610 MB | 2610 MB | 2609 MB |
+
+v0.3.2 (tag, same harness, the walk at 0.4 scale: 200 m out, 800 m at the "2 km" mark):
+GPU 15.1 ms at the start, 41.3 ms after 200 m, 40.7 ms after 800 m, 39.9 ms at the end
+(1.1 km); first chunk in a buffer of its own at 115 m, first without cull records at 150 m,
+as on main; 21.7 M blades held at the end with 127 chunks outside the pages.
+
+While walking (median per second): GPU 15.5 ms in every stretch after the fix (before: 17.0
+for the first 100 m, then 38–41); the peak is 4.6 M blades and 628 MB (before 16.0 M and
+1382 MB). The visibility buffer and GPU culling stay on throughout, nothing is refused or
+thinned.
+
+### Tests
+- `grass_walk_tests.rs`: the harness (`grass_walk_report`, ignored: minutes long) and its
+  script (`poses_follow_the_script`).
+- `grass_trim_tests.rs`: coarser levels are prefixes of a chunk; the trim rule; a moving
+  camera's trail counts as a few places; pressure rises at once and falls slowly; a long walk
+  over a synthetic meadow holds no more than 1.5 × standing still, every chunk at least as
+  fine as a fresh look needs; trimmed chunks hold exactly their first blades and cull records
+  on the GPU (read back); a field too dense for its budget goes coarser and recovers; full
+  pages refuse a chunk and the grass goes coarser with every chunk still culled; a 400 m walk
+  through MeadowDemo itself stays under 1.5 × standing still with nothing refused.
+- `grass_pool.rs`, `grass_cull.rs`: best fit, pages by kind, trimming moves a run out of the
+  way, full pages refuse, an empty page gives its memory back, records mirror the pages, the
+  arena grows to cover and moves runs.
+
+### Not done
+- The pages still grow to four (456 MB of pages for 4 M blades): two kinds of page, each a
+  little over one page's worth. Bounded, but there is room to pack tighter.
+- Each finer level of a chunk is still scattered and uploaded whole; holding a chunk as one
+  run per level would upload each blade once and make trimming a plain free.
+- The editor Console keeps every message and lays out every row each frame
+  (`panels/console.rs`): a script that prints every frame slows the editor the longer it
+  plays. Not what this report was about (MeadowDemo's scripts don't print), not fixed here.
+- NoonValley (branches r26-*) has the same grass numbers (800 blades/m², 160 m, 5.8–6.5 m)
+  plus a species and more flowers: same fault before, same fix; not measured there.
+## Round 33 — Engine-wide QA (branch r33-qa)
+
+Review of terrain, scenes/prefabs/assets, Lua and Script Graphs, tilemaps/2D, physics, audio,
+MCP and the renderer; the bug list, routing and status per bug are in
+`docs/pending/r33-qa.md`. Each fix comes with a regression test.
+
+- Crashes: Script Graph constants or pass-through subgraphs wired in a loop (stack overflow
+  while wiring); Lua tables that hold themselves passed to a graph or returned from `OnSave`
+  (overflow / exponential save); Lua handles kept after `Destroy` (Rigidbody, Rigidbody2D,
+  Collider2D, Tilemap, Terrain, Network, Ragdoll) raise "object was destroyed" instead of
+  aborting; a deleted mixer snapshot; zero world scale (NaN physics poses, 3D and 2D); a NaN
+  point in a Polygon Collider 2D; corrupt pak indexes; terrain blade counts on huge texels;
+  terrain undo after an outside resize; garbage terrain resolutions with holes; MCP clients
+  sending endless lines.
+- Data loss: asset saves (scenes, prefabs, terrains, materials, meta files) are atomic (temp
+  file + rename); renaming the prefab open in Prefab Mode no longer recreates the old file;
+  prefabs with components this version doesn't know are not written back (the components
+  would be deleted); a rename whose meta can't follow is rolled back; terrain Inspector edits
+  in Play mode are reverted on Stop like the scene instead of being saved without an undo step.
+- Wrong behaviour: tile seams with MSAA in the 2D Platformer template (unlit draws sample at
+  the centroid of the covered samples); renames with a dot in the name; World Partition tiles
+  got the whole flower mask; terrain undo memory ignored maps kept whole.
+- Flaky tests: frame-count waits replaced by clock deadlines (package registry, meadow
+  project creation); the terrain view test retries only when another test moved the project
+  root (`assets::root_generation`); MCP info file removal retried; shader graph demo render
+  reloads its shaders and uses absolute texture paths.
+
+## Round 34 — Weather: rain, snow, storms (branch r34-weather)
+
+### Done
+- **Weather component** (GameObject ▸ Rendering ▸ Weather; `misty_engine::weather`): a weather
+  volume, **Global** (everywhere: the precipitation is spawned round the camera) or an **Area**
+  box / sphere with a blend distance (a rainy valley, a storm cell). Volumes blend by priority
+  and weight like Post-process Volumes; an implicit clear layer lies under them all.
+- **Every value is free** (`WeatherParams`): rain intensity, drops/m³, drop size, fall speed,
+  streak length, opacity, refraction; snow intensity, flakes/m³, flake size, fall speed,
+  swirl, opacity; wind direction, speed, turbulence, gusts; splashes, mist, visibility;
+  lightning rate, distances, brightness; cloud cover and density, sun and sky dimming.
+  13 presets fill them: Clear, Drizzle, Light Rain, Rain, Heavy Rain, Downpour, Thunderstorm,
+  Sleet, Flurries, Light Snow, Snow, Heavy Snow, Blizzard.
+- **Timeline** per volume: Sequence (looping or not) or weighted Random states with min / max
+  holds and a blend time each; every value interpolates (wind along the short arc, visibility
+  by extinction, rain → snow passes through sleet). "Demo Cycle" = clear → light rain →
+  thunderstorm → snow → clear.
+- **Runtime** (`Scene.weather`, not saved): runs in Play and in Edit mode while a volume has
+  Preview in Edit Mode on. Wetness, puddles and snow cover build up and dry / melt per volume
+  (speeds in seconds; rain melts snow faster; meltwater keeps the ground wet).
+- **Renderer** (`render::weather`):
+  - A top-down **occlusion map** of the shadow casters within 48 m (after the shadow maps): rain
+    and snow stop at roofs and tree crowns, splashes land on roofs, floors under cover stay dry.
+  - **Rain**: procedural GPU streaks in two boxes round the camera (anchored to the world,
+    moved by the accumulated wind drift and fall; no CPU work per drop), refracting the opaque
+    scene copy, with a Fresnel sky rim, sun forward scattering and point / spot light glints
+    (rain shines in street lamps at night); thin far drops fade instead of aliasing; distant
+    rain sheets so density reads far away; curtains under far area volumes.
+  - **Snow**: flakes of three shapes (soft, star, clump) that tumble, swirl and drift; big soft
+    flakes near the lens (depth of field); streaks in blizzard wind.
+  - **Splashes** spawned on the GPU from the depth buffer where it rains, the surface faces up
+    and is open to the sky (crown droplets and a ring), plus ground mist in heavy rain.
+  - **Surfaces** (`weather_surface.wgsl` in `shade`, foliage in `shade_grass` / `shade_tree`):
+    porous materials darken, everything gets glossy, puddles on flat open ground with raindrop
+    ripples, snow on upward faces (patchy while thin, optional snow line), nothing under cover.
+  - **Lightning**: Poisson strikes with 1–4 return strokes; the flash lights every surface open
+    to the sky and the clouds; branching bolts drawn into the HDR and glow images (they
+    bloom); thunder after distance / 343 m/s.
+  - **Haze** lowers visibility (and thickens volumetric fog); **Drive Clouds** moves the
+    volumetric clouds towards the weather's cover (turning overcast clouds on) and dims the
+    sun / moon and sky light; optional **lens drops**.
+  - Quality ▸ Weather (Off / Low / Medium / High) scales particles, splash slots and the
+    occlusion map; Off keeps wet / snowy surfaces and lightning.
+- **Audio**: rain loops (light and heavy, crossfaded by intensity), a wind loop and near /
+  far thunder, generated once into `Library/Weather/` when the volume has no clips of its own;
+  they play through the volume's Audio Mixer group.
+- **Lua `Weather`**: SetState(name, seconds), ClearState, SetRain / SetSnow / SetIntensity /
+  SetWind / SetLightning, Strike, GetState / GetRain / GetSnow / GetWind / GetVisibility /
+  GetWetness / GetPuddles / GetSnowCover, SetWetness / SetSnowCover, IsScripted, `states`.
+  Events OnLightning(distance, position, intensity), OnThunder(distance, volume),
+  OnWeatherChanged(state, seconds) reach Lua scripts and Script Graphs (Custom Event nodes) as
+  broadcast custom events; the API table lists the members as graph nodes.
+- **Editor**: Inspector with Preview in Edit Mode, a live status line, Coverage, the preset
+  dropdown and sections (Rain, Snow, Wind, Ground, Lightning with Strike Now, Sky, Surfaces,
+  Effects, Timeline, Audio); Turkish and Arabic strings.
+- **WeatherDemo** sample (`sample_weather.rs`): asphalt square, shelter, trees, stone wall,
+  street lamp, the demo cycle; keys 1–8 switch states, L strikes, 0 returns to the timeline.
+- **GPU cost** (WeatherDemo, 1920×1080, Quality High, `weather_gpu_timings`; the machine was
+  busy with other agents' builds):
+
+  | Case | Frame | Weather composite | Occlusion map | Main pass |
+  |---|---|---|---|---|
+  | No weather | 3.11 ms | — | — | 0.82 ms |
+  | Heavy Rain + splashes + wetness | 3.86 ms (+0.75) | 0.91 ms | 0.007 ms | 1.09 ms |
+  | Downpour | 4.42 ms (+1.31) | 1.48 ms | 0.007 ms | 1.09 ms |
+  | Thunderstorm | 4.06 ms (+0.95) | 1.11 ms | 0.007 ms | 1.09 ms |
+  | Blizzard + snow cover | 3.86 ms (+0.75) | 0.94 ms | 0.007 ms | 1.07 ms |
+
+  The main pass grows ~0.27 ms with wet / snowy surfaces (the scene copy for refraction is in
+  it too). Target was under ~2 ms for the heavy cases: all are.
+- Screenshots (`weather_screenshots`, 1600×900 JPEG): `docs/screenshots/r34/light_rain.jpg`,
+  `downpour_mist_splashes.jpg`, `thunderstorm_night.jpg`, `wet_street_puddles.jpg`,
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`.
+- Tests: presets, transitions (endpoints exact, rain → snow through sleet, visibility by
+  extinction), the timeline state machine (sequence, looping / not, weighted random without
+  repeats), area volume blending by priority, wetness / puddle / snow accumulation and decay,
+  thunder delay from distance, lightning rate and bolts, the script layer, wind gusts, the Lua
+  API with events, generated audio, shader validation (naga) of every lit shader with the
+  hook, GPU: rain and snow draw, a disabled volume changes no pixel, no snow under a roof
+  (and snow there without the occlusion map); WeatherDemo matches its generator and plays.
+
+## Integration 1 — rounds 33, 27 and 34 together (branch integrate-1)
+
+### Done
+- Merged onto main d1703eb3, in this order: `r33-qa` (engine-wide fixes), `r27-moon` (moon,
+  moonlight, stars, Milky Way, aurora, meteors), `r34-weather` (rain, snow, storms, timeline).
+  Conflicts: this file (every section kept), the Turkish and Arabic files (the terrain / guide
+  tables and the weather table both kept) and the view bind group in
+  `render/volumetrics/mod.rs`: it now takes the sky's five entries (the moon texture is binding
+  11) and the weather's two (bindings 24 and 25).
+- Round 27 loose ends: two clippy warnings; the night sky GPU cost table above; the aurora
+  screenshots re-rendered after the white-noise step jitter (no diagonal hatching; a single
+  frame without TAA shows fine grain instead). MoonDemo, NightSkyDemo and WeatherDemo were
+  rewritten by their write tests on the combined engine: byte-identical, nothing to commit.
+- Round 34 loose ends: `api_docs::SOURCES` did not read `scripting/weather_api.rs`
+  (`every_binding_source_is_read` failed); docs/api regenerated (900 members, 107 sections).
+- New names and languages: the Lighting window's Moon and Night Sky sections go through
+  `tr!()` with Turkish and Arabic entries (`[night_sky]` tables; "Manual", "Phase", "Time",
+  "Core" and "Pulse" carry a `#context` so they do not take over other meanings); the Weather
+  component's Preview tooltip says Editor Scene and Scene Viewer.
+- `MISTY_LIGHTING_SCROLL=<px>` scrolls the Lighting window and opens the Night Sky groups
+  (screenshots).
+- Checks on the combined branch: `cargo fmt --all --check` clean; clippy `--workspace
+  --all-targets --release` 0 warnings; `cargo test --workspace --release --no-fail-fast`:
+  editor 868 passed, engine 1466 passed, player 11 passed, 0 failed; golden shots 20/20 with
+  the same numbers as main (mean 0.00–0.39, changed at most 0.03 %): the round 33 shader change
+  (`uv_centroid`, used only by `fs_unlit`) moves no golden shot.
+- Screenshots of the editor on the combined branch: `docs/screenshots/integrate-1/`.
+
+### Not done yet
+- The Lighting window outside the Moon and Night Sky sections is still English only.
+- Weather and the night sky were not tuned together (a storm at night dims the moonlight
+  through the same sun dimming; no look pass was done on it).
+
+## Round 39 — The Console no longer slows the editor (branch r39-console)
+
+A script that printed every frame made the editor slower the longer Play ran: the Console kept
+every message, and each frame it went through all of them and laid out every row (with Collapse
+on, it compared every message with every row before it).
+
+### Fix
+- **A bounded store** (`console.rs`): the newest 10,000 lines in a ring; older ones are dropped.
+  Edit ▸ Preferences ▸ **Console Lines** picks 1,000 to 100,000 (saved per user in `hub.json`,
+  Turkish and Arabic labels).
+- **Counters count everything** logged since the last Clear, dropped lines included (the ⛔ ⚠ ℹ
+  buttons, Error Pause, `editor.get_state`); they are kept as numbers, not counted each frame.
+- **Rows are kept, not rebuilt**: the filtered (and collapsed) rows live with the store and
+  follow it line by line as lines are logged and dropped. They are built again only when a
+  level toggle, the search or Collapse changes. Collapse still merges every identical message
+  (same level and text) into one row with a count, now through a hash table.
+- **Only the rows in view are drawn** (`ScrollArea::show_rows`, rows of one fixed height).
+- **Indices never change** (MCP `editor.read_console`): a line keeps its index when older lines
+  are dropped and across Clear. A client that asks `since` an index that is gone gets what is
+  left, with `dropped` (how many lines it missed) and `first` (the oldest index kept).
+  `counts.total` is now everything logged since Clear. `docs/mcp.md` has the details.
+- The selection is a line index: it stays on its line as others come and go, and ends when the
+  line is dropped.
+
+### Numbers
+`console_flood_report` (release, 900×400 panel, the egui test harness; "no a11y" is the same
+frame without the harness's accessibility tree). Lines of about 45 characters.
+
+| Lines logged | Before: kept | Before: ms a frame (no a11y) | After: kept | After: ms a frame (no a11y) |
+|---|---|---|---|---|
+| 1,000 | 1,000 (0.15 MB) | 5.1 (2.9) | 1,000 (0.15 MB) | 0.19 (0.15) |
+| 10,000 | 10,000 (1.8 MB) | 118 (61) | 10,000 (1.8 MB) | 0.17 (0.13) |
+| 50,000 | 50,000 (8.1 MB) | 430 (244) | 10,000 (1.8 MB) | 0.15 (0.12) |
+| 200,000 | 200,000 (32.3 MB) | 2,466 (1,205) | 10,000 (1.8 MB) | 0.17 (0.12) |
+
+- Collapse on, 10,000 different messages (no a11y): 299 ms a frame before, 0.17 ms after.
+- A script printing two lines every frame: before, a frame cost 2.7 ms around frame 150 and
+  91 ms around frame 2,950 (and kept growing); after, 0.28 ms and 0.16 ms, and 0.28 ms around
+  frame 29,950 (0.21 ms with Collapse on), the store steady at 1.5 MB.
+
+### Tests
+- `console_tests.rs`: memory bounded after 200,000 lines; counters after dropped lines and
+  after Clear; indices across dropped lines; level toggles and search; Collapse; the rows are
+  not rebuilt while lines stream in (either mode); 20,000 random steps (log, toggle, search,
+  Collapse, Clear, resize) where the kept rows equal rows worked out from scratch.
+- `panels/console_tests.rs` (egui harness): as many rows drawn of 60,000 lines as of 500; a
+  frame after 200,000 lines costs no more than after 1,000; 15,000 frames of a printing script
+  do not slow down; counters, search, toggles, Collapse and Clear after lines were dropped;
+  click selects, the detail pane shows the whole message, the selection ends with its line.
+- `mcp/tests.rs`: `since` across dropped lines and Clear, paging, counts, menu commands.
+
+### Not done
+- A single huge message is kept whole: the store bounds the number of lines, not their bytes.
+- The Console page of the User Guide does not mention the limit yet.
+
+## Round 42 — Material Properties: square texture slots and one aligned list (branch r42-material-ui)
+
+The Standard material's Properties view was a list of texture dropdowns with the colours and
+sliders squeezed in beside them, and five feature sections that each started with their own
+checkbox. It is now one aligned list: names on the left, values in one column on the right, and
+a small square texture slot in front of every map's name.
+
+### The texture slot (`panels/inspector/texture_square.rs`)
+- An 18 px square showing the texture's thumbnail (dark when empty, `?` when the file is gone).
+- **Drop** a texture from Asset Files on the square or on the name beside it. While a texture
+  is dragged every slot gets a thin outline; the one under the pointer a bright one.
+- **Click** opens a picker: a search field (focused, Enter takes the first match), "None", and
+  the project's textures with thumbnails. Only the rows in view are drawn.
+- **Right-click** clears the slot, and so does the small **×** shown in the top-right corner
+  of a filled slot under the pointer (8 px, so a click in the middle still opens the picker).
+  **Ctrl+click** or a **double-click** shows the texture in
+  Asset Files; the Properties view stays on the material.
+- **Hover** shows a 96 px preview with the texture's name and path.
+- A **normal-map slot** whose texture is not imported as a normal map gets a row under it:
+  "Fix Now" and "⚠ Not imported as a normal map". Fix Now sets the texture's import type to
+  Normal Map (as Apply in the texture's own Properties does).
+- Thumbnails come from the existing thumbnail store. The import type is read once per texture
+  and again after import settings are applied, so nothing is read from disk while drawing.
+- `.shader` and Shader Graph materials use the same slot for their texture properties.
+  The other panels (terrain layers, particles, UI images…) keep the dropdown for now.
+
+### The layout (`material.rs`, `material_features.rs`)
+| Section | Rows |
+|---|---|
+| (top) | Shader, Rendering Mode |
+| Main Maps | Albedo (slot + colour), Alpha Cutoff (Cutout only), Metallic (slot + slider; a map replaces the slider), Smoothness, Source, Normal Map (slot + strength when set), Height Map (slot + depth slider when set, then Steps), Occlusion (slot + strength when set), Detail Mask, Emission (checkbox; on: Color slot + colour, Intensity), Tiling, Offset, Rotation |
+| Secondary Maps | Detail Albedo x2, Normal Map (+ strength when set), Tiling, Offset |
+| Advanced Surface | Clear Coat, Translucency, Anisotropy: each a checkbox that opens its rows |
+| Rendering Options | Specular, Specular Tint |
+| Advanced Options | Render Queue (From Shader + number, read only), Double Sided |
+
+- The Height Map and the detail maps have no checkbox any more: assigning a map turns the
+  feature on, clearing it turns it off. A file with maps but the feature off (from the old
+  checkbox) shows an "Enabled" row.
+- Sliders and their number fields fill the value column, so they all line up; lone numbers and
+  the X / Y pairs fill it too.
+- The Unlit shaders use the same rows (slot, Tiling, Offset, Advanced Options).
+- Every change is still one undo step, and the preview (sphere, cube, plane) is unchanged.
+- New texts are in Turkish and Arabic (`[material]` in `locales/tr.toml` and `ar.toml`).
+
+### Not in Misty's material, so not in the list
+- UV Set, Specular Highlights / Reflections switches, GPU instancing and a per-material render
+  queue override. The Render Queue row shows the shader's queue, read only.
+- Editing several materials at once was not possible before and still is not.
+
+### Tests
+`panels/inspector/material_tests.rs` (egui harness): a texture dropped on a slot or on its name
+is assigned and other assets are ignored; right-click clears and undo brings the texture back; the × shows on hover only and clears;
+the picker searches, assigns and clears; Ctrl+click shows the texture in Asset Files; Alpha
+Cutoff only for Cutout; Emission opens its rows; strength rows only with a map; a detail map
+turns the detail maps on; the normal-map warning and Fix Now; Advanced Surface checkboxes.
+
+### Screenshots
+`docs/screenshots/r42/` (the Properties view cut out of the editor window; a temp copy of the
+sample project):
+- `compare_demo.png`, `compare_demo_scrolled.png`, `compare_bumpy.png`: before on the left,
+  after on the right, for a material with most features on and for a plain one.
+- `before_*.png` / `after_*.png`: the halves on their own; `after_window.png`: the whole editor.
+- `after_picker.png`: the texture picker (`MISTY_TEXTURE_PICKER=Albedo` keeps that slot's
+  picker open for a capture).
+- `after_demo_tr.png`, `after_demo_ar.png`: Turkish and Arabic (right to left).
+
+### Notes
+- Section headers are as tall as the other rows. With taller headers the rows under a new row
+  (Alpha Cutoff appearing, say) took several frames to settle: the grid lays a row out against
+  the height the row at that index had the frame before.
+- The sample project's `Bumps.png` is not imported as a normal map, so materials that use it
+  show the warning until Fix Now is pressed.
+## Round 41 — A texture dropped on an object becomes its material (branch r41-texture-drop)
+
+Drag a texture from Asset Files onto an object, in the Editor Scene or on its Scene Tree row:
+the editor makes a material for it in `Assets/Materials` and assigns it. The rule is written at
+the top of `crates/misty_editor/src/texture_drop.rs`.
+
+### What happens
+- **Colour texture**: `Assets/Materials/<TextureName>.mat` (the folder is made when missing)
+  with the default lit settings (the project's default Material preset when there is one) and
+  the texture as its albedo map, assigned to element 0 of the object's Materials.
+- **Reuse**: a material of that name whose albedo map is that texture is assigned instead of
+  making another. Materials are read through their GUID table, so the comparison follows a
+  texture that was moved or renamed. A different material of that name is left alone and
+  `<TextureName> 1.mat` (then 2, 3…) is tried the same way.
+- **Normal map**: Texture Type: Normal Map in the import settings, or a name ending in
+  `_Normal`, `_NormalMap`, `_Normals`, `_Nrm`, `_Nor` or `_N` (any case; after `_`, `-`, `.`
+  or a space). It goes into the Normal Map slot of the material the object has now, edited in
+  place when that material is a writable asset under `Assets/` (every object using it shows
+  it). On Default-Material, a read-only package material or a missing one, a copy with the
+  normal map is made in `Assets/Materials` and assigned (`Rock_Normal.png` on Default-Material
+  gives `Rock.mat`).
+- **Renderers**: Mesh Renderer and Skinned Mesh Renderer take the material. A Sprite Renderer
+  (no mesh renderer on the object) takes the texture as its sprite and no material is made.
+  An object without any of them gets a toast and nothing changes.
+- **Element**: always element 0. Extra Materials elements draw the whole mesh again and the
+  Editor Scene picks by bounds, so there is no element under the cursor to find.
+- **Undo**: one step ("Assign Material", "Assign Normal Map" or "Assign Sprite"). The material
+  file that was made stays, as with Assets ▸ Create.
+- **Files**: the `.mat` is written whole (the atomic write of round 33) with the GUIDs of its
+  textures; its `.meta` comes from the same asset scan every new asset goes through.
+- **Feedback**: a toast in the status bar ("Created material Rock.mat", "Assigned material
+  Rock.mat", "Set the normal map of Rock.mat") and a Console line; Asset Files keeps the
+  folder it shows, so several textures can be dragged from it one after another (a made
+  material is selected only when Asset Files already shows `Assets/Materials`); the scene
+  selection and Properties stay as they were. While a material or
+  texture is dragged, the Scene Tree row under the cursor is outlined and the Editor Scene
+  shows the name of the object under the cursor (materials had no such feedback before).
+- **Prefab instances**: the new material is an override of the instance (Mesh Renderer ▸
+  material), like any other change to it.
+- New texts are in Turkish and Arabic; the User Guide (Layout ▸ Asset Files) has a line on it
+  in English and Arabic.
+
+### Tests
+`texture_drop/tests.rs`, each in its own temp project: a drop on a cube in the Editor Scene
+(egui harness: the file, the assignment, the toast, one undo step, redo; a drop on empty space
+does nothing; Asset Files keeps its folder and selection); a drop on a Scene Tree row (egui
+harness); two drops in a row keep Asset Files where it was, and a material made while Asset
+Files shows `Assets/Materials` is selected there; the same texture again reuses the
+material; another material of that name gives `Rock 1.mat`, which is reused afterwards; a
+same-named texture from another folder gets its own; normal maps by name and by import
+settings; a normal map into the object's material with undo and redo; a normal map on
+Default-Material; no renderer; a Sprite Renderer; a prefab instance override; the `.mat` holds
+the texture's GUID and gets a `.meta`.
+
+### Not done
+- Asset Files drags one asset at a time, so "several textures at once" cannot happen yet.
+- A normal map dropped on an object edits the shared material asset; there is no question
+  asked first.
+- Metallic, occlusion and emission maps are not detected by name; they become albedo
+  materials.
+## Round 38 — Weather polish: rain that reads as water (branch r38-weather-polish)
+
+### Done (docs/pending/r38-weather-polish.md)
+- **Properties bug** (commit "Weather Properties: edits always show"): with a timeline on, the
+  runtime took its values from the timeline's states and ignored the volume's own, and a
+  script's `Weather.SetState` (WeatherDemo's keys 1–8) held the weather until
+  `Weather.ClearState`: either way presets and sliders did nothing. Now picking a preset or
+  changing any weather value turns the timeline off (its states are kept) and clears the
+  script's hold, so the edit shows on the next frame in the Edit Mode preview and in Play. A
+  notice names what is driving the weather ("Timeline is driving the weather (now: …)" with
+  Turn Timeline Off, "Script override: Blizzard" with Clear Override). Turkish and Arabic
+  strings. A timeline's Time Scale left out of a scene file loads as 1 (it loaded as 0).
+- **Rain drops are lenses, not white lines** (`precipitation.wgsl`, `vs_rain` / `fs_rain`):
+  - A drop shows the scene behind it flipped across its width, read from a small blurred
+    chain of the opaque scene (`render/weather/scene_blur.rs`: 6 levels from half size,
+    recorded only while it rains; cheaper to sample than the full-size copy read before).
+  - **Depth**: near drops are drawn larger; about half of the drops within a few metres are
+    out of focus (wide, soft, see-through), the rest sharp; further out they are thin beads;
+    far away they merge into soft streaky sheets with drifting bands.
+  - **Bead shape and motion** (what the user liked in Sleet): a shorter exposure
+    (`SHUTTER` 1/55 s at Streak Length 1), a round head thinning up its tail, every drop
+    swaying on its own small loops and carried differently by the wind, so no two lie along
+    one line; size, speed (big drops fall faster), brightness and beading differ per drop.
+  - **Light**: a thin drop carries the light around it (the widest blur level, seen through
+    the same haze as the pixel behind it), so it vanishes against the sky and shows against
+    trees; every drop has a highlight of the sky so rain shows against dark ground; glints
+    from the sun (towards it: the scattering direction was reversed in r34, which lit drops
+    looking away from the sun), lamps and lightning. A flash lasts a millisecond: it lights
+    the head of each streak only (frozen drops).
+  - Heavy rain pulls distant colour towards grey; an early frustum test skips the occlusion
+    lookups of drops outside the picture.
+  - **Streaks bend**: a drop's path through one exposure bows or snakes a little (a few % of
+    its length, more in turbulent wind, less for big drops and out-of-focus ones), drawn in
+    the fragment shader inside a widened quad, so no streak is a ruled line.
+  - **Against a bright sky** a drop is a little darker than the sky (a lens shows the ground
+    below the horizon), so rain reads as grey streaks there instead of vanishing.
+- **Rain stops in terrain tree crowns**: the occlusion map also draws each terrain tree's
+  crown near the camera (the upper half of the ellipsoid the GI uses, at 0.8 of its size,
+  `occlusion_crowns.wgsl`), so it no longer rains through the oaks and the ground under
+  them stays drier.
+- **Presets**: Sleet is thicker (22 drops and 18 flakes per m³), Thunderstorm by day lets
+  more light through (sun dimming 0.78, ambient 0.48; nights stay dark).
+- **Night storms are dark**: the test's night is a real one (sun under the horizon, r27's
+  moon and night sky); rain is lit by lamps and lightning. The flash lights the cloud base
+  in cloud shapes round the strike instead of whitening the whole sky and the haze.
+- **Splashes**: droplets on real arcs (2–5 per splash), a thin broken ring, a low smooth
+  corona from the biggest drops only (tall ragged cups read as grass tufts); clear water lit
+  by the light around it; every splash differs.
+- **Snow**: the same depth of field as the rain (big soft flakes near the lens), flakes
+  smeared by wind are soft dashes instead of pills, a faster exposure, far flakes thin into
+  the haze in a gale.
+- **Wet surfaces**: the water film is uneven (patches of gloss, not one mirror); soil and
+  turf (very rough surfaces) darken but stay dull and hold fewer puddles; puddles have soft
+  edges; the noise behind puddles and snow patches no longer shows square cells or facets.
+- **Lens drops** (still optional, off by default): a few lumpy drops at a time, each a small
+  upside-down, out-of-focus view.
+- **WeatherDemo** is a lane by an oak wood: a small terrain (`Terrains/WeatherDemo.terrain`)
+  with grass and a gravel path, terrain trees from `Assets/Trees` (oak, young oak, birch),
+  rock prefabs, a timber shelter with a pitched roof and a bench, two street lamps. It
+  starts in manual (Rain; the demo cycle's states are kept with the timeline off). Keys as
+  before, plus N for night / day.
+- `weather_screenshots` takes `MISTY_WEATHER_OUT` / `MISTY_WEATHER_SHOTS`, `weather_demo`
+  takes `MISTY_WEATHER_SCENE`; tests can read the composite shaders from disk
+  (`MISTY_WEATHER_SHADERS`) to tune the look without rebuilding.
+- **GPU cost** (`weather_gpu_timings`, weather composite pass, r34's WeatherDemo view so the
+  numbers compare; the machine was busy with other builds, so ±0.1 ms is noise):
+
+  | Weather | r34 (2026-11-11) | r38 first agent's shaders | r38 final (two runs) |
+  |---|---|---|---|
+  | Heavy Rain | 1.137 ms | 1.250 ms | 1.252 / 1.313 ms |
+  | Downpour | 1.575 ms | 1.854 ms | 1.880 / 1.948 ms |
+  | Thunderstorm | 1.250 ms | 1.466 ms | 1.530 / 1.476 ms |
+  | Blizzard + snow cover | 1.215 ms | 0.772 ms | 0.776 / 0.914 ms |
+
+  Rain costs 0.1–0.35 ms more than r34 (the lens look: blurred-scene reads, depth of field
+  on the near drops, bent streaks); snow is cheaper. The bend is kept narrow on wide blurred
+  drops and the blur disc is capped at 5 % of the picture height to hold it there. The r34
+  binary could not be re-run the same day (its copy was on the failing D: drive), so the
+  r34 column is the day before's measurement. On the new WeatherDemo view (terrain, oak
+  wood) the occlusion map with crowns costs 0.061 ms.
+- **Screenshots** (`docs/screenshots/r38/`): `before_light_rain.jpg` and
+  `before_downpour_mist_splashes.jpg` (r34) against `light_rain.jpg` and `downpour.jpg`;
+  `rain_near_drops.jpg`, `rain_against_sky.jpg`, `rain_looking_down.jpg`,
+  `thunderstorm_looking_down.jpg`, `thunderstorm_night.jpg`, `thunderstorm_night_flash.jpg`,
+  `thunderstorm_day.jpg`, `rain_night_lamp.jpg`, `rain_lamp_day.jpg`, `sleet.jpg`,
+  `wet_lane_puddles.jpg`, `rain_lens_drops.jpg`, `rain.jpg`, `clear.jpg`, snow:
+  `snow_falling.jpg`, `blizzard.jpg`, `snow_covered.jpg`, `snow_night_lamp.jpg`.
+- **Not real yet**: near drops are still billboards (no true refraction of the 3D scene, only
+  the flipped blurred screen); puddle reflections are softened, not fixed (the hard edges
+  come from the screen-space reflection / probes); tree crowns block rain as solid
+  ellipsoids (no drip, no thinning); no Inspector values for the bead shape or blur.
+
+## Round 43 — Bug hunt 2: security, crashes on bad input, long-session growth (branch r43-qa2)
+
+QA round 2: the open items of round 33 and a first pass over areas round 33 barely covered
+(networking, player builds, saves, addressables, localization, UI, animation import and
+retargeting, audio streaming, Script Graphs, the Lua sandbox, malformed model files,
+long-session growth). One commit per bug, each with a regression test; the running list with a
+status per bug is `docs/pending/r43-qa2.md`.
+
+### Security
+- **Lua sandbox**: game scripts had `io`, `os` and `package` (`os.execute`, `io.open`,
+  `require`, `dofile`), also while the Inspector read a script's fields. They now get
+  `table`, `string`, `math`, `utf8`, `coroutine` and `os.time/clock/date/difftime`; `load`
+  takes source text only. Editor scripts keep the full libraries.
+- **Paths from scripts, saves and the network** must be project-relative (`vfs::project_file`):
+  no absolute, drive, UNC or `..` paths for Instantiate, a remote spawn's prefab, a server's
+  scene, audio clips, input action assets, Script Graphs and saved prefabs.
+- **Network fragments**: bounded reassembly (a peer could make the other side allocate GBs);
+  spawn messages with NaN/infinite poses are dropped.
+
+### Crashes and hangs
+- Endless loops in game Lua stop after 5 s per frame with an error (the editor froze).
+- glTF: short animation outputs, node cycles and huge key times (also FBX and retargeting);
+  appending curve keys is O(1).
+- Streamed looping clips without frames, bundle dependency cycles, nested plural strings,
+  dropdowns whose item is the template, 0×0 images, gzip save bombs, tilemap drags far
+  outside tiny grids, sprite grid slices with absurd padding, `.vgraph` files with huge or
+  repeated node ids.
+
+### Wrong behaviour and growth
+- `Scene::save` writes only the active scene when several are loaded; Save As / Open accept
+  project roots spelled differently; tile sprite colliders follow rotation and flips; MCP
+  enforces the schema limits it advertises; `StartClient(addr, port)` replaces a port already
+  in the address; `WithTargetBinding` checks its binding; NaN field of view is refused.
+- UI / Timeline / Video / PlayerInput listeners of destroyed objects are dropped; respawned
+  local players no longer add an action set each time; a Script Graph node logs at most four
+  different errors.
+
+### Not done
+B3 (internal tile edges), B6 (chunk cache key, perf), T6 (terrain hole indices, perf),
+`asset.read_text` reading whole files, and the X items listed in the pending notes. Physics
+exit events for destroyed objects stay as they are (as in the familiar engine). F10 belongs
+to `r40-freeze`.

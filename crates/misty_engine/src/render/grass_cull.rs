@@ -175,16 +175,19 @@ impl CullPipelines {
     }
 }
 
-/// The cull records of every chunk of a terrain, in one storage buffer (first-fit free list;
-/// grows by copying into a buffer twice as big).
+/// The cull records of every chunk of a terrain, in one storage buffer. A chunk's records
+/// sit where its blades sit in the blade pages (grass_pool.rs `BladePool::record_at`: every
+/// page has the records of a full page set aside), so the records need no free list of
+/// their own, never run out before the pages do, and move with the blades. The buffer grows
+/// (copying) to cover the pages in use.
 pub(super) struct Arena {
     pub buffer: wgpu::Buffer,
     /// In records.
     capacity: u32,
-    /// Free runs: start → length (records).
-    free: BTreeMap<u32, u32>,
     /// Bumped when the buffer is replaced (bind groups that use it are rebuilt).
     pub generation: u64,
+    /// Records pass through here when a run moves ([`Arena::move_run`]).
+    scratch: Option<wgpu::Buffer>,
 }
 
 const RECORD: u64 = 16;
@@ -206,55 +209,49 @@ impl Arena {
         Self {
             buffer: arena_buffer(device, capacity),
             capacity,
-            free: BTreeMap::from([(0, capacity)]),
             generation: 0,
+            scratch: None,
         }
     }
 
     pub fn bytes(&self) -> u64 {
-        self.capacity as u64 * RECORD
+        self.capacity as u64 * RECORD + self.scratch.as_ref().map_or(0, wgpu::Buffer::size)
     }
 
-    /// Room for `n` records (rounded up to the grain); grows the buffer when nothing fits.
-    /// None when the device can't hold a buffer that big.
-    fn alloc(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
-        let n = n.max(1).next_multiple_of(GRAIN);
-        if let Some(at) = take_run(&mut self.free, n) {
-            return Some(at);
+    /// Most records the arena of this device can hold.
+    pub fn limit(device: &wgpu::Device) -> u64 {
+        let limits = device.limits();
+        (limits.max_storage_buffer_binding_size).min(limits.max_buffer_size) / RECORD
+    }
+
+    /// Records the buffer has room for (tests).
+    #[cfg(test)]
+    pub fn capacity(&self) -> u64 {
+        self.capacity as u64
+    }
+
+    /// Room for the records up to `end`: the buffer grows to at least twice its size,
+    /// copying what is there. False when the device can't hold a buffer that big.
+    pub fn cover(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, end: u64) -> bool {
+        if end <= self.capacity as u64 {
+            return true;
         }
-        // Grow: at least twice as big, copying what is there.
-        let limit = device
-            .limits()
-            .max_storage_buffer_binding_size
-            .min(device.limits().max_buffer_size)
-            / RECORD;
-        let want = (self.capacity as u64 * 2).max(self.capacity as u64 + n as u64);
-        if self.capacity as u64 + n as u64 > limit {
-            return None;
+        let limit = Self::limit(device);
+        if end > limit {
+            return false;
         }
-        let capacity = (want.min(limit) as u32) / GRAIN * GRAIN;
+        let want = (self.capacity as u64 * 2).max(end).min(limit);
+        let capacity = (want as u32).next_multiple_of(GRAIN).min(limit as u32);
         let buffer = arena_buffer(device, capacity);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty grass cull records grow"),
         });
         encoder.copy_buffer_to_buffer(&self.buffer, 0, &buffer, 0, self.buffer.size());
         queue.submit([encoder.finish()]);
-        let old = self.capacity;
         self.buffer = buffer;
         self.capacity = capacity;
         self.generation += 1;
-        self.release(old, capacity - old);
-        self.alloc(device, queue, n)
-    }
-
-    /// Give back `n` records at `at` (as allocated).
-    fn release(&mut self, at: u32, n: u32) {
-        release_run(&mut self.free, at, n.max(1).next_multiple_of(GRAIN));
-    }
-
-    /// Room for the records of `n` blades; their offset (None: the arena can't grow).
-    pub fn reserve(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
-        self.alloc(device, queue, n)
+        true
     }
 
     /// Write the records of `blades` at record `offset` of the run at `at` (a chunk's
@@ -268,22 +265,75 @@ impl Arena {
         );
     }
 
-    pub fn free(&mut self, at: u32, n: u32) {
-        self.release(at, n);
+    /// The first `n` records at `from` move to `to` (their blades moved in the pages; the
+    /// two runs don't overlap). The copies are recorded into `encoder`.
+    pub fn move_run(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        from: u32,
+        to: u32,
+        n: u32,
+    ) {
+        copy_run(
+            device,
+            encoder,
+            &mut self.scratch,
+            (&self.buffer, from as u64 * RECORD),
+            (&self.buffer, to as u64 * RECORD),
+            n as u64 * RECORD,
+        );
     }
 }
 
-/// First fit: the start of a free run of `n` records, taken out of `free`.
+/// The free run `n` records fit best in (the shortest that takes them, the lowest of those):
+/// its start and length. Small runs fill small holes, so the long free runs a big chunk needs
+/// stay whole.
+pub(super) fn best_run(free: &BTreeMap<u32, u32>, n: u32) -> Option<(u32, u32)> {
+    free.iter()
+        .filter(|(_, len)| **len >= n)
+        .min_by_key(|(at, len)| (**len, **at))
+        .map(|(a, l)| (*a, *l))
+}
+
+/// Best fit: the start of a free run of `n` records, taken out of `free`.
 pub(super) fn take_run(free: &mut BTreeMap<u32, u32>, n: u32) -> Option<u32> {
-    let (at, len) = free
-        .iter()
-        .find(|(_, len)| **len >= n)
-        .map(|(a, l)| (*a, *l))?;
+    let (at, len) = best_run(free, n)?;
     free.remove(&at);
     if len > n {
         free.insert(at + n, len - n);
     }
     Some(at)
+}
+
+/// Copy `bytes` from `from` to `to` (offsets in bytes): straight across when they are two
+/// buffers, through `scratch` when they are one (a buffer can't be copied onto itself).
+pub(super) fn copy_run(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    scratch: &mut Option<wgpu::Buffer>,
+    from: (&wgpu::Buffer, u64),
+    to: (&wgpu::Buffer, u64),
+    bytes: u64,
+) {
+    if bytes == 0 {
+        return;
+    }
+    if from.0 != to.0 {
+        encoder.copy_buffer_to_buffer(from.0, from.1, to.0, to.1, bytes);
+        return;
+    }
+    if scratch.as_ref().is_none_or(|b| b.size() < bytes) {
+        *scratch = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty grass move scratch"),
+            size: bytes.next_power_of_two().max(1 << 16),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        }));
+    }
+    let via = scratch.as_ref().expect("just made");
+    encoder.copy_buffer_to_buffer(from.0, from.1, via, 0, bytes);
+    encoder.copy_buffer_to_buffer(via, 0, to.0, to.1, bytes);
 }
 
 /// Put `n` records at `at` back into `free`, merged with the runs either side.
@@ -712,5 +762,68 @@ mod tests {
         release_run(&mut free, x, 128);
         release_run(&mut free, z, 64);
         assert_eq!(free, BTreeMap::from([(0, 1024)]));
+    }
+
+    #[test]
+    fn runs_go_where_they_fit_best() {
+        // Holes of 64, 256 and 128 records, then the open end.
+        let mut free = BTreeMap::from([(0u32, 64u32), (128, 256), (512, 128), (1024, 4096)]);
+        assert_eq!(best_run(&free, 100), Some((512, 128)));
+        assert_eq!(take_run(&mut free, 128), Some(512));
+        assert_eq!(take_run(&mut free, 64), Some(0));
+        // The shortest that takes them; the lowest among equals.
+        assert_eq!(take_run(&mut free, 200), Some(128));
+        assert_eq!(free, BTreeMap::from([(328, 56), (1024, 4096)]));
+        assert_eq!(take_run(&mut free, 64), Some(1024));
+        assert_eq!(take_run(&mut free, 8192), None);
+    }
+
+    #[test]
+    fn arena_grows_to_cover_and_moves_runs() {
+        let Some((device, queue)) = crate::render::gpu_tests::headless() else {
+            return;
+        };
+        let read = |arena: &Arena, at: u64, n: u64| -> Vec<[u32; 4]> {
+            let copy = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: n * RECORD,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            let mut encoder = device.create_command_encoder(&Default::default());
+            encoder.copy_buffer_to_buffer(&arena.buffer, at * RECORD, &copy, 0, n * RECORD);
+            queue.submit([encoder.finish()]);
+            let slice = copy.slice(..);
+            slice.map_async(wgpu::MapMode::Read, |_| {});
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            bytemuck::pod_collect_to_vec(&slice.get_mapped_range().expect("mapped"))
+        };
+        let blades: Vec<Blade> = (0..300)
+            .map(|i| Blade {
+                position: [i as f32, 1.0, 2.0, 0.5],
+                ..Zeroable::zeroed()
+            })
+            .collect();
+        let records: Vec<[u32; 4]> = blades.iter().map(record).collect();
+        let mut arena = Arena::new(&device);
+        let capacity = arena.capacity();
+        // Already covered: nothing happens.
+        assert!(arena.cover(&device, &queue, capacity));
+        assert_eq!((arena.capacity(), arena.generation), (capacity, 0));
+        arena.write(&queue, 1000, 0, &blades);
+        // Records past the end: the buffer grows (at least twice as big) and keeps its
+        // records.
+        assert!(arena.cover(&device, &queue, capacity + 1));
+        assert!(arena.capacity() >= capacity * 2 && arena.generation == 1);
+        assert_eq!(read(&arena, 1000, 300), records);
+        // More than the device binds: refused, the buffer stays.
+        assert!(!arena.cover(&device, &queue, Arena::limit(&device) + 1));
+        assert_eq!(arena.generation, 1);
+        // A run moves within the buffer.
+        let mut encoder = device.create_command_encoder(&Default::default());
+        arena.move_run(&device, &mut encoder, 1000, 5000, 200);
+        queue.submit([encoder.finish()]);
+        assert_eq!(read(&arena, 5000, 200), records[..200]);
+        assert_eq!(read(&arena, 1000, 300), records);
     }
 }

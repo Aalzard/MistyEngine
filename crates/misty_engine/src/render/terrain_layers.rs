@@ -59,7 +59,9 @@ struct Cached {
 impl Cached {
     /// A file changed, or the blocks of slices that went up uncompressed are ready.
     fn stale(&self, key: &Key) -> bool {
-        self.stamps != stamps(key)
+        // The background file watch's stamps first (no `stat` on the render thread while
+        // nothing changed); a difference is checked on disk.
+        (self.stamps != cached_stamps(key) && self.stamps != stamps(key))
             || (!self.waiting.is_empty() && !generated::waiting(&self.waiting))
     }
 }
@@ -107,6 +109,17 @@ pub(super) fn key(layers: &[TerrainLayer]) -> Key {
                 l.and_then(|l| l.normal_map.clone()),
                 l.and_then(|l| l.height_map.clone()),
             ]
+        })
+        .collect()
+}
+
+/// [`stamps`] as the background file watch last saw them.
+fn cached_stamps(key: &Key) -> Vec<Option<SystemTime>> {
+    key.iter()
+        .flatten()
+        .map(|p| {
+            p.as_ref()
+                .and_then(|p| crate::file_watch::cached_modified(&assets::absolute(p)))
         })
         .collect()
 }

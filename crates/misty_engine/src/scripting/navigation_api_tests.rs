@@ -256,3 +256,11 @@ fn scripts_use_links_areas_and_queries() {
     assert!(p.distance(Vec3::new(6.0, 0.0, -1.0)) < 0.3, "{p}");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn area_masks_of_out_of_range_areas_are_zero() {
+    assert_eq!(super::area_mask(3u8), 8);
+    assert_eq!(super::area_mask(63u8), i64::MIN);
+    assert_eq!(super::area_mask(64u8), 0);
+    assert_eq!(super::area_mask(200u8), 0);
+}

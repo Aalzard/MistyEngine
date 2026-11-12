@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "executables" (signing pass 1).
+
+  Input: the workflow artifact "unsigned-executables" of .github/workflows/release-windows.yml,
+  a zip with MistyEngine.exe and misty_player.exe at its root, both built from this repository
+  in that workflow run.
+
+  Both must carry the product name "Misty Engine" and the release version in their version
+  info (written by crates/misty_editor/build_icon.rs); anything else is refused. The workflow
+  passes the workspace version from Cargo.toml as the "version" parameter.
+
+  Keep this file and the configuration stored in SignPath the same (see README.md here).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set product-name="Misty Engine" product-version="${version}">
+      <include path="MistyEngine.exe" />
+      <include path="misty_player.exe" />
+      <for-each>
+        <authenticode-sign description="Misty Engine" description-url="https://github.com/Aalzard/MistyEngine" />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

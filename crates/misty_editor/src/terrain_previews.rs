@@ -570,7 +570,7 @@ impl TerrainPreviews {
     /// Mean colour of the image at `abs` (texture layer swatches).
     pub fn swatch(&mut self, ctx: &egui::Context, abs: &Path) -> Option<Color32> {
         self.begin(ctx);
-        let modified = std::fs::metadata(abs).and_then(|m| m.modified()).ok();
+        let modified = misty_engine::file_watch::cached_modified(abs);
         if let Some((m, c)) = self.swatches.get(abs)
             && *m == modified
         {

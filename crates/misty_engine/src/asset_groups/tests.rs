@@ -313,6 +313,24 @@ fn dependency_bundles_load_first() {
 }
 
 #[test]
+fn bundles_that_depend_on_each_other_still_load() {
+    let root = project("cycle");
+    let mut catalog = plan(&root, &settings(), "windows-x64").catalog;
+    // The boss bundle already needs the default one; make the default one need it back.
+    let default = catalog
+        .bundles
+        .iter_mut()
+        .find(|b| b.name == DEFAULT_BUNDLE)
+        .unwrap();
+    default.dependencies.push(BOSS_BUNDLE.to_owned());
+    let mut sim = AssetSystem::new(&root, Provider::Simulated(catalog));
+    let h = sim.load("Boss", HandleKind::Load);
+    assert_eq!(pump(&mut sim, h), Status::Succeeded);
+    let h = sim.load("Enemy/A", HandleKind::Load);
+    assert_eq!(pump(&mut sim, h), Status::Succeeded);
+}
+
+#[test]
 fn database_and_simulated_providers() {
     let root = project("modes");
     let s = settings();
@@ -464,4 +482,16 @@ fn http_downloads_are_hash_checked() {
         .unwrap_err();
     assert!(err.contains("hash mismatch"), "{err}");
     assert!(fetch::fetch("ftp://nope").is_err());
+}
+
+#[test]
+fn cache_paths_stay_in_the_cache_folder() {
+    let dir = Path::new("cache");
+    assert_eq!(
+        super::fetch::cache_path(dir, "a.bundle", "0123456789abcdef0123"),
+        dir.join("0123456789abcdef_a.bundle")
+    );
+    // A multibyte character across byte 16 of the hash, and separators in the name.
+    let p = super::fetch::cache_path(dir, "../../evil/x.bundle", "aaaaaaaaaaaaaaaé");
+    assert_eq!(p.parent(), Some(dir), "{p:?}");
 }

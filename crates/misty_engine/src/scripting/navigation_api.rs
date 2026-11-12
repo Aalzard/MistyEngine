@@ -82,13 +82,19 @@ fn path_table(lua: &Lua, path: &NavPath) -> Result<Table> {
     Ok(t)
 }
 
+/// `1 << area` for scripts; 0 for area numbers past the mask's bits (a corrupt file's 200
+/// would overflow the shift).
+fn area_mask(area: impl Into<u32>) -> i64 {
+    1i64.checked_shl(area.into()).unwrap_or(0)
+}
+
 fn raycast_table(lua: &Lua, h: &RaycastHit) -> Result<Table> {
     let t = lua.create_table()?;
     t.set("hit", h.hit)?;
     t.set("position", LVec3(h.position))?;
     t.set("normal", LVec3(h.normal))?;
     t.set("distance", h.distance)?;
-    t.set("mask", 1i64 << h.area)?;
+    t.set("mask", area_mask(h.area))?;
     Ok(t)
 }
 
@@ -424,7 +430,7 @@ pub fn register(lua: &Lua) -> Result<()> {
                 t.set("position", LVec3(h.position))?;
                 t.set("distance", h.distance)?;
                 t.set("hit", true)?;
-                t.set("mask", 1i64 << area)?;
+                t.set("mask", area_mask(area))?;
                 Ok(Value::Table(t))
             },
         )?,

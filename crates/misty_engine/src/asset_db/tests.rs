@@ -192,7 +192,7 @@ fn the_watcher_walks_on_a_thread_and_reports_new_files() {
     assert!(poll_now_in(&db, &walk).is_none());
     // A walk under way when the file appears (the editor's next poll reads it) is not the
     // one that reports it: `poll_now_in` waits for it and walks again.
-    assert!(poll_in(&db, &walk).is_none());
+    assert!(poll_in(&db, &walk, &root).is_none());
     write(&root, "Assets/Mats/Blue.mat", "{}");
     let report = poll_now_in(&db, &walk).expect("a rescan for the new file");
     assert!(
@@ -204,7 +204,7 @@ fn the_watcher_walks_on_a_thread_and_reports_new_files() {
     write(&root, "Assets/Mats/Green.mat", "{}");
     let started = std::time::Instant::now();
     let report = loop {
-        if let Some(r) = poll_in(&db, &walk) {
+        if let Some(r) = poll_in(&db, &walk, &root) {
             break r;
         }
         assert!(
@@ -219,6 +219,96 @@ fn the_watcher_walks_on_a_thread_and_reports_new_files() {
     );
     assert!(guid("Assets/Mats/Green.mat").is_some());
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// Run `f` on a thread and fail the test if it has not returned after `limit`: a deadlock or
+/// a scan of the wrong project shows up as a failure instead of a test run that never ends.
+fn within<R: Send + 'static>(
+    limit: std::time::Duration,
+    f: impl FnOnce() -> R + Send + 'static,
+) -> R {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(limit)
+        .unwrap_or_else(|_| panic!("did not finish within {limit:?}"))
+}
+
+/// A project of `files` assets without meta files (as a freshly copied folder is).
+fn project_without_metas(tag: &str, files: usize) -> PathBuf {
+    let root = temp(tag);
+    for i in 0..files {
+        write(&root, &format!("Assets/Bulk/File {i}.txt"), "");
+    }
+    root
+}
+
+fn metas_under(dir: &Path) -> usize {
+    let mut n = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "meta") {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// r40: the editor's tests ran forever. One test installed the database of its own project of
+/// 1500 files; every other test's asset refresh then rescanned *that* project, writing (and
+/// flushing to the device) a meta file per asset, again and again, on a busy hard disk. A
+/// rescan or watcher poll for one project must leave another project's database alone.
+#[test]
+fn rescanning_a_project_leaves_another_projects_database_alone() {
+    let other = project_without_metas("rescan_other", 200);
+    let mine = temp("rescan_mine");
+    write(&mine, "Assets/Red.mat", "{}");
+    let db = std::sync::Arc::new(RwLock::new(Some(GuidDatabase::new(&other))));
+    let walk = std::sync::Arc::new(Mutex::new(None));
+    let (db2, walk2, mine2) = (db.clone(), walk.clone(), mine.clone());
+    let (rescanned, polled) = within(std::time::Duration::from_secs(60), move || {
+        let rescanned = rescan_in(&db2, &mine2);
+        let polled = (0..20)
+            .map(|_| poll_in(&db2, &walk2, &mine2))
+            .find(Option::is_some);
+        (rescanned, polled.flatten())
+    });
+    assert!(rescanned.is_none() && polled.is_none());
+    assert_eq!(metas_under(&other), 0, "the other project was scanned");
+    assert_eq!(
+        metas_under(&mine),
+        0,
+        "not the open project: nothing to scan"
+    );
+    assert_eq!(db.read().unwrap().as_ref().unwrap().root(), other.as_path());
+    // Its own project is rescanned as before.
+    *db.write().unwrap() = Some(GuidDatabase::new(&mine));
+    let report = rescan_in(&db, &mine).expect("the open project is rescanned");
+    assert_eq!(report.created, ["Assets/Red.mat"]);
+    let _ = std::fs::remove_dir_all(other);
+    let _ = std::fs::remove_dir_all(mine);
+}
+
+/// A rescan runs without a lock: a project installed while it ran stays installed (the scan's
+/// result for the old project is dropped), and readers are never blocked by the scan.
+#[test]
+fn a_database_installed_during_a_rescan_is_kept() {
+    let a = project_without_metas("rescan_race_a", 50);
+    let b = temp("rescan_race_b");
+    let db = RwLock::new(Some(GuidDatabase::new(&a)));
+    let (scanned, _) = GuidDatabase::scan(&a);
+    // What the rescan finds when it is done: another project was installed meanwhile.
+    *db.write().unwrap() = Some(GuidDatabase::new(&b));
+    assert!(!replace_if_same(&db, scanned));
+    assert_eq!(db.read().unwrap().as_ref().unwrap().root(), b.as_path());
+    let _ = std::fs::remove_dir_all(a);
+    let _ = std::fs::remove_dir_all(b);
 }
 
 /// How long one walk of the sample project's Assets folder takes (prints only): the
@@ -248,4 +338,43 @@ fn sample_project_walk_time() {
         "{n} stats in {:.2} ms",
         started.elapsed().as_secs_f32() * 1000.0
     );
+}
+
+/// Asset saves go through a temp file and a rename: the file is replaced whole, no temp file
+/// is left behind, and a save that cannot write keeps the previous file intact (a crash or a
+/// full disk mid-save used to leave a truncated scene/prefab/terrain).
+#[test]
+fn atomic_writes_replace_whole_files_and_keep_the_old_one_on_failure() {
+    let dir = temp("atomic");
+    let path = dir.join("Assets/Level.scene");
+    write_atomic(&path, "first").unwrap();
+    write_atomic(&path, "second, longer").unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "second, longer");
+    let names = |d: &Path| -> Vec<String> {
+        std::fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect()
+    };
+    assert_eq!(names(&dir.join("Assets")), ["Level.scene"]);
+    // The scene, prefab and terrain savers use it too.
+    let scene = crate::scene::Scene::new("Level");
+    scene.save(&path).unwrap();
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("\"objects\"")
+    );
+    assert_eq!(names(&dir.join("Assets")), ["Level.scene"]);
+    // A save that fails (here: the folder is gone) reports it and leaves nothing behind.
+    assert!(write_atomic(&dir.join("Missing/X.scene"), "x").is_err());
+    // A path that is a folder: the rename and the in-place write both fail; the temp file
+    // is cleaned up.
+    std::fs::create_dir_all(dir.join("Assets/Folder.scene")).unwrap();
+    assert!(write_atomic(&dir.join("Assets/Folder.scene"), "x").is_err());
+    let mut left = names(&dir.join("Assets"));
+    left.sort();
+    assert_eq!(left, ["Folder.scene", "Level.scene"]);
+    let _ = std::fs::remove_dir_all(dir);
 }

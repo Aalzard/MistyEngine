@@ -103,6 +103,9 @@ impl EditorApp {
         }
         crate::tutorials::from_env(&mut state);
         state.ui_scale = crate::a11y::UiScale::load();
+        state
+            .console
+            .set_capacity(crate::hub::config::console_lines());
         // Version control badges: poll the project's git repository (if any).
         let root = state.project.root.clone();
         state.vcs.start(&root);
@@ -613,6 +616,10 @@ impl EditorApp {
             if crate::vfx_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
+            // Weather volumes with Preview in Edit Mode run in the Scene and Game views.
+            if crate::weather_preview::tick(s, ctx.input(|i| i.stable_dt)) {
+                ctx.request_repaint();
+            }
             // Scripts reload when their files change; syntax errors go to the Console.
             let scripts_scope =
                 misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollScripts", None);
@@ -815,6 +822,7 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
+        misty_engine::asset_db::saver::flush();
         crate::mcp::live::shutdown(&mut self.state);
         self.save_layout(true);
         crate::editor_scripts::on_exit(&mut self.state);
@@ -847,7 +855,13 @@ impl eframe::App for EditorApp {
             .begin_frame(Self::interacting(&ctx), &s.scene, &s.selection, || {
                 clips.snapshot(clip.as_deref()?)
             });
-        self.shortcuts(&ctx);
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Shortcuts",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            self.shortcuts(&ctx);
+        }
         {
             misty_engine::profile_scope!(
                 "Editor.GameFrame",
@@ -858,6 +872,10 @@ impl eframe::App for EditorApp {
         animation::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
         crate::panels::timeline::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
 
+        let bars_scope = misty_engine::profiler::Scope::begin_lazy(
+            || "Editor.Bars",
+            Some(misty_engine::profiler::Category::Others),
+        );
         let bar_frame = egui::Frame::new()
             .fill(theme::TAB_BAR_BG)
             .inner_margin(egui::Margin::symmetric(4, 2));
@@ -886,6 +904,7 @@ impl eframe::App for EditorApp {
         }
         // Before the panels, so arrow keys and Enter reach the palette first.
         crate::search::palette::show(&ctx, &mut self.state);
+        drop(bars_scope);
 
         let mut style = theme::dock_style(&ctx);
         if self.state.play.in_play_mode() {
@@ -908,6 +927,11 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Everything after the panels, by profiler scope (a stall here used to show in none).
+        let after_scope = misty_engine::profiler::Scope::begin_lazy(
+            || "Editor.AfterPanels",
+            Some(misty_engine::profiler::Category::Others),
+        );
         // Files dropped from the OS where no panel took them: into the open Project folder.
         crate::os_drop::fallback(&ctx, &mut self.state);
         // Shader variants compile the first time a view needs them (a new scene, a material
@@ -941,6 +965,10 @@ impl eframe::App for EditorApp {
         }
         // Material previews asked for while drawing the panels; probe bakes and Realtime probes.
         if let Some(gpu) = self.gpu.as_mut() {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Previews",
+                Some(misty_engine::profiler::Category::Others),
+            );
             if crate::probe_tools::gpu_frame(gpu, &mut self.state) {
                 ctx.request_repaint();
             }
@@ -958,17 +986,26 @@ impl eframe::App for EditorApp {
                 ctx.request_repaint();
             }
         }
+        let windows_scope = misty_engine::profiler::Scope::begin_lazy(
+            || "Editor.Windows",
+            Some(misty_engine::profiler::Category::Others),
+        );
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
         crate::vcs::window::show(&ctx, &mut self.state);
         let root = self.state.project.root.clone();
+        let vcs_scope = misty_engine::profiler::Scope::begin_lazy(
+            || "Editor.Vcs",
+            Some(misty_engine::profiler::Category::Others),
+        );
         if self.state.vcs.frame(&root) {
             ctx.request_repaint();
         } else if self.state.vcs.enabled {
             // Wake up for the next status poll while the editor sits idle.
             ctx.request_repaint_after(std::time::Duration::from_secs(3));
         }
+        drop(vcs_scope);
         crate::vgeo_convert::show(&ctx, &mut self.state);
         crate::saveloc::show(&ctx, &mut self.state);
         crate::multiplayer::show(&ctx, &mut self.state);
@@ -981,6 +1018,7 @@ impl eframe::App for EditorApp {
         crate::editor_scripts::progress_ui(&ctx, &self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);
+        drop(windows_scope);
         if self.capture.as_mut().is_some_and(Capture::play_due) {
             self.state.push(Action::TogglePlay);
         }
@@ -988,8 +1026,24 @@ impl eframe::App for EditorApp {
             self.state.push(Action::OpenScenePath(rel));
         }
         // AI tools (MCP): requests from the loopback bridge, before queued actions apply.
-        crate::mcp::live::frame(&ctx, &mut self.state, self.gpu.as_mut());
-        self.apply_actions(&ctx);
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Mcp",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            crate::mcp::live::frame(&ctx, &mut self.state, self.gpu.as_mut());
+        }
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Actions",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            self.apply_actions(&ctx);
+        }
+        let end_scope = misty_engine::profiler::Scope::begin_lazy(
+            || "Editor.EndFrame",
+            Some(misty_engine::profiler::Category::Others),
+        );
         crate::saveloc::frame(&mut self.state);
         // SaveSystem.Save asked for a thumbnail of the game's last frame.
         if let Some(path) = misty_engine::save::take_thumbnail_request()
@@ -1006,16 +1060,39 @@ impl eframe::App for EditorApp {
         // A nav mesh bake finishing while its window is hidden.
         crate::panels::navigation::poll(&mut self.state);
         self.state.undo.end_frame(Self::interacting(&ctx));
-        crate::updater::editor::frame(&ctx, &mut self.state);
+        for e in misty_engine::asset_db::saver::take_errors() {
+            self.state.console.warn(format!("Could not save {e}"));
+        }
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Updater",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            crate::updater::editor::frame(&ctx, &mut self.state);
+        }
         // Dev builds: a newer exe in target/, a rebuild finishing.
         if crate::live_reload::dev_build::frame(&mut self.state) {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
-        self.scene_file_frame(&ctx);
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.SceneFiles",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            self.scene_file_frame(&ctx);
+        }
         if std::mem::take(&mut self.state.live.restart_now) {
             self.restart(&ctx);
         }
-        self.save_layout(false);
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.SaveLayout",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            self.save_layout(false);
+        }
+        drop(end_scope);
+        drop(after_scope);
         if let Some(capture) = &mut self.capture {
             if let Some(gpu) = &self.gpu {
                 let stats = gpu.renderer.stats();

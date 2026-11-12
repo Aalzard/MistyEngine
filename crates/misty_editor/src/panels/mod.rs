@@ -23,6 +23,7 @@ pub mod guide;
 pub mod input_actions;
 mod lighting;
 mod lighting_hdri;
+mod lighting_moon;
 mod prefab_rows;
 pub(crate) use inspector::prefab_overrides::demo as prefab_demo;
 pub mod memory_profiler;

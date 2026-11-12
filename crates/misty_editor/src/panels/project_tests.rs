@@ -223,7 +223,7 @@ fn a_new_folder_starts_renaming_with_its_name_selected_and_keeps_the_field() {
         .state()
         .s
         .console
-        .entries
+        .entries()
         .iter()
         .map(|e| e.message.clone())
         .collect();

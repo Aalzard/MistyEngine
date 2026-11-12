@@ -255,14 +255,21 @@ impl Msg {
                     1 => SpawnSource::Scene(r.str()?),
                     _ => return None,
                 };
+                let position = r.vec3()?;
+                let rotation = r.quat()?;
+                let scale = r.vec3()?;
+                // NaN or infinite poses would poison the object's transform and body.
+                if !(position.is_finite() && scale.is_finite()) {
+                    return None;
+                }
                 Msg::Spawn(SpawnMsg {
                     id,
                     owner,
                     is_player,
                     source,
-                    position: r.vec3()?,
-                    rotation: r.quat()?,
-                    scale: r.vec3()?,
+                    position,
+                    rotation,
+                    scale,
                     vars: read_vars(&mut r)?,
                 })
             }
@@ -430,5 +437,26 @@ mod tests {
             }
         }
         assert!(Msg::decode(&[200]).is_none());
+    }
+
+    #[test]
+    fn spawns_with_non_finite_poses_are_refused() {
+        for (position, scale) in [
+            (Vec3::new(f32::NAN, 0.0, 0.0), Vec3::ONE),
+            (Vec3::ZERO, Vec3::splat(f32::INFINITY)),
+        ] {
+            let bytes = Msg::Spawn(SpawnMsg {
+                id: 1,
+                owner: 0,
+                is_player: false,
+                source: SpawnSource::Prefab("Assets/Prefabs/P.prefab".into()),
+                position,
+                rotation: Quat::IDENTITY,
+                scale,
+                vars: vec![],
+            })
+            .encode();
+            assert!(Msg::decode(&bytes).is_none(), "{position} {scale}");
+        }
     }
 }

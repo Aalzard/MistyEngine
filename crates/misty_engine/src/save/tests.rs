@@ -453,3 +453,22 @@ fn component_fields_round_trip() {
     );
     assert!(read_component_field(&s, e, "Nope").is_none());
 }
+
+#[test]
+fn compressed_saves_that_expand_too_far_are_refused() {
+    use std::io::Write;
+    // Zeros compress about a thousandfold: a small file, a huge text.
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    let block = vec![b' '; 1 << 20];
+    for _ in 0..(super::MAX_SAVE_TEXT >> 20) + 1 {
+        gz.write_all(&block).unwrap();
+    }
+    let bytes = gz.finish().unwrap();
+    assert!(bytes.len() < 2 << 20, "{}", bytes.len());
+    let e = super::decode(&bytes).unwrap_err();
+    assert!(e.contains("expands"), "{e}");
+    // Small compressed saves still read.
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    gz.write_all(b"{}").unwrap();
+    assert_eq!(super::decode(&gz.finish().unwrap()).unwrap(), "{}");
+}

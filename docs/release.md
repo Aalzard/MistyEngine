@@ -53,8 +53,16 @@ the `MistyEngine.exe` the package placed in the install folder. Requests send th
 
 ## How to publish a release
 
-1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), e.g. `0.0.2`, and commit.
-2. Make the package — one command from the repository root (Windows PowerShell 5.1 or 7):
+Pushing a version tag is the release: GitHub Actions builds the Windows and Linux packages from
+the tag, signs the Windows files (once SignPath is set up, see **Code signing** below) and
+uploads everything to a **draft** release. You look at it, then publish. No file from your own
+computer goes into a release.
+
+1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), e.g. `0.0.2`, add the
+   version's section at the top of `tools/release/CHANGELOG.txt` (it becomes the release notes)
+   and commit.
+2. Make a local test build and do the smoke test below — one command from the repository root
+   (Windows PowerShell 5.1 or 7):
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\make_release.ps1
@@ -62,27 +70,74 @@ the `MistyEngine.exe` the package placed in the install folder. Requests send th
 
    It builds `misty_editor` and `misty_player` in release, then writes to `..\MistyRelease\`
    (next to the repository; `-OutDir` changes it, `-TargetDir` uses another cargo target folder,
-   `-SkipBuild` packages the exes already built). Details in **The package** below.
-3. Look at the result: unzip the zip somewhere new and do the smoke test below.
-4. Commit, then tag the release commit: `git tag -a v0.0.2 -m "Misty Engine v0.0.2"`.
-5. Push the commit and the tag.
-6. On https://github.com/Aalzard/MistyEngine/releases click **Draft a new release**, pick the
-   tag **`v0.0.2`**, write the release notes (they appear in the message box), upload the zip and its
-   `.sha256.txt` as release assets and **Publish** (not as a pre-release). The repository must be public for
-   the API to see it.
-7. **Linux** comes from GitHub Actions: pushing the tag starts `.github/workflows/release.yml`
-   (ubuntu-22.04). It checks the tag equals `v<Cargo.toml version>`, builds, packages with
-   `tools/make_release_linux.sh`, then waits up to 45 minutes for the release of that tag (a
-   draft counts) and uploads `MistyEngine-vX.Y.Z-linux-x64.tar.gz` and its `.sha256.txt` with
-   `gh release upload --clobber`. If no release appears in time it creates a published one with
-   the tag's CHANGELOG section as notes (edit the notes afterwards, then upload the Windows files
-   to it). Actions ▸ Release (Linux) ▸ **Run workflow** with the tag re-uploads for an existing tag.
-   Before tagging, push the commit to a `ci/*` branch (`git push origin HEAD:ci/linux`) or run
-   **CI (Linux)** by hand: it builds and runs `cargo test --workspace --release` on Linux (the GPU
-   tests skip there: no adapter).
+   `-SkipBuild` packages the exes already built). Details in **The package** below. This build
+   is unsigned and is **not** what gets published.
+   Optional: Actions ▸ **Release (Windows)** ▸ **Run workflow** on the branch is a trial run of
+   the release build (nothing is uploaded to a release), and pushing the commit to a `ci/*`
+   branch (`git push github HEAD:ci/linux`) or running **CI (Linux)** by hand builds and runs
+   `cargo test --workspace --release` on Linux (the GPU tests skip there: no adapter).
+3. Tag the release commit: `git tag -a v0.0.2 -m "Misty Engine v0.0.2"`. Push the commit and
+   the tag. The tag must equal `v<Cargo.toml version>`; both workflows stop otherwise.
+4. **Windows** — `.github/workflows/release-windows.yml` (windows-latest, GitHub-hosted):
+   - creates the release for the tag as a **draft**, with the tag's CHANGELOG section as notes
+     (if you already made the release by hand, it is used as it is);
+   - builds with `cargo build --release --locked`, then, when SignPath is set up: sends
+     `MistyEngine.exe` and `misty_player.exe` to SignPath and **waits for you to approve the
+     signing request** in SignPath; builds the zip and the installer from the signed exes with
+     `tools/make_release.ps1 -ExeDir`; sends the installer to SignPath and waits for the
+     **second approval**; writes the `.sha256.txt` files last;
+   - uploads the zip, the installer and their `.sha256.txt` files to the release
+     (`gh release upload --clobber`). The run's summary page lists every file with its
+     signature and checksum.
 
-Within 6 hours (or right away via Help ▸ Check for Updates…) every install older than 0.0.2
-offers the update.
+   Without the SignPath settings the same job runs without the signing steps and uploads
+   unsigned files. An approval that is not given within 2 hours (repository variable
+   `SIGNPATH_WAIT_SECONDS`) fails the job: re-run it, or Actions ▸ Release (Windows) ▸
+   **Run workflow** on the tag.
+5. **Linux** — `.github/workflows/release.yml` (ubuntu-22.04) checks the tag, builds, packages
+   with `tools/make_release_linux.sh`, waits up to 45 minutes for the release of that tag (the
+   draft from step 4 counts) and uploads `MistyEngine-vX.Y.Z-linux-x64.tar.gz` and its
+   `.sha256.txt` with `gh release upload --clobber`. If no release appears in time it creates a
+   published one with the tag's CHANGELOG section as notes. Actions ▸ Release (Linux) ▸
+   **Run workflow** with the tag re-uploads for an existing tag.
+6. When both workflows are green: on https://github.com/Aalzard/MistyEngine/releases open the
+   draft, download the Windows zip or installer and do the smoke test once more on the real
+   files (and check the signature, see below), tidy the notes (they appear in the update message
+   box) and **Publish** (not as a pre-release). The repository must be public for the API to
+   see it. Nobody is offered the update while the release is a draft.
+
+Within 6 hours of publishing (or right away via Help ▸ Check for Updates…) every install older
+than 0.0.2 offers the update.
+
+## Code signing
+
+The Windows exes and the installer are signed through SignPath with a certificate from SignPath
+Foundation; Windows shows "SignPath Foundation" as the publisher. The public policy is
+[code-signing-policy.md](code-signing-policy.md); the SignPath settings are in
+`tools/release/signpath/` (with a README); first-time setup is in
+[pending/r36-signing.md](pending/r36-signing.md). **Until that setup is done, releases are
+unsigned.**
+
+- Signing is **on** when the repository has the secret `SIGNPATH_API_TOKEN` and the variable
+  `SIGNPATH_ORGANIZATION_ID`; the other names and their defaults are listed at the top of
+  `release-windows.yml`. With neither set the release is unsigned; with only one the job stops.
+- Only GitHub Actions can ask for a signature, and only for files built in that same run on a
+  GitHub-hosted runner; SignPath checks this. A local build cannot be signed.
+- Every signing request needs a manual approval in SignPath: two per release (the exes, then
+  the installer). If signing fails, the job fails and no Windows file is uploaded: there is
+  never a half-signed release.
+- Order: sign the exes → zip and installer from the signed exes → sign the installer →
+  checksums. Changing a file after it is signed breaks its signature, so nothing touches the
+  files afterwards.
+- Check a signed file: Properties ▸ Digital Signatures, or
+
+  ```powershell
+  Get-AuthenticodeSignature .\MistyEngine.exe | Format-List Status, SignerCertificate
+  signtool verify /pa /v .\MistyEngine-Setup-vX.Y.Z-windows-x64.exe   # Windows SDK
+  ```
+- Game builds: File ▸ Build copies the signed `misty_player.exe`. A build with its own icon
+  rewrites the exe's resources, which removes the signature (the game exe is then unsigned, as
+  before); a build without an icon keeps the Misty Engine signature.
 
 ## The package
 
@@ -101,7 +156,14 @@ MistyRelease\
     LICENSE.txt              LICENSE + RUNTIME-EXCEPTION.md
   MistyEngine-vX.Y.Z-windows-x64.zip            the folder above inside the zip (bsdtar, deflate)
   MistyEngine-vX.Y.Z-windows-x64.zip.sha256.txt "<sha256>  <zip name>"
+  MistyEngine-Setup-vX.Y.Z-windows-x64.exe            the installer (see below)
+  MistyEngine-Setup-vX.Y.Z-windows-x64.exe.sha256.txt "<sha256>  <installer name>"
 ```
+
+Other switches, used by the release workflow: `-ExeDir <folder>` packages ready
+`MistyEngine.exe` and `misty_player.exe` (the signed ones) instead of building; `-Strict` turns
+warnings into errors (no Inno Setup, wrong version info); `-HashOnly` only rewrites the
+`.sha256.txt` files (after the installer is signed).
 
 The Linux package (`tools/make_release_linux.sh`, run by the release workflow; it also works on
 any Linux machine with the system libraries below) has the same layout without `.exe`:
@@ -125,7 +187,9 @@ Debian 12, Fedora 36 and newer.
 Nothing else is needed at runtime: shaders, fonts, icons, templates, tutorials and the Ctrl+K
 guides are built into the exes (the guides are written to the temp folder when opened). Both exes
 carry the Misty Engine icon and version info (`crates/misty_editor/build_icon.rs`, needs the
-Windows SDK's `rc.exe`; check Properties ▸ Details of `MistyEngine.exe` shows the version).
+Windows SDK's `rc.exe`; check Properties ▸ Details of `MistyEngine.exe` shows the version). The
+product name "Misty Engine" and the product version are what the signing service checks: keep
+them as they are.
 
 ### Smoke test
 
@@ -147,8 +211,9 @@ From the unzipped folder, somewhere outside the repository, with a throwaway Hub
 `make_release.ps1` also writes `MistyEngine-Setup-v<version>-windows-x64.exe` with Inno Setup 6
 (`tools/installer/MistyEngine.iss`; install Inno Setup from https://jrsoftware.org/isinfo.php, or pass
 `-NoInstaller`). It installs per user to `%LOCALAPPDATA%\Programs\Misty Engine` (no admin prompt) with a
-Start menu shortcut, an optional desktop shortcut and an uninstaller. Upload it to the release next to the
-zip; the updater keeps using the zip.
+Start menu shortcut, an optional desktop shortcut and an uninstaller. The release workflow uploads it next
+to the zip; the updater keeps using the zip. The uninstaller Inno Setup writes into the install folder is
+not signed (it is made on the user's computer, not downloaded).
 
 ## Changing the repository / testing
 

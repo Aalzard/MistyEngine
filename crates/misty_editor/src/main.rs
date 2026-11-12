@@ -26,6 +26,8 @@ mod cloth_tools;
 mod commands;
 mod component_ops;
 mod console;
+#[cfg(test)]
+mod edit_stall_tests;
 mod editor_scripts;
 mod explorer;
 mod fps_player;
@@ -128,6 +130,8 @@ mod sample_meadow;
 #[cfg(test)]
 mod sample_mesh_builder;
 #[cfg(test)]
+mod sample_moon;
+#[cfg(test)]
 mod sample_multiscene;
 #[cfg(test)]
 mod sample_navigation;
@@ -210,6 +214,8 @@ mod sample_volumetric_fog;
 #[cfg(test)]
 mod sample_water;
 #[cfg(test)]
+mod sample_weather;
+#[cfg(test)]
 mod sample_world_builder;
 mod saveloc;
 mod scene_camera;
@@ -239,6 +245,7 @@ mod terrain_trees_ui;
 mod terrain_ui_tests;
 #[cfg(test)]
 mod test_util;
+mod texture_drop;
 mod theme;
 mod thumbnails;
 mod tile_palette;
@@ -259,6 +266,7 @@ mod vcs;
 mod vfx_preview;
 mod vgeo_convert;
 mod viewport;
+mod weather_preview;
 mod widgets;
 
 use std::path::{Path, PathBuf};
@@ -381,6 +389,9 @@ fn main() -> eframe::Result<()> {
     // Live reload's file checks read stamps a background thread keeps fresh (a `stat` per
     // watched file on the main thread made a 10-25 ms frame every half second).
     misty_engine::file_watch::set_background(true);
+    // Saves made on every change (a material while a slider is dragged) go through a writer
+    // thread: each one flushes to the device, which a busy disk can take seconds over.
+    misty_engine::asset_db::saver::set_background(true);
     // MCP modes talk on the pipes their client gave them; a terminal's console must not replace
     // them.
     if !std::env::args()
@@ -416,11 +427,28 @@ fn main() -> eframe::Result<()> {
             if std::env::var_os("MISTY_SCREENSHOT").is_none() {
                 hub::config::record_open(project);
             }
-            let v = viewport
-                .with_inner_size([1600.0, 900.0])
-                .with_min_inner_size([960.0, 540.0])
-                .with_maximized(true);
-            (v, true)
+            // `MISTY_WINDOW_SIZE=1280x720`: a window of that size at the top left corner,
+            // not maximised and not remembered (automated runs that must not cover the screen).
+            let fixed = std::env::var("MISTY_WINDOW_SIZE").ok().and_then(|v| {
+                let (w, h) = v.split_once('x')?;
+                Some([w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?])
+            });
+            match fixed {
+                Some(size) => {
+                    let v = viewport
+                        .with_inner_size(size)
+                        .with_position([0.0, 0.0])
+                        .with_active(false);
+                    (v, false)
+                }
+                None => {
+                    let v = viewport
+                        .with_inner_size([1600.0, 900.0])
+                        .with_min_inner_size([960.0, 540.0])
+                        .with_maximized(true);
+                    (v, true)
+                }
+            }
         }
         // The Hub always opens at its own size (the editor's saved window would be maximised).
         Start::Hub => {

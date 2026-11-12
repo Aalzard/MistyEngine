@@ -28,7 +28,7 @@ use mlua::{
     Variadic,
 };
 
-use super::api::{LGameObject, LVec3, with_world};
+use super::api::{LGameObject, LVec3, alive, with_world};
 use super::{LogKind, Request, ScriptHost, World};
 use crate::network::interpolation::Snapshot;
 use crate::network::protocol::{Msg, SpawnMsg, SpawnSource, TransformMsg, VarChange};
@@ -351,6 +351,20 @@ pub fn scene_keys(scene: &Scene) -> Vec<(Entity, String)> {
     out
 }
 
+/// `addr` with port `port`: replaces a port already in it ("host:7777" → "host:9000"; IPv6
+/// literals keep their brackets).
+fn with_port(addr: &str, port: u16) -> String {
+    let host = match addr.rsplit_once(':') {
+        Some((h, p)) if p.parse::<u16>().is_ok() && (!h.contains(':') || h.ends_with(']')) => h,
+        _ => addr,
+    };
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 fn log(w: &mut World, kind: LogKind, text: impl Into<String>) {
     w.logs.push((kind, text.into()));
 }
@@ -610,7 +624,7 @@ fn place(w: &mut World, e: Entity, snap: &Snapshot, settings: &NetworkTransform)
         w.scene.set_transform(e, t);
     }
     if w.physics.has_body(e) {
-        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
 }
@@ -661,6 +675,9 @@ fn rpc_call(
     let plan = with_world(lua, |w| -> std::result::Result<RpcPlan, String> {
         if !w.network.is_running() {
             return Err("networking is not running".into());
+        }
+        if !w.scene.contains(e) {
+            return Err("object was destroyed".into());
         }
         let name = w.scene.name(e);
         let id = w
@@ -932,7 +949,7 @@ impl UserData for LNetwork {
                     if addr.is_empty() {
                         addr = with_world(lua, |w| manager_of(&w.scene).address)?;
                     }
-                    addr = format!("{addr}:{p}");
+                    addr = with_port(&addr, p);
                 }
                 start_from_lua(lua, AutoStart::Client(addr))
             },
@@ -968,6 +985,7 @@ impl UserData for LNetwork {
                         )?,
                         other => {
                             let e = entity_arg(other)?;
+                            alive(w, e)?;
                             if let Some(p) = position {
                                 w.scene.set_world_position(e, p.0);
                             }
@@ -1232,13 +1250,14 @@ impl UserData for LNetworkTransform {
             "Teleport",
             |lua, n, (pos, euler): (LVec3, Option<LVec3>)| {
                 with_world(lua, |w| {
+                    alive(w, n.0)?;
                     w.scene.set_world_position(n.0, pos.0);
                     if let Some(r) = euler {
                         w.scene
                             .set_world_rotation(n.0, crate::camera::euler_to_quat(r.0));
                     }
                     if w.physics.has_body(n.0) {
-                        let (_, rot, p) = w.scene.world_matrix(n.0).to_scale_rotation_translation();
+                        let (_, rot, p) = w.scene.world_parts(n.0);
                         w.physics.teleport(n.0, p, rot);
                     }
                     if let Some(id) = w.network.by_entity.get(&n.0).copied()
@@ -1250,7 +1269,8 @@ impl UserData for LNetworkTransform {
                     {
                         ts.last_sent = None;
                     }
-                })
+                    Ok(())
+                })?
             },
         );
     }
@@ -1978,6 +1998,12 @@ impl ScriptHost {
                 self.with_world(|w| {
                     let here = w.scene.active_path();
                     let load = scene.filter(|p| Some(p) != here.as_ref());
+                    if let Some(Err(e)) =
+                        load.as_ref().map(|p| crate::vfs::project_file(&w.root, p))
+                    {
+                        log(w, LogKind::Error, format!("Network: server scene {e}"));
+                        return;
+                    }
                     match load {
                         Some(path) => {
                             w.network.phase = ClientPhase::LoadingScene;
@@ -2003,6 +2029,11 @@ impl ScriptHost {
                 );
             }
             Inbound::LoadScene(path) => {
+                let bad = self.with_world(|w| crate::vfs::project_file(&w.root, &path).err());
+                if let Some(e) = bad {
+                    self.log(LogKind::Error, format!("Network: server scene {e}"));
+                    return;
+                }
                 let ids =
                     self.with_world(|w| w.network.objects.keys().copied().collect::<Vec<_>>());
                 for id in ids {
@@ -2598,5 +2629,18 @@ impl ScriptHost {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    #[test]
+    fn a_port_replaces_the_one_in_the_address() {
+        use super::with_port;
+        assert_eq!(with_port("example.com", 7777), "example.com:7777");
+        assert_eq!(with_port("example.com:7777", 9000), "example.com:9000");
+        assert_eq!(with_port("127.0.0.1:1", 2), "127.0.0.1:2");
+        assert_eq!(with_port("[::1]:7777", 9000), "[::1]:9000");
+        assert_eq!(with_port("::1", 9000), "[::1]:9000");
     }
 }

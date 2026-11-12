@@ -797,6 +797,44 @@ fn background_check_uses_the_cache_and_treats_404_as_no_update() {
 }
 
 #[test]
+fn startup_check_can_be_turned_off_and_the_manual_check_still_works() {
+    let zip = make_zip(PACKAGE);
+    let server = serve(|b| release_routes(b, zip, String::new()));
+    let src = Source::custom(&format!("{}/release.json", server.base));
+    let cache_path = temp("startup_off").join("updater.json");
+
+    // Off: the startup path asks nothing, offers nothing and writes no cache.
+    let mut up = Updater::with(src.clone(), Some(cache_path.clone()), None);
+    assert!(up.check_at_startup, "on by default");
+    up.check_at_startup = false;
+    assert!(!up.startup_check());
+    assert_eq!(up.phase(), Phase::Idle);
+    assert_eq!(server.hits.load(Ordering::SeqCst), 0);
+    assert!(up.available().is_none());
+    assert!(!cache_path.exists());
+
+    // Help ▸ Check for Updates… still asks.
+    up.check_now();
+    wait_idle(&up);
+    assert_eq!(server.hits.load(Ordering::SeqCst), 1);
+    assert_eq!(up.available().map(|u| u.version), Some("99.0.0".into()));
+
+    // Still off after that: a restart doesn't even show the cached result.
+    let mut again = Updater::with(src.clone(), Some(cache_path.clone()), None);
+    again.check_at_startup = false;
+    assert!(!again.startup_check());
+    assert!(again.available().is_none());
+    assert_eq!(server.hits.load(Ordering::SeqCst), 1);
+
+    // On (the default): the startup path checks.
+    let mut on = Updater::with(src, Some(temp("startup_on").join("updater.json")), None);
+    assert!(on.startup_check());
+    wait_idle(&on);
+    assert_eq!(server.hits.load(Ordering::SeqCst), 2);
+    assert!(on.available().is_some());
+}
+
+#[test]
 fn offline_check_is_silent() {
     // Nothing listens on the port: the automatic check fails quietly.
     let port = TcpListener::bind("127.0.0.1:0")

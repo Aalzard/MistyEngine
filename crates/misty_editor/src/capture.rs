@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER` / `MISTY_GUIDE`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_LIGHTING_PAGE` / `MISTY_LIGHTING_SCROLL` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER` / `MISTY_GUIDE`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -275,6 +275,17 @@ pub fn inspector_scroll() -> Option<f32> {
     static PX: OnceLock<Option<f32>> = OnceLock::new();
     *PX.get_or_init(|| {
         std::env::var("MISTY_INSPECTOR_SCROLL")
+            .ok()
+            .and_then(|v| v.parse().ok())
+    })
+}
+
+/// `MISTY_LIGHTING_SCROLL=<px>`: the Lighting window's page scrolled down that far, with the
+/// Night Sky groups open (screenshots of the Moon and Night Sky sections).
+pub fn lighting_scroll() -> Option<f32> {
+    static PX: OnceLock<Option<f32>> = OnceLock::new();
+    *PX.get_or_init(|| {
+        std::env::var("MISTY_LIGHTING_SCROLL")
             .ok()
             .and_then(|v| v.parse().ok())
     })

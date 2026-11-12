@@ -81,6 +81,10 @@ impl UserData for LCamera {
         // Vertical field of view in degrees (a sprint FOV kick lerps it).
         f.add_field_method_get("fieldOfView", |lua, c| get(lua, c.0, |cam| cam.fov));
         f.add_field_method_set("fieldOfView", |lua, c, fov: f32| {
+            // NaN passes `clamp` and would poison the projection.
+            if !fov.is_finite() {
+                return Err(mlua::Error::runtime("fieldOfView must be a finite number"));
+            }
             set(lua, c.0, |cam| cam.fov = fov.clamp(1.0, 179.0))
         });
         f.add_field_method_get("nearClipPlane", |lua, c| get(lua, c.0, |cam| cam.near));

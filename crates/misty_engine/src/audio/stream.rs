@@ -267,6 +267,9 @@ fn run(mut dec: Decoder, mut tx: rtrb::Producer<(u32, Frame)>, sh: Arc<Shared>) 
     let mut pending: Vec<Frame> = Vec::new();
     let mut sent = 0usize;
     let mut at_end = false;
+    // Looped back to the start and nothing decoded since: a stream with no playable frames
+    // ends instead of seeking back forever.
+    let mut empty_loop = false;
     loop {
         if sh.stop.load(Ordering::Relaxed) {
             return;
@@ -279,6 +282,7 @@ fn run(mut dec: Decoder, mut tx: rtrb::Producer<(u32, Frame)>, sh: Arc<Shared>) 
             pending.clear();
             sent = 0;
             at_end = false;
+            empty_loop = false;
             sh.ended.store(u32::MAX, Ordering::Release);
         }
         if sent < pending.len() {
@@ -291,9 +295,10 @@ fn run(mut dec: Decoder, mut tx: rtrb::Producer<(u32, Frame)>, sh: Arc<Shared>) 
             continue;
         }
         if at_end {
-            if sh.looping.load(Ordering::Relaxed) {
+            if sh.looping.load(Ordering::Relaxed) && !empty_loop {
                 skip = dec.seek(0);
                 at_end = false;
+                empty_loop = true;
             } else {
                 sh.ended.store(generation, Ordering::Release);
                 std::thread::sleep(Duration::from_millis(5));
@@ -306,6 +311,9 @@ fn run(mut dec: Decoder, mut tx: rtrb::Producer<(u32, Frame)>, sh: Arc<Shared>) 
             at_end = true;
             continue;
         }
+        if !pending.is_empty() {
+            empty_loop = false;
+        }
         if skip > 0 {
             let n = (skip as usize).min(pending.len());
             pending.drain(..n);
@@ -314,6 +322,33 @@ fn run(mut dec: Decoder, mut tx: rtrb::Producer<(u32, Frame)>, sh: Arc<Shared>) 
         if sh.mono {
             for f in &mut pending {
                 *f = f.as_mono();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_looping_stream_without_frames_ends_instead_of_spinning() {
+        let empty: Arc<[u8]> = super::super::wav::synth(0.0, 48000, |_| 0.0).into();
+        let Ok(mut r) = StreamReader::open(StreamInput::Memory(empty), true, false, 0) else {
+            return; // refused up front: nothing to spin on
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            match r.pop() {
+                Pull::End => break,
+                Pull::Frame(_) => panic!("an empty clip has no frames"),
+                Pull::Underrun => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "the worker never ended"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
             }
         }
     }

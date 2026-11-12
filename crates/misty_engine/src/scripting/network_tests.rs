@@ -635,3 +635,47 @@ fn a_real_udp_session_on_localhost() {
     assert_eq!(stats.connections, 1);
     let _ = Vec3::ZERO;
 }
+
+/// Handles kept after `Destroy`: `Network.Spawn(go, pos)` and `NetworkTransform:Teleport`
+/// raise a Lua error instead of panicking.
+#[test]
+fn network_calls_on_destroyed_objects_error_in_lua() {
+    let keeper = r#"
+local Keeper = { frames = 0 }
+local function check(name, f)
+    local ok, err = pcall(f)
+    Debug.Log(name, ok, string.find(tostring(err), "destroyed", 1, true) ~= nil)
+end
+function Keeper:Start()
+    Debug.Log("host", tostring(Network.StartHost()))
+    local crate = GameObject.Find("Crate")
+    local mover = GameObject.Find("Mover")
+    self.crate = crate
+    self.nt = mover:GetComponent("NetworkTransform")
+    Destroy(crate)
+    Destroy(mover)
+end
+function Keeper:Update()
+    self.frames = self.frames + 1
+    if self.frames == 3 then
+        local crate, nt = self.crate, self.nt
+        check("Spawn", function() return Network.Spawn(crate, Vector3.new(1, 2, 3)) end)
+        check("Teleport", function() nt:Teleport(Vector3.new(1, 2, 3)) end)
+    end
+end
+return Keeper
+"#;
+    let (root, mut scene) = project("dead", 7206, false);
+    std::fs::write(root.join("Assets/Scripts/Keeper.lua"), keeper).unwrap();
+    scene.spawn("Crate", None);
+    let mover = scene.spawn("Mover", None);
+    scene.add(mover, NetworkTransform::default());
+    let k = scene.spawn("Keeper", None);
+    scene.add(k, script("Assets/Scripts/Keeper.lua", &[]));
+    let net = MemoryNet::default();
+    let mut host = Peer::new(&root, &scene, &net);
+    run(&mut [&mut host], 5);
+    assert!(host.has("host true"), "{:?}", host.logs);
+    assert!(host.has("Spawn false true"), "{:?}", host.logs);
+    assert!(host.has("Teleport false true"), "{:?}", host.logs);
+}

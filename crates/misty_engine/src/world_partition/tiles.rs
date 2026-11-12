@@ -99,6 +99,9 @@ fn copy_settings(from: &TerrainData, to: &mut TerrainData) {
     to.harmony = from.harmony.clone();
     to.details = from.details.clone();
     to.flowers = from.flowers.clone();
+    // The painted flower mask is resampled per tile in `split` (a copy of the whole mask
+    // on every tile would show the big terrain's patches squashed into each one).
+    to.flowers.map.clear();
     to.trees.prototypes = from.trees.prototypes.clone();
     to.trees.draw_distance = from.trees.draw_distance;
     to.trees.lod_distance = from.trees.lod_distance;
@@ -160,6 +163,12 @@ pub fn split(data: &TerrainData, corner: Vec3, n: usize, res: usize) -> Vec<Tile
                         t.data.detail_map = vec![0; ta * ta];
                     }
                     t.data.detail_map[z * ta + x] = data.detail_map[s];
+                }
+                if data.flowers.map.len() == a * a {
+                    if t.data.flowers.map.len() != ta * ta {
+                        t.data.flowers.map = vec![0; ta * ta];
+                    }
+                    t.data.flowers.map[z * ta + x] = data.flowers.map[s];
                 }
                 for (i, l) in data.detail_layers.iter().enumerate() {
                     if l.map.len() == a * a {

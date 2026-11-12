@@ -143,6 +143,7 @@ fn misty_custom_mesh_out(c: CustomOut) -> MeshOut {{
     m.world = c.world;
     m.normal = c.normal;
     m.uv = c.uv;
+    m.uv_centroid = c.uv;
     m.draw = c.draw;
     m.tangent = c.tangent;
     m.lightmap_uv = c.lightmap_uv;

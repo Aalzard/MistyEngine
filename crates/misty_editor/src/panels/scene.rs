@@ -455,6 +455,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     {
         super::hierarchy::drop_asset(state, e, &payload.0);
     }
+    drop_target_tag(ui, rect, state, &camera, &response);
 
     if state.scene_view.gizmos {
         gizmos::paint_bones(ui, rect, &camera, &state.scene, &state.selection);
@@ -466,6 +467,34 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         scene_gizmo(ui, rect, &mut state.scene_view.camera);
     }
     speed_overlay(ui, rect, &state.scene_view.camera);
+}
+
+/// While a material or texture is dragged over the view: the name of the object under the
+/// cursor (the one it would land on), next to the cursor.
+fn drop_target_tag(
+    ui: &Ui,
+    rect: Rect,
+    state: &EditorState,
+    camera: &misty_engine::camera::Camera,
+    response: &egui::Response,
+) {
+    if !response.contains_pointer() || !crate::texture_drop::dragged_onto_objects(ui.ctx()) {
+        return;
+    }
+    let Some(at) = ui.input(|i| i.pointer.hover_pos()) else {
+        return;
+    };
+    let Some(e) = picking::pick(&state.scene, camera, rect, at, &state.scene_view.icons) else {
+        return;
+    };
+    let painter = ui.painter().with_clip_rect(rect);
+    let text = crate::i18n::display(&state.scene.name(e)).into_owned();
+    let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), Color32::WHITE);
+    let bg = Rect::from_min_size(at + vec2(14.0, 14.0), galley.size() + vec2(12.0, 6.0));
+    painter.rect_filled(bg, 4.0, Color32::from_black_alpha(190));
+    let stroke = egui::Stroke::new(1.5, Color32::from_rgb(90, 150, 230));
+    painter.rect_stroke(bg, 4.0, stroke, egui::StrokeKind::Inside);
+    painter.galley(bg.min + vec2(6.0, 3.0), galley, Color32::WHITE);
 }
 
 /// The fly speed, briefly, after right mouse + scroll changed it.

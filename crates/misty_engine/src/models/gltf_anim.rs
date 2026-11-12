@@ -291,7 +291,16 @@ pub fn animations(
                     }
                     None => continue,
                 };
-                if dim == 0 || times.is_empty() {
+                let per_key = match ch.sampler().interpolation() {
+                    gltf::animation::Interpolation::CubicSpline => 3 * dim,
+                    _ => dim,
+                };
+                // Malformed files: fewer values than keys, or key times that are not numbers.
+                if dim == 0
+                    || times.is_empty()
+                    || values.len() < times.len() * per_key
+                    || times.iter().any(|t| !t.is_finite())
+                {
                     continue;
                 }
                 let track = Track {
@@ -302,7 +311,11 @@ pub fn animations(
                 };
                 tracks.push((node, ch.target().property(), track));
             }
-            let length = tracks.iter().map(|t| t.2.end()).fold(0.0, f32::max);
+            let length = tracks
+                .iter()
+                .map(|t| t.2.end())
+                .fold(0.0, f32::max)
+                .min(crate::animation::MAX_IMPORT_LENGTH);
             let mut clip = AnimationClip {
                 length,
                 looping: true,

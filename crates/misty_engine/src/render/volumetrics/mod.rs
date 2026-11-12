@@ -76,9 +76,11 @@ pub(crate) fn view_group(
     v: &Volumetrics,
     sky: &super::hdri_sky::SkyGpu,
     clouds: &super::clouds::Clouds,
+    weather: &super::weather::WeatherGpu,
 ) -> wgpu::BindGroup {
     let volume = v.volume.as_ref().map_or(&v.dummy, |(_, view)| view);
-    let [s0, s1, s2, s3] = sky.entries();
+    let [s0, s1, s2, s3, s4] = sky.entries();
+    let [w0, w1] = weather.view_entries();
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty view group"),
         layout,
@@ -87,6 +89,9 @@ pub(crate) fn view_group(
             s1,
             s2,
             s3,
+            s4,
+            w0,
+            w1,
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: view_buffer.as_entire_binding(),

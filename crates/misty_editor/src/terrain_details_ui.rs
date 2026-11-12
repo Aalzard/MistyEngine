@@ -82,10 +82,7 @@ fn mesh_key(mesh: &MeshRef, material: Option<&str>, state: &EditorState) -> u64 
     format!("{mesh:?}").hash(&mut h);
     material.hash(&mut h);
     if let Some(m) = material {
-        std::fs::metadata(state.assets.absolute(m))
-            .and_then(|m| m.modified())
-            .ok()
-            .hash(&mut h);
+        misty_engine::file_watch::cached_modified(&state.assets.absolute(m)).hash(&mut h);
     }
     h.finish()
 }

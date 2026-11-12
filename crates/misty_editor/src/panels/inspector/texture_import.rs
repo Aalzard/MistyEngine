@@ -109,6 +109,7 @@ pub fn apply(state: &mut EditorState, rel: &str, settings: &TextureImporter) {
     match settings.save(&state.assets.absolute(rel)) {
         Ok(()) => {
             sprites::invalidate(rel);
+            super::texture_square::forget_import_type(&state.assets.absolute(rel));
             state
                 .console
                 .info(format!("Applied import settings of {rel}"));
@@ -431,7 +432,7 @@ fn preview_texture(
     abs: &std::path::Path,
     filter: FilterMode,
 ) -> Option<egui::TextureHandle> {
-    let modified = std::fs::metadata(abs).and_then(|m| m.modified()).ok();
+    let modified = misty_engine::file_watch::cached_modified(abs);
     let id = egui::Id::new(("misty_texture_preview", rel.to_owned(), filter as u8));
     type Entry = (Option<std::time::SystemTime>, Option<egui::TextureHandle>);
     if let Some((m, t)) = ctx.data(|d| d.get_temp::<Entry>(id))

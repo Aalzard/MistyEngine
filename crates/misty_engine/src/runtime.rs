@@ -74,6 +74,8 @@ pub struct Runtime {
     reloaded: bool,
     /// World Partition cells streaming in and out around the sources.
     streaming: crate::world_partition::Streamer,
+    /// Rain loops and thunder of the scene's weather.
+    weather_audio: crate::weather::audio::Driver,
 }
 
 /// Streamed objects get physics bodies and scripts as they arrive, and lose them as they go.
@@ -129,6 +131,7 @@ impl Runtime {
             settings: settings.clone(),
             reloaded: false,
             streaming: crate::world_partition::Streamer::new(),
+            weather_audio: Default::default(),
         }
     }
 
@@ -221,12 +224,23 @@ impl Runtime {
         // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.
         crate::splines::update(scene);
         self.update_streaming(scene);
+        {
+            // Before the scripts: they see this frame's weather and hear its events.
+            crate::profile_scope!("Weather.Update", Category::Others);
+            let eye = crate::render_scene::game_camera(scene)
+                .map(|(c, _)| c.position)
+                .or_else(|| crate::audio::listener(scene).map(|m| m.w_axis.truncate()))
+                .unwrap_or_default();
+            crate::weather::update_scene(scene, time.delta, eye);
+        }
         self.host.update(scene, time, input);
         {
             crate::profile_scope!("Audio.Update", Category::Audio);
+            let weather_audio = &mut self.weather_audio;
             self.host.with_audio(|a| {
                 a.tick(time.delta);
                 a.update(scene);
+                weather_audio.update(a, &mut scene.weather);
             });
         }
         crate::profile_scope!("ParticleSystem.Update", Category::Others);

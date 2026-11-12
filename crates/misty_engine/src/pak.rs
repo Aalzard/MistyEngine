@@ -194,6 +194,16 @@ impl Pak {
                 size: v[2],
                 codec,
             };
+            // Entries live between the header and the index: a corrupt index (or a hostile
+            // file) would otherwise size an allocation straight from these numbers.
+            if entry.offset < 16
+                || entry
+                    .offset
+                    .checked_add(entry.stored)
+                    .is_none_or(|end| end > at)
+            {
+                return Err(bad("pak entry out of range"));
+            }
             entries.insert(path, entry);
         }
         Ok(Self {
@@ -226,12 +236,22 @@ impl Pak {
             f.seek(SeekFrom::Start(e.offset))?;
             f.read_exact(&mut buf)?;
         }
+        // No codec expands data more than ~1032× (zlib; LZ4 ~255×): a larger size is corrupt.
+        let most = e.stored.saturating_mul(1032).saturating_add(64);
         match e.codec {
             Codec::Stored => Ok(buf),
-            Codec::Lz4 => lz4_flex::decompress_size_prepended(&buf)
-                .map_err(|err| bad(&format!("{path}: {err}"))),
+            Codec::Lz4 => {
+                let prepended = buf
+                    .get(..4)
+                    .map_or(0, |b| u32::from_le_bytes(b.try_into().expect("4 bytes")));
+                if u64::from(prepended) > most || u64::from(prepended) > e.size.max(1) {
+                    return Err(bad(&format!("{path}: corrupt size")));
+                }
+                lz4_flex::decompress_size_prepended(&buf)
+                    .map_err(|err| bad(&format!("{path}: {err}")))
+            }
             Codec::Zlib => {
-                let mut out = Vec::with_capacity(e.size as usize);
+                let mut out = Vec::with_capacity(e.size.min(most) as usize);
                 flate2::read::ZlibDecoder::new(buf.as_slice())
                     .read_to_end(&mut out)
                     .map_err(|err| bad(&format!("{path}: {err}")))?;
@@ -284,6 +304,39 @@ mod tests {
         assert_eq!(p.read("Assets/a.txt").unwrap(), b"misty ".repeat(200));
         assert_eq!(p.entry("Assets/tiny").unwrap().codec, Codec::Stored);
         assert_eq!(p.read("Assets/tiny").unwrap(), b"x");
+    }
+
+    /// The index's `stored` field of the first entry.
+    fn stored_field(bytes: &[u8]) -> usize {
+        let at = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
+        let len = u16::from_le_bytes(bytes[at + 4..at + 6].try_into().unwrap()) as usize;
+        at + 6 + len + 8
+    }
+
+    /// A corrupt index (an entry larger than the file) is refused when opened instead of
+    /// sizing a giant allocation on read (which aborted the process).
+    #[test]
+    fn corrupt_entry_sizes_are_refused() {
+        let mut w = PakWriter::new(Cursor::new(Vec::new()), true).unwrap();
+        w.add("Assets/a.txt", &b"hello ".repeat(100)).unwrap();
+        let good = w.finish().unwrap().into_inner();
+        let at = stored_field(&good);
+        for stored in [u64::MAX, u64::MAX / 2, 1 << 40] {
+            let mut bytes = good.clone();
+            bytes[at..at + 8].copy_from_slice(&stored.to_le_bytes());
+            assert!(Pak::from_reader(Box::new(Cursor::new(bytes))).is_err());
+        }
+        // A size far beyond what the stored bytes can expand to.
+        let mut bytes = good.clone();
+        bytes[at + 8..at + 16].copy_from_slice(&u64::MAX.to_le_bytes());
+        let p = Pak::from_reader(Box::new(Cursor::new(bytes))).unwrap();
+        assert_eq!(p.read("Assets/a.txt").unwrap(), b"hello ".repeat(100));
+        // LZ4 data claiming a 4 GB result.
+        let mut bytes = good;
+        let offset = u64::from_le_bytes(bytes[at - 8..at].try_into().unwrap()) as usize;
+        bytes[offset..offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let p = Pak::from_reader(Box::new(Cursor::new(bytes))).unwrap();
+        assert!(p.read("Assets/a.txt").is_err());
     }
 
     #[test]

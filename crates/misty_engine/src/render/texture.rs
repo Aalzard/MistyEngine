@@ -69,6 +69,12 @@ fn downsample(src: &RgbaImage, srgb: bool) -> RgbaImage {
 
 /// The image followed by its mips down to 1×1.
 pub fn mip_chain(image: RgbaImage, srgb: bool) -> Vec<RgbaImage> {
+    // A 0-pixel side has no mips to halve to (and no texel to sample): one clear texel.
+    let image = if image.width() == 0 || image.height() == 0 {
+        RgbaImage::new(1, 1)
+    } else {
+        image
+    };
     let mut chain = vec![image];
     loop {
         let last = chain.last().expect("non-empty");
@@ -87,6 +93,9 @@ pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
     let img = image::load_from_memory(&bytes)
         .map_err(|e| err(&e))?
         .into_rgba8();
+    if img.width() == 0 || img.height() == 0 {
+        return Err(err(&"the image has no pixels"));
+    }
     Ok(fit(img, MAX_SIZE))
 }
 
@@ -925,6 +934,15 @@ mod tests {
         assert_eq!(sizes[1], (32, 8));
         assert_eq!(*sizes.last().unwrap(), (1, 1));
         assert_eq!(chain.last().unwrap().get_pixel(0, 0).0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn zero_size_images_get_a_one_texel_chain() {
+        for (w, h) in [(0, 0), (0, 8), (8, 0)] {
+            let chain = mip_chain(RgbaImage::new(w, h), true);
+            assert_eq!(chain.len(), 1);
+            assert_eq!(chain[0].dimensions(), (1, 1));
+        }
     }
 
     #[test]

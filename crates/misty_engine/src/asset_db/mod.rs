@@ -14,6 +14,7 @@ mod database;
 mod guid;
 pub mod meta;
 pub mod refs;
+pub mod saver;
 #[cfg(test)]
 mod tests;
 
@@ -54,6 +55,39 @@ pub fn open_built(root: &Path) {
         Some(m) => GuidDatabase::from_map(root, &m),
         None => GuidDatabase::read(root),
     });
+}
+
+/// Write a file so a crash, a full disk or a failed write never leaves it half written: the
+/// bytes go to a hidden temp file next to it (`.<name>.<pid>.<n>.tmp`, skipped by the
+/// asset scan and the Project window), which then replaces the file in one rename. If the
+/// rename is refused (Windows: another program has the file open without sharing delete),
+/// the file is written in place as before. On error the temp file is removed and the old
+/// file is untouched.
+pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let bytes = bytes.as_ref();
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other(format!("{}: not a file path", path.display())))?
+        .to_string_lossy();
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
+    let written = std::fs::File::create(&tmp).and_then(|mut f| {
+        f.write_all(bytes)?;
+        f.sync_all()
+    });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if std::fs::rename(&tmp, path).is_ok() {
+        return Ok(());
+    }
+    let direct = std::fs::write(path, bytes);
+    let _ = std::fs::remove_file(&tmp);
+    direct
 }
 
 pub fn install(db: GuidDatabase) {
@@ -115,10 +149,37 @@ pub fn assets_with_extension(root: &Path, ext: &str) -> Vec<PathBuf> {
     out
 }
 
-/// Scan the current project again (after file operations). `None` when none is open.
-pub fn rescan() -> Option<ScanReport> {
-    let root = with(|db| db.root().to_path_buf())?;
-    Some(open(&root))
+/// Scan the project at `root` again (after file operations), when the open database is that
+/// project's. `None` when none is open or it is another project's: that project is left
+/// alone (scanning it creates its missing meta files, each flushed to the device).
+pub fn rescan(root: &Path) -> Option<ScanReport> {
+    rescan_in(&DB, root)
+}
+
+/// The database in `db` is the project at `root`'s.
+fn open_for(db: &RwLock<Option<GuidDatabase>>, root: &Path) -> bool {
+    let guard = db.read().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().is_some_and(|d| d.root() == root)
+}
+
+/// Make `scanned` current in `db` when that still holds the same project (another one may
+/// have been installed while the scan ran without a lock).
+fn replace_if_same(db: &RwLock<Option<GuidDatabase>>, scanned: GuidDatabase) -> bool {
+    let mut slot = db.write().unwrap_or_else(|e| e.into_inner());
+    let same = slot.as_ref().is_some_and(|d| d.root() == scanned.root());
+    if same {
+        *slot = Some(scanned);
+    }
+    same
+}
+
+/// [`rescan`] on a given database slot. No lock is held while the project is scanned.
+fn rescan_in(db: &RwLock<Option<GuidDatabase>>, root: &Path) -> Option<ScanReport> {
+    if !open_for(db, root) {
+        return None;
+    }
+    let (scanned, report) = GuidDatabase::scan(root);
+    replace_if_same(db, scanned).then_some(report)
 }
 
 /// The file watcher's walk of `Assets/`, running on its own thread: walking a project of a
@@ -128,20 +189,29 @@ static WALK: Mutex<Option<Walk>> = Mutex::new(None);
 /// A walk in progress: the project root it lists and every asset path found.
 type Walk = std::thread::JoinHandle<(PathBuf, BTreeSet<String>)>;
 
-/// File watcher: rescan when files or folders appeared or vanished under `Assets/` since the
-/// last scan (created, copied or moved outside the editor). Returns the scan's report then.
-/// The walk runs on a background thread: a call starts one and a later call (when it is
-/// done) compares its listing with the database, so a change shows up one poll late.
-pub fn poll() -> Option<ScanReport> {
-    poll_in(&DB, &WALK)
+/// File watcher of the project at `root`: rescan when files or folders appeared or vanished
+/// under `Assets/` since the last scan (created, copied or moved outside the editor). Returns
+/// the scan's report then. The walk runs on a background thread: a call starts one and a
+/// later call (when it is done) compares its listing with the database, so a change shows up
+/// one poll late. Nothing happens while the open database is another project's.
+pub fn poll(root: &Path) -> Option<ScanReport> {
+    poll_in(&DB, &WALK, root)
 }
 
 /// [`poll`] on a given database slot and walk (the process-wide ones, or a test's own).
-fn poll_in(db: &RwLock<Option<GuidDatabase>>, walk: &Mutex<Option<Walk>>) -> Option<ScanReport> {
+fn poll_in(
+    db: &RwLock<Option<GuidDatabase>>,
+    walk: &Mutex<Option<Walk>>,
+    root: &Path,
+) -> Option<ScanReport> {
+    if !open_for(db, root) {
+        return None;
+    }
     let mut walk = walk.lock().unwrap_or_else(|e| e.into_inner());
     if walk.as_ref().is_some_and(|w| !w.is_finished()) {
         return None;
     }
+    // Finished: joining returns at once.
     let found = walk.take().and_then(|w| w.join().ok());
     let report = compare(db, found);
     if report.is_none() {
@@ -166,11 +236,12 @@ fn compare(
 ) -> Option<ScanReport> {
     let (root, known) = known(db)?;
     let changed = found.is_some_and(|(r, now)| r == root && now != known);
-    changed.then(|| {
-        let (scanned, report) = GuidDatabase::scan(&root);
-        *db.write().unwrap_or_else(|e| e.into_inner()) = Some(scanned);
-        report
-    })
+    if !changed {
+        return None;
+    }
+    // Scanned without a lock; kept only when the slot still holds this project.
+    let (scanned, report) = GuidDatabase::scan(&root);
+    replace_if_same(db, scanned).then_some(report)
 }
 
 /// Start listing `Assets/` of the project in `db` on a thread (`None` when none is open).

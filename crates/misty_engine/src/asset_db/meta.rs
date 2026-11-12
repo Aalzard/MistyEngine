@@ -81,7 +81,7 @@ pub fn write_guid(asset: &Path, guid: Guid) -> Result<(), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => compose(guid, &Map::new()),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
-    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+    super::write_atomic(&path, text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Write import `settings` for `asset`, keeping the GUID already in its meta file. Without one,
@@ -93,5 +93,5 @@ pub fn write_settings<T: Serialize>(asset: &Path, settings: &T) -> Result<(), St
         Some(g) => with_guid(&text, g).unwrap_or(text),
         None => text,
     };
-    std::fs::write(meta_path(asset), text).map_err(|e| e.to_string())
+    super::write_atomic(&meta_path(asset), text).map_err(|e| e.to_string())
 }

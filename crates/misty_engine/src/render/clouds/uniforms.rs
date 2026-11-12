@@ -54,8 +54,11 @@ pub(super) fn layer(o: &CloudsOverride) -> (f32, f32) {
     (base, base + o.thickness.clamp(50.0, 10_000.0))
 }
 
-/// Unit direction towards the sun (straight up without one).
+/// Unit direction towards the sun (straight up without one); the moon at night.
 fn sun_direction(frame: &Frame) -> Vec3 {
+    if let Some((moon, _)) = crate::render::moon::cloud_light(frame.environment) {
+        return moon;
+    }
     frame
         .environment
         .sun
@@ -117,6 +120,10 @@ pub(super) struct MarchInputs<'a> {
 
 /// Sunlight colour at the clouds: the sky's warm low sun, fading out below the horizon.
 fn sun_light(frame: &Frame) -> (Vec3, bool) {
+    // At night the moon lights them (render/moon.rs).
+    if let Some((_, moon)) = crate::render::moon::cloud_light(frame.environment) {
+        return (moon, true);
+    }
     let Some(sun) = frame.environment.sun else {
         return (Vec3::ZERO, false);
     };

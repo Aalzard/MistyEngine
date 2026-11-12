@@ -69,6 +69,10 @@ pub struct AssetDatabase {
     pub presets: BTreeMap<String, misty_engine::preset::Preset>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
+    /// Prefabs that lost something while being read (an unknown component, a bad value…),
+    /// with why: they are not written back (Prefab Mode, Apply, updates from nested prefabs),
+    /// which would delete those parts from the file.
+    incomplete_prefabs: BTreeMap<String, Vec<String>>,
     /// Project-relative texture paths (`.png`, `.jpg`).
     pub textures: Vec<String>,
     /// Project-relative shader assets (`.shader`).
@@ -108,6 +112,7 @@ impl AssetDatabase {
             subgraphs: BTreeSet::new(),
             presets: BTreeMap::new(),
             prefabs: BTreeMap::new(),
+            incomplete_prefabs: BTreeMap::new(),
             textures: Vec::new(),
             shaders: Vec::new(),
             hdris: Vec::new(),
@@ -125,8 +130,11 @@ impl AssetDatabase {
     /// New models get their materials extracted (once) as `.mat` files next to them.
     /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
-        // Keep the GUID map in step: new assets get meta files, copies get new GUIDs.
-        if let Some(report) = misty_engine::asset_db::rescan() {
+        // The files are read back below: saves still on their way go first.
+        misty_engine::asset_db::saver::flush();
+        // Keep the GUID map in step: new assets get meta files, copies get new GUIDs. Only this
+        // project's map: another project's open database is left alone.
+        if let Some(report) = misty_engine::asset_db::rescan(&self.root) {
             self.imported.extend(report.created.iter().cloned());
             self.note_guids(report);
         }
@@ -331,7 +339,7 @@ impl AssetDatabase {
             return false;
         }
         self.last_guid_poll = Some(now);
-        match misty_engine::asset_db::poll() {
+        match misty_engine::asset_db::poll(&self.root) {
             Some(report) => {
                 self.imported.extend(report.created.iter().cloned());
                 self.note_guids(report);
@@ -382,12 +390,22 @@ impl AssetDatabase {
     /// the file was saved (through their override records).
     pub fn prefab(&mut self, rel: &str) -> Result<Rc<Prefab>, String> {
         let abs = self.absolute(rel);
+        // The background file watch's stamp first: the Scene Tree asks for every prefab row
+        // every frame, and a `stat` each time on the main thread froze the editor for seconds
+        // while the project's disk was busy. A stamp that differs is checked on disk.
+        let cached = misty_engine::file_watch::cached_modified(&abs);
+        let known = |stamp: Option<SystemTime>| {
+            self.prefabs
+                .get(rel)
+                .filter(|(m, _)| *m == stamp && stamp.is_some())
+                .map(|(_, p)| p.clone())
+        };
+        if let Some(p) = known(cached) {
+            return p;
+        }
         let modified = mtime(&abs);
-        if let Some((m, p)) = self.prefabs.get(rel)
-            && *m == modified
-            && modified.is_some()
-        {
-            return p.clone();
+        if let Some(p) = known(modified) {
+            return p;
         }
         // A prefab that (through others) contains itself would load forever.
         let loading = PREFABS_LOADING.with(|l| l.borrow().contains(rel));
@@ -405,7 +423,21 @@ impl AssetDatabase {
         if models::is_model(rel) {
             return crate::model_import::model_prefab(self, rel);
         }
-        let p = Prefab::load(abs)?;
+        let (p, report) = Prefab::load_with_report(abs)?;
+        // Defaults filled in for a missing header lose nothing; anything else does.
+        let lost: Vec<String> = report
+            .warnings
+            .into_iter()
+            .filter(|w| !w.ends_with("added default"))
+            .collect();
+        for w in &lost {
+            self.messages.push(format!("{rel}: {w}"));
+        }
+        if lost.is_empty() {
+            self.incomplete_prefabs.remove(rel);
+        } else {
+            self.incomplete_prefabs.insert(rel.to_owned(), lost);
+        }
         let synced = p.sync_to_records(&mut |path| self.prefab(path).ok().map(|p| (*p).clone()));
         Ok(synced.unwrap_or(p))
     }
@@ -414,6 +446,12 @@ impl AssetDatabase {
     pub fn save_prefab(&mut self, rel: &str, prefab: &Prefab) -> Result<(), String> {
         if models::is_model(rel) {
             return Err(format!("{rel} is a model file (read-only)"));
+        }
+        if let Some(lost) = self.incomplete_prefabs.get(rel) {
+            return Err(format!(
+                "{rel} was not saved: writing it would remove what could not be read ({})",
+                lost.join("; ")
+            ));
         }
         let abs = self.absolute(rel);
         prefab.save(&abs)?;
@@ -481,6 +519,10 @@ impl AssetDatabase {
 
     /// Read a material's file again (it changed on disk). Returns whether its values changed.
     pub fn reload_material(&mut self, rel: &str) -> Result<bool, String> {
+        // The editor's own save of it is still on its way: what it holds is newer than the file.
+        if misty_engine::asset_db::saver::pending(&self.absolute(rel)) {
+            return Ok(false);
+        }
         let m = Material::load(&self.absolute(rel))?;
         if self.materials.get(rel) == Some(&m) {
             return Ok(false);
@@ -489,9 +531,11 @@ impl AssetDatabase {
         Ok(true)
     }
 
-    /// Store an edited material and write it to disk.
+    /// Store an edited material and write it to disk: on the background writer in the editor
+    /// (the Inspector calls this on every frame of a slider drag, and a save flushes to the
+    /// device), at once elsewhere.
     pub fn update_material(&mut self, rel: &str, m: Material) -> Result<(), String> {
-        m.save(&self.absolute(rel))?;
+        m.save_later(&self.absolute(rel))?;
         self.materials.insert(rel.to_owned(), m);
         Ok(())
     }

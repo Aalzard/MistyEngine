@@ -574,8 +574,23 @@ fn shader_graph_demo_renders() {
     for m in assets.materials.values_mut() {
         if m.is_custom() {
             let abs = root.join(&m.shader).to_string_lossy().replace('\\', "/");
+            // A failed load is cached too (a read while another test touched the file):
+            // start fresh, like shader_graph_examples_render.
+            misty_engine::shader_asset::reload(&abs);
             misty_engine::shader_asset::load(&abs).unwrap_or_else(|e| panic!("{abs}: {e}"));
             m.shader = abs;
+        }
+        // Textures by absolute path too: the renderer reads them after the root may have moved.
+        for map in [
+            &mut m.albedo_map,
+            &mut m.normal_map,
+            &mut m.metallic_map,
+            &mut m.occlusion_map,
+            &mut m.emission_map,
+        ] {
+            if let Some(p) = map.as_mut() {
+                *p = root.join(&*p).to_string_lossy().replace('\\', "/");
+            }
         }
     }
     let view = misty_engine::render_scene::GameView::new(&scene, &assets).unwrap();
