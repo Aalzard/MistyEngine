@@ -490,6 +490,11 @@ impl WeatherWorld {
         std::mem::take(&mut self.audio_events)
     }
 
+    #[cfg(test)]
+    pub(crate) fn push_audio_event_for_test(&mut self, e: WeatherEvent) {
+        self.audio_events.push(e);
+    }
+
     /// The state of a volume (Inspector status line, tests).
     pub fn volume(&self, e: Entity) -> Option<&VolumeState> {
         self.volumes.get(&e)

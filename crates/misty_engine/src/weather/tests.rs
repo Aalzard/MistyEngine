@@ -737,6 +737,70 @@ fn weather_sounds_crossfade_ease_and_stop() {
     assert_eq!(d.levels().0, [0.0; 3]);
 }
 
+/// A Weather Volume's own clips are project files: an absolute path or a network share in
+/// the scene (or a downloaded bundle) is refused and logged, not opened. The bundled and
+/// generated clips, which the engine writes outside the project, still play.
+#[test]
+fn weather_clips_outside_the_project_are_refused() {
+    let root = std::env::temp_dir().join(format!("misty_weather_clip_root_{}", std::process::id()));
+    let outside =
+        std::env::temp_dir().join(format!("misty_weather_outside_{}.wav", std::process::id()));
+    std::fs::create_dir_all(root.join("Assets")).unwrap();
+    let wav = crate::audio::wav::pcm16_stereo(&vec![(0.0, 0.0); 3200], audio::RATE);
+    std::fs::write(&outside, &wav).unwrap();
+    std::fs::write(root.join("Assets/Rain.wav"), &wav).unwrap();
+    for (clip, allowed) in [
+        (outside.to_string_lossy().into_owned(), false),
+        (r"\\server\share\rain.wav".to_owned(), false),
+        ("../outside.wav".to_owned(), false),
+        ("Assets/Rain.wav".to_owned(), true),
+    ] {
+        let (mut a, log) = crate::audio::Audio::null(root.clone());
+        let mut d = audio::Driver::default();
+        let mut w = WeatherWorld::default();
+        w.live = true;
+        w.current = WeatherPreset::Rain.params();
+        w.audio.rain_clip = clip.clone();
+        for _ in 0..5 {
+            d.update(&mut a, &mut w, 0.1, 0.0);
+        }
+        let played = log.lock().unwrap().played.clone();
+        let own = played
+            .iter()
+            .any(|p| p.ends_with("Rain.wav") || p.ends_with("rain.wav"));
+        let outside_played = played.iter().any(|p| p == &outside);
+        assert_eq!(own && !outside_played, allowed, "{clip}: {played:?}");
+        if !allowed {
+            assert!(!outside_played && !own, "{clip}: {played:?}");
+            assert!(
+                a.take_logs().iter().any(|l| l.contains(&clip)),
+                "{clip}: the refusal is logged"
+            );
+        }
+    }
+    // Thunder Clips too; the generated thunder still plays without them.
+    let (mut a, log) = crate::audio::Audio::null(root.clone());
+    let mut d = audio::Driver::default();
+    let mut w = WeatherWorld::default();
+    w.live = true;
+    w.audio.thunder_clips = vec![outside.to_string_lossy().into_owned()];
+    w.push_audio_event_for_test(WeatherEvent::Thunder {
+        distance: 100.0,
+        volume: 1.0,
+    });
+    d.update(&mut a, &mut w, 0.1, 0.0);
+    assert!(log.lock().unwrap().played.is_empty());
+    w.audio.thunder_clips.clear();
+    w.push_audio_event_for_test(WeatherEvent::Thunder {
+        distance: 100.0,
+        volume: 1.0,
+    });
+    d.update(&mut a, &mut w, 0.1, 0.0);
+    assert_eq!(log.lock().unwrap().played.len(), 1, "generated thunder");
+    std::fs::remove_file(outside).ok();
+    std::fs::remove_dir_all(root).ok();
+}
+
 #[test]
 fn bundled_rain_loops_decode_seamlessly() {
     use crate::audio::stream::{Pull, StreamInput, StreamReader};

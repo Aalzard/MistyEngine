@@ -452,10 +452,35 @@ impl Audio {
 
     /// A 2D voice outside any Audio Source (ambience: weather loops, thunder) through the
     /// mixer group `output` ("Assets/Audio/Main.mixer#SFX"; empty = straight to the output).
-    /// `clip` is project-relative or absolute.
+    /// `clip` is a file of the project, like every clip scene data names: absolute paths, `..`
+    /// and network shares are refused (a scene or bundle from elsewhere can't make the game
+    /// read any file of the machine or reach out to a share).
     pub fn play_ambient(
         &mut self,
         clip: &str,
+        output: &str,
+        volume: f32,
+        looping: bool,
+    ) -> Option<VoiceId> {
+        self.ambient(clip, false, output, volume, looping)
+    }
+
+    /// [`Audio::play_ambient`] for a file the engine wrote itself (the generated weather
+    /// clips in `Library/Weather` or the temp folder): any absolute path.
+    pub(crate) fn play_ambient_file(
+        &mut self,
+        path: &std::path::Path,
+        output: &str,
+        volume: f32,
+        looping: bool,
+    ) -> Option<VoiceId> {
+        self.ambient(&path.to_string_lossy(), true, output, volume, looping)
+    }
+
+    fn ambient(
+        &mut self,
+        clip: &str,
+        absolute_ok: bool,
         output: &str,
         volume: f32,
         looping: bool,
@@ -472,7 +497,7 @@ impl Audio {
             looping,
             ..Default::default()
         };
-        let id = self.start_voice_at(clip, true, params, track)?;
+        let id = self.start_voice_at(clip, absolute_ok, params, track)?;
         self.clips.push(id);
         Some(id)
     }
