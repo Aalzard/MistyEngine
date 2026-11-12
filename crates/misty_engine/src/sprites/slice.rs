@@ -40,11 +40,15 @@ pub fn grid(
 ) -> Vec<SpriteRect> {
     let [cw, ch] = s.cell.map(|c| c.max(1));
     let mut out = Vec::new();
+    // Sums in u64: absurd offsets or padding from a settings file wrapped around in u32 and
+    // looped forever.
+    let fits = |at: u32, size: u32, room: u32| u64::from(at) + u64::from(size) <= u64::from(room);
+    let step = |at: u32, size: u32, pad: u32| at.checked_add(size)?.checked_add(pad);
     let mut top = s.offset[1];
     // Rows from the top of the image; rects count y from the bottom.
-    while top + ch <= height {
+    while fits(top, ch, height) {
         let mut left = s.offset[0];
-        while left + cw <= width {
+        while fits(left, cw, width) {
             let empty = s.skip_empty && image.is_some_and(|img| is_empty(img, left, top, cw, ch));
             if !empty {
                 out.push(SpriteRect {
@@ -59,9 +63,15 @@ pub fn grid(
                     border: [0.0; 4],
                 });
             }
-            left += cw + s.padding[0];
+            let Some(next) = step(left, cw, s.padding[0]) else {
+                break;
+            };
+            left = next;
         }
-        top += ch + s.padding[1];
+        let Some(next) = step(top, ch, s.padding[1]) else {
+            break;
+        };
+        top = next;
     }
     out
 }
@@ -75,6 +85,27 @@ fn is_empty(img: &RgbaImage, x: u32, y: u32, w: u32, h: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absurd_padding_and_offsets_end() {
+        for (offset, padding) in [
+            ([0, 0], [u32::MAX - 15, u32::MAX - 15]),
+            ([0, 0], [u32::MAX, u32::MAX]),
+            ([u32::MAX - 4, u32::MAX - 4], [0, 0]),
+        ] {
+            let s = GridSlice {
+                cell: [16, 16],
+                offset,
+                padding,
+                skip_empty: false,
+                ..Default::default()
+            };
+            assert!(
+                grid(48, 32, &s, "T", None).len() <= 1,
+                "{offset:?} {padding:?}"
+            );
+        }
+    }
 
     #[test]
     fn grid_cells_count_from_the_top_left() {
