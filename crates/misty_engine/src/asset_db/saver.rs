@@ -112,6 +112,46 @@ impl Saver {
         s.flushing -= 1;
     }
 
+    /// A save of `path` is about to be written directly (a Save, a new asset over it): drop the
+    /// bytes still waiting for it and wait for a write of it already under way, so the direct
+    /// write lands last. (Before, the older waiting bytes were written after it and the newer
+    /// file was lost.)
+    pub fn supersede(&self, path: &Path) {
+        let mut s = self.shared.lock();
+        s.pending.remove(path);
+        while !s.stop && s.writing.as_deref() == Some(path) {
+            s = self
+                .shared
+                .changed
+                .wait(s)
+                .unwrap_or_else(|e| e.into_inner());
+        }
+        self.shared.changed.notify_all();
+    }
+
+    /// [`Saver::flush`] that gives up after `limit` (a crash: don't hang the way out on a
+    /// stuck disk). Returns whether everything was written.
+    pub fn flush_within(&self, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        let mut s = self.shared.lock();
+        s.flushing += 1;
+        self.shared.changed.notify_all();
+        while !s.stop && (!s.pending.is_empty() || s.writing.is_some()) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            s = self
+                .shared
+                .changed
+                .wait_timeout(s, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        s.flushing -= 1;
+        s.pending.is_empty() && s.writing.is_none()
+    }
+
     /// Files written so far.
     pub fn writes(&self) -> u64 {
         self.shared.lock().writes
@@ -211,6 +251,19 @@ pub fn pending(path: &Path) -> bool {
     BACKGROUND.load(Ordering::Relaxed) && SAVER.pending(path)
 }
 
+/// `path` is being written directly now: see [`Saver::supersede`].
+pub fn supersede(path: &Path) {
+    if BACKGROUND.load(Ordering::Relaxed) {
+        SAVER.supersede(path);
+    }
+}
+
+/// Wait at most `limit` for the saves handed over so far (the editor's panic hook: edits of
+/// the last half second still reach the disk when the editor crashes).
+pub fn flush_within(limit: Duration) -> bool {
+    !BACKGROUND.load(Ordering::Relaxed) || SAVER.flush_within(limit)
+}
+
 /// Wait for every save handed over so far (cheap when nothing waits).
 pub fn flush() {
     if BACKGROUND.load(Ordering::Relaxed) {
@@ -294,6 +347,30 @@ mod tests {
             handing_over < Duration::from_millis(250),
             "{handing_over:?}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A direct save after background saves of the same file wins: the bytes still waiting
+    /// are dropped instead of being written over it afterwards.
+    #[test]
+    fn a_direct_save_is_not_overwritten_by_older_waiting_bytes() {
+        let dir = temp_dir("supersede");
+        let path = dir.join("Mat.mat");
+        let saver = Saver::new(Duration::from_millis(300));
+        saver.save(&path, b"drag 1".to_vec()).unwrap();
+        saver.flush();
+        // The next drag frame waits out the interval...
+        saver.save(&path, b"drag 2".to_vec()).unwrap();
+        assert!(saver.pending(&path));
+        // ...when the file is saved directly (Save, a script, a tool).
+        saver.supersede(&path);
+        super::super::write_atomic(&path, b"direct").unwrap();
+        assert!(!saver.pending(&path));
+        std::thread::sleep(Duration::from_millis(500));
+        saver.flush();
+        assert_eq!(std::fs::read(&path).unwrap(), b"direct");
+        // A bounded flush returns at once with nothing waiting.
+        assert!(saver.flush_within(Duration::from_millis(10)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
