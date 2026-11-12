@@ -57,15 +57,16 @@ pub fn fades() -> bool {
 }
 
 /// Share (0..1) of the way from one level to the next at distance `d` for a switch at `edge`
-/// with a cross-fade band of `width` × `edge` centred on it (0 before the band, 1 past it; a
-/// step at `edge` when `width` is 0). Terrain trees: trees.rs and `fade_at` in
-/// trees_cull.wgsl.
+/// with a cross-fade band of `width` × `edge` just beyond it (0 up to `edge`, 1 from
+/// `edge × (1 + width)`; a step at `edge` when `width` is 0): the finer level stays whole up to
+/// the set distance, as Tree Rendering's settings say, and fades out past it. Terrain trees:
+/// trees.rs and `fade_at` in trees_cull.wgsl.
 pub fn distance_fade(d: f32, edge: f32, width: f32) -> f32 {
-    let half = width.max(0.0) * 0.5 * edge;
-    if half <= 0.0 {
+    let band = width.max(0.0) * edge;
+    if band <= 0.0 {
         return if d >= edge { 1.0 } else { 0.0 };
     }
-    ((d - (edge - half)) / (2.0 * half)).clamp(0.0, 1.0)
+    ((d - edge) / band).clamp(0.0, 1.0)
 }
 
 /// A draw's place in its LOD Group (set by the scene gather, chosen per camera by the renderer).
@@ -437,13 +438,41 @@ mod tests {
     }
 
     #[test]
-    fn distance_fades_are_centred_on_the_switch() {
+    fn distance_fades_start_at_the_switch() {
+        // The finer level stays whole up to the set distance.
         assert_eq!(distance_fade(40.0, 50.0, 0.1), 0.0);
-        assert_eq!(distance_fade(50.0, 50.0, 0.1), 0.5);
-        assert_eq!(distance_fade(52.5, 50.0, 0.1), 1.0);
-        assert!((distance_fade(48.75, 50.0, 0.1) - 0.25).abs() < 1e-6);
+        assert_eq!(distance_fade(50.0, 50.0, 0.1), 0.0);
+        assert!((distance_fade(52.5, 50.0, 0.1) - 0.5).abs() < 1e-6);
+        assert_eq!(distance_fade(55.0, 50.0, 0.1), 1.0);
         // No band: a step at the switch.
         assert_eq!(distance_fade(49.9, 50.0, 0.0), 0.0);
         assert_eq!(distance_fade(50.0, 50.0, 0.0), 1.0);
+        // A tree walks through full mesh, lighter mesh and impostor, two levels at most at
+        // once, with complementary fades, and is gone at the draw distance.
+        let (lod, bb, draw, w) = (30.0, 80.0, 400.0, 0.1);
+        let mut d = 1.0;
+        while d < 420.0 {
+            let c = super::super::trees::levels_at(d, lod, bb, draw, w);
+            let ((a, f), (b, g)) = (c[0], c[1]);
+            if a == usize::MAX {
+                assert!(d >= draw, "{d}: {c:?}");
+            } else if b == usize::MAX {
+                // One level: whole, or the impostor fading out before the draw distance.
+                assert!(
+                    a <= 2 && (f == 0.0 || (a == 2 && f > 0.0 && f < 1.0)),
+                    "{d}: {c:?}"
+                );
+            } else {
+                assert_eq!(b, a + 1, "{d}");
+                assert!(
+                    f > 0.0 && g < 0.0 && (f - 1.0 - g).abs() < 1e-5,
+                    "{d}: {f} {g}"
+                );
+            }
+            if d < lod {
+                assert_eq!(c[0], (0, 0.0), "{d}");
+            }
+            d += 0.25;
+        }
     }
 }
