@@ -71,7 +71,10 @@ pub struct TreeSettings {
     /// Cross-fade band at each switch (lighter mesh, impostor, draw distance) as a share of its
     /// distance, centred on it (0 = switch at once). Terrains saved before it existed get the
     /// default; it is written only when changed.
-    #[serde(default = "default_lod_fade", skip_serializing_if = "is_default_lod_fade")]
+    #[serde(
+        default = "default_lod_fade",
+        skip_serializing_if = "is_default_lod_fade"
+    )]
     pub lod_fade: f32,
     pub cast_shadows: bool,
     /// 0.1..1: detail of the trees in the sun's shadow cascades (1 = each cascade's level of

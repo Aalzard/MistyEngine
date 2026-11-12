@@ -15,7 +15,7 @@
         },
         "LOD Group": {
           "enabled": true,
-          "fade_mode": "None",
+          "fade_mode": "CrossFade",
           "fade_width": 0.1,
           "lods": [
             {

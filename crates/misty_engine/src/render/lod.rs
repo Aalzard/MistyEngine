@@ -390,7 +390,9 @@ mod tests {
     #[test]
     fn shader_dither_matches_the_tested_one() {
         let src = include_str!("shaders/common.wgsl");
-        let start = src.find("fn lod_dither").expect("lod_dither in common.wgsl");
+        let start = src
+            .find("fn lod_dither")
+            .expect("lod_dither in common.wgsl");
         let body = &src[start..];
         let open = body.find("array<f32, 16>(").expect("matrix") + "array<f32, 16>(".len();
         let close = open + body[open..].find(')').unwrap();

@@ -153,8 +153,8 @@ mod tests {
         assert_eq!(old.fade(), 0.0);
         assert_eq!(old.lods.len(), 2);
         // Saved later with the mode written out: loads as written.
-        let none: LodGroup = serde_json::from_str(r#"{"fade_mode":"None","fade_width":0.3}"#)
-            .unwrap();
+        let none: LodGroup =
+            serde_json::from_str(r#"{"fade_mode":"None","fade_width":0.3}"#).unwrap();
         assert_eq!((none.fade_mode, none.fade()), (LodFadeMode::None, 0.0));
     }
 
@@ -164,8 +164,7 @@ mod tests {
         let root = scene.spawn("Rock", None);
         let lod0 = scene.spawn("LOD0", Some(root));
         let lod1 = scene.spawn("LOD1", Some(root));
-        for (fade_mode, fade_width) in [(LodFadeMode::CrossFade, 0.25), (LodFadeMode::None, 0.05)]
-        {
+        for (fade_mode, fade_width) in [(LodFadeMode::CrossFade, 0.25), (LodFadeMode::None, 0.05)] {
             let g = LodGroup {
                 fade_mode,
                 fade_width,

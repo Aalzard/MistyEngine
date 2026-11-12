@@ -648,7 +648,11 @@ fn lod_fade_dolly() {
             .enumerate()
             .max_by_key(|(_, n)| *n)
             .unwrap_or((0, 0));
-        let scene = if meadow { "meadow behind" } else { name.as_str() };
+        let scene = if meadow {
+            "meadow behind"
+        } else {
+            name.as_str()
+        };
         eprintln!(
             "== dolly {scene} {level} {w}x{h}, fades {}: pop pixels total {total}, worst frame {} \
              ({worst}), mean {:.0} per frame",

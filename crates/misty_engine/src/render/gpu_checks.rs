@@ -424,10 +424,7 @@ fn lod_cross_fade_dolly_changes_gradually_and_covers_the_object() {
         color: c,
         ..Default::default()
     };
-    let (red, blue) = (
-        colored([0.9, 0.1, 0.1, 1.0]),
-        colored([0.1, 0.1, 0.9, 1.0]),
-    );
+    let (red, blue) = (colored([0.9, 0.1, 0.1, 1.0]), colored([0.1, 0.1, 0.9, 1.0]));
     let model = Mat4::from_translation(Vec3::Y);
     let level = |m: &MaterialParams, min, max, fade| MeshDraw {
         lod: Some(LodRange {
@@ -459,7 +456,16 @@ fn lod_cross_fade_dolly_changes_gradually_and_covers_the_object() {
                 let h = 0.7 - 0.3 * i as f32 / 60.0;
                 let cam = camera(Vec3::new(0.0, 1.0, -dist(h)), 0.0);
                 let empty = render(&device, &queue, &mut renderer, &cam, &[], &lights, 1).0;
-                let both = render(&device, &queue, &mut renderer, &cam, &group(fade), &lights, 1).0;
+                let both = render(
+                    &device,
+                    &queue,
+                    &mut renderer,
+                    &cam,
+                    &group(fade),
+                    &lights,
+                    1,
+                )
+                .0;
                 let alone = render(
                     &device,
                     &queue,
