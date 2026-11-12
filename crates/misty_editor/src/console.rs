@@ -17,6 +17,9 @@ pub const DEFAULT_CAPACITY: usize = 10_000;
 pub const CAPACITIES: [usize; 5] = [1_000, 5_000, 10_000, 50_000, 100_000];
 const MIN_CAPACITY: usize = 100;
 const MAX_CAPACITY: usize = 1_000_000;
+/// Longest line kept (bytes): a script logging a huge string every frame filled memory (10 000
+/// lines of a megabyte each) and froze the panel laying the text out. Longer lines are cut.
+pub const MAX_MESSAGE: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LogLevel {
@@ -152,9 +155,20 @@ impl Console {
         }
         self.counts[level.slot()] += 1;
         let index = self.next_index();
+        let mut message = message.into();
+        if message.len() > MAX_MESSAGE {
+            let mut cut = MAX_MESSAGE;
+            while !message.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            let more = message.len() - cut;
+            message.truncate(cut);
+            message.push_str(&format!(" … ({more} more bytes)"));
+            message.shrink_to_fit();
+        }
         self.entries.push_back(LogEntry {
             level,
-            message: message.into(),
+            message,
             time: clock_time(),
         });
         self.row_added(index);
