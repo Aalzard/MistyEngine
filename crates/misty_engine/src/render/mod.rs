@@ -1009,6 +1009,8 @@ impl Renderer {
         post.ssgi.intensity = post.ssgi.intensity.max(1.0);
         post.ssr.enabled = true;
         post.ssr.intensity = post.ssr.intensity.max(1.0);
+        post.misty_gi.enabled = true;
+        post.misty_gi.intensity = post.misty_gi.intensity.max(1.0);
         let frame = Frame {
             camera: &camera,
             grid: None,

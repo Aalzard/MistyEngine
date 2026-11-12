@@ -4148,3 +4148,57 @@ the texture's GUID and gets a `.meta`.
   the flipped blurred screen); puddle reflections are softened, not fixed (the hard edges
   come from the screen-space reflection / probes); tree crowns block rain as solid
   ellipsoids (no drip, no thinning); no Inspector values for the bead shape or blur.
+
+## Round 44 — First open of a project and shader compiles off the main thread (branch r44-first-open)
+
+The editor went "Not Responding" for seconds when a project opened for the first time: every
+base pipeline compiled before the first frame, then the scene's first render compiled its
+material variants and decoded its textures in one frame. Now the window draws from about
+1.2 s after start and loading happens behind it.
+
+- **Renderer made on a worker** (`viewport::GpuStart`): `Renderer::with_queue`, the quality
+  level and one throwaway warm-up frame (`Renderer::warm_up`: a cube on a plane, a shadowed
+  sun, AO, contact shadows, SSGI, SSR and Misty GI on, so their passes and compute pipelines
+  are made) run on `misty background renderer`, which also waits there for the tree, grass,
+  cloud and volumetrics pipelines started at renderer creation. Meanwhile the editor draws
+  its panels and the Scene view says "Compiling shaders…". The heavy terrain and grass
+  pipelines compile in parallel (`pipelines::build_parallel`, used by every renderer, tests
+  included: same pipelines).
+- **Background queues** (`misty_engine::load_queue`): first-in first-out queues with their
+  own below-normal-priority workers, `shaders()` and `imports()`; progress per batch,
+  `cancel()` (the editor cancels both when a project closes: queued jobs are dropped, running
+  ones' results are not published), failed or panicking jobs count as done and report an
+  error (the Console shows "Could not import …").
+- **Background loads in the renderer** (`Renderer::set_background_loads`, on only around the
+  editor's Scene and Game view renders): new mesh and shadow variants and `.shader`
+  (shader graph) pipelines compile on the shader queue; an Opaque surface draws with the plain
+  Standard variant meanwhile, others are left out; texture decodes, mip chains and uploads run
+  on the import queue with the 1×1 defaults bound until they arrive (the bind groups are then
+  rebuilt); trees and the grass visibility path skip frames instead of waiting for their
+  pipelines. The variants most scenes use (plain, double-sided, cutout and their shadow
+  casters) are queued as soon as the renderer is ready. Thumbnails, material previews, probe
+  bakes, tests, golden shots and the player render with background loads off: complete
+  frames, unchanged images.
+- **Status bar**: "Starting the renderer: compiling shaders (N done)", "Compiling shaders
+  14/40", "Importing 12/30" with a spinner (Turkish and Arabic too). The old "Preparing
+  shaders… (n compiled)" toast is gone. Screenshot runs (`MISTY_SCREENSHOT`) wait for the
+  background loads before the shot.
+- **Asset scan**: `GuidDatabase::scan` reads and writes the meta files on several threads
+  (the GUID decisions stay in the same order): `Editor.AssetDb` 270-300 ms → 85-100 ms on
+  SampleProject.
+- **Pipeline cache**: already kept across runs in `Library/ShaderCache` (Vulkan, round 35);
+  it now fills from the worker threads too.
+- **Profiler scopes**: `Renderer.WarmUp`, `Renderer.WaitPrebuilt`, `Import.Model: …`,
+  `Import.Texture: …`, `Texture.Importer`, `Render.Prep.*` (shadow mask, screen space,
+  volumetrics, glows, weather, clouds, post-processing, draw upload), `Editor.TestRunner`,
+  `Editor.SyncCursor`, `Editor.EditPreviews`, `Editor.PollDisk`, `Editor.RefreshAssets`.
+- **Tests**: `load_queue` (order, batch progress, cancel drops queued jobs and voids running
+  ones, failing and panicking jobs report errors without hanging, parallel workers);
+  `render::background_load_gpu_tests` (queued variants swap in and the image then matches a
+  render without background loads; a texture decoded in the background arrives and a broken
+  one reports its error); `first_open_tests` (`cargo test --release -p misty_editor
+  first_open -- --ignored --nocapture`: the built editor opens a fresh SampleProject copy
+  with no `Library/` and reports the first frame and the longest frame; plus its parser).
+- **Measured** (fresh SampleProject copy, `Library/` removed, freshly named exe so the
+  driver's cache is cold, `MISTY_WINDOW_SIZE=1100x650`, RTX 4060 Vulkan, other agents
+  building): see the table in `docs/pending/r44-first-open.md`.

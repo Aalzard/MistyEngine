@@ -610,15 +610,21 @@ impl TextureCache {
                 Some(up) => Ok(up),
                 None => sprites::compress::texture_upload(&rel, usage, bc),
             };
+            // (The upload holds wgpu's queue writes, which the frame needs too: at normal
+            // priority.)
             let result = decoded.map(|up| match up {
                 sprites::compress::Upload::Compressed(c) => {
-                    upload_compressed(&device, &queue, &rel, &c)
+                    crate::background::at_normal_priority(|| {
+                        upload_compressed(&device, &queue, &rel, &c)
+                    })
                 }
                 sprites::compress::Upload::Rgba(img) => {
                     let imp = sprites::importer(&rel);
                     let srgb = kind == TextureKind::Color && imp.is_srgb();
                     let levels = Levels::new(img, srgb, imp.generate_mip_maps);
-                    upload_levels(&device, &queue, &rel, &levels)
+                    crate::background::at_normal_priority(|| {
+                        upload_levels(&device, &queue, &rel, &levels)
+                    })
                 }
             });
             // (A failure reaches the Console from `take_loaded`, as a load in place would.)
