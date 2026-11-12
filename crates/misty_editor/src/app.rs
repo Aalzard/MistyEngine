@@ -896,9 +896,16 @@ impl eframe::App for EditorApp {
         self.save_layout(true);
         crate::editor_scripts::on_exit(&mut self.state);
         self.save_hub_thumbnail();
-        // Screenshot runs leave the saved view alone so they stay repeatable.
+        // Screenshot runs leave the saved view alone so they stay repeatable, and print the
+        // Console's warnings and errors (automated smoke tests read them from stderr).
         if self.capture.is_none() {
             scene_files::remember_scene_view(&self.state);
+        } else {
+            for (_, e) in self.state.console.since(0) {
+                if e.level != crate::console::LogLevel::Info {
+                    eprintln!("console {:?}: {}", e.level, e.message);
+                }
+            }
         }
         if let Err(e) = misty_engine::profiler::capture::finish() {
             eprintln!("profiler capture: {e}");
