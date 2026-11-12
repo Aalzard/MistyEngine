@@ -494,6 +494,26 @@ mod tests {
     }
 
     #[test]
+    fn save_with_an_additive_scene_writes_only_the_active_one() {
+        let mut s = Scene::default_3d("Main");
+        let main_json = s.scene_to_json(0);
+        s.load_additive("Assets/Level.scene", &level()).unwrap();
+        let dir = std::env::temp_dir().join(format!("misty_save_active_{}", std::process::id()));
+        let path = dir.join("Main.scene");
+        s.save(&path).unwrap();
+        let (back, _) = Scene::load(&path).unwrap();
+        assert!(
+            back.find_by_name("Crate").is_none(),
+            "Level's objects stay out"
+        );
+        assert_eq!(
+            back.to_json(),
+            Scene::from_json("Main", &main_json).unwrap().0.to_json()
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn moving_objects_between_scenes_retags_children() {
         let mut s = Scene::default_3d("Main");
         let (id, roots, _) = s.load_additive("Assets/Level.scene", &level()).unwrap();
