@@ -42,6 +42,17 @@ Forked from `r26-noon-meadow` at 80e185bb.
 | r23 | 13.3 / 3.3 ms | 11.6 / 2.8 ms | impostor depth pass, grass 360 × 5.8 cm, LOD 4, draw 130; hero: grass visibility 2.36, shading 1.96, trees 0.71, prepass 1.30, sun shafts 0.96 |
 | r21 | 18.0 / 2.0 ms | 12.0 / 1.8 ms | as r20 + carpets and cliffs |
 
+**Main merged (ae9dae1e, main 0c1daa84) and checks:** one conflict (`docs/progress.md`, both
+sides kept). Fixes after the merge: `sample_weather.rs` grass sets `depth_shading: 0.0` (field
+from this branch; left out of files at 0); `ar.toml` [terrain] "Occlusion" = main's
+"الإطباق" (the i18n test wants one translation per word); the vgeo test
+`auto_picks_one_phase_and_lit_for_a_few_rocks` waits for the GPU after each of its last 8
+frames (the counters' readback arrived exactly on or after the last frame, so it failed or
+passed by CPU/GPU speed; it passes on main by luck of timing). Results: fmt pass, clippy 0
+warnings, workspace tests: one failure each in the editor (917 passed) and engine (1521 passed) before the fixes, every other crate passing (both pass
+after: vgeo 3 runs of 5/5, i18n 15/15, every `sample_` test 150/150), golden shots pass with
+the impostor depth pass.
+
 **Still differs (r23 against the references):**
 - Cliffs: ours are thin, broken grey bands with reddish bare spots; the reference shows a few
   broad tan-grey slabs with texture. Next: wider sites cores with one continuous face per

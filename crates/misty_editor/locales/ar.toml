@@ -1031,7 +1031,7 @@
 "0 for ground and rock; 1 only for bare metal" = "0 للأرض والصخر؛ 1 للمعدن العاري فقط"
 "Smoothness" = "النعومة"
 "Rough (0) to glossy (1): wet rock, ice" = "من خشن (0) إلى لامع (1): صخر مبلل، جليد"
-"Occlusion" = "الحجب"
+"Occlusion" = "الإطباق"
 "Sky light reaching this layer: 1 on open ground, lower under a canopy" = "ضوء السماء الواصل إلى هذه الطبقة: 1 في الأرض المكشوفة، وأقل تحت ظلة الأشجار"
 "Raise or Lower Terrain" = "رفع التضاريس أو خفضها"
 "Set Height" = "تعيين الارتفاع"

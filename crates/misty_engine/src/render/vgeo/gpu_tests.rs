@@ -345,7 +345,12 @@ fn auto_picks_one_phase_and_lit_for_a_few_rocks() {
     fine.set_quality(&device, &quality(true, 0.1));
     let target_s = fine.create_target(&device, 160, 120);
     let near = camera(Vec3::new(0.0, 1.0, -1.2), Vec3::new(0.0, 0.5, 0.0));
-    render(&device, &queue, &mut fine, &target_s, &near, &few, 8);
+    // (Frame by frame, waiting for the GPU: the counters' readback then arrives a frame
+    // later whatever the CPU and GPU speeds, not after the last frame submitted.)
+    for _ in 0..8 {
+        render(&device, &queue, &mut fine, &target_s, &near, &few, 1);
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+    }
     let f = device.features();
     let can_vis = f.contains(wgpu::Features::PRIMITIVE_INDEX)
         && f.contains(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT);
