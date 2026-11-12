@@ -21,6 +21,15 @@ pub mod root_motion;
 /// time of 1e30 would otherwise mean an endless resample loop.
 pub const MAX_IMPORT_LENGTH: f32 = 3600.0;
 
+/// A clip length read from a file, within 0..=[`MAX_IMPORT_LENGTH`] (NaN = 0).
+pub fn import_length(length: f32) -> f32 {
+    if length.is_nan() {
+        0.0
+    } else {
+        length.clamp(0.0, MAX_IMPORT_LENGTH)
+    }
+}
+
 pub use animator::AnimatorPlayer;
 pub use clip::{AnimationClip, AnimationEvent, Curve, Property, is_clip};
 pub use controller::{AnimatorController, is_controller};

@@ -453,10 +453,7 @@ pub fn humanoid_clip(clip: &AnimationClip, avatar: &Avatar, rate: f32) -> Animat
             .cloned()
             .collect(),
     };
-    let length = clip
-        .length
-        .max(0.0)
-        .min(crate::animation::MAX_IMPORT_LENGTH);
+    let length = crate::animation::import_length(clip.length);
     let steps = ((length * rate.clamp(1.0, 1000.0)).ceil() as usize).max(1);
     let mut previous: HashMap<HumanBone, Quat> = HashMap::new();
     for i in 0..=steps {

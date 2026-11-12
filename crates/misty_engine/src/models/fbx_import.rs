@@ -512,9 +512,7 @@ fn animations(
         } else {
             (bake.key_time_min, bake.key_time_max)
         };
-        let length = ((end - begin) as f32)
-            .max(0.0)
-            .min(crate::animation::MAX_IMPORT_LENGTH);
+        let length = crate::animation::import_length((end - begin) as f32);
         let mut clip = AnimationClip {
             length,
             looping: true,
