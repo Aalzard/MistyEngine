@@ -483,3 +483,15 @@ fn http_downloads_are_hash_checked() {
     assert!(err.contains("hash mismatch"), "{err}");
     assert!(fetch::fetch("ftp://nope").is_err());
 }
+
+#[test]
+fn cache_paths_stay_in_the_cache_folder() {
+    let dir = Path::new("cache");
+    assert_eq!(
+        super::fetch::cache_path(dir, "a.bundle", "0123456789abcdef0123"),
+        dir.join("0123456789abcdef_a.bundle")
+    );
+    // A multibyte character across byte 16 of the hash, and separators in the name.
+    let p = super::fetch::cache_path(dir, "../../evil/x.bundle", "aaaaaaaaaaaaaaaé");
+    assert_eq!(p.parent(), Some(dir), "{p:?}");
+}

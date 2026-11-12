@@ -60,9 +60,22 @@ pub fn default_cache_dir() -> PathBuf {
 }
 
 /// The cache file for bundle `name` with `hash` (a new hash is a new file).
+/// Only plain file-name characters of the catalog's name and hash are used, so the file stays
+/// in `cache_dir` (and a hash with a multibyte character can't split it mid-character).
 pub fn cache_path(cache_dir: &Path, name: &str, hash: &str) -> PathBuf {
-    let short = &hash[..hash.len().min(16)];
-    cache_dir.join(format!("{short}_{name}"))
+    let plain = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    };
+    let short: String = plain(hash).chars().take(16).collect();
+    cache_dir.join(format!("{short}_{}", plain(name)))
 }
 
 /// A verified local copy of the bundle at `url`: the cached one when its hash still matches,
