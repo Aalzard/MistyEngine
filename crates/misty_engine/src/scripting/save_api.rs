@@ -103,7 +103,8 @@ fn options(lua: &Lua) -> Options {
     let get = |k: &str| sys.as_ref().and_then(|t| t.get::<Value>(k).ok());
     Options {
         version: match get("version") {
-            Some(Value::Integer(i)) => i.max(0) as u32,
+            // Clamped, not wrapped: 2^32 must not read as version 0 (older than every save).
+            Some(Value::Integer(i)) => i.clamp(0, i64::from(u32::MAX)) as u32,
             Some(Value::Number(n)) => n.max(0.0) as u32,
             _ => 1,
         },
@@ -403,6 +404,20 @@ pub fn to_lua(lua: &Lua, v: &serde_json::Value, depth: usize) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use mlua::{Lua, Value};
+
+    /// `SaveSystem.version = 2^32` is the largest version, not wrapped round to 0.
+    #[test]
+    fn a_huge_save_version_is_clamped() {
+        let lua = Lua::new();
+        lua.load("SaveSystem = { version = 4294967296 }")
+            .exec()
+            .unwrap();
+        assert_eq!(super::options(&lua).version, u32::MAX);
+        lua.load("SaveSystem = { version = -3 }").exec().unwrap();
+        assert_eq!(super::options(&lua).version, 0);
+        lua.load("SaveSystem = { version = 3 }").exec().unwrap();
+        assert_eq!(super::options(&lua).version, 3);
+    }
 
     /// `OnSave` returning a table that holds itself, or one shared twice at every level,
     /// saves in bounded time (the shared one cost 2^64 visits: the editor froze on Save).
