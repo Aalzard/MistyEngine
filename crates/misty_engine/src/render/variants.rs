@@ -18,8 +18,9 @@ pub(super) enum VariantKey {
     Shadow(ShadowKey),
 }
 
-/// Variants compiled on the shader queue, waiting to be picked up.
-type Built = Arc<Mutex<Vec<(VariantKey, wgpu::RenderPipeline)>>>;
+/// Variants compiled on the shader queue, waiting to be picked up (`None`: the build
+/// panicked; the queue's errors say why).
+type Built = Arc<Mutex<Vec<(VariantKey, Option<wgpu::RenderPipeline>)>>>;
 
 #[derive(Default)]
 pub struct Variants {
@@ -30,6 +31,8 @@ pub struct Variants {
     /// Variants queued and not picked up yet.
     pending: HashSet<VariantKey>,
     built: Built,
+    /// Variants whose build panicked: not queued again (it would panic every frame).
+    failed: HashSet<VariantKey>,
 }
 
 /// The plain Standard variant: what an Opaque surface draws with while its own variant
@@ -245,6 +248,10 @@ impl Pipelines {
         let n = built.len();
         for (key, pipeline) in built {
             self.variants.pending.remove(&key);
+            let Some(pipeline) = pipeline else {
+                self.variants.failed.insert(key);
+                continue;
+            };
             match key {
                 VariantKey::Mesh(k) => {
                     self.variants.mesh.entry(k).or_insert(pipeline);
@@ -287,20 +294,29 @@ impl Variants {
         key: VariantKey,
         build: impl FnOnce(&wgpu::Device) -> wgpu::RenderPipeline + Send + 'static,
     ) {
-        if !self.pending.insert(key) {
+        if self.failed.contains(&key) || !self.pending.insert(key) {
             return;
         }
         let device = device.clone();
-        let built = self.built.clone();
-        crate::load_queue::shaders().push(format!("{key:?}"), move |ticket| {
-            let pipeline = build(&device);
-            ticket.publish(|| {
-                built
+        let (built, on_fail) = (self.built.clone(), self.built.clone());
+        crate::load_queue::shaders().push_or(
+            format!("{key:?}"),
+            move |ticket| {
+                let pipeline = build(&device);
+                ticket.publish(|| {
+                    built
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push((key, Some(pipeline)))
+                });
+                Ok(())
+            },
+            move |_| {
+                on_fail
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .push((key, pipeline))
-            });
-            Ok(())
-        });
+                    .push((key, None))
+            },
+        );
     }
 }
