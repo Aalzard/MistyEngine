@@ -1777,3 +1777,78 @@ fn animator_nodes_say_when_the_target_has_no_animator() {
         "{errors:?}"
     );
 }
+
+/// A long chain compiled each next node inside the last one (exec and data alike): a few
+/// thousand nodes overflowed the stack, which aborts the editor (it checks on every edit).
+#[test]
+fn very_long_chains_compile_without_overflowing_the_stack() {
+    let run = |f: fn() -> Result<(), String>| {
+        std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .expect("no overflow")
+    };
+    // 5000 Debug.Logs in a row compile.
+    run(|| {
+        let mut g = G::new();
+        let start = g.n("OnStart");
+        let logs: Vec<u32> = (0..5000).map(|i| g.log_text(&i.to_string())).collect();
+        chain(&mut g, start, "Out", &logs);
+        compile::compile(&g.0, &NoFiles)
+            .map(|_| ())
+            .map_err(|e| format!("{e:?}"))
+    })
+    .unwrap();
+    // A data chain of 100 compiles; 5000 data nodes in a row are an error.
+    run(|| {
+        let mut g = G::new();
+        let start = g.n("OnStart");
+        let log = g.log();
+        g.w(start, "Out", log, "In");
+        let mut prev = g.n("AddFloat");
+        for _ in 1..100 {
+            let next = g.n("AddFloat");
+            g.w(prev, "Result", next, "A");
+            prev = next;
+        }
+        g.w(prev, "Result", log, "Message");
+        compile::compile(&g.0, &NoFiles)
+            .map(|_| ())
+            .map_err(|e| format!("{e:?}"))
+    })
+    .unwrap();
+    let err = run(|| {
+        let mut g = G::new();
+        let start = g.n("OnStart");
+        let log = g.log();
+        g.w(start, "Out", log, "In");
+        let mut prev = g.n("AddFloat");
+        for _ in 1..5000 {
+            let next = g.n("AddFloat");
+            g.w(prev, "Result", next, "A");
+            prev = next;
+        }
+        g.w(prev, "Result", log, "Message");
+        compile::compile(&g.0, &NoFiles)
+            .map(|_| ())
+            .map_err(|e| format!("{e:?}"))
+    })
+    .unwrap_err();
+    assert!(err.contains("too long"), "{err}");
+}
+
+/// The rest of a long chain is compiled later and jumped to: the order stays.
+#[test]
+fn long_exec_chains_still_run_in_order() {
+    let mut g = G::new();
+    let start = g.n("OnStart");
+    let logs: Vec<u32> = (0..200).map(|i| g.log_text(&i.to_string())).collect();
+    chain(&mut g, start, "Out", &logs);
+    let (mut p, _) = play("long_chain", &g.0);
+    p.frames(1);
+    p.no_errors();
+    let want: Vec<String> = (0..200).map(|i| i.to_string()).collect();
+    assert_eq!(p.infos(), want);
+}
