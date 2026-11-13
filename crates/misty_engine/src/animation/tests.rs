@@ -2,7 +2,7 @@
 
 use glam::Vec3;
 
-use super::player::{effective_wrap, wrap_time};
+use super::player::{effective_wrap, event_crossed, wrap_time};
 use super::*;
 use crate::scene::{Animation, Light, Scene, WrapMode};
 
@@ -239,4 +239,26 @@ fn player_loops_fires_events_and_stops_once() {
     assert!(close(s.transform(root).position.y, 0.0));
     assert!(!p.play(&s, root, Some("Missing")));
     assert_eq!(p.take_logs().len(), 1);
+}
+
+/// Ping Pong clips fire their events on every pass, forwards and backwards (they fired on the
+/// first forward pass only), and once at the turning points.
+#[test]
+fn ping_pong_events_fire_on_every_pass() {
+    let count = |event: f32| {
+        // Just under four seconds of a 1 s clip in 60 Hz steps: two round trips.
+        let mut n = 0;
+        let mut prev = -f32::EPSILON;
+        for i in 1..240 {
+            let cur = i as f32 / 60.0;
+            if event_crossed(prev, cur, event, 1.0, WrapMode::PingPong) {
+                n += 1;
+            }
+            prev = cur;
+        }
+        n
+    };
+    assert_eq!(count(0.25), 4, "out and back, twice");
+    assert_eq!(count(1.0), 2, "the far end once per round trip");
+    assert_eq!(count(0.0), 2, "the start once per round trip");
 }
