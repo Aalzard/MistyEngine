@@ -479,6 +479,47 @@ fn pause_resume_stop_and_unscaled_time() {
     assert_eq!(p.state(d), PlayState::Stopped);
 }
 
+/// A looping timeline whose audio clip runs to its end kept the same clip under the playhead
+/// after the wrap, so the voice was never started again (later loops were silent); a seek
+/// inside the clip didn't move the sound either.
+#[test]
+fn audio_restarts_on_each_loop_and_on_a_seek() {
+    let mut t = TimelineAsset::default();
+    let id = t.add_track(TrackKind::Audio, None);
+    t.track_mut(&id).unwrap().clips.push(TimelineClip {
+        asset: Some("Assets/Beep.wav".into()),
+        start: 0.0,
+        duration: 1.0,
+        ..Default::default()
+    });
+    let root = project(&t);
+    let (mut scene, d) = director_scene(DirectorWrapMode::Loop);
+    let speaker = scene.spawn("Speaker", None);
+    scene.add(speaker, AudioSource::default());
+    scene
+        .world
+        .get::<&mut PlayableDirector>(d)
+        .unwrap()
+        .set_binding(&id, Some(speaker));
+    let (mut audio, log) = Audio::null(root.clone());
+    let mut p = DirectorPlayer::new(root);
+    p.play(&scene, d);
+    // 0, then wraps at 1 s and 2 s.
+    for _ in 0..25 {
+        p.update(&mut scene, &mut audio, 0.1, 0.1);
+    }
+    assert_eq!(log.lock().unwrap().played.len(), 3);
+    p.set_time(d, 0.6);
+    p.update(&mut scene, &mut audio, 0.0, 0.0);
+    assert_eq!(
+        log.lock().unwrap().played.len(),
+        4,
+        "a seek restarts the sound"
+    );
+    p.update(&mut scene, &mut audio, 0.1, 0.1);
+    assert_eq!(log.lock().unwrap().played.len(), 4, "once");
+}
+
 #[test]
 fn audio_track_plays_through_the_bound_source() {
     let mut t = TimelineAsset::default();

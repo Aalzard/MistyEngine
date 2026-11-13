@@ -75,6 +75,9 @@ struct Instance {
     control: HashMap<ControlKey, Entity>,
     /// Camera track overrides from the last evaluation.
     shots: Vec<CameraOverride>,
+    /// The time jumped (`time` set, a Loop wrapped): sounds restart at the new place even
+    /// when the same clip is still under the playhead.
+    jumped: bool,
 }
 
 pub struct DirectorPlayer {
@@ -332,6 +335,7 @@ impl DirectorPlayer {
     pub fn set_time(&mut self, e: Entity, t: f64) {
         let inst = self.instances.entry(e).or_default();
         inst.time = t.max(0.0);
+        inst.jumped = true;
     }
 
     /// `duration`: the timeline's length in seconds.
@@ -433,6 +437,7 @@ impl DirectorPlayer {
                 DirectorWrapMode::Loop if duration > 0.0 && inst.time >= duration => {
                     spans.push((start as f32, duration as f32));
                     inst.time = inst.time.rem_euclid(duration);
+                    inst.jumped = true;
                     spans.push((-1e-6, inst.time as f32));
                 }
                 DirectorWrapMode::Hold => {
@@ -660,6 +665,8 @@ fn sync_audio(
     inst: &mut Instance,
     t: f32,
 ) {
+    // A wrap or a seek inside the same clip kept the voice: later loops were silent.
+    let jumped = std::mem::take(&mut inst.jumped);
     for tr in asset.tracks.iter().filter(|t| t.kind == TrackKind::Audio) {
         let src = d
             .binding(&tr.id)
@@ -668,7 +675,7 @@ fn sync_audio(
             .filter(|_| !asset.is_muted(tr))
             .and_then(|_| tracks::audio::current(tr, t));
         let have = inst.voices.get(&tr.id).copied();
-        if have.map(|h| h.0) == want.map(|w| w.0) && have.map(|h| h.1) == src {
+        if !jumped && have.map(|h| h.0) == want.map(|w| w.0) && have.map(|h| h.1) == src {
             continue;
         }
         if let Some((_, old)) = inst.voices.remove(&tr.id) {
