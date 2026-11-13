@@ -3,6 +3,80 @@
 A short 2D platformer ("Lumo's Leap") built with Script Graphs only: no Lua, no Rust gameplay
 code. The point is to prove the nodes a real game needs, and to list what is broken or missing.
 
+## Handover (work stopped part-way; branch `r65-node-game`, from main b88e54c9, never pushed)
+
+### Done
+
+- **The game plays end to end, nodes only**, checked headlessly with main's binary
+  (`misty --run-tests` on a temp project): menu, 3 stages, run / jump (coyote time, jump
+  buffer, variable height), E dash (white glow + particle trail), Brute (2 hits, flash, knock
+  back, burst prefab), Puff (pushed, fades, destroyed), patrol between ledges and walls, hearts,
+  pits, stage restart, goal loads the next stage, win screen back to the menu. An `Autopilot`
+  graph beats all three stages and reaches the win scene (about 24 s of game time).
+- **Files:** `SampleProject/Assets/NodeGame/` (13 graphs in `Graphs/`, 5 scenes in `Scenes/`,
+  `Prefabs/Burst.prefab`); the 5 scenes were added to
+  `SampleProject/ProjectSettings/BuildSettings.json` (graphs load scenes by name). No `.meta`
+  files (like `Assets/VisualScripting` and `Assets/Guides`). The game was only ever run in a
+  temp project made from the 2D Platformer template, never inside SampleProject itself.
+- **Generator:** `python tools/node_game/node_game.py <project folder> [--demo]` writes the
+  graphs, scenes and prefab (`vgraph.py` = graph builder with auto layout, `graphs.py` = the
+  graphs, `scenes.py` = scenes from text maps). `--demo` puts Autopilot on the player in place
+  of Player Input. The committed sample files are its output for `SampleProject`.
+- **Player build:** `misty --build <temp project> <out>` succeeded (graphs, prefab, audio
+  packed). The built game was not run.
+- **Test (written, NEVER COMPILED):** `crates/misty_editor/src/sample_node_game.rs`
+  (registered in `main.rs`): only-graphs check, stage 1 played with simulated keys (move, dash
+  kills the Puff, Brute takes two, stage 2 loads), menu and win screen.
+- **User Guide chapter 9:** `docs/guide/en/09-node-game.md` and `ar/`, index entries, registered
+  in `panels/guide/content.rs` with `docs/guide/images/guide-node-game.jpg`; the node-name test
+  range in `panels/guide/tests.rs` now includes chapter 09. Guide tests NOT run.
+- **Screenshots:** `docs/screenshots/r65/node-game-{menu,stage1,stage2,stage3,dash,win}.jpg`
+  (editor Play captures; stages and dash from the Autopilot demo). The stage 2, stage 3 and
+  win pictures were saved without being looked at.
+
+### Left to do
+
+1. Get a build slot; `cargo test --release -p misty_editor sample_node_game` and
+   `... guide`; fix what does not compile or pass (the test file has never been built; the
+   guide names nodes in bold `Owner: Member` form that must match real node titles).
+2. When the fixer's batch 1 is on main: merge main, set `TRIGGERS = True` in
+   `tools/node_game/graphs.py` (Enemy Touch and Goal then use On Trigger Enter / Exit; both
+   versions are written, the trigger one is untested), regenerate, re-test. The menu buttons
+   already carry On Click entries (`Play` / `Quit` on the Menu object) and the Menu graph has
+   the matching Custom Events; check that a click works. The guide text describes this final
+   design, so it is ahead of the committed graphs until then.
+3. If native 2D physics nodes land (batch 2), consider using them; if the friction combine is
+   fixed, Friction 0 on the ground tilemap and side walls in `scenes.py` can go back to 0.4.
+4. Run the built player once (window, screenshot). Look at the unchecked screenshots.
+5. Round 65 section in `docs/progress.md` (not written).
+6. Checks: `cargo fmt --all --check`, clippy (0 warnings), `cargo test --workspace --release
+   --no-fail-fast`. None were run: no build slot was obtained in about an hour, and the target
+   `E:\MistyTargets\r65-node-game` is empty.
+7. Clean up `C:\MistyTry\r65` (temp projects `NodeGame`, `NodeGameDemo`, `Build`, `bin` with a
+   copy of main's verify `misty.exe` / `misty_player.exe`, `shots`) and `C:\MistyTry\r65tmp`.
+
+### How to run it
+
+- Temp project: `misty --new "2D Platformer" <folder>` (opens a window; set `MISTY_SCREENSHOT`
+  so it exits), delete its Lua scripts and `Main.scene`, copy
+  `Assets/Audio/{Blip,Beep,Clap,Chime,Buzz}.wav` from SampleProject, run the generator on it and
+  list the 5 scenes in its `ProjectSettings/BuildSettings.json`. `C:\MistyTry\r65\NodeGame`
+  (keyboard) and `C:\MistyTry\r65\NodeGameDemo` (Autopilot) are set up this way.
+- Headless play: put `tools/node_game/dev/demo.playtest.lua` in `<project>/Assets/Tests/` and
+  run `misty --run-tests <project> --mode PlayMode` (it dumps positions through a failing
+  assert; use `yieldFrames`, not `yield(seconds)`: finding A).
+- Captures: `tools/node_game/dev/shot.sh <project name> <scene> <frame> <out.png>` (takes the
+  GPU lock; paths point at `C:\MistyTry\r65`). The dash shows around frame 470 of
+  `NodeGameStage1` in the demo project. Capture windows open maximised (finding C).
+- `tools/node_game/dev/cb.sh <log> <cargo args>` waits for a build slot (3 s poll) and runs
+  cargo with this round's target and TMP.
+
+### Issue status
+
+Issues 1 to 3 (batch 1) and issue 4 with findings A to D and the `MISTY_SCRIPTGRAPH` capture
+problem (batch 2) were reported to the coordinator and given to the fixer (branch
+`r66-node-fixes`). **Nothing is merged yet.**
+
 ## Issues
 
 Each issue: how to reproduce, the graph, expected and actual. Status is updated when a fix is
@@ -106,3 +180,13 @@ Found while building the game; listed so they are not lost.
 - `misty --mcp` can create objects, components, Lua scripts and materials, but not `.vgraph`
   files or their nodes and wires, and `scene.add_component` attaches "a Lua script by path".
   The game's graphs were written as files (`tools/node_game`).
+
+### E. Captures never fire while a tab hides the scene views (`MISTY_SCRIPTGRAPH`)
+
+- **Repro:** `MISTY_SCRIPTGRAPH=Assets/.../Door.vgraph MISTY_CAPTURE_FRAME=60
+  MISTY_SCREENSHOT=out.png misty <project>`: the editor keeps drawing (4,000 frames in 25 s)
+  but no screenshot is taken, with any graph.
+- **Likely cause (read, not proven):** `app.rs` (~l.1177) holds the capture while
+  `background_busy()` is true; with the Script Graph tab in front that seems never to clear.
+- **Effect here:** no Script Graph window screenshots of the game's graphs, so the generator's
+  auto layout has never been looked at in the editor.
