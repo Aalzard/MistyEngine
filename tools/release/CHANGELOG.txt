@@ -1,8 +1,43 @@
 Misty Engine changelog
 ======================
 
-Unreleased
-----------
+0.4.0 - weather, night sky, sound, a faster editor and 100+ fixes (November 2026)
+--------------------------------------------------------------------------------
+
+Weather
+- Rain, snow, sleet, thunderstorms and blizzards with a weather timeline, day and night.
+  Snow and wetness build up on the ground; tree crowns keep the ground under them drier.
+- Raindrops are thick, bent and see-through, darker against a bright sky and lighter against
+  the ground; close drops are out of focus. Ring ripples and soft splashes on wet ground.
+- Changing the weather in Properties always shows at once (a preset or value change turns the
+  timeline off and clears a script override, with a notice).
+
+Night sky
+- A real moon with phases and moonlight, stars that vary in size and colour, Night Sky
+  Darkness, the Milky Way, aurora and meteors, all adjustable.
+
+Sound
+- Weather plays rain and storm loops that follow the rain's strength and stay loud under a
+  roof or in a car, plus thunder a moment after each flash.
+- Meadow and forest ambience in NoonValley and MeadowDemo; footsteps in the First Person
+  controller (faster when running, softer crouched, a thump on landing).
+
+Lights and materials
+- Light > Glow: Intensity, Spread (a soft wide glow instead of a hot core with a hard edge)
+  and Soft Core, for point, spot and rectangle lights.
+- The standard material's Properties: square texture slots with drag and drop, aligned
+  sliders.
+- Drag a texture onto an object: a material is made in Assets/Materials and assigned.
+
+Smooth detail levels
+- Trees, rocks, LOD Groups and detail meshes cross-fade between levels instead of popping
+  (LOD Group > Fade Mode and Fade Width; Tree Rendering > LOD Fade). Grass fades smoothly too.
+
+Scenes and templates
+- NoonValley: a large real-time meadow and forest scene with limestone cliffs.
+- 2D Platformer template. Terrain Properties redesigned with live previews; grass painting is
+  instant.
+- In-engine User Guide in English and Arabic, and an editor layout tour.
 
 Misty's own names
 - Windows: Inspector is now Properties, Hierarchy is Scene Tree, Project is Asset Files,
@@ -11,6 +46,28 @@ Misty's own names
   Misty Mesh. Turkish and Arabic follow.
 - Nothing to redo: saved layouts, scenes, Lua scripts (GetComponent, AddComponent) and MCP
   tools work as before, and old menu paths such as "GameObject/3D Object/Cube" still run.
+
+Faster
+- No more editor freezes: file reads and saves run in the background.
+- Projects open fast: the first frame shows about 1 s after start (was about 10 s); shaders
+  compile in the background with progress in the status bar.
+- Material previews load in the background, so folders of materials no longer freeze.
+- Walking through grass no longer drops the frame rate over time.
+- Large scenes: about a third less GPU time in NoonValley, the frame is recorded on several
+  threads (submit cost down about 70 %), and less video memory.
+- The Console stays fast with any number of messages. Preferences: switch off the startup
+  update check.
+
+Fixes (four bug-hunting rounds, over 100 fixes)
+- Security: game scripts can no longer run programs or read and write any file; scripts,
+  saves, bundles and network messages can't reach files outside the project; network peers
+  can't make a game allocate gigabytes.
+- Saving: a newer save can no longer be overwritten by an older queued one; saves are written
+  on exit and after a crash.
+- Undo, prefabs, copy and paste: undo no longer hands old references to new objects, a prefab
+  can't be applied into itself, copies keep their references to other objects.
+- Crashes and hangs fixed in physics, vehicles, navigation, animation, particles, UI and when
+  loading damaged models, images, sounds, scenes and prefabs.
 
 0.3.2 - Turkish and Arabic, Project window fixes (November 2026)
 -----------------------------------------------------------------
