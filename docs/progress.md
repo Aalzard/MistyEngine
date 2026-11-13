@@ -4687,3 +4687,53 @@ changes. Details, numbers and timings per round: `docs/pending/r54-noon-look.md`
   shadows; clouds smaller and more numerous (no size control); sky and far hills brighter and
   bluer than the photo; the wood floor in `inside` shows bare sunlit litter between grass-like
   herbs, and `inside2` is greener and brighter than the photo's dark olive.
+
+## Round 58 — Bug hunt 5: round 4 leftovers, Script Graph, timeline, audio, input, terrain, MCP, long session (branch r58-qa5)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r58-qa5.md`.
+
+### Round 4 leftovers
+- **Navigation**: an agent with a huge radius (1e6 from Lua or a scene file) no longer stalls
+  the avoidance neighbour search; nav meshes past 65 536 tiles no longer alias polygons (such
+  files are refused).
+- **Undo**: undoing Apply Prefab now puts the `.prefab` file back too (and the prefabs that use
+  it), so other instances no longer show the old values as overrides; Remove / Reset Script
+  on a missing slot no longer records an empty step.
+- **Multi-scene**: a Hierarchy drop into another scene's object warns about cross-scene
+  references, like Move To Scene.
+- **Physics**: mirrored objects mirror their Character Controller centre and joint anchors.
+- **Tests**: the engine's tests no longer write a `Library` folder into the crate.
+
+### Crashes, hangs and data loss
+- An endless loop at a Lua script's top level froze the editor on save and on every open (the
+  Inspector runs the top level to read the fields): it stops after 2 s, and at 256 MB.
+- Script Graphs with long chains of nodes overflowed the stack while compiling (the editor
+  compiles on every edit). Very long data chains are now a compile error.
+- MCP `asset.delete "Assets/."` could bin the whole Assets folder; numbers past the f32 range
+  are refused.
+- One unknown panel name in `Library/Layouts.json` (saved by a newer editor) threw away every
+  saved layout.
+- Localization CSV import deleted translations in columns a short row didn't reach.
+- A hand-edited `clamp(min=nan,max=nan)` input processor panicked; World Builder sizes outside
+  10..8000 m gave NaN heights or a panic; a failed New Project in the Hub could delete a folder
+  it hadn't made.
+
+### Wrong behaviour
+- Audio Mixer `SetFloat` / `TransitionTo` with NaN no longer turn the mix NaN; virtual camera
+  `dutch`, orbit axes and impulses refuse NaN.
+- Timeline audio restarts on each loop and on a seek (later loops were silent).
+- A rebind while a key is held cancels the action instead of pressing it again.
+- Cutting terrain holes removes the trees standing in them; Paint Flowers follows Opacity.
+- Collapse To Macro inside a macro picks a name the graph accepts.
+
+### Long session
+Twelve minutes of opening ten sample scenes, selecting objects and Play / Stop through the MCP
+bridge (70 cycles): memory levels off after the first loops, GPU memory stays flat, no
+Console errors. No leak found.
+
+### Open decisions
+- Script Graph macros: Collapse To Macro copies the outer graph's variables into the macro,
+  where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
+  macro variables needs a decision.
+- No project lock: two editors can open the same project.
