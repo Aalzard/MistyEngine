@@ -5,7 +5,7 @@
 use super::blocks::{Attribute, BlockKind, Composition, ContextType, OrientMode, ShapeMode};
 use super::codegen::{CpuExpr, SpawnBlock, compile, property_data, ramp_data};
 use super::graph::{
-    BlendMode, ContextKind, EffectGraph, OutputKind, OutputSettings, PropertyValue,
+    BlendMode, ContextKind, EffectGraph, Link, OutputKind, OutputSettings, PropertyValue,
 };
 use super::operators::{AttributeRead, OperatorKind, RandomMode};
 use super::spawn::{self, SpawnState};
@@ -905,4 +905,28 @@ fn errors_inside_a_subgraph_land_on_its_node() {
         errors.iter().any(|e| e.message.contains("nested")),
         "{errors:?}"
     );
+}
+
+/// A file whose links make a loop (hand-edited or merged: `connect` refuses loops) loads with
+/// the loop cut; compiling it used to recurse until the stack overflowed.
+#[test]
+fn effect_graph_files_with_link_loops_load_without_the_loop() {
+    let mut g = EffectGraph::new_default();
+    let a = g.add_operator(OperatorKind::Add, [-300.0, 0.0]);
+    let b = g.add_operator(OperatorKind::Add, [-150.0, 0.0]);
+    g.connect(a, "Out", b, "A").unwrap();
+    let spawn = g.context_of(ContextType::Spawn).unwrap().blocks[0].id;
+    g.connect(b, "Out", spawn, "Rate").unwrap();
+    for (from, to) in [(b, a), (a, a)] {
+        g.links.push(Link {
+            from,
+            output: "Out".into(),
+            to,
+            input: "B".into(),
+        });
+    }
+    let back = EffectGraph::from_json(&g.to_json()).unwrap();
+    assert_eq!(back.links.len(), 2, "{:?}", back.links);
+    assert!(back.links.iter().all(|l| l.to != a));
+    compiles(&back, "loop cut");
 }
