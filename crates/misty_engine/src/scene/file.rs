@@ -411,6 +411,57 @@ impl Scene {
         entities
     }
 
+    /// Objects `pairs` were just pasted from (source, copy): give each copy the source's
+    /// references to objects outside the copied set (a Button's target, a joint's body) when
+    /// the source still exists and the target is alive in the copy's scene. The file format
+    /// the clipboard uses drops them (Duplicate kept them). A component whose source changed
+    /// since the copy is left as pasted.
+    pub fn restore_outside_refs(&mut self, pairs: &[(Entity, Entity)]) {
+        let map: std::collections::HashMap<Entity, Entity> = pairs.iter().copied().collect();
+        for &(src, dst) in pairs {
+            if !self.contains(src) || !self.contains(dst) || src == dst {
+                continue;
+            }
+            let scene = self.scene_of(dst);
+            for name in ref_components() {
+                let Some(info) = registry::find(name) else {
+                    continue;
+                };
+                let (Some(from), Some(now)) = (
+                    (info.to_json)(&self.world, src),
+                    (info.to_json)(&self.world, dst),
+                ) else {
+                    continue;
+                };
+                let inside = |bits: u64| {
+                    let e = Entity::from_bits(bits)?;
+                    map.get(&e).map(|c| c.to_bits().get())
+                };
+                // What the paste made of the source as it is now: equal, or it changed since.
+                let mut pasted = BTreeMap::from([(name.to_owned(), from.clone())]);
+                remap_refs(&mut pasted, inside);
+                let mut now = BTreeMap::from([(name.to_owned(), now)]);
+                now.values_mut().for_each(tidy_numbers);
+                pasted.values_mut().for_each(tidy_numbers);
+                if pasted != now {
+                    continue;
+                }
+                let mut kept = BTreeMap::from([(name.to_owned(), from)]);
+                remap_refs(&mut kept, |bits| {
+                    inside(bits).or_else(|| {
+                        let e = Entity::from_bits(bits)?;
+                        (self.contains(e) && self.scene_of(e) == scene).then_some(bits)
+                    })
+                });
+                if kept != pasted
+                    && let Some(v) = kept.remove(name)
+                {
+                    let _ = (info.from_json)(&mut self.world, dst, v);
+                }
+            }
+        }
+    }
+
     /// Serialise to the `.scene` JSON text.
     pub fn to_json(&self) -> String {
         // Default settings are left out, so older scenes save byte-identical.

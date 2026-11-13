@@ -25,6 +25,11 @@ pub struct CopiedObject {
     pub link: Option<String>,
     /// World matrix of the root when copied (column-major).
     pub world: [f32; 16],
+    /// The copied objects (root first, in the order of `data`'s objects), to put back
+    /// references to objects outside the copy when pasting in this editor. Not written to
+    /// the system clipboard: other editors' handles mean other objects.
+    #[serde(skip)]
+    pub sources: Vec<Entity>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -64,6 +69,15 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         }
         Action::PasteObjects { text, as_child } => {
             let clip = match text {
+                // Our own copy coming back through the system clipboard (Ctrl+V arrives as
+                // the OS paste): the in-editor copy also knows the copied objects.
+                Some(t)
+                    if s.object_clipboard
+                        .as_ref()
+                        .is_some_and(|c| c.to_text() == t) =>
+                {
+                    s.object_clipboard.clone()
+                }
                 Some(t) => ObjectClipboard::from_text(&t),
                 None => s.object_clipboard.clone(),
             };
@@ -90,6 +104,7 @@ fn copy(s: &mut EditorState) -> bool {
                 data,
                 link: s.scene.prefab_link(e),
                 world: s.scene.world_matrix(e).to_cols_array(),
+                sources: s.scene.subtree(e),
             })
         })
         .collect();
@@ -125,6 +140,11 @@ fn paste(s: &mut EditorState, clip: &ObjectClipboard, as_child: bool) {
             .scene
             .instantiate_prefab(&prefab, obj.link.as_deref(), parent);
         s.scene.forget_copied_prefab_ids(e);
+        let copies = s.scene.subtree(e);
+        if copies.len() == obj.sources.len() {
+            let pairs: Vec<(Entity, Entity)> = obj.sources.iter().copied().zip(copies).collect();
+            s.scene.restore_outside_refs(&pairs);
+        }
         // Next to another scene's top-level object: the copy belongs to that scene (it went
         // into the active scene, listed among the other scene's objects).
         if let (Some(a), None) = (anchor, parent) {
@@ -173,6 +193,50 @@ mod tests {
 
     fn run(s: &mut EditorState, a: Action) {
         assert!(apply(s, a).is_none());
+    }
+
+    /// Copy/Paste in the same scene keeps references to objects outside the copy (Duplicate
+    /// did; the clipboard's file format dropped them to null), also when Ctrl+V comes back as
+    /// the system clipboard's text. References inside the copy point at the copies.
+    #[test]
+    fn paste_keeps_references_to_objects_outside_the_copy() {
+        use misty_engine::scene::FixedJoint;
+        let mut s = state();
+        let body = s.scene.spawn("Body", None);
+        let rig = s.scene.spawn("Rig", None);
+        let arm = s.scene.spawn("Arm", Some(rig));
+        s.scene.add(
+            rig,
+            FixedJoint {
+                connected_body: Some(body),
+                ..Default::default()
+            },
+        );
+        s.scene.add(
+            arm,
+            FixedJoint {
+                connected_body: Some(rig),
+                ..Default::default()
+            },
+        );
+        s.selection.set(rig);
+        run(&mut s, Action::CopyObjects);
+        let text = s.object_clipboard.as_ref().unwrap().to_text();
+        for paste in [None, Some(text)] {
+            run(
+                &mut s,
+                Action::PasteObjects {
+                    text: paste,
+                    as_child: false,
+                },
+            );
+            let copy = s.selection.active().unwrap();
+            assert_ne!(copy, rig);
+            let joint = |e| s.scene.world.get::<&FixedJoint>(e).unwrap().connected_body;
+            assert_eq!(joint(copy), Some(body), "outside reference kept");
+            let arm_copy = s.scene.children(copy)[0];
+            assert_eq!(joint(arm_copy), Some(copy), "inside reference remapped");
+        }
     }
 
     #[test]
