@@ -18,6 +18,9 @@ SND_HIT = "Assets/Audio/Clap.wav"
 SND_WIN = "Assets/Audio/Chime.wav"
 SND_HURT = "Assets/Audio/Buzz.wav"
 
+# 2D triggers reach Script Graphs (fixed in round 66). False rebuilds the round 65 workarounds.
+TRIGGERS = False
+
 RAY_ARGS = "origin, direction, distance, mask"
 # The Default layer only: enemies, the player and the goal are on other layers.
 GROUND_MASK = 1
@@ -322,7 +325,7 @@ def autopilot():
         B=g.op("Or", A=g.op("Not", Value=hit(g, ahead)), B=hit(g, wall)),
     )
     wall.to(g.branch(must_jump)).to(g.send("JumpPressed"), "True")
-    # Anything close ahead that has a `Reach` variable (the Enemy Touch graph) is an enemy.
+    # Anything close ahead that has a `Dead` variable (the Enemy Touch graph) is an enemy.
     around = g.call(
         "Physics2D",
         "OverlapCircleAll",
@@ -331,7 +334,7 @@ def autopilot():
         r=g.get("Dash Range"),
     )
     each = s.to(around, "Then 2").to(g.node("ForEach", None, List=around["Result"]))
-    reach = g.node("GetObjectVariable", None, Target=each["Item"], Name="Reach")["Value"]
+    reach = g.node("GetObjectVariable", None, Target=each["Item"], Name="Dead")["Value"]
     ex, _, _ = xyz(g, position(g, each["Item"]))
     px, _, _ = xyz(g, position(g))
     is_enemy = g.op("And", A=g.op("NotEqual", A=reach), B=g.op("Greater", A=ex, B=px))
@@ -396,26 +399,40 @@ def patrol():
 
 
 def enemy_touch():
-    """The player touched this enemy: a dash hits the enemy, anything else hurts the player.
-    (Distance check each frame: 2D triggers do not reach graphs yet, see the round notes.)"""
+    """The player touches this enemy: a dash hits the enemy, anything else hurts the player."""
     g = Graph()
-    g.var("Reach", "float", 0.85, obj=True)
     g.var("Dead", "bool", False, obj=True)
     g.var("Player", "gameobject", None)
+    g.var("Touching", "bool", False)
     g.var("Next Hit At", "float", 0.0)
-    g.node("OnStart").to(g.setv("Player", g.call("GameObject", "Find", Name="Player")["Result"]))
+    if TRIGGERS:
+        # The enemy's collider is a trigger: remember the player while it is inside.
+        enter = g.node("OnTriggerEnter")
+        is_player = g.call("#GameObject", "CompareTag", target=enter["Other"], Tag="Player")["Result"]
+        e = enter.to(g.branch(is_player)).to(g.setv("Player", enter["Other"]), "True")
+        e.to(g.setv("Touching", True))
+        leave = g.node("OnTriggerExit")
+        was_player = g.call("#GameObject", "CompareTag", target=leave["Other"], Tag="Player")["Result"]
+        leave.to(g.branch(was_player)).to(g.setv("Touching", False), "True")
+        touching = g.get("Touching")
+    else:
+        # Round 65 workaround (2D triggers did not reach graphs): a distance check.
+        g.var("Reach", "float", 0.85, obj=True)
+        g.node("OnStart").to(
+            g.setv("Player", g.call("GameObject", "Find", Name="Player")["Result"])
+        )
+        touching = g.op(
+            "Less",
+            A=g.op("Distance", A=position(g), B=position(g, g.get("Player"))),
+            B=g.get("Reach"),
+        )
     up = g.node("OnUpdate")
     ok = g.op(
         "And",
         A=g.op("IsValid", Object=g.get("Player")),
         B=g.op("Not", Value=g.get("Dead")),
     )
-    near = g.op(
-        "Less",
-        A=g.op("Distance", A=position(g), B=position(g, g.get("Player"))),
-        B=g.get("Reach"),
-    )
-    t = up.to(g.branch(ok)).to(g.branch(near), "True")
+    t = up.to(g.branch(ok)).to(g.branch(touching), "True")
     dashing = g.node("GetObjectVariable", None, Target=g.get("Player"), Name="Dashing")["Value"]
     d = t.to(g.branch(dashing), "True")
     ready = d.to(g.branch(g.op("GreaterOrEqual", A=now(g), B=g.get("Next Hit At"))), "True")
@@ -501,24 +518,34 @@ def puff():
 
 
 def goal():
-    """The flag at the end of a stage: reaching it broadcasts StageCleared (once)."""
+    """The flag at the end of a stage: the player reaching it broadcasts StageCleared (once)."""
     g = Graph()
-    g.var("Reach", "float", 0.8, obj=True)
-    g.var("Height", "float", 3.0, obj=True)
-    g.var("Player", "gameobject", None)
-    g.node("OnStart").to(g.setv("Player", g.call("GameObject", "Find", Name="Player")["Result"]))
-    up = g.node("OnUpdate")
-    px, py, _ = xyz(g, position(g, g.get("Player")))
-    x, y, _ = xyz(g, position(g))
-    beside = g.op(
-        "Less", A=g.op("AbsFloat", Value=g.op("SubtractFloat", A=px, B=x)), B=g.get("Reach")
-    )
-    level = g.op(
-        "Less", A=g.op("AbsFloat", Value=g.op("SubtractFloat", A=py, B=y)), B=g.get("Height")
-    )
-    here = up.to(g.branch(g.op("IsValid", Object=g.get("Player")))).to(
-        g.branch(g.op("And", A=beside, B=level)), "True"
-    )
+    if TRIGGERS:
+        enter = g.node("OnTriggerEnter")
+        is_player = g.call("#GameObject", "CompareTag", target=enter["Other"], Tag="Player")["Result"]
+        here = enter.to(g.branch(is_player))
+    else:
+        # Round 65 workaround (2D triggers did not reach graphs): compare positions.
+        g.var("Reach", "float", 0.8, obj=True)
+        g.var("Height", "float", 3.0, obj=True)
+        g.var("Player", "gameobject", None)
+        g.node("OnStart").to(
+            g.setv("Player", g.call("GameObject", "Find", Name="Player")["Result"])
+        )
+        up = g.node("OnUpdate")
+        px, py, _ = xyz(g, position(g, g.get("Player")))
+        x, y, _ = xyz(g, position(g))
+        beside = g.op(
+            "Less", A=g.op("AbsFloat", Value=g.op("SubtractFloat", A=px, B=x)), B=g.get("Reach")
+        )
+        level = g.op(
+            "Less",
+            A=g.op("AbsFloat", Value=g.op("SubtractFloat", A=py, B=y)),
+            B=g.get("Height"),
+        )
+        here = up.to(g.branch(g.op("IsValid", Object=g.get("Player")))).to(
+            g.branch(g.op("And", A=beside, B=level)), "True"
+        )
     here.to(g.node("DoOnce"), "True").to(g.broadcast("StageCleared"))
     return g
 

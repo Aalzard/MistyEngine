@@ -42,6 +42,7 @@ pub static CHAPTERS: &[Chapter] = &[
     chapter!("06-guide-door"),
     chapter!("07-guide-saving"),
     chapter!("08-guide-animation"),
+    chapter!("09-node-game"),
     chapter!("glossary"),
 ];
 
@@ -74,6 +75,7 @@ pub static IMAGES: &[(&str, &[u8])] = &[
     image!("guide-saving-graph.jpg"),
     image!("guide-animation-graph.jpg"),
     image!("guide-animation-controller.jpg"),
+    image!("guide-node-game.jpg"),
 ];
 
 /// The bytes of the picture a chapter names (`../images/x.jpg` or `x.jpg`).

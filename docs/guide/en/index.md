@@ -30,6 +30,8 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
+9. [A game made only with nodes](09-node-game.md): a whole 2D platformer, with a menu,
+   enemies and three stages, built from Script Graphs alone.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 
