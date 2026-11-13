@@ -143,3 +143,14 @@ and 3; run 1 of each was a cold start): `PlayerLoop` median 2.42 / 2.87 → 0.68
 main-thread work in scopes 5.55 / 6.42 → 3.83 / 3.96 ms (p99 12.9 / 23.4 → 9.2 / 7.9 ms);
 whole frames 7.04 / 7.15 → 6.96 / 6.94 ms median, p99 15.6 / 17.6 → 12.6 / 9.3 ms (the editor
 is GPU-bound there: 6.8 ms of GPU per frame, so the median frame barely moves).
+
+## Checks (on 7d128905)
+
+- `cargo fmt --all --check`: pass. `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- `cargo test --workspace --release --no-fail-fast`: engine 1552 passed / 0 failed, player 11,
+  dedicated server 1, MCP end-to-end 1; editor 923 passed / 1 failed:
+  `sample_meadow::meadow_demo_matches_its_generator` (MeadowDemo.scene holds the user's edits
+  merged in round 49, `auto_exposure` and more, which the generator doesn't write; fails on main
+  the same way, nothing here touches it).
+- Golden shots (20, under the GPU lock): see Final above (main's own drift on MeadowDemo;
+  this branch within 0.07 of main's output, CyclesRoom 0.00).
