@@ -104,7 +104,8 @@ pub fn step(blocks: &[SpawnBlock], state: &mut SpawnState, props: &Props, dt: f3
                 let delay = input(spawn_ports::DELAY).max(0.0);
                 let period = input(spawn_ports::PERIOD);
                 let hits = periodic_hits(delay, period, from, to);
-                hits * input(spawn_ports::COUNT).max(0.0).round() as u32
+                // Saturating: 1000 hits (Period 0.001) × Count 5e6 wrapped to a small count.
+                hits.saturating_mul(input(spawn_ports::COUNT).max(0.0).round() as u32)
             }
             _ => 0,
         };

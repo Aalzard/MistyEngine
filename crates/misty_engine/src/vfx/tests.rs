@@ -260,6 +260,22 @@ fn bursts_fire_at_their_times() {
     assert_eq!(spawn::step(&[periodic], &mut st, &props(), 1.0), 40);
 }
 
+/// Many periodic hits in one step times a big Count saturate (1000 × 5e6 wrapped round to
+/// 705 032 704 in release builds and panicked in debug ones).
+#[test]
+fn periodic_burst_counts_saturate() {
+    let periodic = SpawnBlock {
+        kind: BlockKind::PeriodicBurst,
+        inputs: vec![
+            ("Count", CpuExpr::Const(5e6)),
+            ("Period", CpuExpr::Const(0.001)),
+            ("Delay", CpuExpr::Const(0.0)),
+        ],
+    };
+    let mut st = SpawnState::default();
+    assert_eq!(spawn::step(&[periodic], &mut st, &props(), 1.0), u32::MAX);
+}
+
 #[test]
 fn spawn_inputs_read_properties_and_overrides() {
     let mut g = EffectGraph::new_default();
