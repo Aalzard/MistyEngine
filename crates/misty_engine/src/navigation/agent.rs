@@ -1062,9 +1062,23 @@ impl NavRuntime {
                 let range = (c.speed * horizon).min(c.radius * 12.0) + c.radius * 2.0 + 1.0;
                 let (x0, z0) = cell_of(me.position - Vec2::splat(range));
                 let (x1, z1) = cell_of(me.position + Vec2::splat(range));
-                let mut near: Vec<(f32, orca::Body, f32)> = (z0..=z1)
-                    .flat_map(|z| (x0..=x1).map(move |x| (x, z)))
-                    .filter_map(|k| grid.get(&k))
+                // A huge radius (scripts, scene files) spans more cells than there are bodies:
+                // walk the occupied cells instead of every cell in the box.
+                let span =
+                    (i64::from(x1) - i64::from(x0) + 1) * (i64::from(z1) - i64::from(z0) + 1);
+                let cells: Vec<&Vec<usize>> = if span > grid.len() as i64 {
+                    grid.iter()
+                        .filter(|((x, z), _)| (x0..=x1).contains(x) && (z0..=z1).contains(z))
+                        .map(|(_, v)| v)
+                        .collect()
+                } else {
+                    (z0..=z1)
+                        .flat_map(|z| (x0..=x1).map(move |x| (x, z)))
+                        .filter_map(|k| grid.get(&k))
+                        .collect()
+                };
+                let mut near: Vec<(f32, orca::Body, f32)> = cells
+                    .into_iter()
                     .flatten()
                     .map(|&j| (j, &bodies[j]))
                     .filter(|(j, b)| {

@@ -523,3 +523,31 @@ fn agents_with_negative_or_nan_angular_speed_still_walk() {
         assert!(s.world_position(e).x > -4.5, "{angular_speed}");
     }
 }
+
+#[test]
+fn an_agent_with_a_huge_radius_does_not_stall_the_neighbour_search() {
+    // A radius of 1e6 (Lua, scene files) once spanned ~1e11 grid cells per frame.
+    let mut s = Scene::new("T");
+    floor(&mut s, 0.0, 0.0, 20.0, 20.0);
+    let big = agent(
+        &mut s,
+        "Big",
+        Vec3::new(-5.0, 0.0, 0.0),
+        NavMeshAgent {
+            radius: 1e6,
+            ..Default::default()
+        },
+    );
+    agent(
+        &mut s,
+        "Small",
+        Vec3::new(5.0, 0.0, 0.0),
+        NavMeshAgent::default(),
+    );
+    let mut nav = runtime(&s);
+    nav.set_destination(&s, big, Vec3::new(5.0, 0.0, 0.0));
+    let start = std::time::Instant::now();
+    run(&mut s, &mut nav, 0.25);
+    assert!(start.elapsed().as_secs_f32() < 5.0, "{:?}", start.elapsed());
+    assert!(s.world_position(big).is_finite());
+}
