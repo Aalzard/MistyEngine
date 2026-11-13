@@ -45,7 +45,11 @@ impl Physics {
                 self.colliders.insert(h, e);
             }
             // Its trees' trunks (static capsules).
-            for c in crate::terrain::tree_colliders(scene, e) {
+            let trunks = {
+                crate::profile_scope!("Physics.TreeTrunks");
+                crate::terrain::tree_colliders(scene, e)
+            };
+            for c in trunks {
                 let c = c.collision_groups(groups);
                 let h = self.world.insert_collider(c.build(), None);
                 self.colliders.insert(h, e);
