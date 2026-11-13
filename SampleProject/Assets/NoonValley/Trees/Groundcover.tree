@@ -14,9 +14,9 @@
   "leaf_density": 2.6,
   "leaf_size": 0.38,
   "leaf_color": [
-    1.0,
-    1.0,
-    1.0
+    0.56,
+    0.58,
+    0.5
   ],
   "leaf_variation": 0.45,
   "translucency": 0.25,
