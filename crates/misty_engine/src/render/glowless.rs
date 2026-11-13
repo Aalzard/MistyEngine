@@ -384,7 +384,6 @@ mod tests {
     /// renderer kept on the glow target.
     #[test]
     fn glowless_frames_match_the_glow_target() {
-        use super::QUIET_FRAMES;
         use crate::camera::{Camera, Projection};
         use crate::render::gpu_tests::{draw, headless, material, read_back};
         use crate::render::*;
