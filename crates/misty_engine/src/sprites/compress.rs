@@ -385,6 +385,24 @@ pub fn mode() -> Mode {
     }
 }
 
+/// The workers of background encodes ([`Mode::Background`]): a quarter of the cores, so the
+/// editor keeps most of the machine while a fresh project encodes its textures (BC7 at a
+/// few hundred thousand blocks a second per core: seconds of all cores for a big scene).
+/// Its own pool: rayon's global one runs the frame's parallel loops, which would wait behind
+/// queued encodes, and the background pool's workers run below normal priority, where a busy
+/// machine (a build) could hold the encodes back for minutes.
+pub(crate) fn encode_pool() -> &'static rayon::ThreadPool {
+    static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+        rayon::ThreadPoolBuilder::new()
+            .num_threads((cores / 4).max(1))
+            .thread_name(|i| format!("misty texture encode {i}"))
+            .build()
+            .expect("texture encode thread pool")
+    })
+}
+
 /// Cache keys being encoded on workers, and the textures whose blocks became ready.
 static PENDING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 static FINISHED: LazyLock<Mutex<Vec<String>>> = LazyLock::new(Default::default);
@@ -557,7 +575,7 @@ pub fn texture_upload(rel: &str, usage: Use, bc: bool) -> Result<Upload, String>
             match choose(&imp, platform, &img, usage) {
                 Some(format) if fresh => {
                     let (rel, copy) = (rel.to_owned(), img.clone());
-                    crate::background::pool().spawn(move || {
+                    encode_pool().spawn(move || {
                         let c = encode(copy, format, srgb, mips);
                         write_cache(&key, &c);
                         PENDING
