@@ -77,7 +77,8 @@ impl NamedParams {
             .and_then(|v| match v.to_ascii_lowercase().as_str() {
                 "true" => Some(1.0),
                 "false" => Some(0.0),
-                s => s.parse().ok(),
+                // "nan" and "inf" parse: `clamp(min=nan,max=nan)` panicked (hand-edited files).
+                s => s.parse::<f32>().ok().filter(|x| x.is_finite()),
             })
             .unwrap_or(default)
     }

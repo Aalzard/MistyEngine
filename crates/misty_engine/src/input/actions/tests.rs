@@ -318,6 +318,16 @@ fn wasd_composite_and_shift_modifier_drive_actions() {
 
 // ---- processors ------------------------------------------------------------------------------
 
+/// "nan" and "inf" parse as numbers: a hand-edited `clamp(min=nan,max=nan)` panicked
+/// (`f32::clamp` with NaN bounds) on every input; such parameters take their defaults.
+#[test]
+fn non_finite_processor_parameters_take_their_defaults() {
+    let f = |text: &str, v: f32| processors::apply(text, Value::Float(v)).as_float();
+    assert_eq!(f("clamp(min=nan,max=nan)", 0.5), 0.5);
+    assert_eq!(f("scale(factor=inf)", 0.5), 0.5);
+    assert!(f("axisDeadzone(min=NaN,max=0.8)", 0.5).is_finite());
+}
+
 #[test]
 fn processors_filter_values_in_order() {
     let f = |text: &str, v: f32| processors::apply(text, Value::Float(v)).as_float();
