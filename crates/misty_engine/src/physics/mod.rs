@@ -134,10 +134,32 @@ const TRIGGER_RECOUNT_FRAMES: u32 = 60;
 /// Smallest world scale a collider is built with (a zero scale made degenerate shapes).
 const MIN_SCALE: f32 = 1e-3;
 
-/// Rigid (unscaled) world pose and world scale of an object (finite with a zero scale).
+/// Largest world scale a collider is built with, and the farthest world position a body is
+/// placed at: a damaged scene (scale 1e30, a rotation of length 1e30) made shapes and bounds
+/// overflow to infinity, and rapier / parry panicked on the NaNs that followed.
+const MAX_SCALE: f32 = 1e5;
+const MAX_POSITION: f32 = 1e9;
+/// Largest size of one collider shape along an axis (metres).
+pub(super) const MAX_EXTENT: f32 = 1e6;
+
+/// Rigid (unscaled) world pose and world scale of an object (finite with a zero scale, and
+/// finite and bounded for any input).
 fn world_pose(scene: &Scene, e: Entity) -> (Vec3, Quat, Vec3) {
     let (scale, rot, pos) = scene.world_parts(e);
-    (pos, rot, scale.max(Vec3::splat(MIN_SCALE)))
+    let scale = if scale.is_finite() {
+        scale.clamp(Vec3::splat(MIN_SCALE), Vec3::splat(MAX_SCALE))
+    } else {
+        Vec3::ONE
+    };
+    let rot = glam::Vec4::from(rot)
+        .try_normalize()
+        .map_or(Quat::IDENTITY, Quat::from_vec4);
+    let pos = if pos.is_finite() {
+        pos.clamp(Vec3::splat(-MAX_POSITION), Vec3::splat(MAX_POSITION))
+    } else {
+        Vec3::ZERO
+    };
+    (pos, rot, scale)
 }
 
 /// The mirror a negative world scale adds: `world_pose` keeps the scale's size only, and the

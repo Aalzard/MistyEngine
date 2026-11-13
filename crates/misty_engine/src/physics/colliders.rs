@@ -7,7 +7,7 @@ use rapier3d::prelude as rp;
 
 use super::convert::{pose, rv};
 use super::material::PhysicsMaterial;
-use super::{Physics, layers, world_mirror, world_pose};
+use super::{MAX_EXTENT, Physics, layers, world_mirror, world_pose};
 use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Scene, SphereCollider,
 };
@@ -175,13 +175,15 @@ impl Physics {
                     .restitution_combine_rule(m.bounce_combine.rapier()),
                 None => b.friction(surface.friction).restitution(surface.bounciness),
             };
-            (b.sensor(trigger), center * s * mirror, material.clone())
+            let center =
+                (center * s * mirror).clamp(Vec3::splat(-MAX_EXTENT), Vec3::splat(MAX_EXTENT));
+            (b.sensor(trigger), center, material.clone())
         };
         let mut shaped: Vec<(rp::ColliderBuilder, Vec3, Option<PhysicsMaterial>)> = Vec::new();
         if let Ok(c) = w.get::<&BoxCollider>(e)
             && c.enabled
         {
-            let h = (c.size * s * 0.5).max(Vec3::splat(1e-3));
+            let h = (c.size * s * 0.5).clamp(Vec3::splat(1e-3), Vec3::splat(MAX_EXTENT));
             shaped.push(finish(
                 rp::ColliderBuilder::cuboid(h.x, h.y, h.z),
                 c.center,
@@ -193,7 +195,7 @@ impl Physics {
         if let Ok(c) = w.get::<&SphereCollider>(e)
             && c.enabled
         {
-            let r = (c.radius * s.max_element()).max(1e-3);
+            let r = (c.radius * s.max_element()).clamp(1e-3, MAX_EXTENT);
             shaped.push(finish(
                 rp::ColliderBuilder::ball(r),
                 c.center,
@@ -207,8 +209,8 @@ impl Physics {
         {
             let axis = c.direction.min(2) as usize;
             let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
-            let r = (c.radius * s[a].max(s[b])).max(1e-3);
-            let half = (c.height * s[axis] * 0.5 - r).max(0.0);
+            let r = (c.radius * s[a].max(s[b])).clamp(1e-3, MAX_EXTENT);
+            let half = (c.height * s[axis] * 0.5 - r).clamp(0.0, MAX_EXTENT);
             let builder = match axis {
                 0 => rp::ColliderBuilder::capsule_x(half, r),
                 1 => rp::ColliderBuilder::capsule_y(half, r),
@@ -285,7 +287,9 @@ impl Physics {
 
 /// Wrap a shape in a compound so its centre offset survives the outer position.
 pub(super) fn offset(b: rp::ColliderBuilder, center: Vec3) -> rp::ColliderBuilder {
-    if center == Vec3::ZERO {
+    // A composite shape (a Mesh Collider's triangles) can't go inside a compound (parry
+    // panics); a non-finite centre (a damaged scene) has nowhere to go.
+    if center == Vec3::ZERO || !center.is_finite() || b.shape.as_composite_shape().is_some() {
         return b;
     }
     let shape = b.shape.clone();

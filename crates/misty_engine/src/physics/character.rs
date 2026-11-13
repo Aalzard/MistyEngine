@@ -66,8 +66,8 @@ impl Physics {
     /// Kinematic body + capsule collider for a Character Controller.
     pub(super) fn add_controller(&mut self, scene: &Scene, e: Entity, cc: CharacterController) {
         let (pos, rot, s) = world_pose(scene, e);
-        let radius = (cc.radius * s.x.max(s.z)).max(1e-3);
-        let half = (cc.height * s.y * 0.5 - radius).max(0.0);
+        let radius = (cc.radius * s.x.max(s.z)).clamp(1e-3, super::MAX_EXTENT);
+        let half = (cc.height * s.y * 0.5 - radius).clamp(0.0, super::MAX_EXTENT);
         let handle = self.world.insert_body(
             rp::RigidBodyBuilder::kinematic_position_based()
                 .pose(pose(pos, rot))
@@ -126,8 +126,8 @@ impl Physics {
             return;
         };
         let (_, _, s) = world_pose(scene, e);
-        let radius = (cc.radius * s.x.max(s.z)).max(1e-3);
-        let half = (cc.height * s.y * 0.5 - radius).max(0.0);
+        let radius = (cc.radius * s.x.max(s.z)).clamp(1e-3, super::MAX_EXTENT);
+        let half = (cc.height * s.y * 0.5 - radius).clamp(0.0, super::MAX_EXTENT);
         let shape = rp::SharedShape::capsule_y(half, radius);
         let center = cc.center * s;
         c.settings = cc;

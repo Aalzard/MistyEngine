@@ -151,6 +151,38 @@ fn landing_reports_a_collision_and_triggers_are_flagged() {
     assert!(hit(c, zone).expect("cube passes the trigger").trigger);
 }
 
+/// Absurd sizes (a damaged or hand-edited scene: scale 1e30 under a parent of scale 1e30, a
+/// Box Collider 1e30 wide, a centre 1e30 away) no longer panic rapier or parry: the infinite
+/// world scale made a Mesh Collider's zero centre NaN, which wrapped its triangles in a
+/// compound ("nested composite shapes"), and infinite bounds broke the island manager.
+#[test]
+fn absurd_sizes_and_scales_build_and_step() {
+    let mut scene = Scene::new("t");
+    let big = scene.spawn("Big", None);
+    let mut t = Transform::default();
+    t.scale = Vec3::splat(1e30);
+    scene.set_transform(big, t);
+    let child = scene.spawn("Child", Some(big));
+    scene.set_transform(child, t);
+    scene.add(
+        child,
+        MeshFilter {
+            mesh: Some(PrimitiveMesh::Cube.into()),
+        },
+    );
+    scene.add(child, MeshCollider::default());
+    scene.add(child, BoxCollider::default());
+    let wide = cube(&mut scene, "Wide", Vec3::new(0.0, 3.0, 0.0), true);
+    scene.world.get::<&mut BoxCollider>(wide).unwrap().size = Vec3::splat(1e30);
+    let far = cube(&mut scene, "Far", Vec3::new(5.0, 3.0, 0.0), true);
+    scene.world.get::<&mut BoxCollider>(far).unwrap().center = Vec3::new(1e30, 0.0, 0.0);
+    cube(&mut scene, "Faller", Vec3::new(1e30, 3.0, 0.0), true);
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    for _ in 0..5 {
+        physics.update(&mut scene, 1.0 / 60.0);
+    }
+}
+
 /// A body whose world scale is zero on one axis (a flattened cube): the poses stay finite
 /// and nothing writes NaN into the Transform (the matrix decomposition divided by zero).
 #[test]
