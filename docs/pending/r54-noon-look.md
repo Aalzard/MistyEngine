@@ -19,6 +19,8 @@ writes under `SampleProject/Assets/NoonValley/` and `Assets/Scenes/NoonValley.sc
 | base (main 49f7ed1b) | 14.1 / 3.5 ms | 11.7 / 3.0 ms | machine shared with r51/r52 builds |
 | e | 13.4 / 5.0 ms | 16.7 / 3.2 ms | inside: undergrowth in the open cells and hollows (+5 ms, to be cut) |
 | d | – | 19.9 ms | carpets under the whole near forest: dropped |
+| f | 16.3 ms | 28.2 ms | open wood up to the hill's foot (machine loaded, CPU 23 ms): dropped |
+| j | 13.2 / 10.4 ms | 15.9 / 8.4 ms | round 2; CPU numbers inflated by other jobs' load |
 
 ## Rounds
 
@@ -39,6 +41,29 @@ writes under `SampleProject/Assets/NoonValley/` and `Assets/Scenes/NoonValley.sc
 Numbers after e (reference / ours, sRGB means of fixed regions of the first view): meadow
 near 59/76/18 / 50/66/19, meadow mid 76/87/43 / 79/89/35. Forest lower-half luminance
 median: `inside` 0.019, `inside2` 0.047 (reference 0.028).
+
+- **f–j (second commit, after a PC crash mid-round):** found why the far meadow read cream
+  (132/139/77 against the reference's 85/97/59): past the grass's draw distance the terrain
+  stands in for the grass by mixing the ground texture with the grass colours (`ground_tint`),
+  so neither the grass colours nor the haze changed it. Layer 0 is now a generated dark turf
+  (`MeadowTurf*.png`, 1024², 3 m tile) and `ground_tint` 0.25: far meadow 108/120/75. Grass
+  dry colour green (0.38/0.43/0.2), dry amount 0.3. Limestone base 0.034/0.031/0.022 with
+  beds of 12–24 m (the 4 m height samples now resolve them); the slab is all rock (no turf on
+  the ledges). Treeline wood: carpets fewer but wider (1.0–1.5×), hollows 5–7 plants; a new
+  "Forest Herbs" grass detail layer (90/m², 0.1–0.26 m, dark) over the litter within ~800 m
+  (cheap cover for the bare floor in `inside`). Forest Haze box only behind the wood's edge.
+  Tried and dropped: carpets under the whole near forest (+8 ms inside), the open wood up to
+  the hill's foot (+12 ms).
+
+## Still differs (after j)
+
+- Cliff slab: the steep beds read mid-grey, the flatter top of the site pale cream (the grass
+  stand-in at the rim where Meadow Ground has weight); from the meadow it still looks paler
+  and less structured than the reference's tan slabs.
+- `inside`: the herbs read as sparse grass sprouts on bare litter; the reference has broad
+  leaves. `inside2` lime-green and pale against the reference's dark olive.
+- Inside GPU ~16 ms against 11.7 at the start (groundcover shadows and the herbs).
+- Treeline view: the hill's turf (Hill Turf, the sample's yellow-green texture) reads pale.
 
 ## Still differs (after e)
 

@@ -392,9 +392,9 @@
           "enabled": true,
           "fog_distance": 1100.0,
           "size": [
-            520.0,
+            500.0,
             40.0,
-            390.0
+            270.0
           ]
         },
         "GameObject": {
@@ -415,9 +415,9 @@
             0.0
           ],
           "position": [
-            -180.0,
-            58.49202,
-            515.0
+            -190.0,
+            57.85876,
+            575.0
           ],
           "rotation": [
             0.0,
@@ -4401,7 +4401,7 @@
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Boulder Split (1)",
+          "name": "Rock Small (12)",
           "tag": "Untagged"
         },
         "LOD Group": {
@@ -4413,30 +4413,309 @@
               "renderers": [
                 77
               ],
-              "screen_height": 0.25
+              "screen_height": 0.12
             },
             {
               "renderers": [
                 78
               ],
-              "screen_height": 0.08
+              "screen_height": 0.04
             },
             {
               "renderers": [
                 79
               ],
-              "screen_height": 0.025
+              "screen_height": 0.012
             },
             {
               "renderers": [
                 80
               ],
-              "screen_height": 0.002
+              "screen_height": 0.004
             }
           ]
         },
         "Prefab": {
-          "path": "Assets/Rocks/Prefabs/Boulder Split.prefab"
+          "path": "Assets/Rocks/Prefabs/Rock Small.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            8.079234,
+            -42.993664,
+            12.047609
+          ],
+          "position": [
+            113.15796,
+            90.30404,
+            123.477905
+          ],
+          "rotation": [
+            -0.026823606,
+            0.3703995,
+            -0.123071566,
+            -0.92029244
+          ],
+          "scale": [
+            1.1983865,
+            1.1983865,
+            1.1983865
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Rock Small.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 76
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 76
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 76
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 76
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rock Small (13)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                82
+              ],
+              "screen_height": 0.12
+            },
+            {
+              "renderers": [
+                83
+              ],
+              "screen_height": 0.04
+            },
+            {
+              "renderers": [
+                84
+              ],
+              "screen_height": 0.012
+            },
+            {
+              "renderers": [
+                85
+              ],
+              "screen_height": 0.004
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Rock Small.prefab"
         },
         "Transform": {
           "euler_hint": [
@@ -4479,12 +4758,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split.glb#0"
+          "mesh": "Assets/Rocks/Meshes/Rock Small.glb#0"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -4511,7 +4790,7 @@
           ]
         }
       },
-      "parent": 76
+      "parent": 81
     },
     {
       "components": {
@@ -4528,12 +4807,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#0"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#0"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -4560,7 +4839,7 @@
           ]
         }
       },
-      "parent": 76
+      "parent": 81
     },
     {
       "components": {
@@ -4587,12 +4866,12 @@
           }
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#1"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#1"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -4619,7 +4898,7 @@
           ]
         }
       },
-      "parent": 76
+      "parent": 81
     },
     {
       "components": {
@@ -4636,12 +4915,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#2"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#2"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -4668,7 +4947,7 @@
           ]
         }
       },
-      "parent": 76
+      "parent": 81
     },
     {
       "components": {
@@ -4680,7 +4959,7 @@
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Boulder Split (2)",
+          "name": "Rock Small (14)",
           "tag": "Untagged"
         },
         "LOD Group": {
@@ -4690,32 +4969,32 @@
           "lods": [
             {
               "renderers": [
-                82
+                87
               ],
-              "screen_height": 0.25
+              "screen_height": 0.12
             },
             {
               "renderers": [
-                83
+                88
               ],
-              "screen_height": 0.08
+              "screen_height": 0.04
             },
             {
               "renderers": [
-                84
+                89
               ],
-              "screen_height": 0.025
+              "screen_height": 0.012
             },
             {
               "renderers": [
-                85
+                90
               ],
-              "screen_height": 0.002
+              "screen_height": 0.004
             }
           ]
         },
         "Prefab": {
-          "path": "Assets/Rocks/Prefabs/Boulder Split.prefab"
+          "path": "Assets/Rocks/Prefabs/Rock Small.prefab"
         },
         "Transform": {
           "euler_hint": [
@@ -4758,291 +5037,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split.glb#0"
+          "mesh": "Assets/Rocks/Meshes/Rock Small.glb#0"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 81
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD1",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#0"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 81
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer",
-            "Mesh Collider"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD2",
-          "tag": "Untagged"
-        },
-        "Mesh Collider": {
-          "convex": false,
-          "enabled": true,
-          "is_trigger": false,
-          "surface": {
-            "bounciness": 0.0,
-            "friction": 0.6
-          }
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#1"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 81
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD3",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#2"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 81
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "LOD Group"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Boulder Split (3)",
-          "tag": "Untagged"
-        },
-        "LOD Group": {
-          "enabled": true,
-          "fade_mode": "CrossFade",
-          "fade_width": 0.1,
-          "lods": [
-            {
-              "renderers": [
-                87
-              ],
-              "screen_height": 0.25
-            },
-            {
-              "renderers": [
-                88
-              ],
-              "screen_height": 0.08
-            },
-            {
-              "renderers": [
-                89
-              ],
-              "screen_height": 0.025
-            },
-            {
-              "renderers": [
-                90
-              ],
-              "screen_height": 0.002
-            }
-          ]
-        },
-        "Prefab": {
-          "path": "Assets/Rocks/Prefabs/Boulder Split.prefab"
-        },
-        "Transform": {
-          "euler_hint": [
-            14.264357,
-            -136.69872,
-            -10.619844
-          ],
-          "position": [
-            107.69812,
-            85.36397,
-            105.04224
-          ],
-          "rotation": [
-            -0.13095997,
-            0.91406214,
-            -0.081025034,
-            -0.37519982
-          ],
-          "scale": [
-            1.2876158,
-            1.2876158,
-            1.2876158
-          ]
-        }
-      },
-      "parent": 10
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD0",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split.glb#0"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -5086,12 +5086,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#0"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#0"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -5145,12 +5145,12 @@
           }
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#1"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#1"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -5194,12 +5194,12 @@
           "tag": "Untagged"
         },
         "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#2"
+          "mesh": "Assets/Rocks/Meshes/Rock Small LODs.glb#2"
         },
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "material": "Assets/Rocks/Materials/Rock Small.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -5238,7 +5238,7 @@
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Boulder Split (4)",
+          "name": "Outcrop Layered",
           "tag": "Untagged"
         },
         "LOD Group": {
@@ -5273,308 +5273,29 @@
           ]
         },
         "Prefab": {
-          "path": "Assets/Rocks/Prefabs/Boulder Split.prefab"
-        },
-        "Transform": {
-          "euler_hint": [
-            -10.120768,
-            125.767845,
-            -9.264191
-          ],
-          "position": [
-            106.2948,
-            92.69828,
-            229.04053
-          ],
-          "rotation": [
-            -0.11167299,
-            0.8804731,
-            0.04158876,
-            0.4588755
-          ],
-          "scale": [
-            1.7744932,
-            1.7744932,
-            1.7744932
-          ]
-        }
-      },
-      "parent": 10
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD0",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split.glb#0"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 91
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD1",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#0"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 91
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer",
-            "Mesh Collider"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD2",
-          "tag": "Untagged"
-        },
-        "Mesh Collider": {
-          "convex": false,
-          "enabled": true,
-          "is_trigger": false,
-          "surface": {
-            "bounciness": 0.0,
-            "friction": 0.6
-          }
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#1"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 91
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "LOD3",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#2"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Rocks/Materials/Boulder Split.mat",
-          "receive_shadows": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": 91
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "LOD Group"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Outcrop Layered",
-          "tag": "Untagged"
-        },
-        "LOD Group": {
-          "enabled": true,
-          "fade_mode": "CrossFade",
-          "fade_width": 0.1,
-          "lods": [
-            {
-              "renderers": [
-                97
-              ],
-              "screen_height": 0.25
-            },
-            {
-              "renderers": [
-                98
-              ],
-              "screen_height": 0.08
-            },
-            {
-              "renderers": [
-                99
-              ],
-              "screen_height": 0.025
-            },
-            {
-              "renderers": [
-                100
-              ],
-              "screen_height": 0.002
-            }
-          ]
-        },
-        "Prefab": {
           "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
         },
         "Transform": {
           "euler_hint": [
-            -16.40146,
-            50.632446,
-            15.816974
+            -14.481811,
+            48.05017,
+            12.6552
           ],
           "position": [
-            155.0636,
-            128.85738,
-            257.13098
+            162.21167,
+            119.94992,
+            179.43103
           ],
           "rotation": [
-            -0.069481805,
-            0.43695718,
-            0.18352076,
-            0.87781596
+            -0.06990693,
+            0.41411713,
+            0.15086573,
+            0.8949076
           ],
           "scale": [
-            1.6337653,
-            1.6337653,
-            1.6337653
+            1.3767896,
+            1.3767896,
+            1.3767896
           ]
         }
       },
@@ -5627,7 +5348,7 @@
           ]
         }
       },
-      "parent": 96
+      "parent": 91
     },
     {
       "components": {
@@ -5676,7 +5397,7 @@
           ]
         }
       },
-      "parent": 96
+      "parent": 91
     },
     {
       "components": {
@@ -5735,7 +5456,7 @@
           ]
         }
       },
-      "parent": 96
+      "parent": 91
     },
     {
       "components": {
@@ -5758,6 +5479,285 @@
           "cast_shadows": true,
           "enabled": true,
           "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 91
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Boulder Split (1)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                97
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                98
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                99
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                100
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Boulder Split.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            -28.733505,
+            95.37291,
+            -6.6082473
+          ],
+          "position": [
+            150.47363,
+            125.30921,
+            266.55176
+          ],
+          "rotation": [
+            -0.20804611,
+            0.7055286,
+            0.14559221,
+            0.66162604
+          ],
+          "scale": [
+            1.3206041,
+            1.3206041,
+            1.3206041
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Boulder Split.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 96
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 96
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Boulder Split.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 96
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Boulder Split LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Boulder Split.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -5835,25 +5835,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -21.8424,
-            74.167244,
-            5.5399647
+            -10.120768,
+            125.767845,
+            -9.264191
           ],
           "position": [
-            163.04541,
-            133.84818,
-            261.14587
+            106.2948,
+            92.69828,
+            229.04053
           ],
           "rotation": [
-            -0.12235319,
-            0.5986716,
-            0.15196088,
-            0.7768719
+            -0.11167299,
+            0.8804731,
+            0.04158876,
+            0.4588755
           ],
           "scale": [
-            1.910598,
-            1.910598,
-            1.910598
+            1.7744932,
+            1.7744932,
+            1.7744932
           ]
         }
       },
@@ -6114,25 +6114,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -16.91189,
-            105.77022,
-            -9.129105
+            -24.77453,
+            75.035805,
+            0.916041
           ],
           "position": [
-            166.96545,
-            137.01875,
-            257.17383
+            163.04541,
+            134.97144,
+            261.14587
           ],
           "rotation": [
-            -0.15122129,
-            0.77919537,
-            0.06938979,
-            0.6042944
+            -0.16538751,
+            0.5961727,
+            0.13683227,
+            0.7736292
           ],
           "scale": [
-            1.2034473,
-            1.2034473,
-            1.2034473
+            1.910598,
+            1.910598,
+            1.910598
           ]
         }
       },
@@ -6393,25 +6393,25 @@
         },
         "Transform": {
           "euler_hint": [
-            14.856602,
-            -142.96298,
-            -9.391723
+            -4.000291,
+            -99.477516,
+            1.8354094
           ],
           "position": [
-            247.53589,
-            185.41588,
-            236.04932
+            242.9961,
+            209.36426,
+            360.4513
           ],
           "rotation": [
-            -0.1179007,
-            0.93374527,
-            -0.09639619,
-            -0.32392427
+            0.034768045,
+            0.76218164,
+            0.016285922,
+            -0.64622384
           ],
           "scale": [
-            2.858586,
-            2.858586,
-            2.858586
+            2.5921783,
+            2.5921783,
+            2.5921783
           ]
         }
       },
@@ -6672,25 +6672,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -29.93613,
-            66.12451,
-            -3.0207634
+            6.5712404,
+            -179.33702,
+            -17.032
           ],
           "position": [
-            227.07935,
-            179.19478,
-            290.87183
+            203.00378,
+            176.83394,
+            352.71118
           ],
           "rotation": [
-            -0.23027593,
-            0.5211509,
-            0.11951542,
-            0.81307495
+            -0.14816763,
+            0.9872833,
+            -0.055825282,
+            -0.014199429
           ],
           "scale": [
-            3.6272607,
-            3.6272607,
-            3.6272607
+            3.4446223,
+            3.4446223,
+            3.4446223
           ]
         }
       },
@@ -6951,25 +6951,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -23.724699,
-            115.72117,
-            -8.463272
+            5.569216,
+            -126.28133,
+            -20.223663
           ],
           "position": [
-            330.73035,
-            245.87871,
-            259.03613
+            325.1449,
+            255.59377,
+            413.32727
           ],
           "rotation": [
-            -0.17020337,
-            0.81834495,
-            0.13516967,
-            0.53204477
+            -0.17805254,
+            0.87337047,
+            0.036561973,
+            -0.4518679
           ],
           "scale": [
-            2.5899358,
-            2.5899358,
-            2.5899358
+            3.0601816,
+            3.0601816,
+            3.0601816
           ]
         }
       },
@@ -7230,25 +7230,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -7.682665,
-            84.62883,
-            -1.6658478
+            -10.964227,
+            97.44021,
+            -4.7155952
           ],
           "position": [
-            227.70044,
-            198.21587,
-            348.88306
+            200.02185,
+            162.38478,
+            276.44275
           ],
           "rotation": [
-            -0.05929817,
-            0.6708951,
-            0.034370072,
-            0.7383781
+            -0.09374963,
+            0.74483216,
+            0.044716068,
+            0.65911806
           ],
           "scale": [
-            3.4935431,
-            3.4935431,
-            3.4935431
+            3.2050586,
+            3.2050586,
+            3.2050586
           ]
         }
       },
@@ -7509,25 +7509,25 @@
         },
         "Transform": {
           "euler_hint": [
-            26.735098,
-            -104.90132,
-            2.381307
+            -4.1739016,
+            171.78488,
+            -35.78582
           ],
           "position": [
-            237.90845,
-            184.77646,
-            275.49158
+            258.6809,
+            208.89653,
+            386.32263
           ],
           "rotation": [
-            -0.12484312,
-            0.77411,
-            -0.19558075,
-            -0.58899575
+            -0.3087287,
+            0.94775707,
+            0.012573103,
+            0.07927902
           ],
           "scale": [
-            3.2586699,
-            3.2586699,
-            3.2586699
+            3.8092794,
+            3.8092794,
+            3.8092794
           ]
         }
       },
@@ -7788,25 +7788,25 @@
         },
         "Transform": {
           "euler_hint": [
-            24.22751,
-            -75.21833,
-            7.2785807
+            35.077347,
+            -149.68544,
+            -28.365833
           ],
           "position": [
-            277.31714,
-            198.77011,
-            242.74915
+            314.13696,
+            225.78316,
+            311.0896
           ],
           "rotation": [
-            -0.12803452,
-            0.60603195,
-            -0.17697391,
-            -0.76486135
+            -0.3018928,
+            0.87298334,
+            -0.22091328,
+            -0.3129828
           ],
           "scale": [
-            3.531034,
-            3.531034,
-            3.531034
+            3.4586167,
+            3.4586167,
+            3.4586167
           ]
         }
       },
@@ -8067,25 +8067,25 @@
         },
         "Transform": {
           "euler_hint": [
-            28.3068,
-            -112.297905,
-            -15.900539
+            14.897827,
+            -145.59958,
+            -28.932297
           ],
           "position": [
-            223.07202,
-            189.51192,
-            369.2395
+            247.53589,
+            180.80746,
+            236.04932
           ],
           "rotation": [
-            -0.24627754,
-            0.77869964,
-            -0.12641148,
-            -0.5630225
+            -0.2737432,
+            0.90760773,
+            -0.046670094,
+            -0.31485692
           ],
           "scale": [
-            3.6663103,
-            3.6663103,
-            3.6663103
+            2.858586,
+            2.858586,
+            2.858586
           ]
         }
       },
@@ -8346,25 +8346,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -28.82913,
-            85.66672,
-            4.02489
+            -32.72056,
+            66.00782,
+            -2.3538456
           ],
           "position": [
-            244.80933,
-            183.56255,
-            248.245
+            227.07935,
+            179.82596,
+            290.87183
           ],
           "rotation": [
-            -0.15931769,
-            0.6644706,
-            0.1940809,
-            0.70386744
+            -0.24690828,
+            0.51767904,
+            0.13686785,
+            0.8076583
           ],
           "scale": [
-            2.581066,
-            2.581066,
-            2.581066
+            3.6272607,
+            3.6272607,
+            3.6272607
           ]
         }
       },
@@ -8625,25 +8625,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -7.300116,
-            109.18271,
-            0.08194522
+            1.3584204,
+            84.7572,
+            20.056944
           ],
           "position": [
-            420.81226,
-            314.76642,
-            491.10437
+            239.62561,
+            245.69232,
+            661.10376
           ],
           "rotation": [
-            -0.03630462,
-            0.81341326,
-            0.052300952,
-            0.5781916
+            0.12598805,
+            0.6621568,
+            0.12075964,
+            0.7287609
           ],
           "scale": [
-            3.6919506,
-            3.6919506,
-            3.6919506
+            4.324724,
+            4.324724,
+            4.324724
           ]
         }
       },
@@ -8904,25 +8904,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -6.442065,
-            21.65658,
-            -4.5021524
+            -23.719221,
+            142.18521,
+            -24.073368
           ],
           "position": [
-            413.26147,
-            332.6531,
-            635.8286
+            393.81323,
+            286.47653,
+            471.71423
           ],
           "rotation": [
-            -0.06251244,
-            0.18525709,
-            -0.027970579,
-            0.9803008
+            -0.25820532,
+            0.89160645,
+            0.12401888,
+            0.35069543
           ],
           "scale": [
-            4.8480344,
-            4.8480344,
-            4.8480344
+            3.57772,
+            3.57772,
+            3.57772
           ]
         }
       },
@@ -9183,25 +9183,25 @@
         },
         "Transform": {
           "euler_hint": [
-            11.256871,
-            -67.80814,
-            19.585852
+            27.120571,
+            -108.71514,
+            -13.407946
           ],
           "position": [
-            422.10962,
-            330.0108,
-            616.9304
+            252.3855,
+            210.72841,
+            569.3645
           ],
           "rotation": [
-            0.014203326,
-            0.5608716,
-            -0.19439815,
-            -0.8046308
+            -0.22792242,
+            0.76866347,
+            -0.12311168,
+            -0.5848517
           ],
           "scale": [
-            3.0954163,
-            3.0954163,
-            3.0954163
+            4.0115595,
+            4.0115595,
+            4.0115595
           ]
         }
       },
@@ -9462,25 +9462,25 @@
         },
         "Transform": {
           "euler_hint": [
-            13.365459,
-            -62.143982,
-            15.684922
+            -4.227019,
+            -179.25969,
+            -21.13201
           ],
           "position": [
-            344.88123,
-            273.89304,
-            489.7395
+            400.36768,
+            326.146,
+            703.9209
           ],
           "rotation": [
-            -0.028796833,
-            0.5214142,
-            -0.17557706,
-            -0.8345482
+            -0.18300535,
+            0.98239875,
+            0.037437093,
+            0.00041581847
           ],
           "scale": [
-            3.5971203,
-            3.5971203,
-            3.5971203
+            4.423414,
+            4.423414,
+            4.423414
           ]
         }
       },
@@ -9741,25 +9741,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -19.648123,
-            14.56214,
-            18.433453
+            -16.609365,
+            41.237747,
+            17.701012
           ],
           "position": [
-            453.54883,
-            349.0048,
-            646.14136
+            270.17236,
+            224.05487,
+            476.88745
           ],
           "rotation": [
-            -0.14706069,
-            0.15037447,
-            0.17789316,
-            0.9613089
+            -0.079962775,
+            0.36510745,
+            0.19274929,
+            0.9072763
           ],
           "scale": [
-            3.7018013,
-            3.7018013,
-            3.7018013
+            4.5659842,
+            4.5659842,
+            4.5659842
           ]
         }
       },
@@ -10020,25 +10020,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -5.8364644,
-            158.34932,
-            -18.806343
+            17.16725,
+            -109.54785,
+            -8.490678
           ],
           "position": [
-            398.3557,
-            326.4618,
-            697.9563
+            233.84009,
+            242.98456,
+            686.5493
           ],
           "rotation": [
-            -0.16969836,
-            0.9661877,
-            0.018687205,
-            0.19322157
+            -0.1456477,
+            0.7991435,
+            -0.07936643,
+            -0.577804
           ],
           "scale": [
-            4.6683903,
-            4.6683903,
-            4.6683903
+            4.5550804,
+            4.5550804,
+            4.5550804
           ]
         }
       },
@@ -10299,25 +10299,25 @@
         },
         "Transform": {
           "euler_hint": [
-            7.3879447,
-            -113.355804,
-            -10.907849
+            -3.6732914,
+            109.10851,
+            2.4762712
           ],
           "position": [
-            470.43457,
-            349.1162,
-            558.301
+            420.81226,
+            315.30722,
+            491.10437
           ],
           "rotation": [
-            -0.114487015,
-            0.8267207,
-            -0.0014872998,
-            -0.5508388
+            -0.0009883624,
+            0.81445813,
+            0.038628586,
+            0.5789343
           ],
           "scale": [
-            3.373853,
-            3.373853,
-            3.373853
+            3.6919506,
+            3.6919506,
+            3.6919506
           ]
         }
       },
@@ -10578,25 +10578,25 @@
         },
         "Transform": {
           "euler_hint": [
-            -7.2867637,
-            139.78938,
-            -0.6108117
+            -6.050473,
+            21.691252,
+            -5.4484286
           ],
           "position": [
-            369.14526,
-            304.9344,
-            617.9658
+            413.26147,
+            332.5881,
+            635.8286
           ],
           "rotation": [
-            -0.02683885,
-            0.9370348,
-            0.057844404,
-            0.34336504
+            -0.06070522,
+            0.18522532,
+            -0.03669532,
+            0.98013264
           ],
           "scale": [
-            3.0106874,
-            3.0106874,
-            3.0106874
+            4.8480344,
+            4.8480344,
+            4.8480344
           ]
         }
       },

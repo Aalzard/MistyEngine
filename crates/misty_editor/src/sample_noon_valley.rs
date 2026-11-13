@@ -38,6 +38,10 @@ const LIMESTONE_HEIGHT: &str = "Assets/NoonValley/Textures/LimestoneHeight.png";
 // From tools/noon_valley_textures.py (2048²: leaf litter, twigs; bark; fern and groundcover
 // leaf atlases).
 const FOREST_FLOOR: &str = "Assets/NoonValley/Textures/ForestFloor.png";
+// The meadow's ground under (and past) the grass: dark turf, generated here.
+const TURF_GROUND: &str = "Assets/NoonValley/Textures/MeadowTurf.png";
+const TURF_GROUND_NORMAL: &str = "Assets/NoonValley/Textures/MeadowTurfNormal.png";
+const TURF_GROUND_HEIGHT: &str = "Assets/NoonValley/Textures/MeadowTurfHeight.png";
 const FOREST_FLOOR_NORMAL: &str = "Assets/NoonValley/Textures/ForestFloorNormal.png";
 const FOREST_FLOOR_HEIGHT: &str = "Assets/NoonValley/Textures/ForestFloorHeight.png";
 
@@ -63,10 +67,7 @@ fn with_leaves(mut t: TreeAsset, name: &str) -> TreeAsset {
     t.leaf_translucency = nv_texture(&format!("{name}Translucency"));
     t
 }
-// MeadowDemo's ground (soil and litter under the grass) and hill turf.
-const GROUND: &str = "Assets/Textures/Meadow/MeadowThatch.png";
-const GROUND_NORMAL: &str = "Assets/Textures/Meadow/MeadowThatchNormal.png";
-const GROUND_HEIGHT: &str = "Assets/Textures/Meadow/MeadowThatchHeight.png";
+// The sample's hill turf.
 const TURF: &str = "Assets/Textures/Terrain/Meadow.png";
 
 /// 4 km of valley (4 m between height samples, like MeadowDemo).
@@ -163,12 +164,12 @@ fn cliff_steps(x: f32, z: f32) -> (f32, f32, f32) {
         * smooth(650.0, 500.0, u)
         * smooth(1100.0, 800.0, p.y))
     .max(site);
-    // In the sites one continuous slab of bare rock: thin beds of 8–12 m, each a ~55° face
-    // over a narrow ledge (the layering seen from the meadow), no trees on it.
+    // In the sites one continuous slab of bare rock: beds of 12–24 m, each a steep face over
+    // a narrow ledge (the layering seen from the meadow), no trees on it.
     let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29);
-    let bed = 9.0 + 3.0 * noise::fbm(x, z, 140.0, 2, 31);
+    let bed = 18.0 + 6.0 * noise::fbm(x, z, 140.0, 2, 31);
     let core = smooth(0.15, 0.45, site);
-    (cliffs, step + (bed - step) * core, 0.27 + 0.3 * core)
+    (cliffs, step + (bed - step) * core, 0.27 + 0.25 * core)
 }
 
 /// On a ledge (not a face) of a cliff site's beds at (x, z).
@@ -287,7 +288,9 @@ fn grass() -> details::DetailSettings {
         height: [0.2, 0.62],
         width: 0.058,
         healthy_color: [0.44, 0.53, 0.22],
-        dry_color: [0.52, 0.53, 0.32],
+        // (Green, not straw: past the draw distance the ground stands in for the grass with
+        // these colours, warmed, and a straw dry colour turned the far meadow cream.)
+        dry_color: [0.38, 0.43, 0.2],
         wind_strength: 0.18,
         wind_speed: 0.9,
         seed_heads: 0.001,
@@ -300,11 +303,11 @@ fn grass() -> details::DetailSettings {
         patch_scale: 30.0,
         lush_color: [0.16, 0.25, 0.06],
         lush_amount: 0.45,
-        dry_amount: 0.45,
+        dry_amount: 0.3,
         color_variation: 0.5,
         height_variation: 0.9,
         density_variation: 0.25,
-        ground_tint: 0.45,
+        ground_tint: 0.25,
         cast_shadows: true,
         wind_direction: 80.0,
         gust_strength: 0.55,
@@ -377,6 +380,40 @@ fn tall_grass(d: &TerrainData) -> DetailLayer {
         seed_heads: 0.0,
         map,
         ..DetailLayer::grass("Tall Grass")
+    }
+}
+
+/// Low dark herbs over the litter of the woods near the meadow (between the ferns and the
+/// broad-leaved plants): the floor reads green and shaded, not bare, for the cost of grass.
+fn forest_herbs(d: &TerrainData) -> DetailLayer {
+    let n = d.alphamap_resolution;
+    let texel = d.size.x / n as f32;
+    let map = (0..n * n)
+        .map(|t| {
+            let (x, z) = (
+                (t % n) as f32 * texel + texel * 0.5,
+                (t / n) as f32 * texel + texel * 0.5,
+            );
+            let near = smooth(900.0, 700.0, rel(x, z).length());
+            if near <= 0.0 {
+                return 0;
+            }
+            let litter = d.layer_weight(t, 3) as f32 / 255.0;
+            let patch = 0.55 + 0.45 * smooth(-0.2, 0.25, noise::fbm(x, z, 17.0, 2, 79));
+            (near * litter * patch * 255.0).round() as u8
+        })
+        .collect();
+    DetailLayer {
+        name: "Forest Herbs".into(),
+        density: 90.0,
+        height: [0.1, 0.26],
+        width: 0.09,
+        bend: 1.2,
+        dryness: 0.0,
+        tint: -0.55,
+        seed_heads: 0.0,
+        map,
+        ..DetailLayer::grass("Forest Herbs")
     }
 }
 
@@ -498,7 +535,7 @@ fn limestone() -> [RgbaImage; 3] {
             let moss = smooth(0.68, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.95, bed);
             // (Grey, about half as bright as fresh limestone: weathered faces seen from the
             // meadow read mid-grey through the haze, not white.)
-            let mut c = [0.1, 0.088, 0.066].map(|k| {
+            let mut c = [0.034, 0.031, 0.022].map(|k| {
                 k * (0.84 + 0.22 * bed_tone)
                     * (0.78 + 0.4 * blocks)
                     * (0.9 + 0.2 * lumps)
@@ -510,9 +547,9 @@ fn limestone() -> [RgbaImage; 3] {
             });
             // (Stains, lichen and moss darker than the rock or near it: never paler, which
             // reads yellow-green from the meadow.)
-            let oc = [0.11, 0.085, 0.05];
-            let lc = [0.085, 0.09, 0.075];
-            let mc = [0.04, 0.06, 0.02];
+            let oc = [0.037, 0.028, 0.016];
+            let lc = [0.029, 0.031, 0.025];
+            let mc = [0.014, 0.02, 0.007];
             for i in 0..3 {
                 c[i] += (oc[i] - c[i]) * stain * 0.3;
                 c[i] += (lc[i] - c[i]) * lichen * 0.4;
@@ -528,6 +565,33 @@ fn limestone() -> [RgbaImage; 3] {
         }
     }
     maps(n, &color, &height, 6.0)
+}
+
+/// Dense turf seen from above, the ground of the meadow: dark green tufts and their shade,
+/// a few straw-coloured dead blades, darker hollows (3 m tile). Albedo (sRGB), height, normal.
+fn meadow_turf() -> [RgbaImage; 3] {
+    let n = TEX / 2;
+    let mut color = vec![[0.0f32; 3]; n * n];
+    let mut height = vec![0.0f32; n * n];
+    for y in 0..n {
+        for x in 0..n {
+            let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
+            let tufts = tile_fbm(u, v, 24, 3, 201);
+            let blades = tile_noise(u, v * 0.35, 260, 202);
+            let hollows = smooth(0.38, 0.2, tile_fbm(u, v, 6, 3, 203));
+            let straw = smooth(0.7, 0.85, tile_fbm(u, v, 40, 2, 204)) * 0.5;
+            let lit = (0.55 + 0.6 * tufts) * (0.85 + 0.3 * blades) * (1.0 - 0.45 * hollows);
+            let green = [0.045, 0.062, 0.022];
+            let dead = [0.11, 0.1, 0.055];
+            let mut c = [0.0; 3];
+            for i in 0..3 {
+                c[i] = (green[i] + (dead[i] - green[i]) * straw) * lit;
+            }
+            color[y * n + x] = c;
+            height[y * n + x] = (0.3 + 0.5 * tufts + 0.15 * blades - 0.3 * hollows).clamp(0.0, 1.0);
+        }
+    }
+    maps(n, &color, &height, 4.0)
 }
 
 fn tree_path(name: &str) -> String {
@@ -898,8 +962,8 @@ fn wood_cell(
     }
     // Carpets of low broad-leaved plants over most of the floor: flat (a third of a metre
     // high, 1.5 m across), overlapping; scattered plants between them.
-    for k in 0..(carpet * (34.0 + 14.0 * r(8))) as u32 + 5 + (r(9) * 5.0) as u32 {
-        plant(k, 0x6c07, 8, [0.3, 0.55], [0.7, 1.1]);
+    for k in 0..(carpet * (14.0 + 6.0 * r(8))) as u32 + 2 + (r(9) * 3.0) as u32 {
+        plant(k, 0x6c07, 8, [0.3, 0.55], [1.0, 1.5]);
     }
     if gap || r(1) > 0.7 {
         return;
@@ -1008,7 +1072,7 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             // every few trees.
             if dist < 700.0 {
                 let plants = if hollow {
-                    8 + (r(17) * 4.0) as u32
+                    5 + (r(17) * 3.0) as u32
                 } else {
                     2 + (r(17) * 3.0) as u32 + u32::from(at_edge)
                 };
@@ -1093,13 +1157,13 @@ fn terrain_data() -> TerrainData {
     d.layers = vec![
         TerrainLayer {
             name: "Meadow Ground".into(),
-            // (Green turf, not MeadowThatch's beige: the meadow past the grass's draw distance
-            // reads green, and the blades take the ground's tint.)
-            diffuse: Some(TURF.into()),
-            normal_map: Some(GROUND_NORMAL.into()),
-            height_map: Some(GROUND_HEIGHT.into()),
+            // (Dark turf, not MeadowThatch's beige: past the grass's draw distance the ground
+            // stands in for the grass, and a pale ground turned the far meadow cream.)
+            diffuse: Some(TURF_GROUND.into()),
+            normal_map: Some(TURF_GROUND_NORMAL.into()),
+            height_map: Some(TURF_GROUND_HEIGHT.into()),
             normal_scale: 1.0,
-            tile_size: [4.0, 4.0],
+            tile_size: [3.0, 3.0],
             smoothness: 0.05,
             rules: rules([0.0, 24.0], 0),
             ..Default::default()
@@ -1161,9 +1225,8 @@ fn terrain_data() -> TerrainData {
             f *= smooth(0.55, 0.95, wood_depth(x, z)) * smooth(50.0, 44.0, slope);
         }
         // The cliffs are limestone whatever the rules painted: one continuous slab per site,
-        // its faces bare rock, the narrow ledges between them partly grown over (the layers
-        // seen from the meadow).
-        let face = smooth(0.08, 0.3, site) * if cliff_ledge(x, z) { 0.88 } else { 1.0 };
+        // faces and ledges (the beds show in the light, the ledges facing the sun).
+        let face = smooth(0.05, 0.2, site);
         if f <= 0.0 && far <= 0.0 && face <= 0.0 {
             continue;
         }
@@ -1191,7 +1254,7 @@ fn terrain_data() -> TerrainData {
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         d.set_layer_weights(t, &out);
     }
-    d.detail_layers = vec![tall_grass(&d)];
+    d.detail_layers = vec![tall_grass(&d), forest_herbs(&d)];
     details::generate(&mut d);
     d.trees.prototypes = tree_assets()
         .into_iter()
@@ -1428,12 +1491,14 @@ fn demo_scene(d: &TerrainData) -> Scene {
     let haze = s.spawn("Forest Haze", None);
     s.set_transform(
         haze,
-        Transform::from_position(Vec3::new(-180.0, ground(d, -180.0, 515.0) + 12.0, 515.0)),
+        // (Behind the wood's edge only: over the meadow in front of it the sunlit haze
+        // turned the far grass milky.)
+        Transform::from_position(Vec3::new(-190.0, ground(d, -190.0, 575.0) + 12.0, 575.0)),
     );
     s.add(
         haze,
         FogVolume {
-            size: [520.0, 40.0, 390.0],
+            size: [500.0, 40.0, 270.0],
             fog_distance: 1100.0,
             albedo: [0.9, 0.93, 0.96],
             blend_distance: 12.0,
@@ -1541,6 +1606,10 @@ fn write_noon_valley() {
     albedo.save(root.join(LIMESTONE)).unwrap();
     height.save(root.join(LIMESTONE_HEIGHT)).unwrap();
     normal.save(root.join(LIMESTONE_NORMAL)).unwrap();
+    let [albedo, height, normal] = meadow_turf();
+    albedo.save(root.join(TURF_GROUND)).unwrap();
+    height.save(root.join(TURF_GROUND_HEIGHT)).unwrap();
+    normal.save(root.join(TURF_GROUND_NORMAL)).unwrap();
     for (rel, tree) in tree_assets() {
         tree.save(&root.join(rel)).unwrap();
     }
@@ -1562,12 +1631,12 @@ fn noon_valley_matches_its_generator() {
         LIMESTONE,
         LIMESTONE_NORMAL,
         LIMESTONE_HEIGHT,
+        TURF_GROUND,
+        TURF_GROUND_NORMAL,
+        TURF_GROUND_HEIGHT,
         FOREST_FLOOR,
         FOREST_FLOOR_NORMAL,
         FOREST_FLOOR_HEIGHT,
-        GROUND,
-        GROUND_NORMAL,
-        GROUND_HEIGHT,
         TURF,
     ] {
         assert!(root.join(rel).exists(), "{rel}");
