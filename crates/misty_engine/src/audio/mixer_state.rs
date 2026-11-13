@@ -141,7 +141,8 @@ impl MixerState {
         }
         let target = self.blend(&valid);
         self.weights = valid;
-        if time <= 0.0 {
+        // NaN (a script's 0/0) made every value NaN and the transition never ended.
+        if !(time > 0.0) {
             self.transition = None;
             self.current = target;
         } else {
@@ -178,6 +179,10 @@ impl MixerState {
         let Some(key) = self.asset.exposed_key(name) else {
             return false;
         };
+        // NaN passes `clamp` and went on into the group's volume (silencing Master).
+        if value.is_nan() {
+            return true;
+        }
         let (lo, hi) = self.asset.range(key);
         self.overrides.insert(name.to_owned(), value.clamp(lo, hi));
         true
@@ -486,6 +491,26 @@ mod tests {
         assert_eq!(s.get_float("MusicVol"), Some(-30.0));
         assert!(!s.set_float("Nope", 1.0));
         assert_eq!(s.get_float("Nope"), None);
+    }
+
+    /// NaN from a script (`SetFloat(name, 0/0)`, `TransitionTo(0/0)`) passed `clamp` and the
+    /// `time <= 0` test: every value went NaN (silencing Master) and the transition never ended.
+    #[test]
+    fn nan_values_and_transition_times_change_nothing_into_nan() {
+        let (mut s, music, _, _) = state();
+        assert!(s.set_float("MusicVol", f32::NAN));
+        assert_eq!(s.get_float("MusicVol"), Some(-10.0));
+        s.transition_to(1, f32::NAN);
+        s.tick(0.1);
+        assert!(
+            s.values().values().all(|v| v.is_finite()),
+            "{:?}",
+            s.values()
+        );
+        assert_eq!(s.value(&volume_key(music)), -30.0, "a NaN time jumps");
+        assert!(s.transition.is_none());
+        s.transition_to_weighted(&[(0, f32::NAN), (1, 1.0)], f32::NAN);
+        assert!(s.values().values().all(|v| v.is_finite()));
     }
 
     #[test]
