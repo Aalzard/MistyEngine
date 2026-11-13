@@ -124,6 +124,7 @@ fn paste(s: &mut EditorState, clip: &ObjectClipboard, as_child: bool) {
         let e = s
             .scene
             .instantiate_prefab(&prefab, obj.link.as_deref(), parent);
+        s.scene.forget_copied_prefab_ids(e);
         if let Some(i) = index.as_mut() {
             s.scene.set_parent(e, parent, Some(*i), false);
             *i += 1;

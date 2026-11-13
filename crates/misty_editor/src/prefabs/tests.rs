@@ -135,6 +135,24 @@ fn apply_updates_asset_and_other_instances_revert_restores() {
     assert!(s.scene.prefab_link(other).is_some(), "unpack is undoable");
 }
 
+/// A duplicate of an instance's child kept the original's prefab id: moved above the
+/// original it took the original's place in the instance, and Revert deleted the original.
+#[test]
+fn a_duplicate_inside_an_instance_never_takes_the_originals_place() {
+    let mut s = state("dup_id");
+    let cube = s.scene.spawn("Cube", None);
+    let lid = s.scene.spawn("Lid", Some(cube));
+    make_prefab(&mut s, cube);
+    s.selection.set(lid);
+    crate::commands::apply(&mut s, Action::DuplicateSelected);
+    let copy = s.selection.active().unwrap();
+    assert_ne!(copy, lid);
+    s.scene.set_parent(copy, Some(cube), Some(0), false);
+    apply(&mut s, Action::RevertPrefab(cube));
+    assert!(s.scene.contains(lid), "the original stays");
+    assert!(!s.scene.contains(copy), "the copy was the added object");
+}
+
 #[test]
 fn per_item_apply_and_revert_keep_other_instances_overrides() {
     let mut s = state("items");

@@ -386,6 +386,24 @@ impl Scene {
         }
     }
 
+    /// A copy of `e` was just made (Duplicate, Paste): drop the prefab ids its objects copied
+    /// from the instance around the original. Kept, the copy claimed the original's place in
+    /// the instance once it came first in the Hierarchy (Revert then deleted the original),
+    /// and in Prefab Mode two objects of the asset shared one id. Objects inside a copied
+    /// instance root keep theirs: those are ids in that instance's own asset.
+    pub fn forget_copied_prefab_ids(&mut self, e: Entity) {
+        fn walk(s: &mut Scene, e: Entity, inside_copied_instance: bool) {
+            if !inside_copied_instance {
+                let _ = s.world.remove_one::<PrefabSource>(e);
+            }
+            let inside = inside_copied_instance || s.world.get::<&PrefabLink>(e).is_ok();
+            for c in s.children(e) {
+                walk(s, c, inside);
+            }
+        }
+        walk(self, e, false);
+    }
+
     /// Unpack: the object becomes a plain GameObject again.
     pub fn unlink_prefab(&mut self, e: Entity) -> bool {
         self.world.remove_one::<PrefabLink>(e).is_ok()

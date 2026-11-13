@@ -547,8 +547,9 @@ impl Scene {
         let index = self.sibling_index(e) + 1;
         self.detach(copy);
         self.attach(copy, parent, Some(index));
-        // A copy is a different object for save games.
+        // A copy is a different object for save games, and for the prefab around it.
         crate::save::fresh_ids_in(self, copy);
+        self.forget_copied_prefab_ids(copy);
         copy
     }
 
