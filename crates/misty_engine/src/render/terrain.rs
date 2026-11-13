@@ -125,8 +125,67 @@ struct Patterns {
 #[derive(Default)]
 struct HoleIndices {
     /// (chunk, lod, mask) -> range in `buffer`.
-    ranges: HashMap<(usize, u8, u8), std::ops::Range<u32>>,
+    ranges: HashMap<HoleKey, std::ops::Range<u32>>,
     buffer: Option<wgpu::Buffer>,
+    /// Every list made since the holes last changed. A chunk with holes draws at full detail,
+    /// so it only ever needs one of the 16 edge masks its neighbours give it: this stays small,
+    /// and a neighbour stepping its level of detail up and down (the camera moving) makes the
+    /// lists of the masks it hasn't seen yet instead of filtering every holed chunk again.
+    lists: HashMap<HoleKey, Vec<u32>>,
+}
+
+/// A hole index list: (chunk, lod, edge mask).
+type HoleKey = (usize, u8, u8);
+
+impl HoleIndices {
+    /// Make the lists of `wanted` that aren't made yet, from the shared patterns (`indices`
+    /// split by `ranges[lod][mask]`). Returns how many were made.
+    #[allow(clippy::too_many_arguments)]
+    fn make_lists(
+        &mut self,
+        indices: &[u32],
+        ranges: &[[std::ops::Range<u32>; 16]],
+        wanted: &[HoleKey],
+        res: usize,
+        per: usize,
+        cells: usize,
+        d: &TerrainData,
+    ) -> usize {
+        let mut made = 0;
+        for &k @ (c, lod, mask) in wanted {
+            if self.lists.contains_key(&k) {
+                continue;
+            }
+            let r = ranges[lod as usize][mask as usize].clone();
+            let pattern = &indices[r.start as usize..r.end as usize];
+            let list = without_holes(pattern, res, (c % per) * cells, (c / per) * cells, d);
+            self.lists.insert(k, list);
+            made += 1;
+        }
+        made
+    }
+
+    /// Put every list in one index buffer.
+    fn upload(&mut self, device: &wgpu::Device) {
+        let mut indices: Vec<u32> = Vec::new();
+        self.ranges.clear();
+        for (k, list) in &self.lists {
+            let start = indices.len() as u32;
+            indices.extend_from_slice(list);
+            self.ranges.insert(*k, start..indices.len() as u32);
+        }
+        // (A buffer can't be empty: one collapsed triangle.)
+        if indices.is_empty() {
+            indices.extend([0, 0, 0]);
+        }
+        self.buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("misty terrain hole indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+        );
+    }
 }
 
 /// The triangles of `pattern` (a chunk's indices, relative to its first sample) whose cell is
@@ -1087,7 +1146,12 @@ impl TerrainCache {
                     .collect();
                 if wanted.iter().any(|k| !g.holes.ranges.contains_key(k)) {
                     crate::profile_scope!("Terrain.HoleIndices");
-                    g.holes = hole_indices(device, p, &wanted, g.res, per, cells, d);
+                    let made = g
+                        .holes
+                        .make_lists(&p.indices, &p.ranges, &wanted, g.res, per, cells, d);
+                    if made > 0 || g.holes.buffer.is_none() {
+                        g.holes.upload(device);
+                    }
                 }
             }
             self.chunks.push(
@@ -1760,8 +1824,6 @@ impl TerrainCache {
     }
 }
 
-/// The index lists of the chunks with holes (`wanted`: chunk, lod, edge mask) in one buffer.
-#[allow(clippy::too_many_arguments)]
 /// World bounds of chunk `c` of a terrain.
 fn chunk_bounds(g: &GpuTerrain, t: &TerrainDraw, c: usize) -> Aabb {
     let d = &t.data;
@@ -1781,49 +1843,6 @@ fn chunk_bounds(g: &GpuTerrain, t: &TerrainDraw, c: usize) -> Aabb {
         min.z + cells as f32 * spacing.y,
     );
     Aabb::new(min + t.position, max + t.position)
-}
-
-fn hole_indices(
-    device: &wgpu::Device,
-    p: &Patterns,
-    wanted: &[(usize, u8, u8)],
-    res: usize,
-    per: usize,
-    cells: usize,
-    d: &TerrainData,
-) -> HoleIndices {
-    let mut indices: Vec<u32> = Vec::new();
-    let mut ranges = HashMap::new();
-    for &k @ (c, lod, mask) in wanted {
-        if ranges.contains_key(&k) {
-            continue;
-        }
-        let r = p.ranges[lod as usize][mask as usize].clone();
-        let pattern = &p.indices[r.start as usize..r.end as usize];
-        let start = indices.len() as u32;
-        indices.extend(without_holes(
-            pattern,
-            res,
-            (c % per) * cells,
-            (c / per) * cells,
-            d,
-        ));
-        ranges.insert(k, start..indices.len() as u32);
-    }
-    // (A buffer can't be empty: one collapsed triangle.)
-    if indices.is_empty() {
-        indices.extend([0, 0, 0]);
-    }
-    HoleIndices {
-        ranges,
-        buffer: Some(
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("misty terrain hole indices"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-        ),
-    }
 }
 
 /// Per-draw values of a terrain: translation only, white, receives shadows.
@@ -1966,6 +1985,48 @@ mod hole_tests {
                 .chunks(3)
                 .any(|t| t.contains(&cell) && t.contains(&(cell + 1)) && t.contains(&(cell + 129))),
             "cell (5, 5) left out"
+        );
+    }
+
+    /// A neighbour changing level of detail gives a holed chunk another edge mask: only that
+    /// list is made, and going back to a mask seen before makes none (round 2's T6: every holed
+    /// chunk's lists were filtered again on any change).
+    #[test]
+    fn hole_lists_are_made_once_per_edge_mask() {
+        let mut d = TerrainData::new(129, Vec3::splat(128.0), 128);
+        let cells = terrain_lod::chunk_cells(129);
+        let per = 128 / cells;
+        let (indices, ranges) = terrain_lod::patterns(129, cells);
+        let mut holed = Vec::new();
+        for (x, z) in [(5, 5), (70, 3), (100, 100)] {
+            d.set_hole(x, z, true);
+            let c = (z / cells) * per + x / cells;
+            if !holed.contains(&c) {
+                holed.push(c);
+            }
+        }
+        assert_eq!(holed.len(), 3, "three holed chunks");
+        assert_eq!(holed[0], 0);
+        let frame = |mask_of_first: u8| -> Vec<HoleKey> {
+            holed
+                .iter()
+                .map(|&c| (c, 0, if c == 0 { mask_of_first } else { 0 }))
+                .collect()
+        };
+        let mut h = HoleIndices::default();
+        let mut make =
+            |wanted: &[HoleKey]| h.make_lists(&indices, &ranges, wanted, 129, per, cells, &d);
+        assert_eq!(make(&frame(0)), 3, "first frame: every holed chunk");
+        assert_eq!(make(&frame(0)), 0, "nothing changed");
+        assert_eq!(make(&frame(1)), 1, "one neighbour stepped down: one list");
+        assert_eq!(make(&frame(0)), 0, "back to a mask seen before");
+        assert_eq!(make(&frame(4)), 1);
+        assert_eq!(h.lists.len(), 5);
+        let full = &indices[ranges[0][0].start as usize..ranges[0][0].end as usize];
+        assert_eq!(
+            h.lists[&(0, 0, 0)].len(),
+            full.len() - 6,
+            "one hole cell cut"
         );
     }
 }

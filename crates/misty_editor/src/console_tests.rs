@@ -286,3 +286,21 @@ fn kept_rows_match_rows_built_from_scratch() {
         assert!(counted <= c.entries().len());
     }
 }
+
+/// A huge line (a script logging a big string every frame) is cut to a bounded length, on a
+/// character boundary, saying how much was left out.
+#[test]
+fn huge_lines_are_cut() {
+    let mut c = Console::default();
+    c.log(LogLevel::Info, "é".repeat(600_000));
+    let kept = &c.last().unwrap().message;
+    assert!(kept.len() < MAX_MESSAGE + 64, "{} bytes kept", kept.len());
+    assert!(
+        kept.ends_with(" more bytes)"),
+        "{:?}",
+        kept.get(kept.len() - 40..)
+    );
+    assert!(kept.starts_with("éé"));
+    c.log(LogLevel::Info, "short");
+    assert_eq!(c.last().unwrap().message, "short");
+}

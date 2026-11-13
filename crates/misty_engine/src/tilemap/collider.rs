@@ -172,7 +172,13 @@ pub fn signature(map: &Tilemap) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     map.tiles.0.hash(&mut h);
     map.tile_anchor.to_array().map(f32::to_bits).hash(&mut h);
-    tile::generation().hash(&mut h);
+    // The versions of the tile assets it uses (not every tile's load anywhere).
+    let mut seen = std::collections::HashSet::new();
+    for cell in map.tiles.0.values() {
+        if seen.insert(cell.tile.clone()) {
+            (cell.tile.clone(), tile::version(&cell.tile)).hash(&mut h);
+        }
+    }
     h.finish()
 }
 
@@ -187,17 +193,23 @@ impl Hash for super::TileData {
 
 /// The rapier collider of a Tilemap Collider 2D (boxes, or convex cells, in one compound),
 /// scaled by the object's world X/Y scale; None when no tile collides.
+///
+/// Full cells are always merged into boxes here, whatever Used By Composite says: a body
+/// sliding along a row of separate cell boxes catches on the seam between two of them and
+/// stops dead (a box at 12 m/s on a frictionless floor stopped within 8 cells; parry's
+/// `FIX_INTERNAL_EDGES` for compounds does not help cuboid parts). Merged runs give each row
+/// one continuous top. The union is the same, so only the seams go. (Cell gaps still keep one
+/// box per cell: merging would close them.)
 pub(crate) fn builder(
     scene: &crate::scene::Scene,
     e: hecs::Entity,
-    c: &super::TilemapCollider2D,
     scale: Vec2,
 ) -> Option<rapier2d::prelude::ColliderBuilder> {
     use rapier2d::prelude as rp;
     let map = scene.world.get::<&Tilemap>(e).ok()?;
     let grid = super::grid_of(scene, e);
     let v = |p: Vec2| rp::Vector::new(p.x * scale.x, p.y * scale.y);
-    let parts: Vec<(rp::Pose, rp::SharedShape)> = shapes(&map, &grid, c.used_by_composite)
+    let parts: Vec<(rp::Pose, rp::SharedShape)> = shapes(&map, &grid, true)
         .into_iter()
         .filter_map(|s| match s {
             Shape::Box { min, max } => {

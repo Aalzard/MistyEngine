@@ -612,39 +612,54 @@ impl TextureCache {
         let (device, queue) = (device.clone(), queue.clone());
         let generation = crate::quality::generation();
         let rel = rel.to_owned();
-        crate::load_queue::imports().push(rel.clone(), move |ticket| {
-            crate::profile_scope!(format!("Import.Texture: {rel}"));
-            // Decoded, its mips made and uploaded here: the frame only binds it.
-            let decoded = match ahead {
-                Some(up) => Ok(up),
-                None => sprites::compress::texture_upload(&rel, usage, bc),
-            };
-            // (The upload holds wgpu's queue writes, which the frame needs too: at normal
-            // priority.)
-            let result = decoded.map(|up| match up {
-                sprites::compress::Upload::Compressed(c) => {
-                    crate::background::at_normal_priority(|| {
-                        upload_compressed(&device, &queue, &rel, &c)
-                    })
-                }
-                sprites::compress::Upload::Rgba(img) => {
-                    let imp = sprites::importer(&rel);
-                    let srgb = kind == TextureKind::Color && imp.is_srgb();
-                    let levels = Levels::new(img, srgb, imp.generate_mip_maps);
-                    crate::background::at_normal_priority(|| {
-                        upload_levels(&device, &queue, &rel, &levels)
-                    })
-                }
-            });
-            // (A failure reaches the Console from `take_loaded`, as a load in place would.)
-            ticket.publish(|| {
-                arrived
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .push((rel, kind, generation, result))
-            });
-            Ok(())
-        });
+        // A decode or upload that panics (a broken file) still arrives, as a failed load: the
+        // key leaves `pending`, so the texture isn't waited for forever.
+        let failed = (arrived.clone(), rel.clone());
+        let on_fail = move |message: String| {
+            let (arrived, rel) = failed;
+            let e = format!("{rel}: {message}");
+            arrived
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push((rel, kind, generation, Err(e)));
+        };
+        crate::load_queue::imports().push_or(
+            rel.clone(),
+            move |ticket| {
+                crate::profile_scope!(format!("Import.Texture: {rel}"));
+                // Decoded, its mips made and uploaded here: the frame only binds it.
+                let decoded = match ahead {
+                    Some(up) => Ok(up),
+                    None => sprites::compress::texture_upload(&rel, usage, bc),
+                };
+                // (The upload holds wgpu's queue writes, which the frame needs too: at normal
+                // priority.)
+                let result = decoded.map(|up| match up {
+                    sprites::compress::Upload::Compressed(c) => {
+                        crate::background::at_normal_priority(|| {
+                            upload_compressed(&device, &queue, &rel, &c)
+                        })
+                    }
+                    sprites::compress::Upload::Rgba(img) => {
+                        let imp = sprites::importer(&rel);
+                        let srgb = kind == TextureKind::Color && imp.is_srgb();
+                        let levels = Levels::new(img, srgb, imp.generate_mip_maps);
+                        crate::background::at_normal_priority(|| {
+                            upload_levels(&device, &queue, &rel, &levels)
+                        })
+                    }
+                });
+                // (A failure reaches the Console from `take_loaded`, as a load in place would.)
+                ticket.publish(|| {
+                    arrived
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push((rel, kind, generation, result))
+                });
+                Ok(())
+            },
+            on_fail,
+        );
     }
 
     /// Upload runtime textures (video frames) published since the last frame.

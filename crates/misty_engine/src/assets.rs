@@ -310,6 +310,8 @@ impl Material {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         let text = crate::asset_db::embed_json(&text);
+        // A background save of this file still waiting (a slider drag) must not land after.
+        crate::asset_db::saver::supersede(path);
         crate::asset_db::write_atomic(path, text).map_err(|e| e.to_string())
     }
 

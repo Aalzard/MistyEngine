@@ -191,6 +191,13 @@ mod tests {
             local o1 = A.blend(A, 10)
             local o2 = A.blend(A, 30)
             assert(o1 < o2, "the open loop rises walking out")
+            -- Blend Distance 0 (set in the Properties): a switch at the edge, never NaN.
+            local sharp = {{ openVolume = 0.6, openInZone = 0.25, blendDistance = 0, envelopDistance = 0 }}
+            for _, d in ipairs({{ 0, 0.5, 5 }}) do
+                local o, s = A.blend(sharp, d)
+                assert(o == o and s == s, "NaN at " .. d)
+            end
+            assert(A.blend(sharp, 0) == 0.6 * 0.25 and A.blend(sharp, 5) == 0.6)
             "#,
             cx = b.centre.x,
             cz = b.centre.y,

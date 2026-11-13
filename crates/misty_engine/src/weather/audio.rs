@@ -319,6 +319,21 @@ pub struct Driver {
     pub thunder_played: u32,
 }
 
+/// A weather sound: a clip the volume names (project-relative) or one the engine made.
+enum Clip {
+    Own(String),
+    Made(PathBuf),
+}
+
+impl Clip {
+    fn play(&self, audio: &mut Audio, out: &str, volume: f32, looping: bool) -> Option<VoiceId> {
+        match self {
+            Clip::Own(rel) => audio.play_ambient(rel, out, volume, looping),
+            Clip::Made(path) => audio.play_ambient_file(path, out, volume, looping),
+        }
+    }
+}
+
 impl Driver {
     /// Start, adjust and stop the loops; play thunder that has arrived. `cover` is this
     /// frame's [`cover`] at the listener (0 when not measured), `dt` the frame's seconds.
@@ -350,15 +365,17 @@ impl Driver {
             return;
         }
         let clips = self.clips.get_or_insert_with(ensure_clips).clone();
-        let pick = |own: &str, made: &Path| -> String {
+        // The volume's own clips are project files (scene data: never an absolute path); the
+        // bundled and generated ones are files the engine wrote, wherever they are.
+        let pick = |own: &str, made: &Path| -> Clip {
             if own.is_empty() {
-                made.to_string_lossy().into_owned()
+                Clip::Made(made.to_path_buf())
             } else {
-                own.to_owned()
+                Clip::Own(own.to_owned())
             }
         };
         let out = settings.output.clone();
-        let mut drive = |slot: &mut Option<VoiceId>, clip: String, v: f32| {
+        let mut drive = |slot: &mut Option<VoiceId>, clip: Clip, v: f32| {
             let v = v * master;
             match *slot {
                 Some(id) if !audio.voice_alive(id) => *slot = None,
@@ -370,7 +387,7 @@ impl Driver {
                 None => {}
             }
             if slot.is_none() && v > 0.001 {
-                *slot = audio.play_ambient(&clip, &out, v, true);
+                *slot = clip.play(audio, &out, v, true);
             }
         };
         drive(
@@ -393,7 +410,7 @@ impl Driver {
                     .collect();
                 let clip = if !own.is_empty() {
                     let i = (self.rng.f32() * own.len() as f32) as usize;
-                    own[i.min(own.len() - 1)].clone()
+                    Clip::Own(own[i.min(own.len() - 1)].clone())
                 } else {
                     let i = usize::from(self.rng.f32() > 0.5);
                     let set = if distance < 1500.0 {
@@ -401,12 +418,9 @@ impl Driver {
                     } else {
                         &clips.thunder_far
                     };
-                    set[i].to_string_lossy().into_owned()
+                    Clip::Made(set[i].clone())
                 };
-                if audio
-                    .play_ambient(&clip, &out, volume * master, false)
-                    .is_some()
-                {
+                if clip.play(audio, &out, volume * master, false).is_some() {
                     self.thunder_played += 1;
                 }
             }

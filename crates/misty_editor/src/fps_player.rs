@@ -792,6 +792,14 @@ mod tests {
                 if T.stepCrossed(before, l.phase) then steps = steps + 1 end
             end
             assert(steps == 4, "steps " .. steps)
+            -- Step lengths of 0 (set in the Properties) keep the phase a number.
+            local zero = setmetatable({ walkStepLength = 0, runStepLength = 0 }, { __index = T })
+            l = T.Locomotion.new(zero)
+            for i = 1, 30 do
+                l:step({ move = { x = 0, z = 1 } }, 1 / 60, true)
+                l:afterMove(true, { x = 0, y = 0, z = 4 }, 1 / 60)
+                assert(l.phase == l.phase and l.phaseRate == l.phaseRate, "NaN phase")
+            end
         "#);
     }
 

@@ -380,7 +380,7 @@ pub fn migrate(save: &mut Value, current: u32) -> bool {
 pub fn version_of(save: &Value) -> u32 {
     save.get("version")
         .and_then(Value::as_u64)
-        .map_or(0, |v| v as u32)
+        .map_or(0, |v| v.min(u64::from(u32::MAX)) as u32)
 }
 
 /// Run `hooks` when `save` is older than `current`; returns whether it was migrated.

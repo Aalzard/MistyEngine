@@ -43,10 +43,13 @@ impl Progress {
 }
 
 type Job = Box<dyn FnOnce(&Ticket) -> Result<(), String> + Send>;
+/// Run instead of the job's publish when the job panicked (see [`Queue::push_or`]).
+type Failed = Box<dyn FnOnce(String) + Send>;
 
 struct Queued {
     label: String,
     job: Job,
+    failed: Option<Failed>,
 }
 
 #[derive(Default)]
@@ -132,6 +135,24 @@ impl Queue {
         label: impl Into<String>,
         job: impl FnOnce(&Ticket) -> Result<(), String> + Send + 'static,
     ) {
+        self.enqueue(label.into(), Box::new(job), None);
+    }
+
+    /// [`Queue::push`] with what to publish when the job panics instead of publishing:
+    /// `failed(message)` runs under the queue's lock, like a publish (and not after a
+    /// cancel). A cache that marks a key pending when it queues the job needs this, or a
+    /// panicking import or compile leaves the key pending for good: never loaded, never
+    /// retried, and the renderer's `background_pending` never back to 0.
+    pub fn push_or(
+        &self,
+        label: impl Into<String>,
+        job: impl FnOnce(&Ticket) -> Result<(), String> + Send + 'static,
+        failed: impl FnOnce(String) + Send + 'static,
+    ) {
+        self.enqueue(label.into(), Box::new(job), Some(Box::new(failed)));
+    }
+
+    fn enqueue(&self, label: String, job: Job, failed: Option<Failed>) {
         let mut state = self.shared.lock();
         if state.done >= state.total {
             // Idle: a new batch of work (the status bar counts from zero again).
@@ -139,10 +160,7 @@ impl Queue {
             state.total = 0;
         }
         state.total += 1;
-        state.queue.push_back(Queued {
-            label: label.into(),
-            job: Box::new(job),
-        });
+        state.queue.push_back(Queued { label, job, failed });
         // Another worker while there is more work than workers (up to the queue's threads).
         let wanted = state.running + state.queue.len() as u32;
         if state.workers < self.threads && state.workers < wanted {
@@ -231,12 +249,16 @@ fn work(shared: Arc<Shared>) {
             shared: shared.clone(),
         };
         let job = item.job;
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| job(&ticket)))
-            .unwrap_or_else(|panic| Err(panic_message(&panic)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| job(&ticket)));
+        let panicked = result.is_err();
+        let result = result.unwrap_or_else(|panic| Err(panic_message(&panic)));
         let mut state = shared.lock();
         state.running -= 1;
         if state.generation == generation {
             state.done += 1;
+            if panicked && let (Some(failed), Err(e)) = (item.failed, &result) {
+                failed(e.clone());
+            }
             if let Err(e) = result {
                 state.errors.push(format!("{}: {e}", item.label));
             }
@@ -295,6 +317,58 @@ mod tests {
     use std::sync::mpsc;
 
     const WAIT: Duration = Duration::from_secs(30);
+
+    /// A job that panics before publishing runs its `failed` instead (the texture and shader
+    /// caches clear their pending key with it), with the panic's message; a cancelled one
+    /// doesn't.
+    #[test]
+    fn a_panicking_job_publishes_its_failure() {
+        let q = Queue::new("test-panic", 1);
+        let (tx, rx) = mpsc::channel();
+        let tx2 = tx.clone();
+        q.push_or(
+            "broken.png",
+            |_| panic!("decoder crashed"),
+            move |msg| tx2.send(format!("failed: {msg}")).unwrap(),
+        );
+        assert!(q.wait_idle(WAIT));
+        assert_eq!(rx.recv_timeout(WAIT).unwrap(), "failed: decoder crashed");
+        assert_eq!(
+            q.take_errors(),
+            vec!["broken.png: decoder crashed".to_owned()]
+        );
+        // A job that publishes normally never runs `failed`.
+        let tx3 = tx.clone();
+        q.push_or(
+            "fine.png",
+            move |t| {
+                t.publish(|| tx.send("published".to_owned()).unwrap());
+                Ok(())
+            },
+            move |_| tx3.send("failed".to_owned()).unwrap(),
+        );
+        assert!(q.wait_idle(WAIT));
+        assert_eq!(rx.recv_timeout(WAIT).unwrap(), "published");
+        assert!(rx.try_recv().is_err());
+        // Cancelled while running: nothing is published, failure included.
+        let (started_tx, started) = mpsc::channel();
+        let (go_tx, go) = mpsc::channel::<()>();
+        let (ftx, frx) = mpsc::channel::<String>();
+        q.push_or(
+            "old project.png",
+            move |_| {
+                started_tx.send(()).unwrap();
+                go.recv().unwrap();
+                panic!("late crash")
+            },
+            move |msg| ftx.send(msg).unwrap(),
+        );
+        started.recv_timeout(WAIT).unwrap();
+        q.cancel();
+        go_tx.send(()).unwrap();
+        assert!(q.wait_idle(WAIT));
+        assert!(frx.recv_timeout(Duration::from_millis(200)).is_err());
+    }
 
     #[test]
     fn jobs_start_in_the_order_they_were_queued() {

@@ -430,6 +430,9 @@ struct Entry {
     /// Registered in memory (tests, previews): never re-read.
     pinned: bool,
     asset: Option<Arc<TileAsset>>,
+    /// [`GENERATION`] when this asset was loaded or registered: what chunks and colliders
+    /// that use the tile hash (see [`version`]).
+    version: u64,
 }
 
 static CACHE: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -442,21 +445,33 @@ pub fn generation() -> u64 {
 
 /// The tile asset at a project path (re-read when the file changes; checked twice a second).
 pub fn get(rel: &str) -> Option<Arc<TileAsset>> {
+    lookup(rel).0
+}
+
+/// Version of the tile asset at `rel`: changes when it is re-read, registered or invalidated.
+/// Chunk meshes and colliders hash the versions of the tiles they use, not [`generation`]: a
+/// tile loaded or registered anywhere (another tilemap's palette, a test running alongside)
+/// no longer rebuilds every tilemap's chunks.
+pub fn version(rel: &str) -> u64 {
+    lookup(rel).1
+}
+
+fn lookup(rel: &str) -> (Option<Arc<TileAsset>>, u64) {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     if let Some(e) = cache.get_mut(rel) {
         if e.pinned || now.duration_since(e.checked).as_secs_f32() < 0.5 {
-            return e.asset.clone();
+            return (e.asset.clone(), e.version);
         }
         e.checked = now;
         let stamp = crate::vfs::modified(&crate::assets::absolute(rel));
         if stamp == e.stamp {
-            return e.asset.clone();
+            return (e.asset.clone(), e.version);
         }
     }
     let abs = crate::assets::absolute(rel);
     let asset = TileAsset::load(&abs).ok().map(Arc::new);
-    GENERATION.fetch_add(1, Ordering::Relaxed);
+    let version = GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
     cache.insert(
         rel.to_owned(),
         Entry {
@@ -464,14 +479,16 @@ pub fn get(rel: &str) -> Option<Arc<TileAsset>> {
             stamp: crate::vfs::modified(&abs),
             pinned: false,
             asset: asset.clone(),
+            version,
         },
     );
-    asset
+    (asset, version)
 }
 
 /// Use `asset` for `rel` without a file (tests, generated content).
 pub fn register(rel: &str, asset: TileAsset) {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let version = GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
     cache.insert(
         rel.to_owned(),
         Entry {
@@ -479,9 +496,9 @@ pub fn register(rel: &str, asset: TileAsset) {
             stamp: None,
             pinned: true,
             asset: Some(Arc::new(asset)),
+            version,
         },
     );
-    GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Forget a cached asset (the editor saved a new version).
