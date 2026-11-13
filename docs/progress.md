@@ -4780,3 +4780,13 @@ Fixes for the node and visual-scripting bugs the round 65 game agent reports whi
 - **Variadic API functions get pins**: Physics2D.Raycast, Rigidbody2D AddForce / MovePosition,
   Input.GetButton and the Tilemap cell functions have documented signatures. Optional arguments
   are optional pins, left out of the call while unset.
+
+### Batch 2
+- **Capture windows**: `MISTY_WINDOW_SIZE` gives a normal window of that size again (eframe
+  restored the user's saved, maximised editor window over it).
+- **PlayMode tests and game-side scene loads**: `yield(seconds)`, `waitUntil` and the timeout
+  count the test's game time across `SceneManager.LoadScene`; a wall-clock limit stops tests
+  of paused games.
+- **2D physics**: native typed nodes for Physics2D queries and Rigidbody 2D; friction combines
+  as the geometric mean (a frictionless player slides along walls), bounciness as the maximum.
+- **MCP**: `graph.*` tools create and edit Script Graphs; `scene.add_component` attaches them.
