@@ -50,7 +50,11 @@ const NO_CHANNEL: u32 = 255;
 
 /// A mask's buffer size: `narrow` = at most two lights (half-size texels).
 fn buffer_bytes(pixels: u64, narrow: bool) -> u64 {
-    let texel = if narrow { NARROW_TEXEL_BYTES } else { TEXEL_BYTES };
+    let texel = if narrow {
+        NARROW_TEXEL_BYTES
+    } else {
+        TEXEL_BYTES
+    };
     HEADER_BYTES + pixels.max(1) * texel
 }
 

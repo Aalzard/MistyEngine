@@ -244,7 +244,12 @@ pub(super) struct MainSet {
 
 impl MainSet {
     /// `samples`: the main pass's MSAA samples (passed in: a worker may build these).
-    pub(super) fn new(device: &wgpu::Device, l: &MainLayouts, samples: u32, glowless: bool) -> Self {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        l: &MainLayouts,
+        samples: u32,
+        glowless: bool,
+    ) -> Self {
         let (view_layout, mesh_layout, mask_layout) = (&l.view, &l.mesh, &l.mask);
         let terrain_layouts = [view_layout, mesh_layout, &l.empty, &l.terrain];
         let grass_layouts = [view_layout, mesh_layout, &l.grass, &l.grass_blades];
@@ -275,11 +280,7 @@ impl MainSet {
                 depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
                 glow: Some(true),
                 velocity: true,
-                ..Spec::new(
-                    "sky late",
-                    include_str!("shaders/sky.wgsl"),
-                    &[view_layout],
-                )
+                ..Spec::new("sky late", include_str!("shaders/sky.wgsl"), &[view_layout])
             },
         );
         let grid = build(
@@ -1203,15 +1204,17 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
     let main_pass = spec.glow.is_some() && spec.depth.is_some();
     if let Some(writes) = spec.glow {
         // A glowless main pass leaves the slot empty (the shader's glow output is ignored).
-        targets.push((!(main_pass && spec.glowless)).then(|| wgpu::ColorTargetState {
-            format: HDR_FORMAT,
-            blend: if writes { spec.blend } else { None },
-            write_mask: if writes {
-                wgpu::ColorWrites::ALL
-            } else {
-                wgpu::ColorWrites::empty()
-            },
-        }));
+        targets.push(
+            (!(main_pass && spec.glowless)).then(|| wgpu::ColorTargetState {
+                format: HDR_FORMAT,
+                blend: if writes { spec.blend } else { None },
+                write_mask: if writes {
+                    wgpu::ColorWrites::ALL
+                } else {
+                    wgpu::ColorWrites::empty()
+                },
+            }),
+        );
     }
     // The motion-vector target: every main pass pipeline has it (the pass binds it), the
     // prepass ones that write it too. Never blended: a transparent surface leaves the

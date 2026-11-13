@@ -361,7 +361,10 @@ mod tests {
     /// The sky glow shader (both depth texture kinds) parses and validates.
     #[test]
     fn sky_glow_validates() {
-        for (depth, samples) in [("texture_depth_multisampled_2d", "4u"), ("texture_depth_2d", "1u")] {
+        for (depth, samples) in [
+            ("texture_depth_multisampled_2d", "4u"),
+            ("texture_depth_2d", "1u"),
+        ] {
             let src = format!(
                 "{COMMON}\n{}\n{}",
                 include_str!("shaders/sky.wgsl"),
@@ -385,12 +388,12 @@ mod tests {
     /// renderer kept on the glow target.
     #[test]
     fn glowless_frames_match_the_glow_target() {
+        use super::QUIET_FRAMES;
         use crate::camera::{Camera, Projection};
         use crate::render::gpu_tests::{draw, headless, material, read_back};
         use crate::render::*;
         use crate::scene::PrimitiveMesh;
         use glam::{Mat4, Quat, Vec3};
-        use super::QUIET_FRAMES;
         let Some((device, queue)) = headless() else {
             eprintln!("no GPU adapter: skipped");
             return;
@@ -404,7 +407,11 @@ mod tests {
         };
         let grey = material([0.6, 0.6, 0.6, 1.0], RenderingMode::Opaque);
         let meshes = [
-            draw(PrimitiveMesh::Cube, Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0)), &grey),
+            draw(
+                PrimitiveMesh::Cube,
+                Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0)),
+                &grey,
+            ),
             draw(
                 PrimitiveMesh::Plane,
                 Mat4::from_scale(Vec3::splat(20.0)),

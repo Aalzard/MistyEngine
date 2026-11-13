@@ -810,9 +810,16 @@ impl GpuTree {
         let mut texture_bytes = 0;
         #[cfg(test)]
         if std::env::var_os("MISTY_TREE_TEXTURES").is_some() {
-            for (name, t) in ["bark", "bark normal", "leaves", "leaf normal", "impostor", "impostor normal"]
-                .iter()
-                .zip(&textures)
+            for (name, t) in [
+                "bark",
+                "bark normal",
+                "leaves",
+                "leaf normal",
+                "impostor",
+                "impostor normal",
+            ]
+            .iter()
+            .zip(&textures)
             {
                 let l = &t.layers[0];
                 eprintln!(
