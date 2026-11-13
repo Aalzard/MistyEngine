@@ -69,6 +69,10 @@ Numbers after m (reference / ours): meadow near 59/76/18 / 54/72/21, meadow mid 
 71/84/37, far meadow 85/97/59 / ~108/120/75, hillside crowns 36/52/39 / 50/60/37. Forest
 lower-half luminance median `inside` 0.024, `inside2` 0.041 (reference 0.028).
 
+Checks after m: `cargo fmt --all --check` clean, clippy `--workspace --all-targets --release`
+0 warnings, `cargo test --workspace --release --no-fail-fast` 2489 passed, 0 failed (editor 924
+with `noon_valley_matches_its_generator`). No render code changed, so no golden run.
+
 ## Still differs (after m)
 
 - Cliffs: one continuous slab per site now, but it reads as a smooth grey-green patch, not
