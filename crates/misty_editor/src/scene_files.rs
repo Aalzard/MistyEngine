@@ -657,6 +657,10 @@ pub fn create_scene_asset(s: &mut EditorState, folder: &Path) -> Result<String, 
 /// Window title: "Project - ActiveScene* - Misty Engine" (* = an open scene has changes).
 pub fn window_title(s: &EditorState) -> String {
     let (project, scene) = title_parts(s);
+    if s.project_lock.read_only() {
+        let read_only = tr!("Read-Only");
+        return format!("{project} ({read_only}) - {scene} - Misty Engine");
+    }
     format!("{project} - {scene} - Misty Engine")
 }
 

@@ -66,6 +66,7 @@ mod presets;
 mod probe_gizmos;
 mod probe_tools;
 mod project;
+mod project_lock;
 mod project_settings;
 mod project_settings_2d;
 mod project_settings_input;

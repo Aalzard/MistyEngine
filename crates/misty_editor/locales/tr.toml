@@ -806,6 +806,12 @@
 "Save changes to the following script(s)?" = "Aşağıdaki betik(ler)deki değişiklikler kaydedilsin mi?"
 "Save changes to {scene}?" = "{scene} sahnesindeki değişiklikler kaydedilsin mi?"
 "Delete {count} objects?" = "{count} nesne silinsin mi?"
+"Project Already Open" = "Proje Zaten Açık"
+"This project is open in another Misty editor (process {pid})." = "Bu proje başka bir Misty düzenleyicisinde açık (işlem {pid})."
+"This project is open in another Misty editor." = "Bu proje başka bir Misty düzenleyicisinde açık."
+"Open it read-only to look around: scenes, assets and settings can't be saved." = "Göz atmak için salt okunur açın: sahneler, varlıklar ve ayarlar kaydedilemez."
+"Open Read-Only" = "Salt Okunur Aç"
+"Read-Only" = "Salt Okunur"
 
 [preferences]
 "Preferences" = "Tercihler"
