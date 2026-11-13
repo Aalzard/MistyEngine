@@ -547,13 +547,17 @@ fn volume() -> PostProcessVolume {
     cs.active = true;
     cs.length = 0.12;
     cs.distance_fade = 16.0;
-    cs.opacity = 0.3;
-    cs.sample_count = 6;
+    // The user's look (round 53): darker, finer contact shadows.
+    cs.opacity = 0.85;
+    cs.sample_count = 16;
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Cloudy.apply(c);
-    c.coverage = 0.5;
-    c.density = 0.7;
+    // The user's clouds (round 53): denser and a little fuller, no flat ambient fill.
+    c.coverage = 0.54;
+    c.density = 0.93;
+    c.shape = 0.42;
+    c.ambient = 0.0;
     c.wind_direction = 100.0;
     c.wind_speed = 12.0;
     c.silver_lining = 0.9;
@@ -561,7 +565,9 @@ fn volume() -> PostProcessVolume {
     let f = &mut v.fog;
     f.active = true;
     f.max_fog_distance = 3000.0;
-    f.attenuation_distance = 6000.0;
+    // The user's fog (round 53): thicker haze with some noise in it.
+    f.attenuation_distance = 300.0;
+    f.noise_intensity = 0.2;
     f.base_height = 0.0;
     f.maximum_height = 150.0;
     // Gentle forward haze: the field stays green-gold to the mountains against the sun.
@@ -569,6 +575,18 @@ fn volume() -> PostProcessVolume {
     f.volumetric_distance = 250.0;
     v.sun_shafts.active = true;
     v.sun_shafts.intensity = 0.5;
+    v.sun_shafts.length = 0.78;
+    v.sun_shafts.radius = 0.93;
+    // The rest of the user's look (round 53): eye adaptation, depth of field, motion blur and
+    // both screen-space and Misty GI.
+    v.auto_exposure.active = true;
+    v.auto_exposure.limit_min = -1.5;
+    v.depth_of_field.active = true;
+    v.motion_blur.active = true;
+    v.screen_space_gi.active = true;
+    v.screen_space_gi.intensity = 4.0;
+    v.misty_gi.active = true;
+    v.misty_gi.intensity = 1.35;
     v
 }
 
@@ -652,7 +670,28 @@ fn demo_scene(d: &TerrainData) -> Scene {
     }
     add_rocks(&mut s, d);
     add_ambience(&mut s, d);
+    record_overrides(&mut s);
     s
+}
+
+/// Each prefab instance's override record, as the editor stores it when saving: the rocks'
+/// scales. The player's record is empty, as the user's editor saved it (its camera's 2 km far
+/// plane is not listed there).
+fn record_overrides(s: &mut Scene) {
+    use misty_engine::scene::prefab::{Prefab, diff};
+    for root in s.all_prefab_instances() {
+        let Some(rel) = s.prefab_link(root) else {
+            continue;
+        };
+        let record = if rel == crate::fps_player::PREFAB {
+            Vec::new()
+        } else {
+            let asset = Prefab::load(&project().join(&rel)).expect("prefab");
+            let keys = s.prefab_overrides(root, &asset).into_iter().map(|o| o.key);
+            diff::record(keys)
+        };
+        s.set_prefab_record(root, Some(record));
+    }
 }
 
 /// The meadow's sound under an "Ambience" object (after the rocks): the meadow's insects and
@@ -726,6 +765,7 @@ fn replace_rocks(root: &std::path::Path, d: &TerrainData) {
     }
     add_rocks(&mut scene, d);
     add_ambience(&mut scene, d);
+    record_overrides(&mut scene);
     scene.save(&root.join(SCENE)).unwrap();
 }
 

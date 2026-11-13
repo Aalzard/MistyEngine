@@ -4492,3 +4492,22 @@ once: no blending, no sorting), and the shadow casters take the camera's state. 
   count across a card still steps per tuft, and fans entering a chunk's drawn prefix still
   appear whole (per blade, not rings). Next costs: the near grass shadow map (0.7 ms), grass
   in the prepass, sun shafts (1.0 ms).
+
+## Round 53 — MeadowDemo takes the user's look; meadow golden images retaken (branch r53-meadow-look)
+
+- **Why the meadow golden images changed**: the round 49 merge committed MeadowDemo.scene with
+  the user's own look edits from the editor (approved as the new intended look), so the 16
+  meadow golden shots drifted (mean 30–78) and `meadow_demo_matches_its_generator` failed.
+  Cause confirmed first: with the scene from before the edits (a10eecb7^1) on main's code all
+  20 golden shots passed (largest mean 0.39, changed 0.03 %), so nothing in the engine had
+  regressed. The 16 meadow references were then retaken on main with round 45's grass
+  (`MISTY_GOLDEN=update MISTY_GOLDEN_SHOTS=meadow`); the 4 CyclesRoomDemo images are unchanged.
+- **The user's look** (the scene file is the source of truth and was not changed): Auto
+  Exposure on (center-weighted, progressive, limits -1.5..3 EV), Depth of Field (Gaussian
+  10–30 m), Motion Blur, Screen Space GI (intensity 4) and Misty GI (intensity 1.35); clouds
+  coverage 0.54, density 0.93, shape 0.42, ambient 0; fog attenuation distance 300 m with
+  noise 0.2; contact shadows opacity 0.85 with 16 samples; sun shafts length 0.78, radius
+  0.93. The result is a moodier, hazier, cloud-darkened afternoon with soft distance blur.
+- **Generator** (`sample_meadow.rs`): writes those values, and the prefab instances' override
+  records as the editor saves them (the rocks' scale overrides; the player's record empty, as
+  saved). `write_meadow_rocks` keeps the records too. The round 49 Ambience object is kept.
