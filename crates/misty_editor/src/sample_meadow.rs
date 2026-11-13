@@ -794,7 +794,44 @@ fn meadow_demo_matches_its_generator() {
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene(&generated).to_json(), SCENE);
+    // The saved scene keeps the user's edits (`write_meadow_demo` writes a whole scene only when
+    // there is none): what the generator owns there is its Rocks and Ambience, which must be
+    // what `replace_rocks` makes. (Comparing the whole scene with `demo_scene` failed since the
+    // user's volume and object edits were committed.)
+    let mut regenerated = scene.clone();
+    for name in ["Rocks", crate::sample_ambience::ROOT] {
+        let old = regenerated.find_by_name(name);
+        assert!(old.is_some(), "{SCENE} has {name}");
+        regenerated.despawn(old.unwrap());
+    }
+    add_rocks(&mut regenerated, &generated);
+    add_ambience(&mut regenerated, &generated);
+    // (A save from the editor records the rocks' scale as a prefab override; the values match.)
+    fn without_overrides(text: &str) -> String {
+        fn strip(v: &mut serde_json::Value) {
+            match v {
+                serde_json::Value::Object(o) => {
+                    if let Some(serde_json::Value::Object(p)) = o.get_mut("Prefab") {
+                        p.remove("overrides");
+                    }
+                    o.values_mut().for_each(strip);
+                }
+                serde_json::Value::Array(a) => a.iter_mut().for_each(strip),
+                _ => {}
+            }
+        }
+        let mut v: serde_json::Value = serde_json::from_str(text).unwrap();
+        strip(&mut v);
+        serde_json::to_string_pretty(&v).unwrap()
+    }
+    crate::test_util::assert_json_close(
+        &without_overrides(&scene.to_json()),
+        &without_overrides(&regenerated.to_json()),
+        SCENE,
+    );
+    // A fresh scene from the generator still loads cleanly.
+    let (_, fresh) = Scene::from_json("MeadowDemo", &demo_scene(&generated).to_json()).unwrap();
+    assert!(fresh.warnings.is_empty(), "{:?}", fresh.warnings);
     // Trees around, none in the open view ahead of the player.
     assert!(
         generated.trees.instances.len() > 150,
