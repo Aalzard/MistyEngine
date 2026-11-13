@@ -199,7 +199,18 @@ pub(super) fn spread_instance(
     }
     let vp = cam.view_projection(aspect);
     let (hx, hy) = a.half_axes();
-    let clips = rect_corners(l.position, hx, hy).map(|c| vp * c.extend(1.0));
+    let corners = rect_corners(l.position, hx, hy);
+    // Wholly behind the camera: nothing shows. Tested on the view depth, not the clip w,
+    // which an orthographic camera keeps at 1 everywhere (its spread halo was drawn for a
+    // light behind it).
+    let fwd = cam.forward();
+    if corners
+        .iter()
+        .all(|c| (*c - cam.position).dot(fwd) <= 0.0)
+    {
+        return None;
+    }
+    let clips = corners.map(|c| vp * c.extend(1.0));
     if clips.iter().all(|c| c.w <= 0.0) {
         return None;
     }

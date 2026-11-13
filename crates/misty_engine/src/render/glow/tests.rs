@@ -265,3 +265,40 @@ fn halos_past_the_spread_cap_keep_their_bloom() {
     let sharing = list.halos.iter().filter(|h| h.shape[2] > 0.0).count();
     assert_eq!(sharing, list.spreads.len());
 }
+
+/// A two-sided Rectangle light behind an orthographic camera gets no Glow Spread halo (the
+/// clip w of an orthographic camera is 1 everywhere, so it used to pass); in front it does.
+#[test]
+fn rectangle_spread_behind_an_orthographic_camera_is_not_drawn() {
+    use super::spread::spread_instance;
+    use crate::render::{AreaShape, LightData};
+    use crate::scene::LightGlow;
+    let mut cam = camera();
+    cam.projection = Projection::Orthographic { size: 5.0 };
+    let env = Environment::default();
+    let f = frame(&cam, &env, PostSettings::default());
+    let light = |z: f32| LightData {
+        kind: LightType::Rectangle,
+        position: cam.position + cam.forward() * z,
+        direction: Vec3::NEG_Z,
+        color: [1.0; 3],
+        intensity: 20.0,
+        range: 10.0,
+        spot_angle: 45.0,
+        shadows: Default::default(),
+        shadow: Default::default(),
+        volumetric: Default::default(),
+        contact_shadows: false,
+        area: AreaShape {
+            two_sided: true,
+            show_emitter: true,
+            glow: LightGlow {
+                spread: 0.5,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    };
+    assert!(spread_instance(&f, &light(8.0), 16.0 / 9.0, 3.0).is_some());
+    assert!(spread_instance(&f, &light(-8.0), 16.0 / 9.0, 3.0).is_none());
+}
