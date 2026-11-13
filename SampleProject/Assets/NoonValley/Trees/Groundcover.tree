@@ -7,19 +7,19 @@
   "trunk_radius": 0.02,
   "leader": 0.0,
   "trunk_bend": 0.0,
-  "branches": 10,
+  "branches": 8,
   "branch_angle": 75.0,
   "branch_curve": -0.3,
   "twigs": 3,
-  "leaf_density": 2.6,
-  "leaf_size": 0.38,
+  "leaf_density": 1.7,
+  "leaf_size": 0.48,
   "leaf_color": [
-    1.0,
-    1.0,
-    1.0
+    0.46,
+    0.48,
+    0.4
   ],
   "leaf_variation": 0.45,
-  "translucency": 0.25,
+  "translucency": 0.1,
   "crown_shading": 0.6,
   "bark_color": [
     1.0,
