@@ -4579,3 +4579,43 @@ One commit per bug, each with a regression test; the running list with a status 
   16 KB.
 - **NaN**: `AudioSource` numbers refuse NaN; AmbienceZones with Blend Distance 0 and the First
   Person controller with Step Length 0 no longer produce NaN.
+
+## Round 56 — Bug hunt 4: everyday editor workflows, animation, effects, physics, navigation (branch r56-qa4)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r56-qa4.md`.
+
+### Editor workflows
+- **Undo / Play keep dead handles dead**: undo, redo and Play ▸ Stop put back a copy of the
+  world in which every free entity id started over at generation 1, so a joint still pointing
+  at a deleted body (or a panel remembering an undone object) pointed at the next object made.
+  Copies now move free ids past every generation handed out; copying a world with many removed
+  objects is also no longer quadratic.
+- **Prefabs**: a prefab can no longer be applied into itself (an instance dragged inside
+  another instance of the same prefab nested one level deeper on every Apply; a failed Apply
+  puts the scene back). Duplicates and pastes inside an instance no longer take the original's
+  prefab id (Revert could delete the original). Deleting a prefab open in Prefab Mode closes
+  that level instead of letting Save write the file back.
+- **Copy / Paste**: references to objects outside the copy are kept when pasting in the same
+  editor (they were dropped to null; Duplicate kept them). Pasting next to another scene's
+  top-level object puts the copy in that scene. Cross-scene reference warnings no longer list
+  UI widget references twice.
+
+### Engine
+- **Crashes and hangs**: Two Bone IK with a tiny tip bone or a NaN target; a Screen Space -
+  Camera canvas whose camera has Far at or below Near; NaN Wheel Collider torque or steering;
+  NavMesh Agent with a negative or NaN Angular Speed; Editable Meshes with bad faces in scene
+  and prefab files; Effect Graph files with a link loop (stack overflow); huge particle rates
+  and bursts; Prewarm with a huge Duration.
+- **Damaged scene files (fuzzed)**: every SampleProject scene and prefab was loaded about 800
+  times with random value mutations and truncations, then built and stepped. Fixed from it:
+  Transforms with a rotation of length 1e30 or numbers past f32 load tidy, and absurd scales,
+  collider sizes and centres (and Floaters on such bodies) no longer panic rapier or parry.
+  The loaders themselves never panicked or hung.
+- **Wrong behaviour**: Simple Directional blend trees with two motions in one direction; Ping
+  Pong animation events; lowering a particle Duration while playing; Birth sub emitters of a
+  sub emitter; Periodic Burst count overflow; broken Spring Joints kept their force and their
+  no-contacts joint; mirrored objects' collider centres and Mesh Colliders; nav bakes with a
+  big agent radius and tiny voxels made multi-GB tiles.
+- **Build**: a build folder inside the project spelled in another letter case (Windows)
+  passed the output check.
