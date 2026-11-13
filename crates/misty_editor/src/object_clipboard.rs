@@ -125,6 +125,11 @@ fn paste(s: &mut EditorState, clip: &ObjectClipboard, as_child: bool) {
             .scene
             .instantiate_prefab(&prefab, obj.link.as_deref(), parent);
         s.scene.forget_copied_prefab_ids(e);
+        // Next to another scene's top-level object: the copy belongs to that scene (it went
+        // into the active scene, listed among the other scene's objects).
+        if let (Some(a), None) = (anchor, parent) {
+            s.scene.move_to_scene(e, s.scene.scene_of(a));
+        }
         if let Some(i) = index.as_mut() {
             s.scene.set_parent(e, parent, Some(*i), false);
             *i += 1;
