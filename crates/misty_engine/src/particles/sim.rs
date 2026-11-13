@@ -15,6 +15,8 @@ use super::shape;
 
 /// Step used to simulate Prewarm.
 const PREWARM_STEP: f32 = 1.0 / 30.0;
+/// Longest Prewarm run (seconds of simulation inside Play).
+const MAX_PREWARM: f32 = 300.0;
 
 /// Salts of the per-particle random numbers (one per module term).
 pub mod salt {
@@ -357,10 +359,17 @@ impl ParticleEmitter {
         if system.main.prewarm && system.main.looping {
             // Run one whole cycle (without delay) so the effect starts "full".
             self.delay_left = 0.0;
-            let mut t = 0.0;
-            while t < system.main.duration {
+            // Counted steps: `t += 1/30` stops growing past 2^20 s (Duration 2e6 never
+            // ended), and a huge Duration is capped.
+            let duration = system.main.duration;
+            let duration = if duration.is_finite() {
+                duration.clamp(0.0, MAX_PREWARM)
+            } else {
+                0.0
+            };
+            let steps = (duration / PREWARM_STEP).ceil() as u32;
+            for _ in 0..steps {
                 self.step(system, world, gravity, PREWARM_STEP);
-                t += PREWARM_STEP;
             }
             self.total_time = 0.0;
             self.events.clear();

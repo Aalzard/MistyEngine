@@ -45,6 +45,24 @@ fn rate_over_time_emits_rate_times_seconds() {
     assert_eq!(slow.count(), 20);
 }
 
+/// Prewarm with a huge Duration ends: `t += 1/30` stopped growing past 2^20 s, so a looping
+/// system with Duration 2e6 never finished Play.
+#[test]
+fn prewarm_with_a_huge_duration_ends() {
+    let mut s = system();
+    s.emission.rate_over_time = MinMax::constant(10.0);
+    s.main.max_particles = 20;
+    s.main.looping = true;
+    s.main.prewarm = true;
+    s.main.duration = 2e6;
+    let start = std::time::Instant::now();
+    let e = started(&s);
+    assert_eq!(e.count(), 20);
+    s.main.duration = f32::INFINITY;
+    let _ = started(&s);
+    assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
+}
+
 #[test]
 fn bursts_fire_once_per_cycle_and_repeat() {
     let mut s = system();
