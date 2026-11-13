@@ -10,6 +10,7 @@
 pub mod builtin;
 pub mod install;
 pub mod manifest;
+pub mod optional;
 pub mod registry;
 pub mod resolve;
 pub mod semver;
@@ -228,6 +229,14 @@ impl PackagesWindow {
         self.done(project, r);
     }
 
+    /// Install an optional built-in package (see [`optional`]).
+    pub fn install_optional(&mut self, project: &Path, name: &str) {
+        let r = optional::install(project, name)
+            .map(|p| format!("Installed {} {}", p.title(), p.version));
+        self.selected = Some(name.to_owned());
+        self.done(project, r);
+    }
+
     pub fn remove(&mut self, project: &Path, name: &str) {
         // Refuse when another package still needs it.
         let users: Vec<String> = self
@@ -236,7 +245,10 @@ impl PackagesWindow {
             .filter(|p| p.info.name != name && p.info.dependencies.contains_key(name))
             .map(|p| p.info.title().to_owned())
             .collect();
-        let r = if users.is_empty() {
+        let r = if users.is_empty() && optional::is_optional(name) {
+            optional::remove(project, name, optional::settings_files(name))
+                .map(|_| format!("Removed {name}"))
+        } else if users.is_empty() {
             install::remove(project, name).map(|_| format!("Removed {name}"))
         } else {
             Err(format!("{name} is needed by {}", users.join(", ")))

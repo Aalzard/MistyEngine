@@ -17,6 +17,13 @@ pub struct Viewport {
     last_render: Option<std::time::Instant>,
 }
 
+impl Viewport {
+    /// The view's render target once it has drawn (the Recorder's Editor Scene source).
+    pub fn target(&self) -> Option<&RenderTarget> {
+        self.target.as_ref()
+    }
+}
+
 /// wgpu device access plus the engine renderer.
 pub struct Gpu {
     pub state: egui_wgpu::RenderState,

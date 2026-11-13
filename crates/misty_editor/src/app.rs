@@ -1039,6 +1039,16 @@ impl eframe::App for EditorApp {
                     }
                 });
         }
+        // The Recorder: start / stop, capture the frame the game just advanced to.
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Recorder",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            if crate::recorder::gpu_frame(self.gpu.as_mut(), &mut self.state) {
+                ctx.request_repaint();
+            }
+        }
         // Lightmap bakes run on their own thread: pick up the result when it is done.
         if crate::lightmap_tools::poll(&mut self.state) {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

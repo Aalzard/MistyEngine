@@ -14,6 +14,7 @@ use super::{
 };
 use crate::panels::AssetPayload;
 use crate::panels::animation::timeline::{tick_step, time_label};
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::{theme, timelines};
 
@@ -671,6 +672,14 @@ pub fn add_clip_items(
     match track.kind {
         TrackKind::Activation => {
             if ui.button("Add Activation Clip").clicked() {
+                ops::add_clip(s, path, &id, None, time);
+                ui.close();
+            }
+        }
+        TrackKind::Recorder => {
+            if s.optional_packages.has(crate::packages::optional::RECORDER)
+                && ui.button(tr!("Add Recorder Clip")).clicked()
+            {
                 ops::add_clip(s, path, &id, None, time);
                 ui.close();
             }

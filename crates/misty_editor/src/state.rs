@@ -304,6 +304,10 @@ pub struct EditorState {
     pub asset_groups: crate::panels::asset_groups::AssetGroupsWindow,
     /// Package Manager window: packages, manifest, lock, registry.
     pub packages: crate::packages::PackagesWindow,
+    /// Optional built-in packages the project installed (the Recorder, ...).
+    pub optional_packages: crate::packages::optional::Installed,
+    /// Recorder window and the recordings in progress (the optional Recorder package).
+    pub recorder: crate::recorder::RecorderState,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
     pub probes: crate::probe_tools::ProbeTools,
     /// Lightmap bakes (Lighting window ▸ Generate Lighting).
@@ -458,6 +462,8 @@ impl EditorState {
             occlusion: Default::default(),
             asset_groups: Default::default(),
             packages: Default::default(),
+            optional_packages: crate::packages::optional::Installed::load(&root),
+            recorder: Default::default(),
             probes: Default::default(),
             lightmapper: Default::default(),
             light_probes: Default::default(),

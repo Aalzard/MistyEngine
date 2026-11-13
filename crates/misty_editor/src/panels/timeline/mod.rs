@@ -304,6 +304,7 @@ pub fn kind_color(kind: TrackKind) -> Color32 {
         TrackKind::Group => Color32::from_rgb(96, 96, 96),
         TrackKind::Camera => Color32::from_rgb(178, 82, 82),
         TrackKind::Control => Color32::from_rgb(64, 140, 150),
+        TrackKind::Recorder => Color32::from_rgb(190, 60, 70),
     }
 }
 

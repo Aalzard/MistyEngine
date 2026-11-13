@@ -41,6 +41,9 @@ pub enum TrackKind {
     /// its Playable Director (a sub-timeline), plays its particles and audio, fires its
     /// Impulse Source.
     Control,
+    /// Each clip records the game while it plays (the optional Recorder package; inert without
+    /// it). The clip's recorder settings say what and how.
+    Recorder,
 }
 
 impl TrackKind {
@@ -64,19 +67,25 @@ impl TrackKind {
             Self::Signal => "Signal Track",
             Self::Camera => "Camera Track",
             Self::Control => "Control Track",
+            Self::Recorder => "Recorder Track",
         }
     }
 
     /// Whether the track is bound to a scene object (Control clips name their own objects).
     pub fn bindable(self) -> bool {
-        !matches!(self, Self::Group | Self::Control)
+        !matches!(self, Self::Group | Self::Control | Self::Recorder)
     }
 
     /// Whether the track holds clips (signal tracks hold markers instead).
     pub fn has_clips(self) -> bool {
         matches!(
             self,
-            Self::Activation | Self::Animation | Self::Audio | Self::Camera | Self::Control
+            Self::Activation
+                | Self::Animation
+                | Self::Audio
+                | Self::Camera
+                | Self::Control
+                | Self::Recorder
         )
     }
 
@@ -204,6 +213,9 @@ pub struct TimelineClip {
     /// Control clips.
     #[serde(skip_serializing_if = "ControlOptions::is_default")]
     pub control: ControlOptions,
+    /// Recorder clips: what the clip records (its range is the clip).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recorder: Option<crate::recorder::RecorderSettings>,
 }
 
 impl Default for TimelineClip {
@@ -221,6 +233,7 @@ impl Default for TimelineClip {
             volume: 1.0,
             reference: None,
             control: ControlOptions::default(),
+            recorder: None,
         }
     }
 }
