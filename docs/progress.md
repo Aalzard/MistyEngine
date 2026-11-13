@@ -4390,6 +4390,12 @@ One commit per bug, each with a regression test; the running list with a status 
 - **World Partition flight**: waits for the start area as long as loading makes progress, and
   excuses a slow frame only when the main thread's own CPU time was short on a busy machine
   (shared with the meadow hitch test in `test_cpu.rs`).
+- Also: the MeadowDemo generator test (failing on main since the user's scene edits) checks
+  only what the generator owns; NavigationDemo2's test rebuilds carving in step; tile asset
+  versions instead of a global counter keep the chunk tests stable.
+- Checks: fmt clean, clippy 0 warnings, the full test suite green twice in a row; golden shots
+  unchanged from main (cycles ok; the meadow shots drift exactly as on main, since main's
+  MeadowDemo carries the user's volume edits).
 
 ### Round 2 leftovers
 - Tilemap colliders no longer stop bodies dead on tile seams (full cells always merged into
