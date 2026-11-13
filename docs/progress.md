@@ -4618,6 +4618,75 @@ Notes, method and every measurement: `docs/pending/r55-perf2.md`.
 - **Checks**: fmt pass; clippy 0 warnings; golden shots 20/20 (MeadowDemo ≤ 0.08 mean,
   CyclesRoom 0.00); workspace tests all pass (engine 1566, editor 929, player 11, dedicated
   server 1, MCP end-to-end 1).
+## Round 56 — Bug hunt 4: everyday editor workflows, animation, effects, physics, navigation (branch r56-qa4)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r56-qa4.md`.
+
+### Editor workflows
+- **Undo / Play keep dead handles dead**: undo, redo and Play ▸ Stop put back a copy of the
+  world in which every free entity id started over at generation 1, so a joint still pointing
+  at a deleted body (or a panel remembering an undone object) pointed at the next object made.
+  Copies now move free ids past every generation handed out; copying a world with many removed
+  objects is also no longer quadratic.
+- **Prefabs**: a prefab can no longer be applied into itself (an instance dragged inside
+  another instance of the same prefab nested one level deeper on every Apply; a failed Apply
+  puts the scene back). Duplicates and pastes inside an instance no longer take the original's
+  prefab id (Revert could delete the original). Deleting a prefab open in Prefab Mode closes
+  that level instead of letting Save write the file back.
+- **Copy / Paste**: references to objects outside the copy are kept when pasting in the same
+  editor (they were dropped to null; Duplicate kept them). Pasting next to another scene's
+  top-level object puts the copy in that scene. Cross-scene reference warnings no longer list
+  UI widget references twice.
+
+### Engine
+- **Crashes and hangs**: Two Bone IK with a tiny tip bone or a NaN target; a Screen Space -
+  Camera canvas whose camera has Far at or below Near; NaN Wheel Collider torque or steering;
+  NavMesh Agent with a negative or NaN Angular Speed; Editable Meshes with bad faces in scene
+  and prefab files; Effect Graph files with a link loop (stack overflow); huge particle rates
+  and bursts; Prewarm with a huge Duration.
+- **Damaged scene files (fuzzed)**: every SampleProject scene and prefab was loaded about 800
+  times with random value mutations and truncations, then built and stepped. Fixed from it:
+  Transforms with a rotation of length 1e30 or numbers past f32 load tidy, and absurd scales,
+  collider sizes and centres (and Floaters on such bodies) no longer panic rapier or parry.
+  The loaders themselves never panicked or hung.
+- **Wrong behaviour**: Simple Directional blend trees with two motions in one direction; Ping
+  Pong animation events; lowering a particle Duration while playing; Birth sub emitters of a
+  sub emitter; Periodic Burst count overflow; broken Spring Joints kept their force and their
+  no-contacts joint; mirrored objects' collider centres and Mesh Colliders; nav bakes with a
+  big agent radius and tiny voxels made multi-GB tiles.
+- **Build**: a build folder inside the project spelled in another letter case (Windows)
+  passed the output check.
+
+## Round 54 — NoonValley look against the reference photos (branch r54-noon-look)
+
+Scene content only (generator `sample_noon_valley.rs` and the files it writes); no engine
+changes. Details, numbers and timings per round: `docs/pending/r54-noon-look.md`. Views:
+`docs/screenshots/r54/level_*.jpg`.
+
+- **Cliffs**: two more sites in the first view; each site's core is one continuous slab of
+  limestone (faces and ledges, no litter, a few small trees on the ledges), stepped in beds of
+  12–24 m that the 4 m height samples resolve; Limestone 2048², much darker and warmer (sunlit
+  terrain here renders bright, so the rock's albedo is ~0.035).
+- **Meadow**: the far meadow read cream because past the grass's draw distance the terrain
+  stands in for the grass from the ground texture and the grass colours (`ground_tint`);
+  layer 0 and the hill turf now use a generated dark turf (`MeadowTurf*.png`), the grass is
+  darker and greener, taller and more uneven (0.2–0.62 m, Tall Grass 0.55–0.95 m), the flower
+  drifts fewer and smaller, global saturation −10. Far meadow 132/139/77 → ~108/120/75 sRGB
+  (reference 85/97/59); near and mid meadow within a few levels of the reference.
+- **Light and sky**: ambient gradient 0.8 and less blue (darker crown shade), far contact
+  shadows 1.0, hillside crowns ~35 % darker, greyer sky tint, haze 1900 m with a greyer
+  albedo, eye adaptation down to −3 EV, softer cumulus.
+- **Forest**: carpets over most of the treeline wood's floor (wider plants, fewer of them),
+  undergrowth in open cells and hollows, a "Forest Herbs" grass detail layer over the litter
+  near the meadow, darker and less translucent fern and groundcover leaves, the Forest Haze
+  box only behind the wood's edge; a cheaper groundcover recipe (−1.5 M triangles inside).
+- **Cost** (High 1920×1080, sum of GPU parts): first view 12.9 → 12.0 ms; inside the wood
+  11.7 → 14.7 ms (groundcover shadows and the herbs).
+- **Still differs**: the slabs read smooth grey-green rather than bright tan with deep layered
+  shadows; clouds smaller and more numerous (no size control); sky and far hills brighter and
+  bluer than the photo; the wood floor in `inside` shows bare sunlit litter between grass-like
+  herbs, and `inside2` is greener and brighter than the photo's dark olive.
 
 ## Round 57 — Performance round 3: glowless main pass, smaller shadow mask, per-frame walks, load profiling (branch r57-perf3)
 

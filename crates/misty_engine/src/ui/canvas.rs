@@ -155,7 +155,15 @@ pub fn camera_of(scene: &Scene, e: Entity) -> Option<Camera> {
 /// Canvas pixels of a `screen`-sized canvas → the plane `distance` in front of `cam` that
 /// exactly fills its view (so it projects back onto the same pixels).
 pub fn camera_plane(cam: &Camera, screen: Vec2, distance: f32) -> Mat4 {
-    let d = distance.clamp(cam.near * 1.001, cam.far * 0.999);
+    // A camera with Far at or below Near (a script, a hand-edited scene) crossed the bounds
+    // and `clamp` panicked every frame.
+    let lo = cam.near.max(0.0) * 1.001;
+    let hi = (cam.far * 0.999).max(lo);
+    let d = if distance.is_finite() {
+        distance.clamp(lo, hi)
+    } else {
+        lo
+    };
     let aspect = screen.x / screen.y.max(1.0);
     let half_h = match cam.projection {
         Projection::Perspective { fov_y } => d * (fov_y.to_radians() * 0.5).tan(),
@@ -308,6 +316,17 @@ mod tests {
         // The plane sits 25 units in front.
         let centre = m.transform_point3(Vec3::new(800.0, 450.0, 0.0));
         assert!(((centre - c.position).dot(c.forward()) - 25.0).abs() < 1e-3);
+    }
+
+    /// Far at or below Near made `clamp` panic (min above max) on every frame a Screen Space
+    /// - Camera canvas used the camera.
+    #[test]
+    fn camera_plane_survives_far_below_near() {
+        for (near, far) in [(1.0, 1.0), (10.0, 5.0), (0.3, 0.3002)] {
+            let c = Camera { near, far, ..cam() };
+            let m = camera_plane(&c, Vec2::new(800.0, 600.0), 25.0);
+            assert!(m.is_finite(), "{near} {far}");
+        }
     }
 
     #[test]

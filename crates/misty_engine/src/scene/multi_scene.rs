@@ -604,6 +604,24 @@ mod tests {
         assert!(s.scene_to_json(0).contains("\"connected_body\": null"));
     }
 
+    /// A component listed in several reference tables (Toggle: its own fields and its
+    /// Selectable's) was read once per table: each reference was reported twice.
+    #[test]
+    fn each_cross_scene_reference_is_reported_once() {
+        let mut s = Scene::default_3d("Main");
+        let (_, roots, _) = s.load_additive("Assets/Level.scene", &level()).unwrap();
+        let t = s.spawn("Toggle", None);
+        s.add(
+            t,
+            crate::scene::UiToggle {
+                graphic: Some(roots[0]),
+                ..Default::default()
+            },
+        );
+        let refs = s.cross_scene_references(0);
+        assert_eq!(refs.len(), 1, "{refs:?}");
+    }
+
     #[test]
     fn restored_copy_keeps_the_current_active_scene_and_paths() {
         let mut s = Scene::default_3d("Main");

@@ -20,6 +20,9 @@ const PROBES: [Vec3; 8] = [
     Vec3::new(0.5, 0.5, 0.5),
 ];
 
+/// Largest world scale a Floater's box follows (the physics collider's limit).
+const MAX_SCALE: f32 = 1e5;
+
 /// Push every floating body for one step of `dt` seconds.
 pub fn apply(physics: &mut Physics, scene: &Scene, dt: f32) {
     let floaters: Vec<(hecs::Entity, Floater)> = scene
@@ -56,6 +59,13 @@ pub fn apply(physics: &mut Physics, scene: &Scene, dt: f32) {
             continue;
         };
         let (scale, _, _) = scene.world_matrix(e).to_scale_rotation_translation();
+        // Bounded like the body's collider: a scale of 1e30 (a damaged scene) put the probes
+        // 1e30 m away, and the impulses there gave rapier NaN (it panicked).
+        let scale = if scale.is_finite() {
+            scale.clamp(Vec3::splat(-MAX_SCALE), Vec3::splat(MAX_SCALE))
+        } else {
+            Vec3::ONE
+        };
         let size = f.size * scale.abs();
         let mut wet = 0.0;
         let mut flow = Vec2::ZERO;
@@ -72,6 +82,9 @@ pub fn apply(physics: &mut Physics, scene: &Scene, dt: f32) {
             wet += depth / PROBES.len() as f32;
             flow += v * depth;
             let lift = f.buoyancy * mass * g * depth / PROBES.len() as f32;
+            if !(lift * dt).is_finite() || !world.is_finite() {
+                continue;
+            }
             physics.apply_impulse_at_point(e, Vec3::Y * lift * dt, world);
         }
         if wet <= 0.0 {
@@ -156,5 +169,20 @@ mod tests {
             .fold((f32::MAX, f32::MIN), |(a, b), h| (a.min(*h), b.max(*h)));
         assert!(hi - lo > 0.3, "bobs with the waves ({lo}..{hi})");
         assert!(lo > -6.0, "stays afloat ({lo})");
+    }
+
+    /// A floating crate with an absurd scale (a damaged scene: 1e30) no longer makes rapier
+    /// panic: its probes sat 1e30 m away and the impulses there turned into NaN.
+    #[test]
+    fn absurdly_scaled_floaters_do_not_break_physics() {
+        let (mut s, c) = crate_scene(WaterPreset::Lake.settings());
+        let mut t = s.transform(c);
+        t.scale = Vec3::new(1e30, 1.0, 1.0);
+        s.set_transform(c, t);
+        let mut physics = Physics::build(&s, Vec3::new(0.0, -9.81, 0.0));
+        for _ in 0..120 {
+            physics.update(&mut s, 1.0 / 60.0);
+        }
+        assert!(physics.body_pose(c).is_some_and(|(p, _)| p.is_finite()));
     }
 }

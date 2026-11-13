@@ -550,3 +550,27 @@ fn export_to_obj_imports_back_as_one_mesh_per_material() {
         assert!(n.dot(Vec3::from(d.vertices[t[0] as usize].normal)) > 0.0);
     }
 }
+
+/// A scene whose Editable Mesh has a face past its positions (or a huge material element)
+/// loads with that face dropped: loading baked the mesh and panicked on the index, or tried
+/// to allocate one mesh per material up to 4 billion.
+#[test]
+fn damaged_editable_meshes_load_without_the_bad_faces() {
+    let mut s = Scene::new("T");
+    let e = s.spawn("M", None);
+    let mut faces = vec![Face::new(vec![0, 1, 2]), Face::new(vec![0, 1, 9])];
+    faces[0].material = 4_000_000_000;
+    faces.push(Face::new(vec![0, 0, 1]));
+    s.add(
+        e,
+        EditableMesh::new(vec![Vec3::ZERO, Vec3::X, Vec3::Z], faces),
+    );
+    s.add(e, MeshFilter::default());
+    s.add(e, MeshRenderer::default());
+    let (back, _) = Scene::from_json("T", &s.to_json()).unwrap();
+    let e = back.find_by_name("M").unwrap();
+    let m = back.world.get::<&EditableMesh>(e).unwrap();
+    assert_eq!(m.faces.len(), 1);
+    assert_eq!(m.faces[0].material, MAX_MATERIAL);
+    assert!(m.is_valid());
+}

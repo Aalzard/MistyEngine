@@ -542,7 +542,53 @@ impl EffectGraph {
         // Keep the id counter ahead of every id (hand-edited files).
         let max = g.all_ids().max().unwrap_or(0);
         g.next_id = g.next_id.max(max + 1);
+        // `connect` refuses loops, but a hand-edited or merged file can hold one: compiling it
+        // recursed until the stack overflowed (the whole process aborted).
+        g.drop_loops();
         Ok(g)
+    }
+
+    /// Remove links that close a loop between operators (each back edge of a depth-first
+    /// walk, self-links included); returns how many went.
+    fn drop_loops(&mut self) -> usize {
+        let mut out: HashMap<u32, Vec<usize>> = HashMap::new();
+        for (i, l) in self.links.iter().enumerate() {
+            out.entry(l.from).or_default().push(i);
+        }
+        let mut colour: HashMap<u32, u8> = HashMap::new();
+        let mut back = vec![false; self.links.len()];
+        for start in self.links.iter().map(|l| l.from) {
+            if colour.contains_key(&start) {
+                continue;
+            }
+            colour.insert(start, 1);
+            let mut stack = vec![(start, 0usize)];
+            while let Some(top) = stack.last_mut() {
+                let (n, i) = *top;
+                let Some(&link) = out.get(&n).and_then(|v| v.get(i)) else {
+                    colour.insert(n, 2);
+                    stack.pop();
+                    continue;
+                };
+                top.1 += 1;
+                let to = self.links[link].to;
+                match colour.get(&to) {
+                    Some(1) => back[link] = true,
+                    Some(_) => {}
+                    None => {
+                        colour.insert(to, 1);
+                        stack.push((to, 0));
+                    }
+                }
+            }
+        }
+        let before = self.links.len();
+        let mut i = 0;
+        self.links.retain(|_| {
+            i += 1;
+            !back[i - 1]
+        });
+        before - self.links.len()
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {

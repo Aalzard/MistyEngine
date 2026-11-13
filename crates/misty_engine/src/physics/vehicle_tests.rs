@@ -297,3 +297,20 @@ fn gravity_and_mass_change_while_playing() {
     let p = scene.world_position(car);
     assert!((p.y - 0.5).abs() < 0.05, "rests on its wheels: {p}");
 }
+
+/// A NaN Motor Torque or Steer Angle (set from a script) made the tyre solver's
+/// `clamp(-NaN, NaN)` panic on the next physics step.
+#[test]
+fn nan_torque_or_steering_does_not_panic() {
+    for (torque, steer) in [(f32::NAN, 0.0), (0.0, f32::NAN), (1e38, 0.0)] {
+        let (mut scene, car, wheels) = car_scene(0.5);
+        let mut physics = build(&scene);
+        run(&mut scene, &mut physics, 0.5);
+        set(&mut scene, &wheels, |_, w| {
+            w.motor_torque = torque;
+            w.steer_angle = steer;
+        });
+        run(&mut scene, &mut physics, 0.2);
+        let _ = scene.world_position(car);
+    }
+}

@@ -500,3 +500,26 @@ fn nav_perf_report() {
         t.elapsed().as_secs_f32() * 1000.0
     );
 }
+
+/// A negative or NaN Angular Speed (set from Lua or a scene file) made the agent's turn
+/// `clamp` panic as soon as it moved.
+#[test]
+fn agents_with_negative_or_nan_angular_speed_still_walk() {
+    for angular_speed in [-120.0, f32::NAN] {
+        let mut s = Scene::new("T");
+        floor(&mut s, 0.0, 0.0, 20.0, 20.0);
+        let e = agent(
+            &mut s,
+            "Walker",
+            Vec3::new(-5.0, 0.0, 0.0),
+            NavMeshAgent {
+                angular_speed,
+                ..Default::default()
+            },
+        );
+        let mut nav = runtime(&s);
+        assert!(nav.set_destination(&s, e, Vec3::new(5.0, 0.0, 0.0)));
+        run(&mut s, &mut nav, 1.0);
+        assert!(s.world_position(e).x > -4.5, "{angular_speed}");
+    }
+}

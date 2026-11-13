@@ -170,6 +170,50 @@ fn spring_joint_settles_at_its_stretch_and_respects_max_distance() {
     assert!((y - (5.0 - 1.196)).abs() < 0.03, "{y}");
 }
 
+/// A Spring Joint that breaks lets go fully: its last force used to stay on the body (it
+/// fell at about half of g, held by the force of the step before the break), and with
+/// Enable Collision off the contact switch stayed, so the bodies kept passing through.
+#[test]
+fn a_broken_spring_lets_go() {
+    let mut scene = Scene::new("t");
+    let top = body(&mut scene, "Top", Vec3::new(0.0, 8.0, 0.0), Vec3::ONE);
+    scene.add(top, FixedJoint::default());
+    let e = body(&mut scene, "Weight", Vec3::new(0.0, 6.0, 0.0), Vec3::ONE);
+    scene.add(
+        e,
+        SpringJoint {
+            connected_body: Some(top),
+            spring: 20.0,
+            damper: 0.0,
+            min_distance: 2.0,
+            max_distance: 2.0,
+            break_force: 5.0,
+            enable_collision: false,
+            ..Default::default()
+        },
+    );
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let free_joints = physics.world.impulse_joints.len();
+    let mut broke = None;
+    for frame in 0..120 {
+        physics.update(&mut scene, 1.0 / 60.0);
+        if physics.springs.is_empty() {
+            broke = Some(frame);
+            break;
+        }
+    }
+    assert!(broke.is_some(), "the spring breaks");
+    assert_eq!(physics.world.impulse_joints.len(), free_joints - 1);
+    let mut y = [0.0; 3];
+    for v in &mut y {
+        *v = scene.world_position(e).y;
+        run(&mut scene, &mut physics, 0.25);
+    }
+    // Free fall, less a little drag: about g (it was about half of g).
+    let a = (y[2] - 2.0 * y[1] + y[0]) / (0.25 * 0.25);
+    assert!(a < -7.5, "falls at {a} m/s²");
+}
+
 #[test]
 fn spring_chain_connects_bodies() {
     let mut scene = Scene::new("t");

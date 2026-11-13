@@ -213,3 +213,25 @@ fn changing_the_layer_while_playing_updates_queries() {
         Some(e)
     );
 }
+
+/// A mirrored object (scale x -1) mirrors its collider's centre, like its mesh: the collider
+/// sat on the other side.
+#[test]
+fn mirrored_objects_mirror_their_collider_centres() {
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Mirrored", None);
+    let mut t = Transform::from_position(Vec3::ZERO);
+    t.scale = Vec3::new(-1.0, 1.0, 1.0);
+    scene.set_transform(e, t);
+    scene.add(
+        e,
+        BoxCollider {
+            center: Vec3::new(2.0, 0.0, 0.0),
+            ..Default::default()
+        },
+    );
+    let physics = build(&scene);
+    let down = |x: f32| physics.raycast(Vec3::new(x, 5.0, 0.0), Vec3::NEG_Y, 10.0, ALL_LAYERS);
+    assert!(down(-2.0).is_some(), "the box is drawn at x = -2");
+    assert!(down(2.0).is_none());
+}

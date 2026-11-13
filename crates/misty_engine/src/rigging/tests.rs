@@ -86,6 +86,25 @@ fn two_bone_ik_reaches_and_straightens() {
     assert!(((t - r).length() - 2.0).abs() < 1e-3);
 }
 
+/// A tip bone much shorter than the arm (a hand almost on the elbow, centimetre scenes) or a
+/// NaN target made `clamp` panic: its lower bound passed the upper one.
+#[test]
+fn two_bone_ik_with_a_tiny_tip_bone_or_nan_target_does_not_panic() {
+    let mut a = arm(Vec3::new(5.0, 3.0, 0.0), Vec3::new(0.5, 0.0, 2.0));
+    let [root, mid, tip] = a.bones;
+    a.scene
+        .set_transform(mid, Transform::from_position(Vec3::new(10.0, 0.0, 0.0)));
+    a.scene
+        .set_transform(tip, Transform::from_position(Vec3::new(2e-5, 0.0, 0.0)));
+    let mut st = RigState::new();
+    eval(&mut a.scene, &mut st);
+    assert!(a.scene.world_position(tip).is_finite());
+    a.scene
+        .set_transform(a.target, Transform::from_position(Vec3::NAN));
+    eval(&mut a.scene, &mut st);
+    assert!(a.scene.world_position(root).is_finite());
+}
+
 #[test]
 fn hint_picks_the_elbow_side() {
     let goal = Vec3::new(1.2, 0.0, 0.0);

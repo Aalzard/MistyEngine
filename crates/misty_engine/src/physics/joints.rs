@@ -59,6 +59,8 @@ pub(super) struct Spring {
     min: f32,
     max: f32,
     break_force: f32,
+    /// The constraint-free joint that switches contacts off (Enable Collision off).
+    no_contacts: Option<rp::ImpulseJointHandle>,
 }
 
 /// A limit with a spring: no hard stop, a restoring force past `min` / `max`.
@@ -337,12 +339,12 @@ impl Physics {
                     j.auto_configure_connected_anchor,
                     j.connected_anchor,
                 );
-                if !j.enable_collision {
+                let no_contacts = (!j.enable_collision).then(|| {
                     // A joint that constrains nothing, only to switch contacts off.
                     let free = rp::GenericJointBuilder::new(rp::JointAxesMask::empty())
                         .contacts_enabled(false);
-                    self.world.insert_impulse_joint(to.handle, body, free);
-                }
+                    self.world.insert_impulse_joint(to.handle, body, free)
+                });
                 self.springs.push(Spring {
                     body: e,
                     connected: to.entity,
@@ -353,6 +355,7 @@ impl Physics {
                     min: j.min_distance.max(0.0).min(j.max_distance.max(0.0)),
                     max: j.max_distance.max(0.0).max(j.min_distance.max(0.0)),
                     break_force: j.break_force.max(0.0),
+                    no_contacts,
                 });
             }
         }
@@ -463,6 +466,17 @@ impl Physics {
         }
         for (i, force) in broken.into_iter().rev() {
             let s = self.springs.remove(i);
+            // A broken spring lets go: its contact switch goes (the bodies passed through each
+            // other for good), and so does the force it applied last step (rapier keeps
+            // forces, and only bodies of the remaining springs are reset below).
+            if let Some(h) = s.no_contacts {
+                self.world.remove_impulse_joint(h);
+            }
+            for e in [Some(s.body), s.connected].into_iter().flatten() {
+                if let Some(b) = self.body_mut(e) {
+                    b.reset_forces(true);
+                }
+            }
             self.joint_breaks.push(JointBreak {
                 entity: s.body,
                 joint: "Spring Joint",

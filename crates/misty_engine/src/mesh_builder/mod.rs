@@ -114,10 +114,46 @@ pub fn edge_key(a: u32, b: u32) -> [u32; 2] {
 /// The Editable Mesh component: a polygon mesh modelled with the Mesh Builder tools, baked to
 /// the object's Mesh Filter (see the module docs).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(from = "MeshFile")]
 pub struct EditableMesh {
     pub positions: Vec<Vec3>,
     pub faces: Vec<Face>,
+}
+
+/// Highest material element a face may use (a file's `"material": 4000000000` made baking
+/// allocate one mesh per element up to it).
+pub const MAX_MATERIAL: u32 = 255;
+
+/// An Editable Mesh as read from a file, before [`EditableMesh::from`] drops what can't be
+/// drawn.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct MeshFile {
+    positions: Vec<Vec3>,
+    faces: Vec<Face>,
+}
+
+impl From<MeshFile> for EditableMesh {
+    /// Faces with a vertex index past the positions (or fewer than three distinct vertices)
+    /// are dropped and materials capped: a hand-edited or damaged scene, prefab or clipboard
+    /// made loading panic on the index.
+    fn from(file: MeshFile) -> Self {
+        let mut mesh = EditableMesh {
+            positions: file.positions,
+            faces: file.faces,
+        };
+        let n = mesh.positions.len() as u32;
+        mesh.faces.retain(|f| {
+            let mut v = f.verts.clone();
+            v.sort_unstable();
+            v.dedup();
+            v.len() == f.verts.len() && v.len() >= 3 && v.iter().all(|i| *i < n)
+        });
+        for f in &mut mesh.faces {
+            f.material = f.material.min(MAX_MATERIAL);
+        }
+        mesh
+    }
 }
 
 impl EditableMesh {

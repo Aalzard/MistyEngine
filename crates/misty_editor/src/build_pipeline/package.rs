@@ -111,11 +111,20 @@ pub struct Built {
 
 /// Refuse output folders inside the project's Assets / ProjectSettings (or the project itself).
 pub fn check_output(project: &Path, out: &Path) -> Result<(), String> {
-    let out = std::path::absolute(out).map_err(|e| e.to_string())?;
-    let root = std::path::absolute(project).map_err(|e| e.to_string())?;
+    // Windows paths ignore letter case: "proj\assets\Build" is inside Assets too (it passed,
+    // and the build landed among the project's assets).
+    let fold = |p: PathBuf| -> PathBuf {
+        if cfg!(windows) {
+            PathBuf::from(p.to_string_lossy().to_lowercase())
+        } else {
+            p
+        }
+    };
+    let out = fold(std::path::absolute(out).map_err(|e| e.to_string())?);
+    let root = fold(std::path::absolute(project).map_err(|e| e.to_string())?);
     let inside = ["Assets", "ProjectSettings", "Library"]
         .iter()
-        .any(|d| out.starts_with(root.join(d)));
+        .any(|d| out.starts_with(fold(root.join(d))));
     if out == root || inside {
         return Err(
             "Choose a build folder outside the project (or in a Builds folder next to Assets)."
@@ -858,6 +867,19 @@ mod tests {
         let mut inside = req.clone();
         inside.out = root.join("Assets/Build");
         assert!(package(&inside, &player, &mut |_| {}).is_err());
+    }
+
+    /// On Windows a build folder spelled in another letter case ("assets\Build") is the same
+    /// folder: it passed the check and the build landed among the project's assets.
+    #[cfg(windows)]
+    #[test]
+    fn build_folders_inside_the_project_in_another_letter_case_are_refused() {
+        let root = std::env::temp_dir().join("misty_build_case_check");
+        assert!(check_output(&root, &root.join("assets").join("Build")).is_err());
+        assert!(check_output(&root, &root.join("PROJECTSETTINGS")).is_err());
+        let upper = PathBuf::from(root.to_string_lossy().to_uppercase());
+        assert!(check_output(&root, &upper).is_err());
+        assert!(check_output(&root, &root.join("Builds")).is_ok());
     }
 
     /// A build scene that no longer exists fails the build (the player would fail to load it).
