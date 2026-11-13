@@ -211,7 +211,7 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         }
         DocKind::EffectGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
-            let graph = misty_engine::vfx::graph::EffectGraph::from_json(body)?;
+            let graph = misty_engine::vfx::EffectGraph::from_json(body)?;
             let file = s.assets.absolute(rel);
             let w = &mut s.effect_graph;
             w.open(&file, rel);
@@ -226,7 +226,8 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
                 // The script's file is gone: open the backup as a new script there (unsaved).
                 return Err(tr!("The script's file is missing: save the backup by hand."));
             }
-            let doc = &mut ce.docs[ce.active];
+            let i = ce.active;
+            let doc = &mut ce.docs[i];
             doc.editor.reload(body);
             s.push(crate::actions::Action::FocusTab(crate::layout::Tab::CodeEditor));
             Ok(())
@@ -497,7 +498,7 @@ pub fn dialog_ui(ctx: &egui::Context, s: &mut EditorState) {
                         ui.end_row();
                         if let Some(e) = &item.error {
                             ui.label("");
-                            ui.colored_label(crate::theme::WARN, e);
+                            ui.colored_label(crate::theme::WARN, e.as_str());
                             ui.end_row();
                         }
                     }

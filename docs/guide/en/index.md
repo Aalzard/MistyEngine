@@ -30,6 +30,8 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
+9. [Autosave and crash recovery](09-autosave.md): backups of unsaved work, the Recover
+   Unsaved Work window and crash reports.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 
