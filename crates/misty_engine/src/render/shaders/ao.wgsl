@@ -180,28 +180,50 @@ fn depth_weight(z: f32, center: f32) -> f32 {
     return exp(-abs(z - center) / (0.02 * center + 0.01));
 }
 
+// Largest denoise radius (AO texels): 2 with history, 3 without (screen_space.rs `ao_params`).
+const DENOISE_MAX_R: i32 = 3;
+const DENOISE_TILE: i32 = 8 + 2 * DENOISE_MAX_R;
+// The workgroup's AO texels and their radius around it, loaded once: (AO, linear depth) and
+// the prepass normal (world space: the weights only compare two normals, and the view
+// rotation keeps their dot product). Each texel was read by up to 49 neighbours.
+var<workgroup> denoise_ao: array<vec2<f32>, 196>;
+var<workgroup> denoise_n: array<vec3<f32>, 196>;
+
 @compute @workgroup_size(8, 8)
-fn cs_denoise(@builtin(global_invocation_id) id: vec3<u32>) {
+fn cs_denoise(
+    @builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wg: vec3<u32>,
+) {
+    let scale = p.temporal.z;
+    let last = vec2<i32>(p.size.xy) - 1;
+    let origin = vec2<i32>(wg.xy) * 8 - DENOISE_MAX_R;
+    for (var i = i32(li); i < DENOISE_TILE * DENOISE_TILE; i += 64) {
+        let q = clamp(origin + vec2<i32>(i % DENOISE_TILE, i / DENOISE_TILE), vec2<i32>(0), last);
+        denoise_ao[i] = textureLoad(ao_in, q, 0).xy;
+        denoise_n[i] = textureLoad(normal_tex, vec2<i32>(vec2<f32>(q) * scale + 0.5), 0).xyz;
+    }
+    workgroupBarrier();
     if (f32(id.x) >= p.size.x || f32(id.y) >= p.size.y) {
         return;
     }
-    let c = textureLoad(ao_in, vec2<i32>(id.xy), 0).xy;
+    let lp = vec2<i32>(id.xy) - origin;
+    let c = denoise_ao[lp.y * DENOISE_TILE + lp.x];
     if (c.y >= SKY) {
         textureStore(ao_out, id.xy, vec4<f32>(c, 0.0, 0.0));
         return;
     }
-    let scale = p.temporal.z;
-    let n = view_normal(vec2<f32>(id.xy) * scale + 0.5);
-    let r = i32(p.temporal.w);
+    let n = denoise_n[lp.y * DENOISE_TILE + lp.x];
+    let r = min(i32(p.temporal.w), DENOISE_MAX_R);
     let sigma = f32(r) * 0.6 + 0.5;
-    let last = vec2<i32>(p.size.xy) - 1;
     var sum = 0.0;
     var weights = 0.0;
     for (var y = -r; y <= r; y++) {
         for (var x = -r; x <= r; x++) {
-            let q = clamp(vec2<i32>(id.xy) + vec2<i32>(x, y), vec2<i32>(0), last);
-            let s = textureLoad(ao_in, q, 0).xy;
-            let nq = view_normal(vec2<f32>(q) * scale + 0.5);
+            // (Clamped at the image border like a direct read: the tile holds clamped texels.)
+            let k = (lp.y + y) * DENOISE_TILE + lp.x + x;
+            let s = denoise_ao[k];
+            let nq = denoise_n[k];
             let spatial = exp(-f32(x * x + y * y) / (2.0 * sigma * sigma));
             let w = spatial * depth_weight(s.y, c.y) * pow(saturate(dot(n, nq)), 8.0);
             sum += s.x * w;
