@@ -47,7 +47,7 @@ pub fn show(
     let editing = !s.play.in_play_mode();
     let axis = zoom_and_pan(ui, s, asset, rect);
     let painter = ui.painter().clone();
-    painter.rect_filled(rect, 0.0, theme::BORDER);
+    painter.rect_filled(rect, 0.0, theme::border());
 
     let ruler = Rect::from_min_size(rect.min, vec2(rect.width(), RULER_H));
     let markers = Rect::from_min_size(
@@ -74,9 +74,9 @@ pub fn show(
             continue;
         }
         let bg = if track.kind == TrackKind::Group {
-            GROUP_BG
+            crate::theme::shade(GROUP_BG)
         } else {
-            LANE_BG
+            crate::theme::shade(LANE_BG)
         };
         list_painter.rect_filled(lane.shrink2(vec2(0.0, 2.0)), 0.0, bg);
         draw_track(&list_painter, s, asset, track, lane, axis);
@@ -92,7 +92,7 @@ pub fn show(
     }
 
     draw_ruler(&painter, asset, axis, ruler);
-    painter.rect_filled(markers, 0.0, theme::TOOLBAR_BG);
+    painter.rect_filled(markers, 0.0, theme::toolbar_bg());
     for (i, m) in asset.markers.iter().enumerate() {
         let sel = s.timeline.selected == Some(TimelineSel::Marker(None, i));
         marker_shape(&painter, axis.x(m.time), markers, sel);
@@ -105,7 +105,7 @@ pub fn show(
     let x = axis.x(s.timeline.time);
     if rect.x_range().contains(x) {
         let color = if s.play.in_play_mode() {
-            theme::PLAY_TINT.gamma_multiply(1.6)
+            theme::play_tint().gamma_multiply(1.6)
         } else {
             Color32::WHITE
         };
@@ -159,7 +159,7 @@ fn zoom_and_pan(ui: &Ui, s: &mut EditorState, asset: &TimelineAsset, rect: Rect)
 }
 
 fn draw_ruler(p: &egui::Painter, asset: &TimelineAsset, axis: Axis, rect: Rect) {
-    p.rect_filled(rect, 0.0, theme::TOOLBAR_BG);
+    p.rect_filled(rect, 0.0, theme::toolbar_bg());
     let rate = asset.frame_rate;
     let step = tick_step(rate, axis.pps) / rate;
     let minor = step / 5.0;
@@ -173,7 +173,7 @@ fn draw_ruler(p: &egui::Painter, asset: &TimelineAsset, axis: Axis, rect: Rect) 
         p.vline(
             x,
             rect.bottom() - h..=rect.bottom(),
-            Stroke::new(1.0, theme::TEXT_DIM.gamma_multiply(0.7)),
+            Stroke::new(1.0, theme::text_dim().gamma_multiply(0.7)),
         );
         if major {
             p.text(
@@ -181,7 +181,7 @@ fn draw_ruler(p: &egui::Painter, asset: &TimelineAsset, axis: Axis, rect: Rect) 
                 Align2::LEFT_TOP,
                 time_label(t, rate),
                 FontId::proportional(10.0),
-                theme::TEXT_DIM,
+                theme::text_dim(),
             );
         }
     }
@@ -189,7 +189,11 @@ fn draw_ruler(p: &egui::Painter, asset: &TimelineAsset, axis: Axis, rect: Rect) 
 
 /// A signal marker: a small rounded pin.
 fn marker_shape(p: &egui::Painter, x: f32, lane: Rect, selected: bool) {
-    let color = if selected { Color32::WHITE } else { MARKER };
+    let color = if selected {
+        Color32::WHITE
+    } else {
+        crate::theme::shade(MARKER)
+    };
     let cy = lane.center().y;
     let h = (lane.height() - 6.0).clamp(8.0, 14.0);
     let r = Rect::from_center_size(pos2(x, cy - 1.0), vec2(8.0, h - 3.0));
@@ -316,7 +320,7 @@ fn label(p: &egui::Painter, r: Rect, text: &str) {
             Align2::LEFT_CENTER,
             text,
             FontId::proportional(11.5),
-            Color32::from_rgb(236, 236, 236),
+            crate::theme::shade(Color32::from_rgb(236, 236, 236)),
         );
 }
 

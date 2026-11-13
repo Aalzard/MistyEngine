@@ -97,7 +97,7 @@ fn play_button(ui: &mut Ui, icon: PlayIcon, active: bool, name: &str, tip: &str)
     if let Some(fill) = fill {
         ui.painter().rect_filled(rect, 4.0, fill);
     }
-    let color = if active { accent } else { theme::TEXT };
+    let color = if active { accent } else { theme::text() };
     paint_play_icon(ui, rect.center(), icon, color);
     resp.on_hover_text(tip)
 }

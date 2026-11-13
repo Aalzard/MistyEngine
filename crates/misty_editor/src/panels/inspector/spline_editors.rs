@@ -315,7 +315,7 @@ fn container(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     } else {
         ui.label(
             RichText::new("Select knots in the Editor Scene to edit them here.")
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
     }
     if ch {
@@ -536,7 +536,7 @@ fn instantiate(ui: &mut Ui, state: &EditorState, e: Entity, c: &mut SplineInstan
         }
     });
     let made = misty_engine::splines::instantiate::instances(&state.scene, e).len();
-    ui.label(RichText::new(format!("{made} instances")).color(theme::TEXT_DIM));
+    ui.label(RichText::new(format!("{made} instances")).color(theme::text_dim()));
     ch
 }
 
@@ -585,7 +585,7 @@ fn animate_editor(ui: &mut Ui, state: &EditorState, e: Entity, c: &mut SplineAni
                 "{} · normalized time {t:.3}",
                 if c.playing { "Playing" } else { "Paused" }
             ))
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
         );
     }
     ch

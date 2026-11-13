@@ -157,11 +157,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         vec2(PARAMS_W.min(full.width() * 0.4), full.height()),
     );
     let right = Rect::from_min_max(pos2(left.right() + 1.0, full.top()), full.max);
-    ui.painter().rect_filled(left, 0.0, theme::PANEL_BG);
+    ui.painter().rect_filled(left, 0.0, theme::panel_bg());
     ui.painter().vline(
         left.right(),
         full.y_range(),
-        egui::Stroke::new(1.0, theme::BORDER),
+        egui::Stroke::new(1.0, theme::border()),
     );
     ui.scope_builder(UiBuilder::new().max_rect(left.shrink(4.0)), |ui| {
         ui.horizontal(|ui| {
@@ -201,7 +201,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
 /// Breadcrumb ("Base Layer ▸ Combat ▸ Locomotion"; click a part to go back) and the
 /// controller's name.
 fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &AnimatorController) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
@@ -211,7 +211,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &Animator
                 let in_tree = s.animator.blend_view.clone();
                 for (i, (label, machine)) in parts.into_iter().enumerate() {
                     if i > 0 {
-                        ui.label(RichText::new("▸").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("▸").color(theme::text_dim()));
                     }
                     let text = RichText::new(label).strong();
                     if i == last && in_tree.is_none() {
@@ -221,7 +221,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &Animator
                     }
                 }
                 if let Some(state) = in_tree {
-                    ui.label(RichText::new("▸").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("▸").color(theme::text_dim()));
                     ui.label(RichText::new(format!("{state} (Blend Tree)")).strong());
                 }
                 if !s.animator.machine.is_empty() && s.animator.blend_view.is_none() {
@@ -233,7 +233,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &Animator
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         RichText::new(format!("{CONTROLLER_ICON} {}", clip_name(path)))
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                     if s.play.in_play_mode() && s.animator.target.is_some() {
                         ui.label(RichText::new("● Live").color(graph::LIVE_BLUE));
@@ -382,6 +382,6 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }

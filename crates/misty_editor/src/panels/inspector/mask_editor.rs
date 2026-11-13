@@ -141,7 +141,7 @@ fn tree(ui: &mut Ui, state: &mut EditorState, rel: &str, mask: &AvatarMask) {
                         .iter()
                         .any(|p| p.path != t.path && !p.active && is_ancestor(&p.path, &t.path));
                     let text = if parent_off {
-                        RichText::new(name).color(theme::TEXT_DIM)
+                        RichText::new(name).color(theme::text_dim())
                     } else {
                         RichText::new(name)
                     };
@@ -203,7 +203,7 @@ pub fn avatar_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 ui.label(b.name());
                 match avatar.bone(b) {
                     Some(x) => {
-                        ui.label(RichText::new(&x.path).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(&x.path).color(theme::text_dim()));
                     }
                     None if b.required() => {
                         ui.colored_label(theme::AXIS_X, "Missing");

@@ -297,13 +297,13 @@ pub fn active_asset(s: &mut EditorState, path: &str) -> Option<TimelineAsset> {
 /// Track colour (clips and the header accent).
 pub fn kind_color(kind: TrackKind) -> Color32 {
     match kind {
-        TrackKind::Activation => Color32::from_rgb(84, 138, 98),
-        TrackKind::Animation => Color32::from_rgb(70, 112, 170),
-        TrackKind::Audio => Color32::from_rgb(178, 124, 62),
-        TrackKind::Signal => Color32::from_rgb(132, 104, 170),
-        TrackKind::Group => Color32::from_rgb(96, 96, 96),
-        TrackKind::Camera => Color32::from_rgb(178, 82, 82),
-        TrackKind::Control => Color32::from_rgb(64, 140, 150),
+        TrackKind::Activation => crate::theme::shade(Color32::from_rgb(84, 138, 98)),
+        TrackKind::Animation => crate::theme::shade(Color32::from_rgb(70, 112, 170)),
+        TrackKind::Audio => crate::theme::shade(Color32::from_rgb(178, 124, 62)),
+        TrackKind::Signal => crate::theme::shade(Color32::from_rgb(132, 104, 170)),
+        TrackKind::Group => crate::theme::shade(Color32::from_rgb(96, 96, 96)),
+        TrackKind::Camera => crate::theme::shade(Color32::from_rgb(178, 82, 82)),
+        TrackKind::Control => crate::theme::shade(Color32::from_rgb(64, 140, 150)),
     }
 }
 
@@ -369,7 +369,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         vec2(HEADER_W.min(body.width() * 0.45), body.height()),
     );
     let right = Rect::from_min_max(pos2(left.right() + 1.0, body.top()), body.max);
-    ui.painter().rect_filled(body, 0.0, theme::PANEL_BG);
+    ui.painter().rect_filled(body, 0.0, theme::panel_bg());
     let rows = rows(&asset);
     clamp_scroll_y(s, &rows, body.height() - RULER_H - MARKERS_H);
 
@@ -426,13 +426,13 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 
 /// Preview, transport, frame counter and snapping.
 fn toolbar_row(ui: &mut Ui, s: &mut EditorState, asset: &TimelineAsset, path: &str, rect: Rect) {
-    ui.painter().rect_filled(rect, 0.0, theme::TOOLBAR_BG);
+    ui.painter().rect_filled(rect, 0.0, theme::toolbar_bg());
     let mut child = ui.new_child(
         UiBuilder::new()
             .max_rect(rect.shrink2(vec2(6.0, 0.0)))
@@ -519,7 +519,7 @@ fn toolbar_row(ui: &mut Ui, s: &mut EditorState, asset: &TimelineAsset, path: &s
             w.ripple = !w.ripple;
         }
         if w.recording.is_some() {
-            ui.label(RichText::new("⏺ Recording").color(REC));
+            ui.label(RichText::new("⏺ Recording").color(crate::theme::shade(REC)));
         }
         let name = misty_engine::scene::clip_name(path);
         ui.label(
@@ -527,7 +527,7 @@ fn toolbar_row(ui: &mut Ui, s: &mut EditorState, asset: &TimelineAsset, path: &s
                 "{name}  ·  {}",
                 crate::panels::animation::timeline::time_label(duration, rate)
             ))
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
         );
     });
 }

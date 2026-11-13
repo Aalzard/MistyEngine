@@ -51,7 +51,7 @@ pub fn literal_ui(ui: &mut Ui, ty: PinType, lit: &mut Literal) -> bool {
             ch
         }
         Literal::None => {
-            ui.label(RichText::new("None").color(theme::TEXT_DIM));
+            ui.label(RichText::new("None").color(theme::text_dim()));
             false
         }
     };
@@ -62,8 +62,11 @@ pub fn literal_ui(ui: &mut Ui, ty: PinType, lit: &mut Literal) -> bool {
 }
 
 pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
-    ui.painter()
-        .rect_filled(rect, 8.0, Color32::from_rgba_unmultiplied(44, 45, 49, 245));
+    ui.painter().rect_filled(
+        rect,
+        8.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(44, 45, 49, 245)),
+    );
     ui.painter().rect_stroke(
         rect,
         8.0,
@@ -79,7 +82,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
     let busy = super::interacting(ui.ctx());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Blackboard").strong().color(theme::TEXT));
+            ui.label(RichText::new("Blackboard").strong().color(theme::text()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.menu_button("+", |ui| {
                     for ty in PinType::VARIABLE_TYPES {
@@ -107,7 +110,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .unwrap_or_default();
         let vars = s.script_graph.view().variables.clone();
         if vars.is_empty() {
-            ui.label(RichText::new("No variables. Use + to add one.").color(theme::TEXT_DIM));
+            ui.label(RichText::new("No variables. Use + to add one.").color(theme::text_dim()));
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (i, v) in vars.iter().enumerate() {
@@ -245,7 +248,7 @@ fn row(
             }
         }
         if let Some((_, value)) = live.iter().find(|(n, _)| *n == v.name) {
-            ui.label(RichText::new(format!("= {value}")).color(theme::WARN))
+            ui.label(RichText::new(format!("= {value}")).color(theme::warn()))
                 .on_hover_text("Value in the playing game");
         }
     });

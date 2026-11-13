@@ -102,7 +102,7 @@ pub fn canvas(ui: &mut Ui, c: &mut Canvas, cameras: &Objects) -> bool {
             }
             CanvasRenderMode::WorldSpace => {
                 ui.label("Event Camera");
-                ui.label(RichText::new("The game camera").color(theme::TEXT_DIM));
+                ui.label(RichText::new("The game camera").color(theme::text_dim()));
                 ui.end_row();
             }
             CanvasRenderMode::ScreenSpaceOverlay => {}
@@ -117,7 +117,7 @@ pub fn canvas(ui: &mut Ui, c: &mut Canvas, cameras: &Objects) -> bool {
             RichText::new(
                 "A Screen Space Canvas with no Render Camera acts like an Overlay Canvas.",
             )
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
         );
         if let Some((cam, _)) = cameras.first()
             && ui.button("Use Main Camera").clicked()
@@ -135,7 +135,7 @@ pub fn canvas_scaler(ui: &mut Ui, s: &mut CanvasScaler, world: bool) -> bool {
         let mut ch = false;
         if world {
             ui.label("UI Scale Mode");
-            ui.label(RichText::new("World").color(theme::TEXT_DIM));
+            ui.label(RichText::new("World").color(theme::text_dim()));
             ui.end_row();
             ui.label("Dynamic Pixels Per Unit");
             ch |= drag(ui, &mut s.dynamic_pixels_per_unit, 0.05, 0.01..=100.0);
@@ -181,9 +181,9 @@ pub fn canvas_scaler(ui: &mut Ui, s: &mut CanvasScaler, world: bool) -> bool {
                             .add(egui::Slider::new(&mut s.match_width_or_height, 0.0..=1.0))
                             .changed();
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Width").small().color(theme::TEXT_DIM));
+                            ui.label(RichText::new("Width").small().color(theme::text_dim()));
                             ui.add_space(110.0);
-                            ui.label(RichText::new("Height").small().color(theme::TEXT_DIM));
+                            ui.label(RichText::new("Height").small().color(theme::text_dim()));
                         });
                     });
                     ui.end_row();
@@ -241,7 +241,7 @@ pub fn image_type_rows(ui: &mut Ui, img: &mut UiImage, has_border: bool) -> bool
                     RichText::new(
                         "This image has no border (set it in the sprite's import settings).",
                     )
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
                 );
                 ui.end_row();
             }
@@ -392,7 +392,7 @@ pub fn event_system_input(ui: &mut Ui, es: &mut EventSystem, assets: &[String]) 
     let mut c = false;
     ui.label("Input Module");
     ui.label(
-        RichText::new("Input System UI (falls back to the Input Manager)").color(theme::TEXT_DIM),
+        RichText::new("Input System UI (falls back to the Input Manager)").color(theme::text_dim()),
     );
     ui.end_row();
     ui.label("Actions Asset");

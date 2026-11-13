@@ -478,7 +478,7 @@ fn profile_page(ui: &mut Ui, s: &mut EditorState, i: usize) {
     ui.horizontal(|ui| {
         ui.heading(&p.name);
         if active {
-            ui.label(RichText::new("Active").color(crate::theme::OVERRIDE));
+            ui.label(RichText::new("Active").color(crate::theme::overridden()));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if !active
@@ -649,7 +649,7 @@ fn platform(ui: &mut Ui, p: &mut BuildProfile) -> bool {
     let st = status(t);
     if !st.installed {
         ui.colored_label(
-            crate::theme::WARN,
+            crate::theme::warn(),
             "This Rust target isn't installed. Run this in a terminal:",
         );
         let cmd = targets::install_command(t);
@@ -664,7 +664,7 @@ fn platform(ui: &mut Ui, p: &mut BuildProfile) -> bool {
         }
     }
     if let Some(blocker) = &st.blocker {
-        ui.colored_label(crate::theme::WARN, blocker);
+        ui.colored_label(crate::theme::warn(), blocker);
     } else if st.installed {
         ui.label("Ready to build.");
     }
@@ -929,7 +929,7 @@ fn progress(ui: &mut Ui, s: &mut EditorState) {
                     for line in &job.log {
                         let text = RichText::new(&line.text).monospace().small();
                         if line.warning {
-                            ui.colored_label(crate::theme::WARN, text);
+                            ui.colored_label(crate::theme::warn(), text);
                         } else {
                             ui.label(text);
                         }

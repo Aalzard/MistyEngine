@@ -1171,7 +1171,7 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                             if info.category != last_cat {
                                 ui.label(
                                     RichText::new(tr(info.category))
-                                        .color(theme::TEXT_DIM)
+                                        .color(theme::text_dim())
                                         .small(),
                                 );
                                 last_cat = info.category;
@@ -1192,7 +1192,11 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                             .filter(|p| needle.is_empty() || p.to_lowercase().contains(&needle))
                             .cloned()
                             .collect();
-                        ui.label(RichText::new(tr!("Scripts")).color(theme::TEXT_DIM).small());
+                        ui.label(
+                            RichText::new(tr!("Scripts"))
+                                .color(theme::text_dim())
+                                .small(),
+                        );
                         for path in scripts {
                             let label = format!("📜 {}", AssetDatabase::material_name(Some(&path)));
                             if ui.add(egui::Button::new(label).frame(false)).clicked() {

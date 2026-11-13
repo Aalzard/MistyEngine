@@ -270,7 +270,7 @@ fn package_manager(ui: &mut Ui, w: &mut crate::packages::PackagesWindow, root: &
         RegistryState::Loaded(i) => {
             ui.weak(format!("{} packages in the registry.", i.packages.len()))
         }
-        RegistryState::Failed(e) => ui.colored_label(crate::theme::WARN, e),
+        RegistryState::Failed(e) => ui.colored_label(crate::theme::warn(), e),
     };
 }
 

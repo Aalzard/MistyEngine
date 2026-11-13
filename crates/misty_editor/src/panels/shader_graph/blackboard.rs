@@ -113,7 +113,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .max_height(list_h)
             .show(ui, |ui| {
                 if props.is_empty() && keywords.is_empty() {
-                    ui.label(RichText::new("No properties yet: use +").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("No properties yet: use +").color(theme::text_dim()));
                 }
                 for p in &props {
                     row(ui, s, p);
@@ -122,7 +122,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                     ui.label(
                         RichText::new("Keywords")
                             .font(FontId::proportional(11.0))
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                 }
                 for k in &keywords {
@@ -157,7 +157,7 @@ fn keyword_row(ui: &mut Ui, s: &mut EditorState, k: &Keyword) {
     let selected = s.shader_graph.blackboard.selected.as_deref() == Some(k.name.as_str());
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 5.0, theme::SELECTION);
+        painter.rect_filled(rect, 5.0, theme::selection());
     } else if resp.hovered() {
         painter.rect_filled(rect, 5.0, Color32::from_white_alpha(10));
     }
@@ -165,14 +165,14 @@ fn keyword_row(ui: &mut Ui, s: &mut EditorState, k: &Keyword) {
     painter.rect_filled(
         Rect::from_center_size(pill.left_center() + vec2(6.0, 0.0), vec2(8.0, 8.0)),
         1.5,
-        Color32::from_rgb(200, 170, 110),
+        crate::theme::shade(Color32::from_rgb(200, 170, 110)),
     );
     painter.text(
         pill.left_center() + vec2(16.0, 0.0),
         Align2::LEFT_CENTER,
         &k.display,
         FontId::proportional(12.5),
-        theme::TEXT,
+        theme::text(),
     );
     let kind = match k.kind {
         KeywordKind::Boolean => "Boolean",
@@ -183,7 +183,7 @@ fn keyword_row(ui: &mut Ui, s: &mut EditorState, k: &Keyword) {
         Align2::RIGHT_CENTER,
         kind,
         FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     if resp.clicked() || resp.drag_started() {
         let w = &mut s.shader_graph;
@@ -266,7 +266,7 @@ fn keyword_settings(ui: &mut Ui, s: &mut EditorState, name: &str) {
             ui.end_row();
         });
     if let KeywordKind::Enum { entries } = &mut k.kind {
-        ui.label(RichText::new("Entries").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Entries").color(theme::text_dim()));
         let mut remove = None;
         for (i, e) in entries.iter_mut().enumerate() {
             ui.horizontal(|ui| {
@@ -330,7 +330,7 @@ fn row(ui: &mut Ui, s: &mut EditorState, p: &misty_engine::shader_graph::GraphPr
     let selected = s.shader_graph.blackboard.selected.as_deref() == Some(p.name.as_str());
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 5.0, theme::SELECTION);
+        painter.rect_filled(rect, 5.0, theme::selection());
     } else if resp.hovered() {
         painter.rect_filled(rect, 5.0, Color32::from_white_alpha(10));
     }
@@ -345,14 +345,14 @@ fn row(ui: &mut Ui, s: &mut EditorState, p: &misty_engine::shader_graph::GraphPr
         Align2::LEFT_CENTER,
         &p.display,
         FontId::proportional(12.5),
-        theme::TEXT,
+        theme::text(),
     );
     painter.text(
         pill.right_center(),
         Align2::RIGHT_CENTER,
         p.ty.label(),
         FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     if resp.clicked() || resp.drag_started() {
         let w = &mut s.shader_graph;

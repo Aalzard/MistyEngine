@@ -206,11 +206,11 @@ fn rect_transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             .parent(e)
             .is_none_or(|p| misty_engine::ui::canvas_of(&state.scene, p).is_none());
     if driven {
-        ui.label(RichText::new("Some values driven by Canvas.").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Some values driven by Canvas.").color(theme::text_dim()));
         return false;
     }
     if let Some(by) = widgets::driven_by(state, e) {
-        ui.label(RichText::new(format!("Some values driven by {by}.")).color(theme::TEXT_DIM));
+        ui.label(RichText::new(format!("Some values driven by {by}.")).color(theme::text_dim()));
     }
     let parent = parent_size(state, e);
     let id = ui.make_persistent_id(("anchor_presets", e));
@@ -257,7 +257,7 @@ fn position_fields(ui: &mut Ui, rt: &mut RectTransform) -> bool {
         .spacing([8.0, 2.0])
         .show(ui, |ui| {
             let label =
-                |ui: &mut Ui, s: &str| ui.label(RichText::new(s).small().color(theme::TEXT_DIM));
+                |ui: &mut Ui, s: &str| ui.label(RichText::new(s).small().color(theme::text_dim()));
             label(ui, if stretch_x { "Left" } else { "Pos X" });
             label(ui, if stretch_y { "Top" } else { "Pos Y" });
             ui.end_row();
@@ -735,7 +735,7 @@ fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
         ui.label("Color Tint");
         ui.end_row();
         ui.label("Target Graphic");
-        ui.label(RichText::new("Image (this object)").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Image (this object)").color(theme::text_dim()));
         ui.end_row();
         for (label, col) in [
             ("Normal Color", &mut b.normal_color),
@@ -759,7 +759,7 @@ fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
     ui.label("On Click ()");
     egui::Frame::group(ui.style()).show(ui, |ui| {
         if b.on_click.is_empty() {
-            ui.label(RichText::new("List is Empty").color(theme::TEXT_DIM));
+            ui.label(RichText::new("List is Empty").color(theme::text_dim()));
         }
         let mut remove = None;
         for (i, call) in b.on_click.iter_mut().enumerate() {

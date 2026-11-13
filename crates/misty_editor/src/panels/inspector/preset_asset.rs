@@ -27,7 +27,7 @@ pub fn preset_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             format!("{} (Preset)", preset_name(rel)),
         ));
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    ui.label(RichText::new(rel).color(theme::text_dim()).small());
     ui.separator();
     ui.horizontal(|ui| {
         ui.label("Preset for");

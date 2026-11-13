@@ -152,7 +152,7 @@ fn partition(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     });
     if wp.unload_radius < wp.load_radius {
         ui.colored_label(
-            egui::Color32::from_rgb(220, 170, 70),
+            crate::theme::shade(egui::Color32::from_rgb(220, 170, 70)),
             "Unload Radius is below Load Radius: the load radius is used for both.",
         );
     }

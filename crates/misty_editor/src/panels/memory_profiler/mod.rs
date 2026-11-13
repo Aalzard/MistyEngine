@@ -91,16 +91,16 @@ impl MemoryProfilerWindow {
 /// Chart colour of a category.
 pub fn category_color(c: MemCategory) -> Color32 {
     match c {
-        MemCategory::Textures => Color32::from_rgb(92, 160, 230),
-        MemCategory::Meshes => Color32::from_rgb(110, 190, 120),
-        MemCategory::RenderTargets => Color32::from_rgb(170, 120, 220),
-        MemCategory::Buffers => Color32::from_rgb(120, 130, 150),
-        MemCategory::Audio => Color32::from_rgb(230, 200, 80),
-        MemCategory::Scripts => Color32::from_rgb(70, 190, 200),
-        MemCategory::SceneObjects => Color32::from_rgb(230, 140, 70),
-        MemCategory::Particles => Color32::from_rgb(230, 100, 150),
-        MemCategory::Lightmaps => Color32::from_rgb(240, 225, 150),
-        MemCategory::DistanceFields => Color32::from_rgb(150, 200, 230),
+        MemCategory::Textures => crate::theme::shade(Color32::from_rgb(92, 160, 230)),
+        MemCategory::Meshes => crate::theme::shade(Color32::from_rgb(110, 190, 120)),
+        MemCategory::RenderTargets => crate::theme::shade(Color32::from_rgb(170, 120, 220)),
+        MemCategory::Buffers => crate::theme::shade(Color32::from_rgb(120, 130, 150)),
+        MemCategory::Audio => crate::theme::shade(Color32::from_rgb(230, 200, 80)),
+        MemCategory::Scripts => crate::theme::shade(Color32::from_rgb(70, 190, 200)),
+        MemCategory::SceneObjects => crate::theme::shade(Color32::from_rgb(230, 140, 70)),
+        MemCategory::Particles => crate::theme::shade(Color32::from_rgb(230, 100, 150)),
+        MemCategory::Lightmaps => crate::theme::shade(Color32::from_rgb(240, 225, 150)),
+        MemCategory::DistanceFields => crate::theme::shade(Color32::from_rgb(150, 200, 230)),
     }
 }
 
@@ -140,11 +140,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, gpu: Option<&Gpu>) {
     let Some(snap) = w.snapshots.get(w.selected).cloned() else {
         ui.add_space(40.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new(ICON).size(34.0).color(theme::TEXT_DIM));
+            ui.label(RichText::new(ICON).size(34.0).color(theme::text_dim()));
             ui.add_space(6.0);
             ui.label(
                 RichText::new("Press Capture to take a snapshot of the editor's memory.")
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
         return;
@@ -214,12 +214,12 @@ fn header(ui: &mut Ui, snap: &MemorySnapshot) {
                 format_bytes(snap.location_total(MemLocation::Cpu)),
                 snap.items.len()
             ))
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
         );
         if let Some(ws) = snap.working_set {
             ui.label(
                 RichText::new(format!("·   Process working set {}", format_bytes(ws)))
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
     });
@@ -241,11 +241,11 @@ fn summary(ui: &mut Ui, snap: &MemorySnapshot) {
                         format_bytes(snap.location_total(at))
                     ))
                     .strong()
-                    .color(theme::TEXT),
+                    .color(theme::text()),
                 );
                 ui.add_space(4.0);
                 if totals.is_empty() {
-                    ui.label(RichText::new("Nothing tracked.").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("Nothing tracked.").color(theme::text_dim()));
                     continue;
                 }
                 category_bars(ui, snap, at, &totals);
@@ -288,7 +288,7 @@ fn category_bars(
                     egui::WidgetInfo::labeled(egui::WidgetType::Label, true, c.label())
                 });
                 let p = ui.painter_at(row);
-                p.rect_filled(row, 6.0, theme::CARD_BG);
+                p.rect_filled(row, 6.0, theme::card_bg());
                 let dot = egui::Rect::from_center_size(
                     row.left_center() + vec2(14.0, 0.0),
                     vec2(10.0, 10.0),
@@ -299,7 +299,7 @@ fn category_bars(
                     Align2::LEFT_CENTER,
                     c.label(),
                     FontId::proportional(13.0),
-                    theme::TEXT,
+                    theme::text(),
                 );
                 let bar_left = row.left() + 190.0;
                 let bar_right = row.right() - 110.0;
@@ -308,7 +308,7 @@ fn category_bars(
                         egui::pos2(bar_left, row.center().y - 4.0),
                         egui::pos2(bar_right, row.center().y + 4.0),
                     );
-                    p.rect_filled(full, 4.0, Color32::from_gray(52));
+                    p.rect_filled(full, 4.0, crate::theme::shade(Color32::from_gray(52)));
                     let fill = full.with_max_x(bar_left + full.width() * bytes as f32 / max as f32);
                     p.rect_filled(fill, 4.0, category_color(c));
                 }
@@ -317,7 +317,7 @@ fn category_bars(
                     Align2::RIGHT_CENTER,
                     format_bytes(bytes),
                     FontId::monospace(12.0),
-                    theme::TEXT,
+                    theme::text(),
                 );
                 let count = snap
                     .items
@@ -407,10 +407,10 @@ fn table(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                     ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
                 let p = ui.painter_at(row);
                 if (range.start + n) % 2 == 1 {
-                    p.rect_filled(row, 0.0, Color32::from_gray(60));
+                    p.rect_filled(row, 0.0, crate::theme::shade(Color32::from_gray(60)));
                 }
                 if resp.hovered() {
-                    p.rect_filled(row, 4.0, Color32::from_gray(70));
+                    p.rect_filled(row, 4.0, crate::theme::shade(Color32::from_gray(70)));
                 }
                 let mut x = row.left();
                 let cells = [
@@ -434,7 +434,7 @@ fn table(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                         Align2::LEFT_CENTER,
                         text,
                         FontId::proportional(12.5),
-                        theme::TEXT,
+                        theme::text(),
                     );
                     x += cw;
                 }
@@ -504,7 +504,7 @@ fn tree_map(ui: &mut Ui, snap: &MemorySnapshot) {
                     Align2::LEFT_TOP,
                     label,
                     FontId::proportional(11.0),
-                    Color32::from_gray(20),
+                    crate::theme::shade(Color32::from_gray(20)),
                 );
             }
             if hovered {
@@ -529,7 +529,7 @@ fn compare(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
         ui.vertical_centered(|ui| {
             ui.label(
                 RichText::new("Capture a second snapshot to compare the two.")
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
         return;
@@ -620,8 +620,8 @@ fn compare(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                                 .color(delta_color(r.delta())),
                         ),
                     );
-                    ui.label(RichText::new(&r.name).color(theme::TEXT));
-                    ui.label(RichText::new(&r.kind).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(&r.name).color(theme::text()));
+                    ui.label(RichText::new(&r.kind).color(theme::text_dim()));
                 });
             }
         });
@@ -629,8 +629,8 @@ fn compare(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
 
 fn delta_color(d: i64) -> Color32 {
     match d.signum() {
-        1 => Color32::from_rgb(235, 130, 110),
-        -1 => Color32::from_rgb(120, 205, 140),
-        _ => theme::TEXT_DIM,
+        1 => crate::theme::shade(Color32::from_rgb(235, 130, 110)),
+        -1 => crate::theme::shade(Color32::from_rgb(120, 205, 140)),
+        _ => theme::text_dim(),
     }
 }

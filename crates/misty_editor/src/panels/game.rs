@@ -24,8 +24,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
 
     let area = ui.available_rect_before_wrap();
     ui.allocate_rect(area, egui::Sense::hover());
-    ui.painter()
-        .rect_filled(area, 0.0, Color32::from_rgb(32, 32, 32));
+    ui.painter().rect_filled(
+        area,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(32, 32, 32)),
+    );
 
     // Letterbox to the chosen aspect ratio.
     let view = match ASPECTS[state.game_view.aspect].1 {
@@ -115,7 +118,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 Align2::CENTER_CENTER,
                 "Display 1\nNo cameras rendering",
                 FontId::proportional(16.0),
-                Color32::from_gray(200),
+                crate::theme::shade(Color32::from_gray(200)),
             );
         }
     }
@@ -237,7 +240,11 @@ fn stats_overlay(
         egui::vec2(310.0, height),
     );
     let painter = ui.painter().with_clip_rect(view);
-    painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 200));
+    painter.rect_filled(
+        rect,
+        4.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(20, 20, 20, 200)),
+    );
     for (i, line) in lines.iter().enumerate() {
         painter.text(
             rect.left_top() + egui::vec2(8.0, 6.0 + i as f32 * 14.0),
@@ -253,7 +260,11 @@ fn stats_overlay(
         rect.left_top() + egui::vec2(8.0, 8.0 + lines.len() as f32 * 14.0),
         egui::vec2(294.0, graph_h),
     );
-    painter.rect_filled(graph, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+    painter.rect_filled(
+        graph,
+        2.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(0, 0, 0, 120)),
+    );
     let median = history.median_ms().max(1e-3);
     let scale = graph_h / (median * 3.0);
     let n = history.times().len().max(1) as f32;
@@ -267,16 +278,16 @@ fn stats_overlay(
             egui::pos2(x + bar_w.max(1.0), graph.bottom()),
         );
         let color = if history.is_hitch(ms) {
-            Color32::from_rgb(230, 70, 60)
+            crate::theme::shade(Color32::from_rgb(230, 70, 60))
         } else {
-            Color32::from_rgb(90, 170, 110)
+            crate::theme::shade(Color32::from_rgb(90, 170, 110))
         };
         painter.rect_filled(bar, 0.0, color);
     }
     let y = graph.bottom() - (median * scale).min(graph_h);
     painter.line_segment(
         [egui::pos2(graph.left(), y), egui::pos2(graph.right(), y)],
-        egui::Stroke::new(1.0, Color32::from_gray(200)),
+        egui::Stroke::new(1.0, crate::theme::shade(Color32::from_gray(200))),
     );
 }
 
@@ -299,7 +310,11 @@ fn net_overlay(ui: &Ui, view: egui::Rect, lines: &[String]) {
         view.left_bottom() + egui::vec2(8.0, -8.0 - height),
         egui::vec2(width, height),
     );
-    painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 190));
+    painter.rect_filled(
+        rect,
+        4.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(20, 20, 20, 190)),
+    );
     for (i, line) in lines.iter().enumerate() {
         painter.text(
             rect.left_top() + egui::vec2(8.0, 4.0 + i as f32 * 14.0),

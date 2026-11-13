@@ -166,7 +166,7 @@ pub fn style_body(ui: &mut Ui, state: &mut EditorState, component: &str, start: 
             if let Some((_, field)) = wanted.iter().find(|(w, _)| *w == n) {
                 let format = t.galley.job.sections.first().map(|s| s.format.clone());
                 let size = format.as_ref().map_or(13.0, |f| f.font_id.size);
-                let color = format.map_or(theme::TEXT, |f| f.color);
+                let color = format.map_or(theme::text(), |f| f.color);
                 hits.push((i, rect, field.clone(), text, size, color));
             }
         }
@@ -192,7 +192,7 @@ pub fn style_body(ui: &mut Ui, state: &mut EditorState, component: &str, start: 
             pos2(left - 7.0, rect.top() - 3.0),
             pos2(left - 5.0, rect.bottom() + 3.0),
         );
-        ui.painter().rect_filled(bar, 0.0, theme::OVERRIDE);
+        ui.painter().rect_filled(bar, 0.0, theme::overridden());
         let hit = Rect::from_min_max(
             pos2(left, rect.top() - 3.0),
             pos2(value_x - 4.0, rect.bottom() + 3.0),
@@ -306,12 +306,12 @@ pub fn header_marker(ui: &mut Ui, component: &str) {
         pos2(r.left() - 2.0, r.top() - 3.0),
         pos2(r.left(), r.bottom() + 3.0),
     );
-    ui.painter().rect_filled(bar, 0.0, theme::OVERRIDE);
+    ui.painter().rect_filled(bar, 0.0, theme::overridden());
     let added = items
         .iter()
         .any(|o| matches!(o.key, Override::AddedComponent { .. }));
     if added {
-        ui.label(RichText::new("+").strong().color(theme::OVERRIDE))
+        ui.label(RichText::new("+").strong().color(theme::overridden()))
             .on_hover_text("Added in this instance (not in the prefab)");
     }
 }
@@ -363,7 +363,7 @@ pub fn removed_components(ui: &mut Ui, state: &mut EditorState) {
     for item in removed {
         let name = item.key.component().unwrap_or_default().to_owned();
         egui::Frame::new()
-            .fill(theme::CARD_BG)
+            .fill(theme::card_bg())
             .corner_radius(6)
             .inner_margin(egui::Margin::symmetric(8, 4))
             .show(ui, |ui| {
@@ -374,11 +374,11 @@ pub fn removed_components(ui: &mut Ui, state: &mut EditorState) {
                         pos2(r.left() - 8.0, r.top() - 4.0),
                         pos2(r.left() - 6.0, r.bottom() + 4.0),
                     );
-                    ui.painter().rect_filled(bar, 0.0, theme::OVERRIDE);
+                    ui.painter().rect_filled(bar, 0.0, theme::overridden());
                     ui.label(
                         RichText::new(format!("{name} (Removed)"))
                             .strikethrough()
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     )
                     .on_hover_text("This instance removed the prefab's archetype");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -432,10 +432,10 @@ pub fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             ui.label(
                 RichText::new(format!("{icon} Missing Prefab"))
                     .strong()
-                    .color(theme::MISSING_PREFAB),
+                    .color(theme::missing_prefab()),
             )
             .on_hover_text(format!("{rel} can't be found"));
-            ui.label(RichText::new(name).color(theme::MISSING_PREFAB));
+            ui.label(RichText::new(name).color(theme::missing_prefab()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .button("Unpack")
@@ -448,7 +448,7 @@ pub fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             return;
         }
         ui.label(kind);
-        ui.label(RichText::new(format!("{icon} {name}")).color(theme::PREFAB))
+        ui.label(RichText::new(format!("{icon} {name}")).color(theme::prefab()))
             .on_hover_text(&rel);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if outermost {
@@ -524,14 +524,14 @@ fn overrides_dropdown(ui: &mut Ui, state: &mut EditorState, root: Entity, rel: &
             format!("Overrides to {}", display_name(rel)),
         ));
         if items.is_empty() {
-            ui.label(RichText::new("No overrides").color(theme::TEXT_DIM));
+            ui.label(RichText::new("No overrides").color(theme::text_dim()));
         }
         let mut last_object: Option<String> = None;
         for o in &items {
             let (object, what) = describe(state, rel, o);
             if last_object.as_ref() != Some(&object) {
                 ui.add_space(2.0);
-                ui.label(RichText::new(&object).color(theme::PREFAB).strong());
+                ui.label(RichText::new(&object).color(theme::prefab()).strong());
                 last_object = Some(object.clone());
             }
             ui.horizontal(|ui| {
@@ -543,7 +543,7 @@ fn overrides_dropdown(ui: &mut Ui, state: &mut EditorState, root: Entity, rel: &
                         pos2(bar.left() - 4.0, bar.top() + 16.0),
                     ),
                     0.0,
-                    theme::OVERRIDE,
+                    theme::overridden(),
                 );
                 ui.label(&what);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -457,11 +457,11 @@ pub fn aggregate(statuses: &[Status]) -> Status {
 
 pub fn status_icon(status: Status) -> (&'static str, Color32) {
     match status {
-        Status::Passed => ("✔", PASSED),
-        Status::Failed => ("✖", FAILED),
-        Status::Skipped => ("⊘", SKIPPED),
-        Status::Running => ("⟳", RUNNING),
-        Status::NotRun => ("○", Color32::GRAY),
+        Status::Passed => ("✔", crate::theme::shade(PASSED)),
+        Status::Failed => ("✖", crate::theme::shade(FAILED)),
+        Status::Skipped => ("⊘", crate::theme::shade(SKIPPED)),
+        Status::Running => ("⟳", crate::theme::shade(RUNNING)),
+        Status::NotRun => ("○", crate::theme::text_dim()),
     }
 }
 
@@ -571,16 +571,16 @@ fn summary_bar(ui: &mut Ui, s: &mut EditorState) {
         let (done, all) = run.progress();
         let name = run.current().map(|c| c.name.as_str()).unwrap_or("…");
         (
-            RUNNING.gamma_multiply(0.55),
+            crate::theme::shade(RUNNING).gamma_multiply(0.55),
             format!("Running {}/{all}: {name}", done + 1),
         )
     } else {
         let fill = if sum.failed > 0 {
-            FAILED.gamma_multiply(0.6)
+            crate::theme::shade(FAILED).gamma_multiply(0.6)
         } else if sum.passed > 0 {
-            PASSED.gamma_multiply(0.55)
+            crate::theme::shade(PASSED).gamma_multiply(0.55)
         } else {
-            Color32::from_gray(70)
+            crate::theme::shade(Color32::from_gray(70))
         };
         let mut text = format!(
             "✔ {} passed    ✖ {} failed    ⊘ {} skipped",
@@ -762,7 +762,10 @@ fn details(ui: &mut Ui, s: &mut EditorState) {
 
 fn failure_ui(ui: &mut Ui, s: &mut EditorState, f: &testing::Failure) {
     ui.add_space(4.0);
-    ui.add(egui::Label::new(RichText::new(&f.message).color(FAILED)).selectable(true));
+    ui.add(
+        egui::Label::new(RichText::new(&f.message).color(crate::theme::shade(FAILED)))
+            .selectable(true),
+    );
     if let Some((rel, line)) = &f.location {
         ui.horizontal(|ui| {
             ui.label("at");

@@ -142,11 +142,11 @@ fn row(ui: &mut Ui, c: &Console, n: usize, height: f32) -> (Option<u64>, Option<
         return (None, None);
     };
     let bg = if c.selected == Some(row.index) {
-        theme::SELECTION
+        theme::selection()
     } else if n.is_multiple_of(2) {
-        egui::Color32::from_rgb(56, 56, 56)
+        crate::theme::shade(egui::Color32::from_rgb(56, 56, 56))
     } else {
-        egui::Color32::from_rgb(60, 60, 60)
+        crate::theme::shade(egui::Color32::from_rgb(60, 60, 60))
     };
     ui.painter().rect_filled(rect, 0.0, bg);
     let mut link_rect = None;

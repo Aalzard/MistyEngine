@@ -30,6 +30,8 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
+9. [Themes and fonts](09-themes-and-fonts.md): light and dark themes, your own colours, and
+   the fonts of the interface and the Code Editor.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

@@ -78,7 +78,7 @@ pub fn visual_effect(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 .map(|e| e.message.clone())
                 .collect::<Vec<_>>()
                 .join("\n");
-            ui.label(RichText::new(format!("⚠ {text}")).color(theme::WARN));
+            ui.label(RichText::new(format!("⚠ {text}")).color(theme::warn()));
         }
         Some(Ok(effect)) if !effect.properties.is_empty() => {
             ui.add_space(4.0);
@@ -165,7 +165,7 @@ pub fn visual_effect(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                     "{} · {alive} alive · {time:.1}s",
                     if playing { "Playing" } else { "Stopped" }
                 ))
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
         }
     });

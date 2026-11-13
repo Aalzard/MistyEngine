@@ -25,12 +25,24 @@ use crate::state::EditorState;
 use crate::theme;
 
 const PORT_R: f32 = 4.5;
-const CANVAS_BG: Color32 = Color32::from_rgb(34, 35, 38);
-const CTX_BG: Color32 = Color32::from_rgb(52, 53, 57);
-const BLOCK_BG: Color32 = Color32::from_rgb(66, 67, 72);
-const NODE_BG: Color32 = Color32::from_rgb(58, 58, 61);
-const HEADER_BG: Color32 = Color32::from_rgb(66, 66, 70);
-const SELECT: Color32 = Color32::from_rgb(88, 156, 236);
+fn canvas_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_canvas, Color32::from_rgb(34, 35, 38))
+}
+fn ctx_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_node, Color32::from_rgb(52, 53, 57))
+}
+fn block_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_header, Color32::from_rgb(66, 67, 72))
+}
+fn node_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_node, Color32::from_rgb(58, 58, 61))
+}
+fn header_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_header, Color32::from_rgb(66, 66, 70))
+}
+fn select() -> Color32 {
+    crate::theme::near(|p| p.graph_select, Color32::from_rgb(88, 156, 236))
+}
 
 /// A Blackboard property dragged onto the canvas.
 #[derive(Clone, Debug)]
@@ -64,32 +76,32 @@ pub(crate) struct CanvasState {
 /// Port colour by type.
 pub fn type_color(t: ValueType) -> Color32 {
     match t {
-        ValueType::Float => Color32::from_rgb(132, 196, 236),
-        ValueType::Vec3 => Color32::from_rgb(236, 214, 120),
-        ValueType::Color => Color32::from_rgb(226, 150, 200),
-        ValueType::Gradient => Color32::from_rgb(150, 214, 140),
-        ValueType::Curve => Color32::from_rgb(120, 200, 190),
+        ValueType::Float => crate::theme::shade(Color32::from_rgb(132, 196, 236)),
+        ValueType::Vec3 => crate::theme::shade(Color32::from_rgb(236, 214, 120)),
+        ValueType::Color => crate::theme::shade(Color32::from_rgb(226, 150, 200)),
+        ValueType::Gradient => crate::theme::shade(Color32::from_rgb(150, 214, 140)),
+        ValueType::Curve => crate::theme::shade(Color32::from_rgb(120, 200, 190)),
     }
 }
 
 /// Accent per context type.
 pub fn context_color(t: ContextType) -> Color32 {
     match t {
-        ContextType::Spawn => Color32::from_rgb(110, 190, 120),
-        ContextType::GpuEvent => Color32::from_rgb(226, 112, 96),
-        ContextType::Initialize => Color32::from_rgb(222, 170, 80),
-        ContextType::Update => Color32::from_rgb(96, 156, 226),
-        ContextType::Output => Color32::from_rgb(186, 126, 222),
+        ContextType::Spawn => crate::theme::shade(Color32::from_rgb(110, 190, 120)),
+        ContextType::GpuEvent => crate::theme::shade(Color32::from_rgb(226, 112, 96)),
+        ContextType::Initialize => crate::theme::shade(Color32::from_rgb(222, 170, 80)),
+        ContextType::Update => crate::theme::shade(Color32::from_rgb(96, 156, 226)),
+        ContextType::Output => crate::theme::shade(Color32::from_rgb(186, 126, 222)),
     }
 }
 
 fn op_color(kind: &OperatorKind) -> Color32 {
     match kind.category() {
-        "Properties" => Color32::from_rgb(96, 150, 210),
-        "Inputs" | "Constants" => Color32::from_rgb(150, 150, 160),
-        "Random / Noise" => Color32::from_rgb(180, 130, 210),
-        "Sampling" => Color32::from_rgb(150, 200, 120),
-        _ => Color32::from_rgb(120, 170, 120),
+        "Properties" => crate::theme::shade(Color32::from_rgb(96, 150, 210)),
+        "Inputs" | "Constants" => crate::theme::shade(Color32::from_rgb(150, 150, 160)),
+        "Random / Noise" => crate::theme::shade(Color32::from_rgb(180, 130, 210)),
+        "Sampling" => crate::theme::shade(Color32::from_rgb(150, 200, 120)),
+        _ => crate::theme::shade(Color32::from_rgb(120, 170, 120)),
     }
 }
 
@@ -167,7 +179,7 @@ fn frame_all(w: &mut EffectGraphWindow, area: Rect) {
 pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     let resp = ui.interact(area, ui.id().with("vfx_canvas"), Sense::click_and_drag());
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, CANVAS_BG);
+    painter.rect_filled(area, 0.0, canvas_bg());
     if s.effect_graph.canvas.frame_all {
         s.effect_graph.canvas.frame_all = false;
         frame_all(&mut s.effect_graph, area);
@@ -244,7 +256,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
         };
         let a = view.screen(pos2(l.rect.left() + 6.0, y));
         let bb = view.screen(pos2(l.rect.right() - 6.0, y));
-        painter.line_segment([a, bb], Stroke::new(2.5, SELECT));
+        painter.line_segment([a, bb], Stroke::new(2.5, select()));
     }
 
     // Rubber band on empty canvas; click deselects.
@@ -257,8 +269,8 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
         painter.rect(
             band,
             2.0,
-            SELECT.gamma_multiply(0.12),
-            Stroke::new(1.0, SELECT.gamma_multiply(0.7)),
+            select().gamma_multiply(0.12),
+            Stroke::new(1.0, select().gamma_multiply(0.7)),
             StrokeKind::Inside,
         );
         if resp.drag_stopped() {
@@ -313,10 +325,10 @@ fn flash(ui: &Ui, painter: &egui::Painter, w: &mut EffectGraphWindow, area: Rect
     if let Some((text, until)) = w.canvas.flash.clone() {
         if now < until {
             let at = pos2(area.center().x, area.bottom() - 24.0);
-            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::TEXT);
+            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::text());
             let r = Rect::from_center_size(at, galley.size() + vec2(20.0, 10.0));
-            painter.rect_filled(r, 6.0, Color32::from_rgb(90, 44, 44));
-            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::TEXT);
+            painter.rect_filled(r, 6.0, crate::theme::shade(Color32::from_rgb(90, 44, 44)));
+            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::text());
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_secs_f64(until - now));
         } else {
@@ -451,7 +463,7 @@ fn context_ui(
         round,
         Color32::from_black_alpha(70),
     );
-    painter.rect_filled(rect, round, CTX_BG);
+    painter.rect_filled(rect, round, ctx_bg());
     let header = scr(view, l.header);
     let accent = context_color(ty);
     painter.rect_filled(
@@ -478,7 +490,7 @@ fn context_ui(
         Align2::LEFT_CENTER,
         &title,
         FontId::proportional(14.0 * z),
-        theme::TEXT,
+        theme::text(),
     );
     let w = &s.effect_graph;
     let selected = w.selected.contains(&id);
@@ -499,7 +511,7 @@ fn context_ui(
             &msg,
         );
     } else if selected {
-        painter.rect_stroke(rect, round, Stroke::new(2.0, SELECT), StrokeKind::Outside);
+        painter.rect_stroke(rect, round, Stroke::new(2.0, select()), StrokeKind::Outside);
     }
 
     // Header: select / move / menu.
@@ -557,7 +569,11 @@ fn context_ui(
         Align2::CENTER_CENTER,
         "+ Add Block",
         FontId::proportional(12.0 * z),
-        if hover { theme::TEXT } else { theme::TEXT_DIM },
+        if hover {
+            theme::text()
+        } else {
+            theme::text_dim()
+        },
     );
     if fresp.clicked() {
         s.effect_graph.search = Some(search::Search::blocks(foot.left_bottom(), id));
@@ -627,7 +643,7 @@ fn select_and_move(
 }
 
 fn row_label(ui: &mut Ui, text: &str) {
-    ui.label(egui::RichText::new(text).color(theme::TEXT_DIM));
+    ui.label(egui::RichText::new(text).color(theme::text_dim()));
 }
 
 fn combo<T: PartialEq + Copy>(
@@ -974,7 +990,7 @@ fn block_ui(
     painter.rect_filled(
         rect,
         round,
-        BLOCK_BG.gamma_multiply(if block.enabled { 1.0 } else { 0.8 }),
+        block_bg().gamma_multiply(if block.enabled { 1.0 } else { 0.8 }),
     );
     let stripe = Rect::from_min_size(rect.min, vec2(3.0 * z, rect.height()));
     painter.rect_filled(
@@ -989,7 +1005,7 @@ fn block_ui(
         Align2::LEFT_CENTER,
         &title,
         FontId::proportional(12.5 * z),
-        theme::TEXT.gamma_multiply(dim),
+        theme::text().gamma_multiply(dim),
     );
     let w = &s.effect_graph;
     if let Some(e) = w.error_of(id) {
@@ -1009,7 +1025,7 @@ fn block_ui(
             &msg,
         );
     } else if w.selected.contains(&id) {
-        painter.rect_stroke(rect, round, Stroke::new(2.0, SELECT), StrokeKind::Outside);
+        painter.rect_stroke(rect, round, Stroke::new(2.0, select()), StrokeKind::Outside);
     }
 
     // Title: select, drag to reorder, menu.
@@ -1145,7 +1161,7 @@ fn input_row(
     if link.is_some() {
         painter.circle_filled(at, rad, color);
     } else {
-        painter.circle_filled(at, rad, CTX_BG);
+        painter.circle_filled(at, rad, ctx_bg());
         painter.circle_stroke(at, rad, Stroke::new(1.6 * z.max(0.6), color));
     }
     painter.text(
@@ -1153,7 +1169,7 @@ fn input_row(
         Align2::LEFT_CENTER,
         name,
         FontId::proportional(11.5 * z),
-        theme::TEXT.gamma_multiply(0.85),
+        theme::text().gamma_multiply(0.85),
     );
     // Picking up a linked input detaches it and drags from its source.
     let w = &mut s.effect_graph;
@@ -1265,7 +1281,7 @@ fn operator_ui(
         round,
         Color32::from_black_alpha(70),
     );
-    painter.rect_filled(rect, round, NODE_BG);
+    painter.rect_filled(rect, round, node_bg());
     let header = scr(view, l.header);
     painter.rect_filled(
         header,
@@ -1275,7 +1291,7 @@ fn operator_ui(
             sw: 0,
             se: 0,
         },
-        HEADER_BG,
+        header_bg(),
     );
     painter.rect_filled(
         Rect::from_min_size(
@@ -1291,7 +1307,7 @@ fn operator_ui(
         Align2::LEFT_CENTER,
         &title,
         FontId::proportional(13.0 * z),
-        theme::TEXT,
+        theme::text(),
     );
     let w = &s.effect_graph;
     if let Some(e) = w.error_of(id) {
@@ -1311,7 +1327,7 @@ fn operator_ui(
             &msg,
         );
     } else if w.selected.contains(&id) {
-        painter.rect_stroke(rect, round, Stroke::new(2.0, SELECT), StrokeKind::Outside);
+        painter.rect_stroke(rect, round, Stroke::new(2.0, select()), StrokeKind::Outside);
     }
     let resp = ui.interact(rect, ui.id().with(("vfx_op", id)), Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &title));
@@ -1419,7 +1435,7 @@ fn operator_ui(
         if connected {
             painter.circle_filled(pos, rad, color);
         } else {
-            painter.circle_filled(pos, rad, NODE_BG);
+            painter.circle_filled(pos, rad, node_bg());
             painter.circle_stroke(pos, rad, Stroke::new(1.6 * z.max(0.6), color));
         }
         painter.text(
@@ -1427,7 +1443,7 @@ fn operator_ui(
             Align2::RIGHT_CENTER,
             format!("{} ({})", p.name, ty.label()),
             FontId::proportional(11.0 * z),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
         let w = &mut s.effect_graph;
         if presp.drag_started_by(egui::PointerButton::Primary) {
@@ -1477,7 +1493,7 @@ fn ramp_popup(ui: &mut Ui, s: &mut EditorState) {
         .constrain(true)
         .show(ui.ctx(), |ui| {
             egui::Frame::popup(ui.style())
-                .fill(theme::POPUP_BG)
+                .fill(theme::popup_bg())
                 .corner_radius(8.0)
                 .show(ui, |ui| {
                     ui.set_width(260.0);

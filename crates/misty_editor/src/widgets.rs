@@ -53,8 +53,8 @@ pub fn label_width_or(ui: &Ui, fallback: f32) -> f32 {
 /// Number fields and dropdowns drawn in `ui` read as inputs: a soft step darker than panels.
 pub fn input_fills(ui: &mut Ui) {
     let w = &mut ui.visuals_mut().widgets;
-    w.inactive.weak_bg_fill = theme::INPUT_BG;
-    w.hovered.weak_bg_fill = theme::INPUT_HOVER;
+    w.inactive.weak_bg_fill = theme::input_bg();
+    w.hovered.weak_bg_fill = theme::input_hover();
 }
 
 /// One `X [..] Y [..] Z [..]` row. Dragging an axis letter scrubs its value.
@@ -182,7 +182,7 @@ pub fn open_dropdown(ctx: &egui::Context, response: &Response) {
 
 pub fn panel_toolbar<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = egui::Frame::new()
-        .fill(theme::TOOLBAR_BG)
+        .fill(theme::toolbar_bg())
         .inner_margin(egui::Margin::symmetric(4, 2));
     frame
         .show(ui, |ui| {

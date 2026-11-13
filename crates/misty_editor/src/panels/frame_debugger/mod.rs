@@ -203,7 +203,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     ui.painter().vline(
         left.right(),
         full.y_range(),
-        egui::Stroke::new(1.0, theme::DIVIDER),
+        egui::Stroke::new(1.0, theme::divider()),
     );
     let selected = w.selected;
     let event = capture.events.get(selected).cloned();
@@ -228,13 +228,13 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
 fn placeholder(ui: &mut Ui, enabled: bool) {
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new(ICON).size(34.0).color(theme::TEXT_DIM));
+        ui.label(RichText::new(ICON).size(34.0).color(theme::text_dim()));
         ui.add_space(6.0);
         let text = match enabled {
             true => "Waiting for the Scene Viewer to draw a frame…",
             false => "Press Enable to freeze the Scene Viewer and step through its draw calls.",
         };
-        ui.label(RichText::new(text).color(theme::TEXT_DIM));
+        ui.label(RichText::new(text).color(theme::text_dim()));
     });
 }
 
@@ -244,8 +244,8 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
     panel_toolbar(ui, |ui| {
         let label =
             RichText::new(if enabled { "● Disable" } else { "Enable" }).color(match enabled {
-                true => Color32::from_rgb(120, 200, 255),
-                false => theme::TEXT,
+                true => crate::theme::shade(Color32::from_rgb(120, 200, 255)),
+                false => theme::text(),
             });
         toggle = toggle_button(
             ui,
@@ -298,7 +298,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
                 true => format!("draw {shown} of {count}"),
                 false => format!("{} of {}", (w.selected + 1).min(n), n),
             };
-            ui.label(RichText::new(text).monospace().color(theme::TEXT_DIM));
+            ui.label(RichText::new(text).monospace().color(theme::text_dim()));
             if toggle_button(
                 ui,
                 w.draws_only,
@@ -354,7 +354,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
                         c.size.0,
                         c.size.1
                     ))
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
                 );
             }
         });

@@ -79,11 +79,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         }
     }
     if let Some((err, msg)) = &w.status {
-        let color = if *err { theme::WARN } else { theme::TEXT_DIM };
+        let color = if *err {
+            theme::warn()
+        } else {
+            theme::text_dim()
+        };
         ui.label(RichText::new(msg).color(color));
     }
     for c in &w.resolution.conflicts {
-        ui.label(RichText::new(format!("⚠ Conflict: {}", c.message())).color(theme::WARN));
+        ui.label(RichText::new(format!("⚠ Conflict: {}", c.message())).color(theme::warn()));
     }
     for (dir, e) in &w.broken {
         ui.label(
@@ -91,7 +95,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 "⚠ {}: {e}",
                 dir.file_name().unwrap_or_default().to_string_lossy()
             ))
-            .color(theme::WARN),
+            .color(theme::warn()),
         );
     }
 
@@ -114,7 +118,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                             }
                             RegistryState::Failed(e) => {
                                 ui.label(
-                                    RichText::new(format!("Registry: {e}")).color(theme::WARN),
+                                    RichText::new(format!("Registry: {e}")).color(theme::warn()),
                                 );
                             }
                             RegistryState::Loaded(_) => {}
@@ -133,7 +137,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                                     |ui| {
                                         ui.weak(&r.version);
                                         if let Some(n) = &r.note {
-                                            ui.label(RichText::new(n).color(theme::PREFAB));
+                                            ui.label(RichText::new(n).color(theme::prefab()));
                                         }
                                     },
                                 );
@@ -335,7 +339,7 @@ fn details(ui: &mut Ui, w: &mut PackagesWindow, project: &Path) -> bool {
                 Some(r) => format!("✖ {} doesn't match", r.version),
                 None => "✖ missing".into(),
             };
-            let color = if ok { theme::TEXT } else { theme::WARN };
+            let color = if ok { theme::text() } else { theme::warn() };
             ui.label(RichText::new(format!("{dep} {range}   {status}")).color(color));
         }
         ui.add_space(6.0);

@@ -51,7 +51,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     egui::Panel::bottom("project_bottom_bar")
         .exact_size(22.0)
         .show_separator_line(false)
-        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::TOOLBAR_BG))
+        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::toolbar_bg()))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 if let Some(sel) = &browser.selected {
@@ -69,7 +69,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     egui::Panel::left("project_tree")
         .default_size(180.0)
         .show_separator_line(false)
-        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::SIDEBAR_BG))
+        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::sidebar_bg()))
         .resizable(true)
         .show(ui, |ui| {
             // Empty space under the folders: the folder menu of the open folder.
@@ -111,7 +111,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             ui.painter().rect_stroke(
                 ui.max_rect().shrink(1.0),
                 2.0,
-                egui::Stroke::new(2.0, Color32::from_rgb(90, 150, 230)),
+                egui::Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(90, 150, 230))),
                 egui::StrokeKind::Inside,
             );
         }
@@ -333,7 +333,7 @@ pub(super) fn drop_target(
     resp.ctx.layer_painter(resp.layer_id).rect_stroke(
         resp.rect,
         2.0,
-        egui::Stroke::new(2.0, Color32::from_rgb(90, 150, 230)),
+        egui::Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(90, 150, 230))),
         egui::StrokeKind::Inside,
     );
     if resp.dnd_release_payload::<AssetPayload>().is_some() {
@@ -362,7 +362,7 @@ fn list_view(
             (false, Some(_)) => crate::i18n::display(&e.name).into_owned(),
             (false, None) => format!("{} {}", e.icon(), crate::i18n::display(&e.name)),
         };
-        let resp = row_with_icon(ui, is_sel, folder, &label, theme::TEXT, 0);
+        let resp = row_with_icon(ui, is_sel, folder, &label, theme::text(), 0);
         // Version control status at the row's right end.
         let resp = match vcs.badge_at(&browser.root, &e.path) {
             Some(b) => {
@@ -407,10 +407,13 @@ fn grid_view(
             let visible = ui.is_rect_visible(rect);
             let is_sel = browser.selected.as_ref() == Some(&e.path);
             if visible && is_sel {
-                ui.painter().rect_filled(rect, 3.0, theme::SELECTION);
+                ui.painter().rect_filled(rect, 3.0, theme::selection());
             } else if visible && resp.hovered() {
-                ui.painter()
-                    .rect_filled(rect, 3.0, Color32::from_rgb(69, 69, 69));
+                ui.painter().rect_filled(
+                    rect,
+                    3.0,
+                    crate::theme::shade(Color32::from_rgb(69, 69, 69)),
+                );
             }
             if visible {
                 tile_icon(ui, e, rect, cell, &mut browser.thumbnails);
@@ -440,7 +443,7 @@ fn grid_view(
                     Align2::CENTER_CENTER,
                     crate::i18n::display(&truncate(&e.name, (cell / 7.0) as usize)).into_owned(),
                     FontId::proportional(12.0),
-                    theme::TEXT,
+                    theme::text(),
                 );
             }
             item_interaction(ui, &resp, e, browser, open, req);

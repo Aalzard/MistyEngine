@@ -442,7 +442,7 @@ fn timeline(ui: &mut Ui, frame: &FrameData) {
             let height = content_h.max(ui.available_height());
             let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
             let painter = ui.painter_at(rect);
-            painter.rect_filled(rect, 0.0, Color32::from_gray(30));
+            painter.rect_filled(rect, 0.0, crate::theme::shade(Color32::from_gray(30)));
             let plot_left = rect.left() + label_w;
             let x = |ms: f32| plot_left + ms / span * (rect.right() - plot_left);
             // Millisecond ticks.
@@ -467,7 +467,7 @@ fn timeline(ui: &mut Ui, frame: &FrameData) {
                     Align2::LEFT_TOP,
                     format!("{t}ms"),
                     FontId::proportional(9.0),
-                    Color32::from_gray(140),
+                    crate::theme::shade(Color32::from_gray(140)),
                 );
                 t += step;
             }
@@ -479,7 +479,7 @@ fn timeline(ui: &mut Ui, frame: &FrameData) {
                 painter.rect_filled(
                     Rect::from_min_max(band.min, pos2(plot_left - 2.0, band.max.y)),
                     0.0,
-                    Color32::from_gray(40),
+                    crate::theme::shade(Color32::from_gray(40)),
                 );
                 painter.with_clip_rect(band).text(
                     band.left_top() + vec2(4.0, 2.0),
@@ -488,8 +488,8 @@ fn timeline(ui: &mut Ui, frame: &FrameData) {
                     FontId::proportional(10.5),
                     match lane.kind {
                         ThreadKind::Main => Color32::WHITE,
-                        ThreadKind::Render => Color32::from_rgb(250, 220, 90),
-                        _ => Color32::from_gray(185),
+                        ThreadKind::Render => crate::theme::shade(Color32::from_rgb(250, 220, 90)),
+                        _ => crate::theme::shade(Color32::from_gray(185)),
                     },
                 );
                 for s in &lane.samples {
@@ -518,7 +518,7 @@ fn timeline(ui: &mut Ui, frame: &FrameData) {
                 painter.hline(
                     rect.x_range(),
                     top + h + gap * 0.5,
-                    Stroke::new(1.0, Color32::from_gray(55)),
+                    Stroke::new(1.0, crate::theme::shade(Color32::from_gray(55))),
                 );
                 top += h + gap;
             }

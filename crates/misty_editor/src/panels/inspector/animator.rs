@@ -817,7 +817,7 @@ fn transition_editor(
     changed |= conditions_editor(ui, c, &mut t.conditions);
     if !t.has_exit_time && t.conditions.is_empty() && !matches!(t.from, Node::Machine(_)) {
         ui.colored_label(
-            egui::Color32::from_rgb(230, 190, 60),
+            crate::theme::shade(egui::Color32::from_rgb(230, 190, 60)),
             "A transition needs at least one condition or an Exit Time.",
         );
     }

@@ -94,7 +94,7 @@ fn header(ui: &mut Ui, text: &str) {
         Align2::LEFT_CENTER,
         text,
         FontId::proportional(12.5),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 
@@ -140,7 +140,7 @@ fn folder_row(
     let parent = !node.children.is_empty();
     tree_lines::paint_background(ui.painter(), rect, index, parent);
     if selected {
-        ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 0.0, theme::selection());
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 0.0, tree_lines::HOVER);
     }
@@ -182,7 +182,7 @@ fn folder_row(
     let color = match (selected, parent) {
         (true, _) => Color32::WHITE,
         (false, true) => tree_lines::PARENT_TEXT,
-        (false, false) => theme::TEXT,
+        (false, false) => theme::text(),
     };
     let label = if renaming { "" } else { node.name.as_str() };
     paint_label(ui, rect, depth, label, color, parent);

@@ -134,7 +134,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     let (settings, ui_state) = (&ce.settings, &mut ce.ui);
     let request_focus = std::mem::take(&mut ui_state.focus_text);
     let out = egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(colors::BG))
+        .frame(egui::Frame::new().fill(colors::bg()))
         .show(ui, |ui| {
             view::show(
                 ui,
@@ -620,10 +620,12 @@ fn find_bar(ui: &mut Ui, ce: &mut CodeEditor) {
                 changed |= opt(ui, &mut f.opts.regex, ".*", "Use regular expressions");
                 let status = match Query::new(&f.query, f.opts) {
                     Err(e) if !f.query.is_empty() => {
-                        RichText::new(format!("⚠ {}", first_line(&e))).color(colors::ERROR)
+                        RichText::new(format!("⚠ {}", first_line(&e))).color(colors::error())
                     }
                     _ if f.query.is_empty() => RichText::new(tr!("No results")).weak(),
-                    _ if total.is_empty() => RichText::new(tr!("No results")).color(colors::ERROR),
+                    _ if total.is_empty() => {
+                        RichText::new(tr!("No results")).color(colors::error())
+                    }
                     _ => RichText::new(match current {
                         Some(c) => format!("{} of {}", c + 1, total.len()),
                         None => format!("{} results", total.len()),
@@ -980,6 +982,7 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let (mcp, project) = (&mut s.mcp, &s.project.root);
     let (ui_scale, console) = (&mut s.ui_scale, &mut s.console);
     let updater = &mut s.updater;
+    let appearance = &mut s.appearance;
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -1013,6 +1016,8 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
                     console.warn(format!("Console size not saved: {e}"));
                 }
             }
+            ui.separator();
+            crate::theme::editor::appearance_section(ui, appearance, console);
             ui.separator();
             ui.strong(tr!("External Tools"));
             ui.horizontal(|ui| {

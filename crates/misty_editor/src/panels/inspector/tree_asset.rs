@@ -322,7 +322,7 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                     m.lods[0].triangles(),
                     m.lods[1].triangles()
                 ))
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
         }
         None => match store::error(rel) {

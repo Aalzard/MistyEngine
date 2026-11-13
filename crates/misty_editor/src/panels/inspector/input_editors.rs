@@ -70,7 +70,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
     });
     let Some(asset) = asset else {
         if c.actions.is_some() {
-            ui.colored_label(egui::Color32::LIGHT_RED, "The Actions asset can't be read.");
+            ui.colored_label(crate::theme::error(), "The Actions asset can't be read.");
         } else {
             ui.weak("Assign an Input Actions asset (Assets ▸ Create ▸ Input Actions).");
         }
@@ -185,7 +185,7 @@ fn behavior_help(ui: &mut Ui, c: &PlayerInput, asset: &InputActionAsset) {
         }
     };
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.label(RichText::new(text).color(theme::TEXT_DIM));
+        ui.label(RichText::new(text).color(theme::text_dim()));
     });
 }
 
@@ -257,7 +257,9 @@ fn events(
                                     });
                                 }
                                 if !any {
-                                    ui.label(RichText::new("List is Empty").color(theme::TEXT_DIM));
+                                    ui.label(
+                                        RichText::new("List is Empty").color(theme::text_dim()),
+                                    );
                                 }
                                 if let Some(i) = remove {
                                     c.events.remove(i);
@@ -313,7 +315,7 @@ pub fn actions_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
     crate::asset_guids::path_label(ui, rel);
     ui.separator();
     let Some(a) = load(s, rel) else {
-        ui.colored_label(egui::Color32::LIGHT_RED, "This asset can't be read.");
+        ui.colored_label(crate::theme::error(), "This asset can't be read.");
         return;
     };
     Grid::new("ia_summary").num_columns(2).show(ui, |ui| {

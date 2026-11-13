@@ -70,6 +70,18 @@ pub struct HubConfig {
     /// The editor has offered the Editor Layout tour (once, on the first launch).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub layout_tour_offered: bool,
+    /// Edit ▸ Preferences ▸ Appearance ▸ Theme: a preset id ("light") or `custom:<name>` (a
+    /// file in the `themes` folder, see `theme::custom`); `None` = Dark.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_theme: Option<String>,
+    /// Edit ▸ Preferences ▸ Appearance: the UI font, the code font and the text size
+    /// (see `theme::fonts`); `None` = the built-in choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_font: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_mono_font: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_font_scale: Option<f32>,
 }
 
 impl HubConfig {
@@ -234,6 +246,13 @@ pub fn set_layout_tour_offered() -> Result<(), String> {
     let mut c = HubConfig::load(&path);
     c.layout_tour_offered = true;
     c.save(&path)
+}
+
+/// Change the settings saved in `path` with `f` (the editor's preference setters).
+pub fn update_at(path: &Path, f: impl FnOnce(&mut HubConfig)) -> Result<(), String> {
+    let mut c = HubConfig::load(path);
+    f(&mut c);
+    c.save(path)
 }
 
 /// Where `hub.json` lives.

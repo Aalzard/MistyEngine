@@ -110,10 +110,10 @@ pub fn name_color(info: RowPrefab, active: bool) -> Option<Color32> {
         return None;
     }
     Some(match (info.missing, active) {
-        (true, true) => theme::MISSING_PREFAB,
-        (true, false) => theme::MISSING_PREFAB.gamma_multiply(0.6),
-        (false, true) => theme::PREFAB,
-        (false, false) => theme::PREFAB_DIM,
+        (true, true) => theme::missing_prefab(),
+        (true, false) => theme::missing_prefab().gamma_multiply(0.6),
+        (false, true) => theme::prefab(),
+        (false, false) => theme::prefab_dim(),
     })
 }
 
@@ -129,7 +129,7 @@ pub fn badges(
 ) {
     if info.added {
         let c = pos2(icon_x + 1.0, rect.top() + 5.0);
-        ui.painter().circle_filled(c, 4.5, theme::OVERRIDE);
+        ui.painter().circle_filled(c, 4.5, theme::overridden());
         ui.painter().text(
             c,
             Align2::CENTER_CENTER,
@@ -144,7 +144,7 @@ pub fn badges(
             Align2::RIGHT_CENTER,
             "Missing Prefab",
             FontId::proportional(11.0),
-            theme::MISSING_PREFAB,
+            theme::missing_prefab(),
         );
         return;
     }
@@ -170,7 +170,7 @@ pub fn badges(
     let color = if resp.hovered() {
         Color32::WHITE
     } else {
-        theme::PREFAB
+        theme::prefab()
     };
     ui.painter().text(
         arrow.center(),

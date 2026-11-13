@@ -521,7 +521,7 @@ fn clip_preview(ui: &mut Ui, p: &mut Pending, model: &models::Model) {
     let w = ui.available_width().min(320.0);
     let (rect, _) = ui.allocate_exact_size(vec2(w, 200.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, Color32::from_gray(32));
+    painter.rect_filled(rect, 4.0, crate::theme::shade(Color32::from_gray(32)));
     let scale = (rect.width() / size.x).min(rect.height() / size.y);
     let to_screen = |v: glam::Vec3| {
         pos2(
@@ -530,12 +530,20 @@ fn clip_preview(ui: &mut Ui, p: &mut Pending, model: &models::Model) {
         )
     };
     for q in &shape.points {
-        painter.circle_filled(to_screen(*q), 1.0, Color32::from_gray(150));
+        painter.circle_filled(
+            to_screen(*q),
+            1.0,
+            crate::theme::shade(Color32::from_gray(150)),
+        );
     }
-    let bone = Stroke::new(2.0, Color32::from_rgb(110, 190, 255));
+    let bone = Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(110, 190, 255)));
     for (a, b) in &shape.bones {
         painter.line_segment([to_screen(*a), to_screen(*b)], bone);
-        painter.circle_filled(to_screen(*b), 2.5, Color32::from_rgb(110, 190, 255));
+        painter.circle_filled(
+            to_screen(*b),
+            2.5,
+            crate::theme::shade(Color32::from_rgb(110, 190, 255)),
+        );
     }
     ui.weak("Preview of the applied clips (front view).");
 }

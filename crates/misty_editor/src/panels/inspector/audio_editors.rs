@@ -188,12 +188,12 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.label(
                 RichText::new(format!("Format: {}", info.format))
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
         None => {
             ui.colored_label(
-                theme::WARN,
+                theme::warn(),
                 tr!("Can't read this clip (WAV, OGG Vorbis or MP3)"),
             );
         }
@@ -223,7 +223,7 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             LoadType::Streaming => "Read from disk and decoded while playing (long music).",
         })
         .small()
-        .color(theme::TEXT_DIM),
+        .color(theme::text_dim()),
     );
     if imp != before {
         match imp.save(&abs) {
@@ -353,9 +353,9 @@ fn captioned(
     ui.vertical(|ui| {
         ch = slider(ui, key, v, range);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(ends.0).small().color(theme::TEXT_DIM));
+            ui.label(RichText::new(ends.0).small().color(theme::text_dim()));
             ui.add_space(100.0);
-            ui.label(RichText::new(ends.1).small().color(theme::TEXT_DIM));
+            ui.label(RichText::new(ends.1).small().color(theme::text_dim()));
         });
     });
     ch
@@ -535,26 +535,26 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 110.0), sense);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Rolloff curve"));
     let p = ui.painter_at(rect.expand(1.0));
-    p.rect_filled(rect, 2.0, theme::FIELD_BG);
+    p.rect_filled(rect, 2.0, theme::field_bg());
     let plot = Rect::from_min_max(rect.min + vec2(24.0, 6.0), rect.max - vec2(6.0, 16.0));
     let span = a.max_distance.max(0.01) * 1.1;
     let x_of = |d: f32| plot.left() + d / span * plot.width();
     let y_of = |v: f32| plot.bottom() - v * plot.height();
     for v in [0.0, 0.5, 1.0] {
-        p.hline(plot.x_range(), y_of(v), Stroke::new(1.0, theme::BORDER));
+        p.hline(plot.x_range(), y_of(v), Stroke::new(1.0, theme::border()));
         p.text(
             pos2(plot.left() - 3.0, y_of(v)),
             Align2::RIGHT_CENTER,
             format!("{v}"),
             FontId::monospace(9.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
     // Spatial blend line (green) and the volume curve (red), like the reference graph.
     p.hline(
         plot.x_range(),
         y_of(a.spatial_blend.clamp(0.0, 1.0)),
-        Stroke::new(1.0, Color32::from_rgb(90, 180, 90)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(90, 180, 90))),
     );
     let mut changed = false;
     if custom {
@@ -569,17 +569,21 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
         .collect();
     p.add(egui::Shape::line(
         pts,
-        Stroke::new(1.5, Color32::from_rgb(220, 70, 60)),
+        Stroke::new(1.5, crate::theme::shade(Color32::from_rgb(220, 70, 60))),
     ));
     if custom {
         for k in &a.custom_rolloff.keys {
             let c = pos2(x_of(k[0] * a.max_distance), y_of(k[1]));
-            p.rect_filled(Rect::from_center_size(c, vec2(7.0, 7.0)), 1.0, theme::TEXT);
+            p.rect_filled(
+                Rect::from_center_size(c, vec2(7.0, 7.0)),
+                1.0,
+                theme::text(),
+            );
         }
     }
     for (d, color) in [
-        (a.min_distance, theme::TEXT_DIM),
-        (a.max_distance, theme::TEXT_DIM),
+        (a.min_distance, theme::text_dim()),
+        (a.max_distance, theme::text_dim()),
     ] {
         p.vline(
             x_of(d),
@@ -591,7 +595,7 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
         p.vline(
             x_of(d),
             plot.y_range(),
-            Stroke::new(1.0, Color32::from_rgb(220, 200, 60)),
+            Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(220, 200, 60))),
         );
     }
     p.text(
@@ -599,14 +603,14 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
         Align2::LEFT_BOTTOM,
         "0",
         FontId::monospace(9.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     p.text(
         pos2(plot.right(), rect.bottom() - 2.0),
         Align2::RIGHT_BOTTOM,
         format!("{:.0} m", span),
         FontId::monospace(9.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     ui.horizontal(|ui| {
         ui.label(
@@ -631,7 +635,7 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
         ui.label(
             RichText::new(tr!("Drag keys · double-click adds · right-click deletes"))
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
     }
     changed

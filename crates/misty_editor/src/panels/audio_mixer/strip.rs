@@ -66,7 +66,7 @@ fn group_color(id: u32) -> Color32 {
         Color32::from_rgb(200, 190, 80),
         Color32::from_rgb(90, 180, 180),
     ];
-    COLORS[id as usize % COLORS.len()]
+    crate::theme::shade(COLORS[id as usize % COLORS.len()])
 }
 
 /// Draw the strip of `group` in `rect`.
@@ -87,12 +87,12 @@ pub fn show(
         .selected
         .is_some_and(|i| i.group() == group.id);
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 2.0, theme::FIELD_BG);
+    painter.rect_filled(rect, 2.0, theme::field_bg());
     if selected {
         painter.rect_stroke(
             rect,
             2.0,
-            Stroke::new(1.5, theme::SELECTION),
+            Stroke::new(1.5, theme::selection()),
             egui::StrokeKind::Inside,
         );
     }
@@ -104,7 +104,7 @@ pub fn show(
         Align2::CENTER_CENTER,
         &group.name,
         FontId::proportional(12.0),
-        theme::TEXT,
+        theme::text(),
     );
     let head_resp = ui.interact(head, ui.id().with(("strip_head", group.id)), Sense::click());
     head_resp
@@ -120,7 +120,7 @@ pub fn show(
         Align2::CENTER_CENTER,
         format!("{db:.1} dB"),
         FontId::monospace(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     let fader = Rect::from_min_size(
         pos2(rect.left() + 8.0, head.bottom() + 28.0),
@@ -138,20 +138,30 @@ pub fn show(
             ui.spacing_mut().item_spacing.x = 3.0;
             let id = group.id;
             let flags = [
-                ("M", "Mute", group.mute, Color32::from_rgb(200, 60, 60)),
-                ("S", "Solo", group.solo, Color32::from_rgb(210, 190, 60)),
+                (
+                    "M",
+                    "Mute",
+                    group.mute,
+                    crate::theme::shade(Color32::from_rgb(200, 60, 60)),
+                ),
+                (
+                    "S",
+                    "Solo",
+                    group.solo,
+                    crate::theme::shade(Color32::from_rgb(210, 190, 60)),
+                ),
                 (
                     "B",
                     "Bypass effects",
                     group.bypass_effects,
-                    Color32::from_rgb(70, 140, 210),
+                    crate::theme::shade(Color32::from_rgb(70, 140, 210)),
                 ),
             ];
             for (i, (label, tip, on, color)) in flags.into_iter().enumerate() {
                 let text = egui::RichText::new(label).strong().color(if on {
                     Color32::BLACK
                 } else {
-                    theme::TEXT
+                    theme::text()
                 });
                 let mut b = egui::Button::new(text).min_size(vec2(26.0, 18.0));
                 if on {
@@ -178,13 +188,13 @@ pub fn show(
     let slot =
         |y: f32| Rect::from_min_size(pos2(rect.left() + 4.0, y), vec2(rect.width() - 8.0, 18.0));
     let att = slot(y);
-    painter.rect_filled(att, 2.0, theme::BUTTON_BG.gamma_multiply(0.6));
+    painter.rect_filled(att, 2.0, theme::button_bg().gamma_multiply(0.6));
     painter.text(
         att.center(),
         Align2::CENTER_CENTER,
         "Attenuation",
         FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     y += 21.0;
     let reduction = s.audio_mixer.reduction(group.id);
@@ -192,20 +202,24 @@ pub fn show(
         let r = slot(y);
         let sel = s.audio_mixer.selected == Some(MixerItem::Group(group.id, Some(fx.id)));
         let fill = if sel {
-            theme::SELECTION
+            theme::selection()
         } else if fx.bypass || group.bypass_effects {
-            theme::BUTTON_BG.gamma_multiply(0.4)
+            theme::button_bg().gamma_multiply(0.4)
         } else if fx.kind.is_routing() {
-            ROUTING_FILL
+            crate::theme::shade(ROUTING_FILL)
         } else {
-            theme::BUTTON_BG
+            theme::button_bg()
         };
         painter.rect_filled(r, 2.0, fill);
         // Ducking / compression in Play mode: an orange bar growing from the right.
         if matches!(fx.kind, EffectKind::DuckVolume | EffectKind::Compressor) && reduction < -0.5 {
             let w = (-reduction / 30.0).clamp(0.0, 1.0) * r.width();
             let bar = Rect::from_min_max(pos2(r.right() - w, r.bottom() - 3.0), r.max);
-            painter.rect_filled(bar, 1.0, Color32::from_rgb(230, 140, 40));
+            painter.rect_filled(
+                bar,
+                1.0,
+                crate::theme::shade(Color32::from_rgb(230, 140, 40)),
+            );
         }
         painter.text(
             r.center(),
@@ -213,9 +227,9 @@ pub fn show(
             slot_label(mixer, fx),
             FontId::proportional(11.0),
             if fx.bypass {
-                theme::TEXT_DIM
+                theme::text_dim()
             } else {
-                theme::TEXT
+                theme::text()
             },
         );
         let resp = ui.interact(
@@ -240,7 +254,7 @@ pub fn show(
             painter.hline(
                 r.x_range(),
                 r.top() - 1.5,
-                Stroke::new(2.0, theme::SELECTION),
+                Stroke::new(2.0, theme::selection()),
             );
         }
         if let Some(p) = resp.dnd_release_payload::<FxDrag>()
@@ -361,26 +375,42 @@ fn fader_and_meter(
     for mark in [20.0, 10.0, 0.0, -10.0, -20.0, -40.0, -80.0] {
         let y = y_of(mark);
         for x in [track.right() + 3.0, meter.left() - 7.0] {
-            painter.hline(x..=x + 4.0, y, Stroke::new(1.0, theme::TEXT_DIM));
+            painter.hline(x..=x + 4.0, y, Stroke::new(1.0, theme::text_dim()));
         }
         painter.text(
             pos2((track.right() + meter.left()) * 0.5, y),
             Align2::CENTER_CENTER,
             format!("{mark:.0}"),
             FontId::monospace(9.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
-    painter.rect_filled(track, 3.0, theme::TAB_BAR_BG);
+    painter.rect_filled(track, 3.0, theme::tab_bar_bg());
     // Meter: green / yellow above -10 dB / red above 0 dB, plus a peak line.
-    painter.rect_filled(meter, 1.0, Color32::from_rgb(20, 20, 20));
+    painter.rect_filled(
+        meter,
+        1.0,
+        crate::theme::shade(Color32::from_rgb(20, 20, 20)),
+    );
     let level = s.audio_mixer.level(group);
     if level > MIN_DB {
         let top = y_of(level);
         for (from, to, color) in [
-            (MIN_DB, -10.0, Color32::from_rgb(60, 190, 80)),
-            (-10.0, 0.0, Color32::from_rgb(220, 200, 60)),
-            (0.0, MAX_DB, Color32::from_rgb(220, 60, 50)),
+            (
+                MIN_DB,
+                -10.0,
+                crate::theme::shade(Color32::from_rgb(60, 190, 80)),
+            ),
+            (
+                -10.0,
+                0.0,
+                crate::theme::shade(Color32::from_rgb(220, 200, 60)),
+            ),
+            (
+                0.0,
+                MAX_DB,
+                crate::theme::shade(Color32::from_rgb(220, 60, 50)),
+            ),
         ] {
             if level > from {
                 let seg = Rect::from_x_y_ranges(meter.x_range(), top.max(y_of(to))..=y_of(from));
@@ -391,8 +421,8 @@ fn fader_and_meter(
     // Fader knob.
     let knob_y = y_of(db);
     let knob = Rect::from_center_size(pos2(track.center().x, knob_y), vec2(22.0, 10.0));
-    painter.rect_filled(knob, 2.0, theme::TEXT);
-    painter.hline(knob.x_range(), knob_y, Stroke::new(1.0, theme::BORDER));
+    painter.rect_filled(knob, 2.0, theme::text());
+    painter.hline(knob.x_range(), knob_y, Stroke::new(1.0, theme::border()));
     let area = Rect::from_x_y_ranges(track.left() - 8.0..=track.right() + 8.0, rect.y_range());
     let resp = ui.interact(
         area,

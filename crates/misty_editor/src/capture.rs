@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_LIGHTING_PAGE` / `MISTY_LIGHTING_SCROLL` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER` / `MISTY_GUIDE`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_LIGHTING_PAGE` / `MISTY_LIGHTING_SCROLL` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_TERRAIN_TOOL` / `MISTY_TERRAIN_ITEM` / `MISTY_TERRAIN_HOVER` / `MISTY_GUIDE`, and `MISTY_THEME=light` (a theme preset id or custom theme name, see `theme::custom`; and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -124,9 +124,6 @@ pub struct Capture {
     /// Something asked to wait before the shot (see [`Capture::hold`]).
     held: bool,
     saved: bool,
-    /// `MISTY_THEME=light`: egui's light visuals, to check theme-tinted icons (the editor
-    /// itself only has the dark theme).
-    light: bool,
     /// Frame times (ms) after the warm-up, printed when the screenshot is saved.
     times: Vec<f32>,
     /// Every editor frame's wall time (slow frames and time to interactive).
@@ -141,7 +138,6 @@ impl Capture {
             requested: false,
             held: false,
             saved: false,
-            light: std::env::var("MISTY_THEME").is_ok_and(|t| t == "light"),
             times: Vec::new(),
             clock: FrameClock::default(),
         })
@@ -194,9 +190,6 @@ impl Capture {
         self.frames += 1;
         self.clock.tick();
         ctx.request_repaint();
-        if self.light && self.frames == 1 {
-            ctx.set_visuals(egui::Visuals::light());
-        }
         // `MISTY_CAPTURE_FRAME=<n>` waits longer (e.g. to catch a later moment of Play mode).
         let at = std::env::var("MISTY_CAPTURE_FRAME")
             .ok()

@@ -121,7 +121,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     );
     let right = Rect::from_min_max(pos2(left.right() + 1.0, full.top()), full.max);
     ui.painter()
-        .vline(left.right() + 0.5, full.y_range(), (1.0, theme::BORDER));
+        .vline(left.right() + 0.5, full.y_range(), (1.0, theme::border()));
 
     let mut list = ui.new_child(UiBuilder::new().max_rect(left));
     list.set_clip_rect(left);
@@ -159,7 +159,7 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         egui::Align2::CENTER_CENTER,
         text,
         egui::FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 
@@ -189,8 +189,11 @@ fn toolbar(
     left: Rect,
 ) {
     let rect = row_rect(left, 0);
-    ui.painter()
-        .rect_filled(rect, 0.0, Color32::from_rgb(60, 60, 60));
+    ui.painter().rect_filled(
+        rect,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(60, 60, 60)),
+    );
     let mut stop = false;
     in_row(ui, rect, |ui| {
         let w = &mut s.animation;
@@ -202,7 +205,11 @@ fn toolbar(
             stop = w.preview;
             w.preview = true;
         }
-        let rec = RichText::new("⏺").color(if w.recording { RECORD_RED } else { theme::TEXT });
+        let rec = RichText::new("⏺").color(if w.recording {
+            crate::theme::shade(RECORD_RED)
+        } else {
+            theme::text()
+        });
         if ui
             .add(egui::Button::new(rec).selected(w.recording))
             .on_hover_text("Enable/disable keyframe recording mode")
@@ -299,7 +306,7 @@ fn clip_row(
         {
             preview::key_all(s);
         }
-        ui.label(RichText::new("Samples").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Samples").color(theme::text_dim()));
         let mut rate = clip.sample_rate;
         let r = ui.add(
             egui::DragValue::new(&mut rate)
@@ -316,8 +323,11 @@ fn clip_row(
 /// Add Property menu and the Dopesheet / Curves switch at the bottom of the list.
 fn footer(ui: &mut Ui, s: &mut EditorState, root: Entity, left: Rect) {
     let rect = Rect::from_min_max(pos2(left.left(), left.bottom() - ROW_H - 4.0), left.max);
-    ui.painter()
-        .rect_filled(rect, 0.0, Color32::from_rgb(52, 52, 52));
+    ui.painter().rect_filled(
+        rect,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(52, 52, 52)),
+    );
     in_row(ui, rect, |ui| {
         ui.menu_button("Add Property", |ui| add_property_menu(ui, s, root));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -381,7 +391,7 @@ fn add_property_menu(ui: &mut Ui, s: &mut EditorState, root: Entity) {
             }
         };
         if path.is_empty() {
-            ui.label(RichText::new(s.scene.name(*e)).color(theme::TEXT_DIM));
+            ui.label(RichText::new(s.scene.name(*e)).color(theme::text_dim()));
             entries(ui, s);
             if objects.len() > 1 {
                 ui.separator();

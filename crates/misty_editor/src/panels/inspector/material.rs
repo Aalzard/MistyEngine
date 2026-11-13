@@ -34,7 +34,7 @@ pub(super) fn section(ui: &mut Ui, title: &str) {
         rect.left()
     };
     let pos = egui::pos2(x, rect.bottom() - galley.size().y - 1.0);
-    ui.painter().galley(pos, galley, theme::TEXT);
+    ui.painter().galley(pos, galley, theme::text());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, title));
     ui.end_row();
 }
@@ -96,7 +96,7 @@ pub(super) fn pair(ui: &mut Ui, v: &mut [f32; 2]) -> bool {
                 egui::Align2::LEFT_CENTER,
                 axis,
                 egui::TextStyle::Body.resolve(ui.style()),
-                theme::TEXT,
+                theme::text(),
             );
             ch |= ui
                 .add_sized(
@@ -426,7 +426,7 @@ pub fn preview(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.painter().image(id, rect, uv, egui::Color32::WHITE);
         }
         None => {
-            ui.painter().rect_filled(rect, 0.0, theme::BORDER);
+            ui.painter().rect_filled(rect, 0.0, theme::border());
         }
     }
 }

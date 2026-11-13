@@ -703,7 +703,7 @@ fn shortcuts(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
@@ -758,15 +758,18 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     .unwrap_or_default();
                 ui.label(
                     RichText::new(format!("{ICON} {name}{}", if dirty { " *" } else { "" }))
-                        .color(theme::TEXT),
+                        .color(theme::text()),
                 );
                 match &s.shader_graph.error {
                     Some(e) => {
-                        ui.label(RichText::new(format!("⚠ {}", short(&e.message))).color(ERROR))
-                            .on_hover_text(&e.message);
+                        ui.label(
+                            RichText::new(format!("⚠ {}", short(&e.message)))
+                                .color(crate::theme::shade(ERROR)),
+                        )
+                        .on_hover_text(&e.message);
                     }
                     None => {
-                        ui.label(RichText::new("✔ Compiled").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("✔ Compiled").color(theme::text_dim()));
                     }
                 }
                 let variants = s.shader_graph.graph.variant_count();
@@ -776,7 +779,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                             "{variants} variants (limit {})",
                             misty_engine::shader_graph::MAX_VARIANTS
                         ))
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                     )
                     .on_hover_text("Each combination of keyword values compiles its own shader");
                 }
@@ -811,13 +814,13 @@ pub(crate) fn card(ui: &Ui, rect: Rect, title: &str) -> Rect {
         8.0,
         Color32::from_black_alpha(60),
     );
-    p.rect_filled(rect, 8.0, theme::CARD_BG.gamma_multiply(0.97));
+    p.rect_filled(rect, 8.0, theme::card_bg().gamma_multiply(0.97));
     p.text(
         rect.min + vec2(10.0, 8.0),
         Align2::LEFT_TOP,
         title,
         FontId::proportional(13.0),
-        theme::TEXT,
+        theme::text(),
     );
     Rect::from_min_max(rect.min + vec2(8.0, 28.0), rect.max - vec2(8.0, 8.0))
 }
@@ -996,7 +999,7 @@ fn main_preview(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             Align2::CENTER_CENTER,
             "Decal graphs draw on a\nDecal Projector: assign a\nmaterial using this graph.",
             FontId::proportional(12.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
     if let Some(m) = s.shader_graph.preview_material() {
@@ -1030,7 +1033,7 @@ fn main_preview(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                     Align2::CENTER_CENTER,
                     "Rendering…",
                     FontId::proportional(12.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
             }
         }
@@ -1061,7 +1064,7 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 
