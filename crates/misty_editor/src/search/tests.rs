@@ -8,7 +8,7 @@ use crate::project::ProjectBrowser;
 use crate::project_settings::Category;
 
 fn state() -> EditorState {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+    let root = crate::test_sample::shared_copy();
     let mut s = EditorState::new(ProjectBrowser::open(root));
     s.search.index.build_now();
     open(&mut s, "");

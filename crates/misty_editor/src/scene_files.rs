@@ -780,7 +780,7 @@ mod tests {
     /// view, or the last scene's) moves the eye above the ground.
     #[test]
     fn opening_a_scene_lifts_a_view_left_under_the_terrain() {
-        let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let sample = crate::test_sample::shared_copy();
         let mut s = EditorState::new(ProjectBrowser::open(sample.clone()));
         // The terrain is found through the process-wide project root, which tests running
         // alongside move: try again (a few times) only when that happened meanwhile.
