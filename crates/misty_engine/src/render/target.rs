@@ -49,7 +49,9 @@ pub struct RenderTarget {
     samples: u32,
     msaa_view: wgpu::TextureView,
     /// Emission only (bloom source), MSAA + resolved.
-    glow_msaa_view: wgpu::TextureView,
+    /// The main pass's MSAA glow image: made for the first frame that needs it, dropped in
+    /// frames without emission (render/glowless.rs).
+    glow_msaa: std::sync::Mutex<Option<wgpu::TextureView>>,
     glow_view: wgpu::TextureView,
     /// Motion vectors of the main pass (MSAA, read per sample by TAA).
     velocity_view: wgpu::TextureView,
@@ -164,14 +166,6 @@ impl RenderTarget {
             sampled | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
             &[],
         );
-        let glow_msaa = make(
-            "misty msaa glow",
-            full,
-            HDR_FORMAT,
-            super::sample_count(),
-            attach,
-            &[],
-        );
         let glow = make("misty glow", full, HDR_FORMAT, 1, sampled, &[]);
         // Sampled by TAA (sample 0, like the depth).
         let velocity = make(
@@ -280,7 +274,7 @@ impl RenderTarget {
             scale,
             upscaled,
             msaa_view: view(&msaa),
-            glow_msaa_view: view(&glow_msaa),
+            glow_msaa: Default::default(),
             glow_view,
             velocity_view: view(&velocity),
             depth_view: view(&depth),
@@ -403,8 +397,36 @@ impl RenderTarget {
         &self.pre_finish_view
     }
 
-    pub(crate) fn glow_msaa_view(&self) -> &wgpu::TextureView {
-        &self.glow_msaa_view
+    /// The MSAA glow image (made by [`Self::keep_glow_msaa`]).
+    pub(crate) fn glow_msaa_view(&self) -> Option<wgpu::TextureView> {
+        self.glow_msaa
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Make the MSAA glow image (`keep`) or drop it (a glowless frame, render/glowless.rs).
+    pub(crate) fn keep_glow_msaa(&self, device: &wgpu::Device, keep: bool) {
+        let mut slot = self.glow_msaa.lock().unwrap_or_else(|e| e.into_inner());
+        if !keep {
+            *slot = None;
+        } else if slot.is_none() {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("misty msaa glow"),
+                size: wgpu::Extent3d {
+                    width: self.width,
+                    height: self.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: self.samples,
+                dimension: wgpu::TextureDimension::D2,
+                format: HDR_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            *slot = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
+        }
     }
 
     pub(crate) fn glow_view(&self) -> &wgpu::TextureView {

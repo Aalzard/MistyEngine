@@ -542,7 +542,11 @@ impl EditorApp {
                 }
             }
             Action::OpenScenePath(rel) => {
-                if let Some(a) = scene_files::guard(s, AfterPrompt::Open(rel)) {
+                let guard = {
+                    misty_engine::profile_scope!("Scene.Guard");
+                    scene_files::guard(s, AfterPrompt::Open(rel))
+                };
+                if let Some(a) = guard {
                     scene_files::perform(s, a);
                 }
             }

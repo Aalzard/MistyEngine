@@ -153,12 +153,15 @@ fn renderer_items_match_known_allocations() {
     let size = r.quality().shadow_map_size() as u64;
     let n = 4; // render::cascades::MAX_CASCADES
     assert_eq!(cascades.bytes, size * size * 4 * n);
-    // A 64×32 view: 105 bytes per pixel plus the bloom mips (32×16, 16×8, 8×4 at 8 bytes).
+    // A 64×32 view: 73 bytes per pixel plus the bloom mips (32×16, 16×8, 8×4 at 8 bytes);
+    // 105 once a render made its MSAA emission image (4 samples × 8 bytes, glowless.rs).
     let target = r.create_target(&device, 64, 32);
     let bloom: u64 = (1..=4)
         .map(|i| ((64u64 >> i).max(1)) * ((32u64 >> i).max(1)) * 8)
         .take(target_levels(64, 32))
         .sum();
+    assert_eq!(target.memory_bytes(), 64 * 32 * 73 + bloom);
+    target.keep_glow_msaa(&device, true);
     assert_eq!(target.memory_bytes(), 64 * 32 * 105 + bloom);
 }
 

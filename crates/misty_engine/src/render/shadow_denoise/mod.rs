@@ -43,12 +43,19 @@ const BLUR: f32 = 1.0;
 /// Mesh group slot (17 is the screen-space GI/reflection texels).
 pub(super) const BINDING: u32 = 18;
 const HEADER_BYTES: u64 = 64;
-/// Bytes per pixel with three or four lights (eight with at most two).
+/// Bytes per pixel with three or four lights (eight with at most two: `narrow`).
 const TEXEL_BYTES: u64 = 16;
+const NARROW_TEXEL_BYTES: u64 = 8;
 const NO_CHANNEL: u32 = 255;
 
-fn buffer_bytes(pixels: u64) -> u64 {
-    HEADER_BYTES + pixels.max(1) * TEXEL_BYTES
+/// A mask's buffer size: `narrow` = at most two lights (half-size texels).
+fn buffer_bytes(pixels: u64, narrow: bool) -> u64 {
+    let texel = if narrow {
+        NARROW_TEXEL_BYTES
+    } else {
+        TEXEL_BYTES
+    };
+    HEADER_BYTES + pixels.max(1) * texel
 }
 
 /// `ShadowMask` header (shadow_lookup.wgsl).
@@ -206,9 +213,11 @@ struct History {
     slots: Vec<usize>,
 }
 
-/// A view's buffers (rebuilt when its size changes).
+/// A view's buffers (rebuilt when its size or texel size changes).
 struct TargetState {
     size: (u32, u32),
+    /// Sized for at most two lights (half-size texels); a third light reallocates.
+    narrow: bool,
     params: wgpu::Buffer,
     /// Ping-pong: the trace writes one (next frame's history), the blur writes the other
     /// (which the lit pass reads, and the trace overwrites next frame).
@@ -218,8 +227,8 @@ struct TargetState {
 }
 
 impl TargetState {
-    fn new(device: &wgpu::Device, size: (u32, u32)) -> Self {
-        let bytes = buffer_bytes(size.0 as u64 * size.1 as u64);
+    fn new(device: &wgpu::Device, size: (u32, u32), narrow: bool) -> Self {
+        let bytes = buffer_bytes(size.0 as u64 * size.1 as u64, narrow);
         let buffer = |label| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -230,6 +239,7 @@ impl TargetState {
         };
         Self {
             size,
+            narrow,
             params: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty shadow mask params"),
                 size: std::mem::size_of::<MaskParams>() as u64,
@@ -246,6 +256,15 @@ impl TargetState {
 /// Per-target slot (inside [`RenderTarget`]).
 #[derive(Default)]
 pub(crate) struct TargetSlot(Mutex<Option<TargetState>>);
+
+impl TargetSlot {
+    /// Bytes of the view's mask buffers (0 before its first mask).
+    pub(crate) fn bytes(&self) -> u64 {
+        let slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        slot.as_ref()
+            .map_or(0, |s| s.buffers.iter().map(|b| b.size()).sum())
+    }
+}
 
 /// This render's mask: buffers in pass order.
 struct MaskFrame {
@@ -272,7 +291,7 @@ impl ShadowDenoise {
             passes: None,
             off_buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty shadow mask off"),
-                size: buffer_bytes(1),
+                size: buffer_bytes(1, false),
                 usage: wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             }),
@@ -344,7 +363,8 @@ impl Renderer {
         }
         let slots = mask_slots(frame, plan);
         let size = target.size();
-        let bytes = buffer_bytes(size.0 as u64 * size.1 as u64);
+        let narrow = slots.len() <= 2;
+        let bytes = buffer_bytes(size.0 as u64 * size.1 as u64, narrow);
         if slots.is_empty() || bytes > device.limits().max_storage_buffer_binding_size {
             return;
         }
@@ -354,8 +374,11 @@ impl Renderer {
         let Ok(mut slot) = target.shadow_mask.0.lock() else {
             return;
         };
-        if slot.as_ref().is_none_or(|s| s.size != size) {
-            *slot = Some(TargetState::new(device, size));
+        if slot
+            .as_ref()
+            .is_none_or(|s| s.size != size || s.narrow != narrow)
+        {
+            *slot = Some(TargetState::new(device, size, narrow));
         }
         let Some(state) = slot.as_mut() else {
             return;
@@ -415,7 +438,7 @@ impl Renderer {
             info: [1, size.0, size.1, 0],
             channels,
             // At most two lights: half-size texels (shadow_mask.wgsl `narrow`).
-            pad: [u32::from(slots.len() <= 2), 0, 0, 0],
+            pad: [u32::from(narrow), 0, 0, 0],
         };
         for b in &state.buffers {
             queue.write_buffer(b, 0, bytemuck::bytes_of(&header));

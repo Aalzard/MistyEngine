@@ -316,6 +316,9 @@ fn demo_scenes_compile_no_shader_after_their_first_frames() {
         let view = demo_view(scene);
         let mut r = Renderer::with_queue(&device, &queue);
         r.set_quality(&device, &QualityLevel::high());
+        // (Frame 30 would start the glowless pipelines on workers: nothing waits for them,
+        // but they count.)
+        r.keep_glow_target();
         let target = r.create_target(&device, 960, 540);
         let base = view.camera;
         let mut built = Vec::new();

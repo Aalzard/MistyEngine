@@ -59,11 +59,16 @@ pub fn start(s: &mut EditorState) {
     if s.play.in_play_mode() {
         return;
     }
+    misty_engine::profile_scope!("Play.Start");
     if s.console.clear_on_play {
         s.console.clear();
     }
+    let scene = {
+        misty_engine::profile_scope!("Play.Start.CopyScene");
+        s.scene.clone()
+    };
     s.play_session = Some(PlaySession {
-        scene: s.scene.clone(),
+        scene,
         selection: s.selection.clone(),
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
@@ -80,7 +85,10 @@ pub fn start(s: &mut EditorState) {
     misty_engine::localization::reset_session();
     // The active Build Profile's scripting defines (`--#if`, `Application.HasDefine`).
     misty_engine::build_profile::set_active_defines(crate::build_settings::play_defines(s));
-    let mut audio = Audio::with_device(s.project.root.clone());
+    let mut audio = {
+        misty_engine::profile_scope!("Play.Start.Audio");
+        Audio::with_device(s.project.root.clone())
+    };
     audio.set_muted(s.game_view.mute);
     let mut runtime = Runtime::start_with_audio(
         &mut s.scene,

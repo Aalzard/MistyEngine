@@ -458,17 +458,35 @@ pub(crate) fn reset_after_load(s: &mut EditorState) {
 /// Load a scene file into the editor, replacing every open scene. Returns false (and logs)
 /// on failure.
 pub fn load(s: &mut EditorState, rel: &str) -> bool {
+    misty_engine::profile_scope!("Scene.Open");
     let path = s.project.root.join(rel);
-    match Scene::load(&path) {
+    let loaded = {
+        misty_engine::profile_scope!("Scene.Open.Read");
+        Scene::load(&path)
+    };
+    match loaded {
         Ok((mut scene, report)) => {
             scene.set_scene_path(0, rel);
-            s.scene = scene;
-            reset_after_load(s);
-            crate::prefabs::catch_up(s, None);
-            keep_view_above_ground(s);
+            {
+                misty_engine::profile_scope!("Scene.Open.Replace");
+                s.scene = scene;
+            }
+            {
+                misty_engine::profile_scope!("Scene.Open.Reset");
+                reset_after_load(s);
+            }
+            {
+                misty_engine::profile_scope!("Scene.Open.Prefabs");
+                crate::prefabs::catch_up(s, None);
+            }
+            {
+                misty_engine::profile_scope!("Scene.Open.View");
+                keep_view_above_ground(s);
+            }
             for w in report.warnings {
                 s.console.warn(format!("{rel}: {w}"));
             }
+            misty_engine::profile_scope!("Scene.Open.Remember");
             remember(s, rel);
             crate::live_reload::scenes::note_disk(s, rel);
             s.console.info(format!("Opened {rel}"));

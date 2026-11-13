@@ -253,7 +253,10 @@ impl Physics {
         for &e in &objects {
             self.add_body(scene, e);
         }
-        self.add_colliders(scene, &objects);
+        {
+            crate::profile_scope!("Physics.AddColliders");
+            self.add_colliders(scene, &objects);
+        }
         self.add_joints(scene, &objects);
         self.add_wheels(scene, &objects);
         self.add_ragdolls(scene, &objects);
@@ -263,6 +266,7 @@ impl Physics {
         }
         // A zero-length step registers the new bodies and fills the broad phase, so queries
         // work before the first real step; contacts found now are reported by that step.
+        crate::profile_scope!("Physics.RegisterStep");
         let dt = self.world.integration_parameters.dt;
         self.world.integration_parameters.dt = 0.0;
         let events = EventLog::default();

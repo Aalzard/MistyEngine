@@ -26,6 +26,9 @@ type Built = Arc<Mutex<Vec<(VariantKey, Option<wgpu::RenderPipeline>)>>>;
 pub struct Variants {
     mesh: HashMap<PipelineKey, wgpu::RenderPipeline>,
     shadow: HashMap<ShadowKey, wgpu::RenderPipeline>,
+    /// The main pass has no glow target this frame: [`Pipelines::mesh_variant`] hands out the
+    /// glowless variants (render/glowless.rs).
+    pub(super) glowless: bool,
     /// Build missing variants on the shader queue instead of in place.
     pub(super) background: bool,
     /// Variants queued and not picked up yet.
@@ -42,6 +45,7 @@ pub(super) const PLAIN: PipelineKey = PipelineKey {
     mode: RenderingMode::Opaque,
     double_sided: false,
     features: 0,
+    glowless: false,
 };
 
 /// Surfaces most scenes have, compiled ahead in the background by
@@ -110,6 +114,7 @@ fn mesh_pipeline(
             blend: key.blend(),
             // Emission is blended like the colour, so glass dims the glow behind it.
             glow: Some(true),
+            glowless: key.glowless,
             // Opaque and cutout surfaces write their motion; blended ones leave the
             // motion of what is behind them (they don't write depth either).
             velocity: key.depth_write(),
@@ -167,11 +172,22 @@ impl Pipelines {
     /// Build the main-pass pipeline for `key` if it doesn't exist yet (queue it while the
     /// background loads are on).
     pub fn ensure_mesh(&mut self, device: &wgpu::Device, key: PipelineKey) {
+        let background = self.variants.background;
+        self.ensure_mesh_with(device, key, background);
+    }
+
+    /// [`Self::ensure_mesh`] always on the shader queue (the glowless variants: nothing waits
+    /// for them, render/glowless.rs).
+    pub(super) fn ensure_mesh_queued(&mut self, device: &wgpu::Device, key: PipelineKey) {
+        self.ensure_mesh_with(device, key, true);
+    }
+
+    fn ensure_mesh_with(&mut self, device: &wgpu::Device, key: PipelineKey, background: bool) {
         if self.variants.mesh.contains_key(&key) {
             return;
         }
         let samples = super::sample_count();
-        if self.variants.background {
+        if background {
             let layouts = [
                 self.view_layout.clone(),
                 self.mesh_layout.clone(),
@@ -273,12 +289,20 @@ impl Pipelines {
     /// double-sided) compiles in the background, the plain Standard one stands in for it;
     /// other surfaces are left out until theirs is there.
     pub fn mesh_variant(&self, key: PipelineKey) -> Option<&wgpu::RenderPipeline> {
+        let glowless = self.variants.glowless;
+        let key = PipelineKey { glowless, ..key };
         self.variants.mesh.get(&key).or_else(|| {
             let stand_in = key.mode == RenderingMode::Opaque
                 && key.features == 0
                 && self.variants.pending.contains(&VariantKey::Mesh(key));
-            stand_in.then(|| self.variants.mesh.get(&PLAIN)).flatten()
+            let plain = PipelineKey { glowless, ..PLAIN };
+            stand_in.then(|| self.variants.mesh.get(&plain)).flatten()
         })
+    }
+
+    /// The main-pass variant of `key` exists (no stand-in).
+    pub(super) fn has_mesh_variant(&self, key: PipelineKey) -> bool {
+        self.variants.mesh.contains_key(&key)
     }
 
     pub fn shadow_variant(&self, key: ShadowKey) -> Option<&wgpu::RenderPipeline> {

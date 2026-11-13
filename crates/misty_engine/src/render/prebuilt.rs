@@ -29,6 +29,22 @@ pub(crate) fn wait_idle(timeout: std::time::Duration) -> bool {
     true
 }
 
+/// Run `f` on a worker thread named `name`, counted as running for [`wait_idle`] (false
+/// when the thread could not start).
+pub(super) fn spawn_worker(name: &str, f: impl FnOnce() + Send + 'static) -> bool {
+    RUNNING.fetch_add(1, Ordering::AcqRel);
+    let spawned = std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(move || {
+            f();
+            RUNNING.fetch_sub(1, Ordering::AcqRel);
+        });
+    if spawned.is_err() {
+        RUNNING.fetch_sub(1, Ordering::AcqRel);
+    }
+    spawned.is_ok()
+}
+
 /// A value being built on a worker thread, taken (waiting if needed) on first use.
 pub(super) struct Prebuilt<T> {
     /// (Behind a lock only so the renderer stays `Sync`.)

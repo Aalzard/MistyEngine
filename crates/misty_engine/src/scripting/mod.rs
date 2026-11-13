@@ -463,14 +463,21 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
-        let lua = game_lua();
+        let lua = {
+            crate::profile_scope!("Scripts.Start.Lua");
+            game_lua()
+        };
         install_deadline(&lua);
         arm_deadline(&lua, true);
         let mut logs = Vec::new();
-        if let Err(e) = api::register(&lua) {
+        if let Err(e) = {
+            crate::profile_scope!("Scripts.Start.Api");
+            api::register(&lua)
+        } {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
         lua.set_app_data(crate::asset_groups::AssetSystem::auto(&project_root));
+        let world_scope = crate::profiler::Scope::begin_lazy(|| "Scripts.Start.World", None);
         let mut world = World::new(
             std::mem::take(scene),
             physics,
@@ -479,6 +486,7 @@ impl ScriptHost {
             audio,
             settings,
         );
+        drop(world_scope);
         logs.append(&mut world.logs);
         world.logs = logs;
         lua.set_app_data(world);
@@ -505,13 +513,17 @@ impl ScriptHost {
                 })
                 .collect()
         });
+        let instantiate_scope =
+            crate::profiler::Scope::begin_lazy(|| "Scripts.Start.Instantiate", None);
         for (e, list) in scripted {
             for (slot, script) in list.iter().enumerate() {
                 host.instantiate(e, slot, script);
             }
         }
+        drop(instantiate_scope);
         // Player Inputs enable their default map before any Awake.
         host.input_sync();
+        crate::profile_scope!("Scripts.Start.Awake");
         host.call_all("Awake");
         host.flush_spawned();
         host.localization_frame();

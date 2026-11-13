@@ -261,18 +261,22 @@ impl InputSystem {
     /// Start Player Inputs that appeared, stop the ones that went away (objects destroyed,
     /// deactivated, or the component removed) and pair devices when the players change.
     pub fn sync_players(&mut self, scene: &Scene, input: &Input) {
-        let present: Vec<(Entity, PlayerInput)> = scene
-            .walk()
-            .into_iter()
-            .filter(|(e, _)| scene.active_in_hierarchy(*e))
-            .filter_map(|(e, _)| {
-                scene
-                    .world
-                    .get::<&PlayerInput>(e)
-                    .ok()
-                    .map(|c| (e, (*c).clone()))
-            })
-            .collect();
+        let present: Vec<(Entity, PlayerInput)> = if !scene.has_any::<PlayerInput>() {
+            Vec::new()
+        } else {
+            scene
+                .walk()
+                .into_iter()
+                .filter(|(e, _)| scene.active_in_hierarchy(*e))
+                .filter_map(|(e, _)| {
+                    scene
+                        .world
+                        .get::<&PlayerInput>(e)
+                        .ok()
+                        .map(|c| (e, (*c).clone()))
+                })
+                .collect()
+        };
         let before: Vec<Entity> = self.players.iter().map(|p| p.entity).collect();
         let gone: Vec<usize> = self
             .players

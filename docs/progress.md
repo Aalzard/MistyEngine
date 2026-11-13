@@ -4687,3 +4687,31 @@ changes. Details, numbers and timings per round: `docs/pending/r54-noon-look.md`
   shadows; clouds smaller and more numerous (no size control); sky and far hills brighter and
   bluer than the photo; the wood floor in `inside` shows bare sunlit litter between grass-like
   herbs, and `inside2` is greener and brighter than the photo's dark olive.
+
+## Round 57 — Performance round 3: glowless main pass, smaller shadow mask, per-frame walks, load profiling (branch r57-perf3)
+
+Notes, method and every measurement: `docs/pending/r57-perf3.md`.
+
+- **Memory, glowless main pass** (`render/glowless.rs`): after 30 frames without anything that
+  writes the glow target (emissive or blended surfaces, particles, water, VFX, custom shaders,
+  virtual geometry, wireframe, depth prepass, Frame Debugger), the renderer swaps in main-pass
+  pipelines built without the glow slot (`Spec::glowless`, `PipelineKey::glowless`), drops the
+  4× MSAA emission image and writes the resolved glow from the sky in one full-screen pass
+  (sky glow × the share of the pixel's samples at the far plane, what the resolve averaged).
+  The glowless pipelines are built once on a worker and kept, so emission coming back is a
+  swap. NoonValley High 1080p: the MSAA emission image (63 MB) is gone; grass composite 0.42 →
+  0.32 ms (hero), 0.75 → 0.54 (down); sum of parts 12.71 → 12.69 / 11.70 → 11.57 / 11.51 →
+  11.51. Images: hero 0.001/255 from main; down/inside differ by at most 1 (a uniform shift
+  from Auto Exposure's wall-clock adaptation over the test's one-time in-place pipeline build).
+  `MISTY_FAST_OFF=glowless` turns it off.
+- **Memory, shadow mask**: buffers sized by the light count (8 bytes per pixel ×2 with up to
+  two lights). View target incl. the mask: 276 → 181 MB at 1080p (−34 %).
+- **Tree textures** (160 MB in the memory test): all BC7 already, mips used; unchanged.
+- **CPU, Play**: navigation, rigs, the Event System and Player Inputs no longer walk the
+  whole hierarchy every frame when no object has the component: MeadowDemo `PlayerLoop`
+  1.21 → 0.74 ms. Editor frames stay GPU-bound.
+- **First-load frames**: profiler scopes for scene open and Play start. Opening NoonValley
+  costs 82 ms (68 of it the terrain data's first load); the ~280–380 ms frames are entering
+  Play, mostly the physics world's ~100 000 tree-trunk colliders and the step that fills the
+  broad phase. Merging trunks into compound colliders would cut it but changes contact
+  events (for the user to decide); building them on rayon was slower and was dropped.

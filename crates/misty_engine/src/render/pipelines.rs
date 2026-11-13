@@ -214,6 +214,196 @@ pub struct Pipelines {
     pub finish: super::finish::FinishPipelines,
 }
 
+/// The layouts of the [`MainSet`] pipelines (owned: a worker builds the glowless set).
+#[derive(Clone)]
+pub(super) struct MainLayouts {
+    pub view: wgpu::BindGroupLayout,
+    pub mesh: wgpu::BindGroupLayout,
+    pub empty: wgpu::BindGroupLayout,
+    pub terrain: wgpu::BindGroupLayout,
+    pub grass: wgpu::BindGroupLayout,
+    pub grass_blades: wgpu::BindGroupLayout,
+    pub mask: wgpu::BindGroupLayout,
+}
+
+/// The main-pass pipelines of [`Pipelines`] a frame without emission draws with (their
+/// glowless versions are swapped in then: render/glowless.rs).
+pub(super) struct MainSet {
+    pub sky: wgpu::RenderPipeline,
+    pub sky_late: wgpu::RenderPipeline,
+    pub grid: wgpu::RenderPipeline,
+    pub lines: wgpu::RenderPipeline,
+    pub overlay: wgpu::RenderPipeline,
+    pub outline: wgpu::RenderPipeline,
+    pub terrain: wgpu::RenderPipeline,
+    pub terrain_depth: wgpu::RenderPipeline,
+    pub terrain_shade: wgpu::RenderPipeline,
+    pub grass: wgpu::RenderPipeline,
+    pub grass_depth: wgpu::RenderPipeline,
+}
+
+impl MainSet {
+    /// `samples`: the main pass's MSAA samples (passed in: a worker may build these).
+    pub(super) fn new(
+        device: &wgpu::Device,
+        l: &MainLayouts,
+        samples: u32,
+        glowless: bool,
+    ) -> Self {
+        let (view_layout, mesh_layout, mask_layout) = (&l.view, &l.mesh, &l.mask);
+        let terrain_layouts = [view_layout, mesh_layout, &l.empty, &l.terrain];
+        let grass_layouts = [view_layout, mesh_layout, &l.grass, &l.grass_blades];
+        let build = |device: &wgpu::Device, spec: Spec<'_>| {
+            build(
+                device,
+                Spec {
+                    samples,
+                    glowless,
+                    ..spec
+                },
+            )
+        };
+        // The sky writes the sun disc to the glow target, and the camera's rotation to the
+        // motion vectors.
+        let sky = build(
+            device,
+            Spec {
+                glow: Some(true),
+                velocity: true,
+                ..Spec::new("sky", include_str!("shaders/sky.wgsl"), &[view_layout])
+            },
+        );
+        let sky_late = build(
+            device,
+            Spec {
+                vs: "vs_sky_far",
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                glow: Some(true),
+                velocity: true,
+                ..Spec::new("sky late", include_str!("shaders/sky.wgsl"), &[view_layout])
+            },
+        );
+        let grid = build(
+            device,
+            Spec {
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new("grid", include_str!("shaders/grid.wgsl"), &[view_layout])
+            },
+        );
+        let line_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
+        }];
+        let lines = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &line_buffers,
+                topology: wgpu::PrimitiveTopology::LineList,
+                depth: Depth::main(true, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[view_layout])
+            },
+        );
+        let overlay = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &line_buffers,
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new(
+                    "overlay",
+                    include_str!("shaders/lines.wgsl"),
+                    &[view_layout],
+                )
+            },
+        );
+        let outline = build(
+            device,
+            Spec {
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new(
+                    "outline",
+                    include_str!("shaders/outline.wgsl"),
+                    &[view_layout, mask_layout],
+                )
+            },
+        );
+        let terrain = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(true),
+            velocity: true,
+            ..Spec::new("terrain", TERRAIN_SRC, &terrain_layouts)
+        };
+        let terrain_depth = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain_depth"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(false),
+            color_writes: wgpu::ColorWrites::empty(),
+            ..Spec::new("terrain depth", TERRAIN_SRC, &terrain_layouts)
+        };
+        let terrain_shade = Spec {
+            vs: "vs_terrain",
+            fs: Some("fs_terrain"),
+            cull: Some(wgpu::Face::Back),
+            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+            glow: Some(true),
+            velocity: true,
+            ..Spec::new("terrain shade", TERRAIN_SRC, &terrain_layouts)
+        };
+        let grass = Spec {
+            vs: "vs_grass",
+            fs: Some("fs_grass"),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            // Tests against the depth the grass depth pipeline wrote just before.
+            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+            glow: Some(true),
+            alpha_to_coverage: true,
+            velocity: true,
+            ..Spec::new("grass", GRASS_SRC, &grass_layouts)
+        };
+        let grass_depth = Spec {
+            vs: "vs_grass_depth",
+            fs: Some("fs_grass_depth"),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            depth: Depth::main(true, wgpu::CompareFunction::Less),
+            glow: Some(false),
+            alpha_to_coverage: true,
+            color_writes: wgpu::ColorWrites::ALPHA,
+            ..Spec::new("grass depth", GRASS_SRC, &grass_layouts)
+        };
+        let [terrain, terrain_depth, terrain_shade, grass, grass_depth] = build_parallel(
+            device,
+            [terrain, terrain_depth, terrain_shade, grass, grass_depth].map(|spec| Spec {
+                samples,
+                glowless,
+                ..spec
+            }),
+        );
+        Self {
+            sky,
+            sky_late,
+            grid,
+            lines,
+            overlay,
+            outline,
+            terrain,
+            terrain_depth,
+            terrain_shade,
+            grass,
+            grass_depth,
+        }
+    }
+}
+
 /// Depth state; `None` in [`Spec::depth`] means the pass has no depth attachment.
 pub(super) struct Depth {
     pub format: wgpu::TextureFormat,
@@ -262,6 +452,9 @@ pub(super) struct Spec<'a> {
     pub color_writes: wgpu::ColorWrites,
     /// Filled triangles, or their edges (the wireframe draw modes, render/wireframe.rs).
     pub polygon: wgpu::PolygonMode,
+    /// A main-pass pipeline without the glow target (an empty colour slot in its place):
+    /// the main pass of a frame without emission has no glow image (render/glowless.rs).
+    pub glowless: bool,
 }
 
 impl<'a> Spec<'a> {
@@ -285,6 +478,7 @@ impl<'a> Spec<'a> {
             velocity: false,
             color_writes: wgpu::ColorWrites::ALL,
             polygon: wgpu::PolygonMode::Fill,
+            glowless: false,
         }
     }
 }
@@ -522,68 +716,6 @@ impl Pipelines {
             ],
         );
 
-        // The sky writes the sun disc to the glow target, and the camera's rotation to the
-        // motion vectors.
-        let sky = build(
-            device,
-            Spec {
-                glow: Some(true),
-                velocity: true,
-                ..Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout])
-            },
-        );
-        let sky_late = build(
-            device,
-            Spec {
-                vs: "vs_sky_far",
-                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-                glow: Some(true),
-                velocity: true,
-                ..Spec::new(
-                    "sky late",
-                    include_str!("shaders/sky.wgsl"),
-                    &[&view_layout],
-                )
-            },
-        );
-        let grid = build(
-            device,
-            Spec {
-                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                ..Spec::new("grid", include_str!("shaders/grid.wgsl"), &[&view_layout])
-            },
-        );
-        let line_buffers = [wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<LineVertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
-        }];
-        let lines = build(
-            device,
-            Spec {
-                vs: "vs_main",
-                buffers: &line_buffers,
-                topology: wgpu::PrimitiveTopology::LineList,
-                depth: Depth::main(true, wgpu::CompareFunction::LessEqual),
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[&view_layout])
-            },
-        );
-        let overlay = build(
-            device,
-            Spec {
-                vs: "vs_main",
-                buffers: &line_buffers,
-                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                ..Spec::new(
-                    "overlay",
-                    include_str!("shaders/lines.wgsl"),
-                    &[&view_layout],
-                )
-            },
-        );
         let mesh_buffers = mesh_buffers();
         let depth_src = DEPTH_SRC;
         let mask = build(
@@ -597,17 +729,6 @@ impl Pipelines {
                 samples: 1,
                 glow: None,
                 ..Spec::new("mask", depth_src, &[&view_layout, &draws_layout])
-            },
-        );
-        let outline = build(
-            device,
-            Spec {
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                ..Spec::new(
-                    "outline",
-                    include_str!("shaders/outline.wgsl"),
-                    &[&view_layout, &mask_layout],
-                )
             },
         );
 
@@ -690,34 +811,6 @@ impl Pipelines {
         ];
         let terrain_layout = layout("misty terrain", &terrain_entries);
         let empty_layout = layout("misty empty", &[]);
-        let terrain_layouts = [&view_layout, &mesh_layout, &empty_layout, &terrain_layout];
-        let terrain = Spec {
-            vs: "vs_terrain",
-            fs: Some("fs_terrain"),
-            cull: Some(wgpu::Face::Back),
-            depth: Depth::main(true, wgpu::CompareFunction::Less),
-            glow: Some(true),
-            velocity: true,
-            ..Spec::new("terrain", TERRAIN_SRC, &terrain_layouts)
-        };
-        let terrain_depth = Spec {
-            vs: "vs_terrain",
-            fs: Some("fs_terrain_depth"),
-            cull: Some(wgpu::Face::Back),
-            depth: Depth::main(true, wgpu::CompareFunction::Less),
-            glow: Some(false),
-            color_writes: wgpu::ColorWrites::empty(),
-            ..Spec::new("terrain depth", TERRAIN_SRC, &terrain_layouts)
-        };
-        let terrain_shade = Spec {
-            vs: "vs_terrain",
-            fs: Some("fs_terrain"),
-            cull: Some(wgpu::Face::Back),
-            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-            glow: Some(true),
-            velocity: true,
-            ..Spec::new("terrain shade", TERRAIN_SRC, &terrain_layouts)
-        };
         let terrain_shadow_layouts = [
             &shadow_view_layout,
             &draws_layout,
@@ -776,33 +869,6 @@ impl Pipelines {
                 entry(1, S::VERTEX, storage()),
             ],
         );
-        let grass_layouts = [
-            &view_layout,
-            &mesh_layout,
-            &grass_layout,
-            &grass_blades_layout,
-        ];
-        let grass = Spec {
-            vs: "vs_grass",
-            fs: Some("fs_grass"),
-            topology: wgpu::PrimitiveTopology::TriangleStrip,
-            // Tests against the depth the grass depth pipeline wrote just before.
-            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
-            glow: Some(true),
-            alpha_to_coverage: true,
-            velocity: true,
-            ..Spec::new("grass", GRASS_SRC, &grass_layouts)
-        };
-        let grass_depth = Spec {
-            vs: "vs_grass_depth",
-            fs: Some("fs_grass_depth"),
-            topology: wgpu::PrimitiveTopology::TriangleStrip,
-            depth: Depth::main(true, wgpu::CompareFunction::Less),
-            glow: Some(false),
-            alpha_to_coverage: true,
-            color_writes: wgpu::ColorWrites::ALPHA,
-            ..Spec::new("grass depth", GRASS_SRC, &grass_layouts)
-        };
         let grass_shadow_layouts = [
             &shadow_view_layout,
             &draws_layout,
@@ -832,27 +898,42 @@ impl Pipelines {
         };
 
         // The terrain and grass shaders take seconds each on a first launch: compile them at
-        // the same time.
-        let [
+        // the same time (the main-pass ones in `MainSet::new`).
+        let main_layouts = MainLayouts {
+            view: view_layout.clone(),
+            mesh: mesh_layout.clone(),
+            empty: empty_layout.clone(),
+            terrain: terrain_layout.clone(),
+            grass: grass_layout.clone(),
+            grass_blades: grass_blades_layout.clone(),
+            mask: mask_layout.clone(),
+        };
+        let (main, [terrain_shadow, grass_shadow]) = std::thread::scope(|scope| {
+            let shadows = std::thread::Builder::new()
+                .name("misty pipeline shadows".to_owned())
+                .spawn_scoped(scope, || {
+                    build_parallel(device, [terrain_shadow, grass_shadow])
+                })
+                .unwrap_or_else(|e| panic!("pipeline thread: {e}"));
+            let main = MainSet::new(device, &main_layouts, super::sample_count(), false);
+            let shadows = shadows
+                .join()
+                .unwrap_or_else(|p| std::panic::resume_unwind(p));
+            (main, shadows)
+        });
+        let MainSet {
+            sky,
+            sky_late,
+            grid,
+            lines,
+            overlay,
+            outline,
             terrain,
             terrain_depth,
             terrain_shade,
-            terrain_shadow,
             grass,
             grass_depth,
-            grass_shadow,
-        ] = build_parallel(
-            device,
-            [
-                terrain,
-                terrain_depth,
-                terrain_shade,
-                terrain_shadow,
-                grass,
-                grass_depth,
-                grass_shadow,
-            ],
-        );
+        } = main;
 
         // Post-processing: single-sample, no depth.
         let bloom_src = include_str!("shaders/bloom.wgsl");
@@ -939,6 +1020,37 @@ impl Pipelines {
             grass_shadow,
             grass_depth,
         }
+    }
+}
+
+impl Pipelines {
+    /// The layouts of the main-pass pipelines (for building a [`MainSet`] on a worker).
+    pub(super) fn main_layouts(&self) -> MainLayouts {
+        MainLayouts {
+            view: self.view_layout.clone(),
+            mesh: self.mesh_layout.clone(),
+            empty: self.empty_layout.clone(),
+            terrain: self.terrain_layout.clone(),
+            grass: self.grass_layout.clone(),
+            grass_blades: self.grass_blades_layout.clone(),
+            mask: self.mask_layout.clone(),
+        }
+    }
+
+    /// Trade the main-pass pipelines for `set`'s (render/glowless.rs).
+    pub(super) fn swap_main(&mut self, set: &mut MainSet) {
+        use std::mem::swap;
+        swap(&mut self.sky, &mut set.sky);
+        swap(&mut self.sky_late, &mut set.sky_late);
+        swap(&mut self.grid, &mut set.grid);
+        swap(&mut self.lines, &mut set.lines);
+        swap(&mut self.overlay, &mut set.overlay);
+        swap(&mut self.outline, &mut set.outline);
+        swap(&mut self.terrain, &mut set.terrain);
+        swap(&mut self.terrain_depth, &mut set.terrain_depth);
+        swap(&mut self.terrain_shade, &mut set.terrain_shade);
+        swap(&mut self.grass, &mut set.grass);
+        swap(&mut self.grass_depth, &mut set.grass_depth);
     }
 }
 
@@ -1089,21 +1201,24 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             })]
         })
         .unwrap_or_default();
+    let main_pass = spec.glow.is_some() && spec.depth.is_some();
     if let Some(writes) = spec.glow {
-        targets.push(Some(wgpu::ColorTargetState {
-            format: HDR_FORMAT,
-            blend: if writes { spec.blend } else { None },
-            write_mask: if writes {
-                wgpu::ColorWrites::ALL
-            } else {
-                wgpu::ColorWrites::empty()
-            },
-        }));
+        // A glowless main pass leaves the slot empty (the shader's glow output is ignored).
+        targets.push(
+            (!(main_pass && spec.glowless)).then(|| wgpu::ColorTargetState {
+                format: HDR_FORMAT,
+                blend: if writes { spec.blend } else { None },
+                write_mask: if writes {
+                    wgpu::ColorWrites::ALL
+                } else {
+                    wgpu::ColorWrites::empty()
+                },
+            }),
+        );
     }
     // The motion-vector target: every main pass pipeline has it (the pass binds it), the
     // prepass ones that write it too. Never blended: a transparent surface leaves the
     // motion of what is behind it.
-    let main_pass = spec.glow.is_some() && spec.depth.is_some();
     if main_pass || spec.velocity {
         targets.push(Some(wgpu::ColorTargetState {
             format: VELOCITY_FORMAT,

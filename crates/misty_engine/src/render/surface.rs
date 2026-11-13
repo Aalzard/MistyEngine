@@ -104,6 +104,9 @@ pub struct PipelineKey {
     /// Optional Standard features compiled into the variant
     /// ([`super::material_v2::feature`] bits; 0 = the plain Standard shader).
     pub features: u8,
+    /// Built for a main pass without the glow target (a frame without emission, see
+    /// render/glowless.rs).
+    pub glowless: bool,
 }
 
 impl PipelineKey {
@@ -249,6 +252,7 @@ mod tests {
             mode,
             double_sided: false,
             features: 0,
+            glowless: false,
         };
         let opaque = key(RenderingMode::Opaque);
         assert_eq!(opaque.blend(), None);
