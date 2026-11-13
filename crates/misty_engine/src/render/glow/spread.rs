@@ -204,10 +204,7 @@ pub(super) fn spread_instance(
     // which an orthographic camera keeps at 1 everywhere (its spread halo was drawn for a
     // light behind it).
     let fwd = cam.forward();
-    if corners
-        .iter()
-        .all(|c| (*c - cam.position).dot(fwd) <= 0.0)
-    {
+    if corners.iter().all(|c| (*c - cam.position).dot(fwd) <= 0.0) {
         return None;
     }
     let clips = corners.map(|c| vp * c.extend(1.0));
