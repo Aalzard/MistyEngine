@@ -192,9 +192,9 @@ fn read_text(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     if abs.is_dir() {
         return Err(format!("{rel} is a folder (asset.search lists files)"));
     }
-    let bytes = misty_engine::vfs::read(&abs).map_err(|e| format!("{rel}: {e}"))?;
-    let truncated = bytes.len() > READ_LIMIT;
-    let shown = &bytes[..bytes.len().min(READ_LIMIT)];
+    let (shown, size) = read_prefix(&abs, READ_LIMIT).map_err(|e| format!("{rel}: {e}"))?;
+    let truncated = size > READ_LIMIT as u64;
+    let shown = &shown[..];
     let text = match std::str::from_utf8(shown) {
         Ok(t) => t.to_owned(),
         // Cut inside a character at the limit: drop the partial one.
@@ -205,12 +205,28 @@ fn read_text(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     };
     let mut out = ToolResult::json(json!({
         "path": rel,
-        "bytes": bytes.len(),
+        "bytes": size,
         "truncated": truncated,
     }));
     // The text itself as its own block, unescaped, so it reads like the file.
     out.content.push(json!({ "type": "text", "text": text }));
     Ok(Outcome::Done(out))
+}
+
+/// The first `limit` bytes of a file and its whole size: a huge file (a baked lightmap, a
+/// video, a log someone left in Assets) is not read whole just to show its start.
+pub(crate) fn read_prefix(path: &Path, limit: usize) -> std::io::Result<(Vec<u8>, u64)> {
+    use std::io::Read;
+    if misty_engine::vfs::is_mounted() {
+        let bytes = misty_engine::vfs::read(path)?;
+        let size = bytes.len() as u64;
+        return Ok((bytes.into_iter().take(limit).collect(), size));
+    }
+    let file = std::fs::File::open(path)?;
+    let size = file.metadata()?.len();
+    let mut out = Vec::with_capacity(limit.min(size as usize));
+    file.take(limit as u64).read_to_end(&mut out)?;
+    Ok((out, size))
 }
 
 /// After writing an asset: rescan and let importers and editor-script hooks see it.
@@ -403,4 +419,27 @@ fn delete(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
             }
         }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// asset.read_text reads a big file's start only, and still tells its whole size (it used
+    /// to read the whole file, then cut it).
+    #[test]
+    fn big_files_are_read_only_up_to_the_limit() {
+        let path =
+            std::env::temp_dir().join(format!("misty_read_prefix_{}.txt", std::process::id()));
+        std::fs::write(&path, "x".repeat(3 * 1024 * 1024)).unwrap();
+        let (bytes, size) = super::read_prefix(&path, super::READ_LIMIT).unwrap();
+        assert_eq!(size, 3 * 1024 * 1024);
+        assert_eq!(bytes.len(), super::READ_LIMIT);
+        assert!(
+            bytes.capacity() <= super::READ_LIMIT,
+            "{} bytes held",
+            bytes.capacity()
+        );
+        let (small, size) = super::read_prefix(&path, 10).unwrap();
+        assert_eq!((small.len(), size), (10, 3 * 1024 * 1024));
+        std::fs::remove_file(path).ok();
+    }
 }

@@ -56,9 +56,12 @@ impl SceneEntry {
 /// "Assets/Scenes/Level.scene" → "Level".
 pub fn name_from_path(path: &str) -> String {
     let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    file.rsplit_once('.')
-        .map_or(file, |(stem, _)| stem)
-        .to_owned()
+    // A dot-file (".scene", ".hidden.scene") keeps its leading dot: the name is never empty.
+    match file.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => file,
+    }
+    .to_owned()
 }
 
 impl Scene {
@@ -448,6 +451,16 @@ impl Scene {
 mod tests {
     use super::*;
     use crate::scene::render_settings::SkyboxKind;
+
+    /// Scene names from paths, dot-files included (they used to get an empty name).
+    #[test]
+    fn scene_names_from_paths() {
+        assert_eq!(name_from_path("Assets/Scenes/Level.scene"), "Level");
+        assert_eq!(name_from_path("Assets\\Scenes\\My.Level.scene"), "My.Level");
+        assert_eq!(name_from_path("Assets/Scenes/.scene"), ".scene");
+        assert_eq!(name_from_path("Assets/.hidden.scene"), ".hidden");
+        assert_eq!(name_from_path("Untitled"), "Untitled");
+    }
 
     fn level() -> String {
         let mut s = Scene::new("Level");

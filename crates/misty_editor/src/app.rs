@@ -892,14 +892,20 @@ impl eframe::App for EditorApp {
         // Shader compiles and imports still queued belong to this project: drop them, so
         // nothing of it lands in the next project's caches.
         misty_engine::load_queue::cancel_all();
-        misty_engine::asset_db::saver::flush();
         crate::mcp::live::shutdown(&mut self.state);
         self.save_layout(true);
         crate::editor_scripts::on_exit(&mut self.state);
         self.save_hub_thumbnail();
-        // Screenshot runs leave the saved view alone so they stay repeatable.
+        // Screenshot runs leave the saved view alone so they stay repeatable, and print the
+        // Console's warnings and errors (automated smoke tests read them from stderr).
         if self.capture.is_none() {
             scene_files::remember_scene_view(&self.state);
+        } else {
+            for (_, e) in self.state.console.since(0) {
+                if e.level != crate::console::LogLevel::Info {
+                    eprintln!("console {:?}: {}", e.level, e.message);
+                }
+            }
         }
         if let Err(e) = misty_engine::profiler::capture::finish() {
             eprintln!("profiler capture: {e}");
@@ -907,6 +913,8 @@ impl eframe::App for EditorApp {
         if let Err(e) = misty_engine::render::save_pipeline_cache() {
             eprintln!("pipeline cache not saved: {e}");
         }
+        // Last: the steps above (editor scripts' exit hooks, the MCP session) may still save.
+        misty_engine::asset_db::saver::flush();
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.

@@ -217,14 +217,33 @@ fn collect_metas(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Asset paths name the same file whatever their letter case on Windows ("Assets/textures/a.png"
+/// loads "Assets/Textures/a.png"), so references are matched that way there when files move.
+const PATHS_IGNORE_CASE: bool = cfg!(windows);
+
+/// `path` starts with `prefix` (ASCII letter case ignored when `ignore_case`); the rest.
+fn strip_path_prefix<'a>(path: &'a str, prefix: &str, ignore_case: bool) -> Option<&'a str> {
+    if !ignore_case {
+        return path.strip_prefix(prefix);
+    }
+    let n = prefix.len();
+    (path.len() >= n
+        && path.as_bytes()[..n].eq_ignore_ascii_case(prefix.as_bytes())
+        && path.is_char_boundary(n))
+    .then(|| &path[n..])
+}
+
 /// `path` after renaming/moving `old` to `new` (a file, or a folder and everything in it).
 pub fn remap(path: &str, old: &str, new: &str) -> Option<String> {
-    if path == old {
+    remap_with(path, old, new, PATHS_IGNORE_CASE)
+}
+
+fn remap_with(path: &str, old: &str, new: &str, ignore_case: bool) -> Option<String> {
+    let rest = strip_path_prefix(path, old, ignore_case)?;
+    if rest.is_empty() {
         return Some(new.to_owned());
     }
-    path.strip_prefix(old)
-        .filter(|rest| rest.starts_with('/'))
-        .map(|rest| format!("{new}{rest}"))
+    rest.starts_with('/').then(|| format!("{new}{rest}"))
 }
 
 /// Rewrite every string in `v` that refers to `old` (see [`remap`]). Returns true if any changed.
@@ -264,22 +283,46 @@ pub fn covered_by_guids(text: &str, old: &str) -> bool {
             .all(|p| table.contains_key(p))
 }
 
-/// Replace quoted occurrences of `old` (and `old/…`, `old#sub-asset`) in JSON text.
+/// Replace quoted occurrences of `old` (and `old/…`, `old#sub-asset`) in JSON text (any
+/// letter case on Windows, where "assets/tex.png" names the same file as "Assets/Tex.png").
 pub fn rewrite_text(text: &str, old: &str, new: &str) -> Option<String> {
-    let exact = (format!("\"{old}\""), format!("\"{new}\""));
-    let prefix = (format!("\"{old}/"), format!("\"{new}/"));
-    let sub = (format!("\"{old}#"), format!("\"{new}#"));
-    if ![&exact, &prefix, &sub]
-        .iter()
-        .any(|(o, _)| text.contains(o.as_str()))
-    {
+    rewrite_text_with(text, old, new, PATHS_IGNORE_CASE)
+}
+
+fn rewrite_text_with(text: &str, old: &str, new: &str, ignore_case: bool) -> Option<String> {
+    let needle = format!("\"{old}");
+    let n = needle.len();
+    let bytes = text.as_bytes();
+    let matches_at = |at: usize| {
+        let w = &bytes[at..at + n];
+        if ignore_case {
+            w.eq_ignore_ascii_case(needle.as_bytes())
+        } else {
+            w == needle.as_bytes()
+        }
+    };
+    let mut out = String::new();
+    let mut copied = 0;
+    let mut at = 0;
+    while at + n <= bytes.len() {
+        if bytes[at] == b'"'
+            && matches_at(at)
+            && matches!(bytes.get(at + n), Some(b'"' | b'/' | b'#'))
+        {
+            out.push_str(&text[copied..at]);
+            out.push('"');
+            out.push_str(new);
+            at += n;
+            copied = at;
+        } else {
+            at += 1;
+        }
+    }
+    if copied == 0 {
         return None;
     }
-    Some(
-        text.replace(&exact.0, &exact.1)
-            .replace(&prefix.0, &prefix.1)
-            .replace(&sub.0, &sub.1),
-    )
+    out.push_str(&text[copied..]);
+    Some(out)
 }
 
 /// Rewrite references to `old` in every referencing file of the project at `root`, skipping
@@ -355,6 +398,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("Assets")).unwrap();
         dir
+    }
+
+    /// On Windows a reference spelled in another letter case names the same file: moving the
+    /// file or its folder rewrites it too (it was left pointing at the old place).
+    #[test]
+    fn references_in_another_letter_case_follow_a_move() {
+        let text = r#"{"a": "assets/textures/Rock.png", "b": "Assets/TEXTURES/rock.png#2", "c": "Assets/Textures2/x.png", "d": "Assets/Textures"}"#;
+        let moved = rewrite_text_with(text, "Assets/Textures", "Assets/Art", true).unwrap();
+        assert_eq!(
+            moved,
+            r#"{"a": "Assets/Art/Rock.png", "b": "Assets/Art/rock.png#2", "c": "Assets/Textures2/x.png", "d": "Assets/Art"}"#
+        );
+        // Case-sensitive file systems: only the exact spelling.
+        let exact = rewrite_text_with(text, "Assets/Textures", "Assets/Art", false).unwrap();
+        assert!(exact.contains("\"assets/textures/Rock.png\""), "{exact}");
+        assert!(exact.contains("\"Assets/Art\""), "{exact}");
+        assert_eq!(rewrite_text_with(text, "Assets/Nope", "X", true), None);
+        assert_eq!(
+            remap_with(
+                "assets/textures/a.png",
+                "Assets/Textures",
+                "Assets/Art",
+                true
+            )
+            .as_deref(),
+            Some("Assets/Art/a.png")
+        );
+        assert_eq!(
+            remap_with(
+                "assets/textures/a.png",
+                "Assets/Textures",
+                "Assets/Art",
+                false
+            ),
+            None
+        );
+        assert_eq!(
+            remap_with("Assets/Texturesque.png", "Assets/Textures", "X", true),
+            None
+        );
+        assert_eq!(remap_with("Assets/É.png", "Assets/é.png", "X", true), None);
     }
 
     #[test]

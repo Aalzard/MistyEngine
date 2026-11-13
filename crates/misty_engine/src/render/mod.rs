@@ -1017,6 +1017,12 @@ impl Renderer {
         post.ssr.intensity = post.ssr.intensity.max(1.0);
         post.misty_gi.enabled = true;
         post.misty_gi.intensity = post.misty_gi.intensity.max(1.0);
+        // Depth of Field, Motion Blur and Auto Exposure share their pipelines, made on the
+        // first frame that uses one of them: NoonValley's first Editor Scene frame spent
+        // 1.75 s of a 2.8 s freeze making them on the main thread.
+        post.motion_blur.active = true;
+        post.motion_blur.intensity = post.motion_blur.intensity.max(0.5);
+        post.motion_blur.maximum_velocity = post.motion_blur.maximum_velocity.max(0.05);
         let frame = Frame {
             camera: &camera,
             grid: None,

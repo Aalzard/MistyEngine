@@ -157,7 +157,7 @@ impl Physics2D {
         }
         if let Ok(c) = w.get::<&crate::tilemap::TilemapCollider2D>(e)
             && c.common.enabled
-            && let Some(b) = crate::tilemap::collider::builder(scene, e, &c, s)
+            && let Some(b) = crate::tilemap::collider::builder(scene, e, s)
         {
             out.push((b, c.common));
         }

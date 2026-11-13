@@ -540,22 +540,50 @@ impl CustomShaders {
                     (device.clone(), self.layouts(p), self.built.clone());
                 let (asset, shader, variant) = (asset.clone(), m.shader.clone(), m.variant.clone());
                 let job_cache = cache.clone();
-                crate::load_queue::shaders().push(m.shader.clone(), move |ticket| {
-                    let result = compile(&device, &layouts, asset, generation);
-                    ticket.publish(|| {
+                // A compile that panics still reaches `take_built` (as a failed compile: the
+                // error shader), so the material isn't left waiting for it forever.
+                let failed = (
+                    built.clone(),
+                    cache.clone(),
+                    m.shader.clone(),
+                    m.variant.clone(),
+                );
+                crate::load_queue::shaders().push_or(
+                    m.shader.clone(),
+                    move |ticket| {
+                        let result = compile(&device, &layouts, asset, generation);
+                        ticket.publish(|| {
+                            built
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .push(BuiltShader {
+                                    cache: job_cache,
+                                    generation,
+                                    shader,
+                                    variant,
+                                    result,
+                                })
+                        });
+                        Ok(())
+                    },
+                    move |message| {
+                        let (built, cache, shader, variant) = failed;
                         built
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
                             .push(BuiltShader {
-                                cache: job_cache,
+                                cache,
                                 generation,
                                 shader,
                                 variant,
-                                result,
+                                result: Err(ShaderError {
+                                    line: 0,
+                                    column: 0,
+                                    message: format!("the compile crashed: {message}"),
+                                }),
                             })
-                    });
-                    Ok(())
-                });
+                    },
+                );
             }
         } else if stale {
             let built = loaded.and_then(|asset| self.build(device, p, asset, generation));

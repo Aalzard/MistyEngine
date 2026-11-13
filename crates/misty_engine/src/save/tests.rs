@@ -472,3 +472,12 @@ fn compressed_saves_that_expand_too_far_are_refused() {
     gz.write_all(b"{}").unwrap();
     assert_eq!(super::decode(&gz.finish().unwrap()).unwrap(), "{}");
 }
+
+/// A data version past 2^32 reads as the largest version, not wrapped round to a small one
+/// (2^32 + 1 read as version 1, so a save from a newer game looked old and was migrated).
+#[test]
+fn huge_data_versions_do_not_wrap() {
+    let v = serde_json::json!({ "version": 4294967297u64 });
+    assert_eq!(super::version_of(&v), u32::MAX);
+    assert_eq!(super::version_of(&serde_json::json!({ "version": 7 })), 7);
+}

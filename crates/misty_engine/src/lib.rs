@@ -59,6 +59,8 @@ pub mod splines;
 pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;
+#[cfg(test)]
+pub(crate) mod test_cpu;
 pub mod testing;
 pub mod tilemap;
 pub mod timeline;

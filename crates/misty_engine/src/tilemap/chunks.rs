@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use glam::{IVec2, Mat4, Vec2, Vec3};
 use hecs::Entity;
@@ -174,11 +174,27 @@ struct Cached {
     /// Registered mesh key, texture and tint per batched mesh.
     meshes: Vec<(String, String, [f32; 4])>,
     animated: Vec<IVec2>,
+    /// The cache's frame when it was last drawn.
+    used: u64,
+}
+
+/// Versions of a chunk kept per (tilemap entity, chunk). Entity ids are only unique within a
+/// scene: two scenes drawn in turn (the editor's scene and a preview, two open projects' tests)
+/// can have a tilemap with the same id and different tiles, which then keep one version each
+/// instead of rebuilding the other's every frame.
+const VERSIONS: usize = 2;
+/// A chunk version not drawn for this many frames is dropped (erased chunks, scenes closed).
+const KEEP_FRAMES: u64 = 120;
+
+#[cfg(test)]
+thread_local! {
+    /// Chunks built on this thread (tests count rebuilds).
+    pub(super) static BUILDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 #[derive(Default)]
 struct Cache {
-    chunks: HashMap<(u64, IVec2), Cached>,
+    chunks: HashMap<(u64, IVec2), Vec<Cached>>,
     /// Calls since each tilemap was last drawn (stale ones are dropped).
     seen: HashMap<u64, u64>,
     frame: u64,
@@ -186,39 +202,63 @@ struct Cache {
 
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(Default::default);
 
-/// Hash of each chunk's own cells.
-fn chunk_hashes(map: &Tilemap) -> HashMap<IVec2, u64> {
+/// Versions of the tile assets a map uses, looked up once per draw.
+#[derive(Default)]
+struct Versions(HashMap<Arc<str>, u64>);
+
+impl Versions {
+    fn of(&mut self, tile: &Arc<str>) -> u64 {
+        *self
+            .0
+            .entry(tile.clone())
+            .or_insert_with(|| tile::version(tile))
+    }
+}
+
+/// Hash of each chunk's own cells (and the versions of their tile assets).
+fn chunk_hashes(map: &Tilemap, versions: &mut Versions) -> HashMap<IVec2, u64> {
     let mut hashers: HashMap<IVec2, std::collections::hash_map::DefaultHasher> = HashMap::new();
     for (&(x, y), cell) in &map.tiles.0 {
         let h = hashers.entry(chunk_of(IVec2::new(x, y))).or_default();
         (x, y).hash(h);
         cell.hash(h);
+        versions.of(&cell.tile).hash(h);
     }
     hashers.into_iter().map(|(k, h)| (k, h.finish())).collect()
 }
 
 /// Chunk hash including the ring of cells around it (Rule Tiles at the border see them), the
 /// grid, anchor and tile asset versions.
-fn full_hash(own: &HashMap<IVec2, u64>, chunk: IVec2, map: &Tilemap, grid: &Grid) -> u64 {
+fn full_hash(
+    own: &HashMap<IVec2, u64>,
+    chunk: IVec2,
+    map: &Tilemap,
+    grid: &Grid,
+    versions: &mut Versions,
+) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     own.get(&chunk).hash(&mut h);
     let lo = chunk * CHUNK - IVec2::ONE;
     let hi = lo + IVec2::splat(CHUNK + 1);
+    let mut ring = |c: IVec2, h: &mut std::collections::hash_map::DefaultHasher| {
+        let cell = map.get(c);
+        cell.hash(h);
+        cell.map(|cell| versions.of(&cell.tile)).hash(h);
+    };
     for x in lo.x..=hi.x {
         for y in [lo.y, hi.y] {
-            map.get(IVec2::new(x, y)).hash(&mut h);
+            ring(IVec2::new(x, y), &mut h);
         }
     }
     for y in lo.y + 1..hi.y {
         for x in [lo.x, hi.x] {
-            map.get(IVec2::new(x, y)).hash(&mut h);
+            ring(IVec2::new(x, y), &mut h);
         }
     }
     [grid.cell_size, grid.cell_gap, map.tile_anchor]
         .map(|v| v.to_array().map(f32::to_bits))
         .hash(&mut h);
     (grid.layout as u8).hash(&mut h);
-    tile::generation().hash(&mut h);
     h.finish()
 }
 
@@ -267,46 +307,61 @@ pub fn draws(
         let id = e.to_bits().get();
         let frame = cache.frame;
         cache.seen.insert(id, frame);
-        let own = chunk_hashes(&map);
+        let mut versions = Versions::default();
+        let own = chunk_hashes(&map, &mut versions);
         let mut stale = Vec::new();
-        // Chunks that no longer hold tiles.
-        cache.chunks.retain(|(owner, c), v| {
-            let keep = *owner != id || own.contains_key(c);
-            if !keep {
-                stale.extend(v.meshes.drain(..).map(|m| m.0));
+        // Chunk versions of this tilemap not drawn for a while (chunks that no longer hold
+        // tiles, the other scene's version once it is gone).
+        cache.chunks.retain(|(owner, _), versions| {
+            if *owner == id {
+                versions.retain_mut(|v| {
+                    let keep = frame - v.used <= KEEP_FRAMES;
+                    if !keep {
+                        stale.extend(v.meshes.drain(..).map(|m| m.0));
+                    }
+                    keep
+                });
             }
-            keep
+            !versions.is_empty()
         });
         let mut chunks: Vec<IVec2> = own.keys().copied().collect();
         chunks.sort_by_key(|c| (c.y, c.x));
         for chunk in chunks {
-            let hash = full_hash(&own, chunk, &map, &grid);
-            let entry = cache.chunks.get(&(id, chunk));
-            if entry.is_none_or(|c| c.hash != hash) {
-                let built = build_chunk(&map, &grid, chunk);
-                let meshes = built
-                    .meshes
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, cm)| {
-                        let name = format!("tilemap/{id}/{}_{}/{i}/{hash:x}", chunk.x, chunk.y);
-                        let key = crate::models::runtime::register_new(&name, cm.data);
-                        (key, cm.texture, cm.color)
-                    })
-                    .collect();
-                let old = cache.chunks.insert(
-                    (id, chunk),
-                    Cached {
+            let hash = full_hash(&own, chunk, &map, &grid, &mut versions);
+            let versions = cache.chunks.entry((id, chunk)).or_default();
+            let at = match versions.iter().position(|c| c.hash == hash) {
+                Some(i) => i,
+                None => {
+                    let built = build_chunk(&map, &grid, chunk);
+                    #[cfg(test)]
+                    BUILDS.with(|b| b.set(b.get() + 1));
+                    let meshes = built
+                        .meshes
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, cm)| {
+                            let name = format!("tilemap/{id}/{}_{}/{i}/{hash:x}", chunk.x, chunk.y);
+                            let key = crate::models::runtime::register_new(&name, cm.data);
+                            (key, cm.texture, cm.color)
+                        })
+                        .collect();
+                    if versions.len() >= VERSIONS
+                        && let Some(oldest) = (0..versions.len()).min_by_key(|&i| versions[i].used)
+                    {
+                        let old = versions.swap_remove(oldest);
+                        stale.extend(old.meshes.into_iter().map(|m| m.0));
+                    }
+                    versions.push(Cached {
                         hash,
                         meshes,
                         animated: built.animated,
-                    },
-                );
-                if let Some(old) = old {
-                    stale.extend(old.meshes.into_iter().map(|m| m.0));
+                        used: frame,
+                    });
+                    versions.len() - 1
                 }
-            }
-            let c = &cache.chunks[&(id, chunk)];
+            };
+            versions[at].used = frame;
+            let c = &versions[at];
             for (key, texture, color) in &c.meshes {
                 out.push(MeshDraw {
                     mesh: MeshRef::Asset(key.clone()),
@@ -338,9 +393,11 @@ pub fn draws(
     for id in gone {
         cache.seen.remove(&id);
         let mut stale = Vec::new();
-        cache.chunks.retain(|(owner, _), v| {
+        cache.chunks.retain(|(owner, _), versions| {
             if *owner == id {
-                stale.extend(v.meshes.drain(..).map(|m| m.0));
+                for v in versions.drain(..) {
+                    stale.extend(v.meshes.into_iter().map(|m| m.0));
+                }
                 false
             } else {
                 true

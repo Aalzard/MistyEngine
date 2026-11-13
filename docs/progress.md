@@ -4535,3 +4535,47 @@ Notes, method and every measurement: `docs/pending/r52-perf.md`. Grass left to r
   (depth of field, auto exposure, clouds); the references need retaking by the user.
   Sun shafts at 24 steps instead of 32 on Medium (High's tier) would save 0.13 ms for a
   0.01–0.02/255 difference in still shots (not changed: a default's look in motion).
+
+## Round 51 — Bug hunt 3: flaky tests, round 2 leftovers, recent code (branch r51-qa3)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r51-qa3.md`.
+
+### Flaky tests
+- **Game locale per thread**: the session locale was one process-wide value that every running
+  game re-picked, so tests playing games side by side switched each other's language
+  (`saveloc_demo_plays` saw Arabic). It now belongs to the thread that runs the game, like the
+  editor UI language; `localization::test_session()` puts the saved-locale PlayerPref back.
+- **World Partition flight**: waits for the start area as long as loading makes progress, and
+  excuses a slow frame only when the main thread's own CPU time was short on a busy machine
+  (shared with the meadow hitch test in `test_cpu.rs`).
+- Also: the MeadowDemo generator test (failing on main since the user's scene edits) checks
+  only what the generator owns; NavigationDemo2's test rebuilds carving in step; tile asset
+  versions instead of a global counter keep the chunk tests stable.
+- Checks: fmt clean, clippy 0 warnings, the full test suite green twice in a row; golden shots
+  unchanged from main (cycles ok; the meadow shots drift exactly as on main, since main's
+  MeadowDemo carries the user's volume edits).
+
+### Round 2 leftovers
+- Tilemap colliders no longer stop bodies dead on tile seams (full cells always merged into
+  row boxes for physics). Tilemap chunk meshes are kept per scene version (two scenes with
+  the same entity ids no longer rebuild each other), and loading some other tile asset no longer
+  rebuilds every chunk and collider. Terrain hole index lists are made once per edge mask.
+  `asset.read_text` reads only the part it returns. Dot-file scene names, save versions past
+  2^32, asset moves missing references in another letter case (Windows), and Stop restoring the
+  Properties targets and open Scene Tree rows.
+
+### Recent code
+- **Security**: Weather Volume clips must be project files (absolute paths and network shares
+  were opened); only the engine's generated weather clips play from outside the project.
+- **Data loss**: a direct material save is no longer overwritten by older bytes still waiting
+  in the background saver; the exit flush runs last; a UI-thread crash waits a few seconds for
+  pending saves.
+- **Background loads**: an import or compile that panics still clears its pending key (it stayed
+  pending for good: never retried, previews redrawn every frame).
+- **First frame**: the renderer's warm-up also makes the Depth of Field / Motion Blur pipelines
+  (NoonValley's first view frame froze 2.8 s, now 1.45 s; the rest is tree culling setup).
+- **Growth**: material thumbnails not shown for a while are dropped; Console lines are cut at
+  16 KB.
+- **NaN**: `AudioSource` numbers refuse NaN; AmbienceZones with Blend Distance 0 and the First
+  Person controller with Step Length 0 no longer produce NaN.

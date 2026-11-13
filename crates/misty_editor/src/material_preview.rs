@@ -22,6 +22,10 @@ pub const THUMB_SIZE: u32 = 128;
 const THUMBS_PER_FRAME: usize = 6;
 /// Main-thread time the thumbnails may take in one frame; the first one always renders.
 const THUMB_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
+/// A thumbnail no panel asked for in this many frames is dropped with its GPU texture (a
+/// long session scrolling through a big project kept every one it ever showed, 64 KB each,
+/// and those of deleted and renamed files).
+const THUMB_KEEP_FRAMES: u64 = 1800;
 
 /// Preview shape in the Inspector.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -38,6 +42,8 @@ struct Thumb {
     material: Option<Material>,
     texture: Option<(wgpu::Texture, egui::TextureId)>,
     rendered: bool,
+    /// [`MaterialPreviews::frame`] when a panel last asked for it.
+    used: u64,
 }
 
 /// What the Inspector preview shows.
@@ -68,6 +74,8 @@ fn shader_generation(m: &Material) -> u64 {
 #[derive(Default)]
 pub struct MaterialPreviews {
     thumbs: HashMap<PathBuf, Thumb>,
+    /// Frames rendered (thumbnails not asked for in a while are dropped).
+    frame: u64,
     /// Shared target the thumbnails are rendered into before being copied out.
     thumb_target: Option<RenderTarget>,
     inspector_wanted: Option<InspectorKey>,
@@ -87,12 +95,15 @@ impl MaterialPreviews {
     pub fn thumbnail(&mut self, path: &Path) -> Option<egui::TextureId> {
         // The background file watch's stamp (no `stat` on the main thread every frame).
         let modified = misty_engine::file_watch::cached_modified(path);
+        let frame = self.frame;
         let t = self.thumbs.entry(path.to_path_buf()).or_insert(Thumb {
             modified: None,
             material: None,
             texture: None,
             rendered: false,
+            used: frame,
         });
+        t.used = frame;
         if t.material.is_none() || t.modified != modified {
             t.modified = modified;
             t.material = Material::load(path).ok();
@@ -138,6 +149,22 @@ impl MaterialPreviews {
             frame: self.graph_frame,
         });
         self.graph.as_ref().map(|(_, _, id)| *id)
+    }
+
+    /// Count a frame and take out the thumbnails no panel asked for in a while; returns
+    /// their egui textures, to free (their GPU textures go with them).
+    fn take_stale(&mut self) -> Vec<egui::TextureId> {
+        self.frame += 1;
+        let frame = self.frame;
+        let mut freed = Vec::new();
+        self.thumbs.retain(|_, t| {
+            let keep = frame - t.used <= THUMB_KEEP_FRAMES;
+            if !keep && let Some((_, id)) = t.texture.take() {
+                freed.push(id);
+            }
+            keep
+        });
+        freed
     }
 
     /// True while some preview still waits to be rendered.
@@ -254,6 +281,13 @@ fn incomplete(gpu: &Gpu) -> bool {
 
 /// Render the previews panels asked for this frame.
 pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
+    let stale = p.take_stale();
+    if !stale.is_empty() {
+        let mut egui_renderer = gpu.state.renderer.write();
+        for id in stale {
+            egui_renderer.free_texture(&id);
+        }
+    }
     render_slot(gpu, p.inspector_wanted.as_ref(), &mut p.inspector);
     render_slot(gpu, p.graph_wanted.as_ref(), &mut p.graph);
     let waiting: Vec<PathBuf> = p
@@ -393,6 +427,28 @@ mod tests {
         p.thumbnail(&path);
         assert!(p.pending());
         assert_eq!(p.thumbs[&path].material.as_ref(), Some(&m));
+    }
+
+    /// Thumbnails panels stop asking for (scrolled away, deleted, renamed) are dropped after
+    /// a while; ones still shown stay.
+    #[test]
+    fn thumbnails_not_shown_for_a_while_are_dropped() {
+        let dir = std::env::temp_dir().join(format!("misty_thumb_drop_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("A.mat"), dir.join("B.mat"));
+        Material::default().save(&a).unwrap();
+        Material::default().save(&b).unwrap();
+        let mut p = MaterialPreviews::default();
+        p.thumbnail(&a);
+        p.thumbnail(&b);
+        for _ in 0..THUMB_KEEP_FRAMES + 5 {
+            assert!(p.take_stale().is_empty(), "nothing has a texture yet");
+            p.thumbnail(&a);
+        }
+        assert!(p.thumbs.contains_key(&a), "still shown");
+        assert!(!p.thumbs.contains_key(&b), "not shown for a while");
+        assert_eq!(p.thumbs.len(), 1);
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

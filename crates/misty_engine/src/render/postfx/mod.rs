@@ -196,6 +196,12 @@ pub(super) struct PostFx {
 }
 
 impl PostFx {
+    /// The effects' pipelines exist (made on their first use, or by `Renderer::warm_up`).
+    #[cfg(test)]
+    pub(super) fn pipelines_made(&self) -> bool {
+        self.pipes.is_some()
+    }
+
     /// Set up this render's effects (uniform, images); nothing when they are all off.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare(

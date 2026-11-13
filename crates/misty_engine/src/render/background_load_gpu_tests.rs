@@ -133,3 +133,18 @@ fn a_texture_decoded_in_the_background_arrives_and_a_broken_one_reports_an_error
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The warm-up (run on the worker that makes the editor's renderer) also makes the Depth of
+/// Field / Motion Blur / Auto Exposure pipelines: the first frame of a scene with one of them
+/// made them on the main thread (1.75 s in NoonValley).
+#[test]
+fn warm_up_makes_the_post_effect_pipelines() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    assert!(!r.postfx.pipelines_made());
+    r.warm_up(&device, &queue);
+    assert!(r.postfx.pipelines_made());
+}

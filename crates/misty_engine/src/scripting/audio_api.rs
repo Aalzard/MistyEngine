@@ -131,6 +131,12 @@ impl UserData for LAudioSource {
         for (name, get, set) in NUMBERS {
             f.add_field_method_get(name, move |lua, a| source_get(lua, a.0, get));
             f.add_field_method_set(name, move |lua, a, v: f32| {
+                // NaN passes `clamp`: one NaN voice turns the whole mix to noise or silence.
+                if v.is_nan() {
+                    return Err(mlua::Error::runtime(format!(
+                        "AudioSource.{name} must be a number, not NaN"
+                    )));
+                }
                 source_set(lua, a.0, |s| set(s, v))
             });
         }

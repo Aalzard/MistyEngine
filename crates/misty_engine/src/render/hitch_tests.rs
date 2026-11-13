@@ -116,12 +116,7 @@ pub(super) fn run(
         let work = work0
             .zip(os::thread_work())
             .map(|(a, b)| b.saturating_sub(a));
-        let busy = system0
-            .zip(os::system_times())
-            .and_then(|((i0, t0), (i1, t1))| {
-                let total = t1.saturating_sub(t0);
-                (total > 0).then(|| 1.0 - i1.saturating_sub(i0) as f32 / total as f32)
-            });
+        let busy = os::busy_between(system0, os::system_times());
         let cpu_ms = r.stats().cpu_ms;
         crate::profiler::end_frame();
         out.push(FrameTime {
@@ -307,92 +302,7 @@ fn scripted_meadow_run_has_no_hitches() {
     panic!("hitches in both attempts (the second's): {hitches:#?}");
 }
 
-/// The render thread's CPU time and the machine's busy time, from the OS.
-mod os {
-    #[cfg(windows)]
-    #[repr(C)]
-    #[derive(Default)]
-    struct FileTime {
-        low: u32,
-        high: u32,
-    }
-
-    #[cfg(windows)]
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetCurrentThread() -> isize;
-        fn QueryThreadCycleTime(thread: isize, cycles: *mut u64) -> i32;
-        fn GetSystemTimes(idle: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
-    }
-
-    /// CPU cycles this thread has run (kernel and user), counted only while it is on a core.
-    #[cfg(windows)]
-    pub fn thread_work() -> Option<u64> {
-        let mut cycles = 0u64;
-        // SAFETY: the current thread's pseudo handle needs no closing; `cycles` is writable.
-        let ok = unsafe { QueryThreadCycleTime(GetCurrentThread(), &mut cycles) };
-        (ok != 0).then_some(cycles)
-    }
-
-    /// (idle, total) CPU time of every core since boot, in 100 ns units.
-    #[cfg(windows)]
-    pub fn system_times() -> Option<(u64, u64)> {
-        let (mut idle, mut kernel, mut user) = Default::default();
-        // SAFETY: three writable FILETIMEs.
-        let ok = unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) };
-        let t = |f: &FileTime| (u64::from(f.high) << 32) | u64::from(f.low);
-        // Kernel time includes the idle time.
-        (ok != 0).then(|| (t(&idle), t(&kernel) + t(&user)))
-    }
-
-    #[cfg(target_os = "linux")]
-    #[repr(C)]
-    struct Timespec {
-        sec: i64,
-        nsec: i64,
-    }
-
-    #[cfg(target_os = "linux")]
-    unsafe extern "C" {
-        fn clock_gettime(clock: i32, ts: *mut Timespec) -> i32;
-    }
-
-    /// Nanoseconds of CPU time this thread has used.
-    #[cfg(target_os = "linux")]
-    pub fn thread_work() -> Option<u64> {
-        const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
-        let mut ts = Timespec { sec: 0, nsec: 0 };
-        // SAFETY: `ts` is a writable timespec (64-bit fields on the 64-bit targets built).
-        let ok = unsafe { clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut ts) } == 0;
-        ok.then(|| ts.sec as u64 * 1_000_000_000 + ts.nsec as u64)
-    }
-
-    /// (idle, total) CPU time of every core since boot, in clock ticks (`/proc/stat`).
-    #[cfg(target_os = "linux")]
-    pub fn system_times() -> Option<(u64, u64)> {
-        let text = std::fs::read_to_string("/proc/stat").ok()?;
-        let fields: Vec<u64> = text
-            .lines()
-            .next()?
-            .split_whitespace()
-            .skip(1)
-            .filter_map(|f| f.parse().ok())
-            .collect();
-        // user nice system idle iowait ...
-        let idle = fields.get(3)? + fields.get(4).copied().unwrap_or(0);
-        Some((idle, fields.iter().sum()))
-    }
-
-    #[cfg(not(any(windows, target_os = "linux")))]
-    pub fn thread_work() -> Option<u64> {
-        None
-    }
-
-    #[cfg(not(any(windows, target_os = "linux")))]
-    pub fn system_times() -> Option<(u64, u64)> {
-        None
-    }
-}
+use crate::test_cpu as os;
 
 /// Every pipeline a demo scene draws with exists after its first frames: moving the camera
 /// (LOD cross-fades, new shadow casters, effects) compiles no shader mid-run.

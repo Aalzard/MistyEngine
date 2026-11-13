@@ -565,6 +565,14 @@ impl ScriptHost {
         self.with_world(|w| f(&w.navigation))
     }
 
+    /// The navigation runtime, to change (tests: `sync_rebuilds` for frame-exact carving).
+    pub fn with_navigation_mut<R>(
+        &self,
+        f: impl FnOnce(&mut crate::navigation::NavRuntime) -> R,
+    ) -> R {
+        self.with_world(|w| f(&mut w.navigation))
+    }
+
     /// The audio voices of this game (between frames).
     pub fn with_audio<R>(&self, f: impl FnOnce(&mut Audio) -> R) -> R {
         self.with_world(|w| f(&mut w.audio))

@@ -234,7 +234,8 @@ function Locomotion:afterMove(nowGrounded, velocity, dt)
     -- walked, so the bob stops exactly when the feet do.
     if nowGrounded then
         local run01 = clamp01((speed - t.walkSpeed) / math.max(0.01, t.runSpeed - t.walkSpeed))
-        local step = t.walkStepLength + (t.runStepLength - t.walkStepLength) * run01
+        -- (At least 1 cm: a Step Length of 0 made the phase NaN, and the camera with it.)
+        local step = math.max(0.01, t.walkStepLength + (t.runStepLength - t.walkStepLength) * run01)
         local rate = speed / (2 * step) * 2 * math.pi
         self.phase = (self.phase + rate * dt) % (2 * math.pi)
         self.phaseRate = rate
