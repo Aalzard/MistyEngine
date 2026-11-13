@@ -150,7 +150,8 @@ pub(super) fn local_shadow_bytes(layers: u32) -> u64 {
 
 impl RenderTarget {
     /// Bytes of this view's images: MSAA HDR colour, emission and depth, the resolved HDR and
-    /// emission images, the output, the pre-finish image, the selection mask and the bloom mips.
+    /// emission images, the output, the pre-finish image, the selection mask, the bloom mips
+    /// and the shadow mask's buffers.
     pub fn memory_bytes(&self) -> u64 {
         use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT};
         let (w, h) = self.size();
@@ -171,7 +172,7 @@ impl RenderTarget {
                 texture_bytes(HDR_FORMAT, bw, bh, 1, 1)
             })
             .sum();
-        full + bloom
+        full + bloom + self.shadow_mask.bytes()
     }
 }
 
