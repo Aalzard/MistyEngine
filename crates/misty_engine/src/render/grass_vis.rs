@@ -64,10 +64,64 @@ pub(super) struct VisPipelines {
     shade: wgpu::ComputePipeline,
     jobs_reset: wgpu::ComputePipeline,
     composite: wgpu::RenderPipeline,
+    /// The composite is the glowless one (swapped in: render/glowless.rs).
+    composite_glowless: bool,
     resolve_layout: wgpu::BindGroupLayout,
     composite_layout: wgpu::BindGroupLayout,
     /// The resolve's per-terrain uniforms (`FRAME_STRIDE` apart).
     frame: wgpu::Buffer,
+}
+
+/// Writes colour + coverage alpha, the glow's coverage alpha and the motion vector of each
+/// sample a blade owns (unblended, like the lit grass), tests nothing.
+fn composite_pipeline(
+    device: &wgpu::Device,
+    view_layout: &wgpu::BindGroupLayout,
+    composite_layout: &wgpu::BindGroupLayout,
+    glowless: bool,
+) -> wgpu::RenderPipeline {
+    pipelines::build(
+        device,
+        pipelines::Spec {
+            fs: Some("fs_grass_composite"),
+            glow: Some(true),
+            velocity: true,
+            glowless,
+            ..pipelines::Spec::new(
+                "grass composite",
+                include_str!("shaders/grass_composite.wgsl"),
+                &[view_layout, composite_layout],
+            )
+        },
+    )
+}
+
+impl VisPipelines {
+    /// Whether the composite in use is the glowless one.
+    pub(super) fn glowless(&self) -> bool {
+        self.composite_glowless
+    }
+
+    /// A job building the composite for the other glow mode.
+    pub(super) fn other_composite_job(
+        &self,
+        device: &wgpu::Device,
+        p: &pipelines::Pipelines,
+    ) -> impl FnOnce() -> wgpu::RenderPipeline + Send + 'static {
+        let (device, view, layout) = (
+            device.clone(),
+            p.view_layout.clone(),
+            self.composite_layout.clone(),
+        );
+        let glowless = !self.composite_glowless;
+        move || composite_pipeline(&device, &view, &layout, glowless)
+    }
+
+    /// Trade the composite for `other` (the other glow mode's).
+    pub(super) fn swap_composite(&mut self, other: &mut wgpu::RenderPipeline) {
+        std::mem::swap(&mut self.composite, other);
+        self.composite_glowless = !self.composite_glowless;
+    }
 }
 
 /// Run `f` inside a validation error scope: false when wgpu refused something it made (a
@@ -315,21 +369,7 @@ impl VisPipelines {
                 read(2, wgpu::TextureViewDimension::D2),
             ],
         });
-        // Writes colour + coverage alpha, the glow's coverage alpha and the motion vector of
-        // each sample a blade owns (unblended, like the lit grass), tests nothing.
-        let composite = pipelines::build(
-            device,
-            pipelines::Spec {
-                fs: Some("fs_grass_composite"),
-                glow: Some(true),
-                velocity: true,
-                ..pipelines::Spec::new(
-                    "grass composite",
-                    include_str!("shaders/grass_composite.wgsl"),
-                    &[&p.view_layout, &composite_layout],
-                )
-            },
-        );
+        let composite = composite_pipeline(device, &p.view_layout, &composite_layout, false);
         let frame = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty grass visibility frame"),
             size: FRAME_STRIDE * MAX_TERRAINS as u64,
@@ -345,6 +385,7 @@ impl VisPipelines {
             shade,
             jobs_reset,
             composite,
+            composite_glowless: false,
             resolve_layout,
             composite_layout,
             frame,

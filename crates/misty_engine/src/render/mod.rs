@@ -18,6 +18,7 @@ mod frame_debug;
 mod frame_encoder;
 mod frame_lists;
 mod glow;
+mod glowless;
 mod gpu_culling;
 mod gpu_timer;
 mod grass_cull;
@@ -323,6 +324,7 @@ impl MaterialParams {
             mode: self.mode,
             double_sided: self.double_sided,
             features: self.features(),
+            glowless: false,
         }
     }
 
@@ -617,6 +619,8 @@ pub struct Renderer {
     shadow_denoise: shadow_denoise::ShadowDenoise,
     /// Light halos and lens flares.
     glows: glow::Glows,
+    /// Frames without emission: the main pass without its glow target (glowless.rs).
+    glowless: glowless::Glowless,
     /// Auto Exposure, Depth of Field and Motion Blur (after the temporal resolve).
     postfx: postfx::PostFx,
     /// Decal Projectors (decal resolve after the screen-space prepass).
@@ -807,6 +811,7 @@ impl Renderer {
             screen_trace,
             shadow_denoise,
             glows: Default::default(),
+            glowless: Default::default(),
             postfx: Default::default(),
             decals: Default::default(),
             white_colors: None,
@@ -1670,6 +1675,8 @@ impl Renderer {
             crate::profile_scope!("Render.PrepareAssets");
             self.prepare_assets(device, queue, frame, &lod);
         }
+        self.update_glowless(device, frame, &lod);
+        target.keep_glow_msaa(device, !self.glowless.active);
         let aspect = target.aspect();
         // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame (of an
         // internal pixel when the target is upscaled: the upscaler is TAA at a lower
@@ -3059,12 +3066,18 @@ impl Renderer {
                 store: op(store),
             },
         };
+        // (None in a glowless frame: glowless.rs.)
+        let glow = (!self.glowless.active).then(|| {
+            target
+                .glow_msaa_view()
+                .expect("made for frames with glow (render_frame)")
+        });
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
             color_attachments: &[
                 Some(color(target.msaa_view(), target.hdr_view())),
                 // Emission only; drives bloom.
-                Some(color(target.glow_msaa_view(), target.glow_view())),
+                glow.as_ref().map(|g| color(g, target.glow_view())),
                 // Motion vectors (no resolve: TAA reads sample 0, like the depth).
                 Some(wgpu::RenderPassColorAttachment {
                     view: target.velocity_view(),
@@ -3448,6 +3461,8 @@ impl Renderer {
                     None,
                     stats,
                 );
+                drop(pass);
+                self.sky_glow_pass(device, encoder, target);
                 return;
             }
         }
@@ -3491,6 +3506,8 @@ impl Renderer {
             scene,
             stats,
         );
+        drop(pass);
+        self.sky_glow_pass(device, encoder, target);
     }
 
     /// The editor grid (after the opaque scene, before transparents).

@@ -235,6 +235,8 @@ struct Pipelines {
     impostor_equal: wgpu::RenderPipeline,
     shadow: [wgpu::RenderPipeline; 3],
     prepass: [wgpu::RenderPipeline; 3],
+    /// The main-pass ones are glowless (swapped in: render/glowless.rs).
+    glowless: bool,
 }
 
 fn part_index(p: Part) -> usize {
@@ -344,15 +346,33 @@ fn prepass_spec<'a>(
     }
 }
 
-impl Pipelines {
-    /// `samples`: the main pass's MSAA samples (passed in: a worker may build these).
-    fn new(device: &wgpu::Device, l: &TreeLayouts, samples: u32) -> Self {
+/// The main-pass tree pipelines (their glowless versions are swapped in for frames without
+/// emission: render/glowless.rs).
+pub(super) struct TreeMain {
+    main: [wgpu::RenderPipeline; 3],
+    leaves_depth: wgpu::RenderPipeline,
+    leaves_equal: wgpu::RenderPipeline,
+    impostor_depth: wgpu::RenderPipeline,
+    impostor_equal: wgpu::RenderPipeline,
+}
+
+impl TreeMain {
+    fn new(device: &wgpu::Device, l: &TreeLayouts, samples: u32, glowless: bool) -> Self {
         let layout = &l.tree;
         let mesh = vertex_layouts();
         let imp = [instance_layout()];
         let back = Some(wgpu::Face::Back);
         let lit = [&l.view, &l.mesh, layout];
-        let main_pass = |spec: Spec| build(device, Spec { samples, ..spec });
+        let main_pass = |spec: Spec| {
+            build(
+                device,
+                Spec {
+                    samples,
+                    glowless,
+                    ..spec
+                },
+            )
+        };
         let main = [
             main_pass(main_spec(
                 "tree bark",
@@ -434,6 +454,30 @@ impl Pipelines {
                 true,
             )
         });
+        Self {
+            main,
+            leaves_depth,
+            leaves_equal,
+            impostor_depth,
+            impostor_equal,
+        }
+    }
+}
+
+impl Pipelines {
+    /// `samples`: the main pass's MSAA samples (passed in: a worker may build these).
+    fn new(device: &wgpu::Device, l: &TreeLayouts, samples: u32) -> Self {
+        let layout = &l.tree;
+        let mesh = vertex_layouts();
+        let imp = [instance_layout()];
+        let TreeMain {
+            main,
+            leaves_depth,
+            leaves_equal,
+            impostor_depth,
+            impostor_equal,
+        } = TreeMain::new(device, l, samples, false);
+        let back = Some(wgpu::Face::Back);
         let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
             build(
@@ -505,6 +549,7 @@ impl Pipelines {
             impostor_equal,
             shadow,
             prepass,
+            glowless: false,
         }
     }
 }
@@ -763,6 +808,22 @@ impl GpuTree {
         ];
         let mut bytes = lods.iter().map(GpuMesh::bytes).sum::<u64>();
         let mut texture_bytes = 0;
+        #[cfg(test)]
+        if std::env::var_os("MISTY_TREE_TEXTURES").is_some() {
+            for (name, t) in ["bark", "bark normal", "leaves", "leaf normal", "impostor", "impostor normal"]
+                .iter()
+                .zip(&textures)
+            {
+                let l = &t.layers[0];
+                eprintln!(
+                    "tree texture {name}: {:?} {:?} × {} layers, {:.2} MB",
+                    l.format(),
+                    l.size(),
+                    t.layers.len(),
+                    t.bytes() as f64 / 1048576.0
+                );
+            }
+        }
         let textures = textures.map(|t| {
             let (view, b) =
                 super::texture::upload_made(device, queue, "misty tree texture", &t.layers, false);
@@ -1050,6 +1111,38 @@ impl TreeRenderer {
     /// Any tree to draw this frame.
     pub fn has_trees(&self) -> bool {
         !self.main.is_empty()
+    }
+
+    /// Whether the main-pass pipelines in use are the glowless ones (None: none built yet).
+    pub(super) fn glowless(&self) -> Option<bool> {
+        self.pipelines.as_ref().map(|p| p.glowless)
+    }
+
+    /// A job building the main-pass pipelines for the other glow mode (None: no pipelines
+    /// yet).
+    pub(super) fn other_main_job(
+        &self,
+        device: &wgpu::Device,
+        pipelines: &super::pipelines::Pipelines,
+    ) -> Option<impl FnOnce() -> TreeMain + Send + 'static> {
+        let glowless = !self.pipelines.as_ref()?.glowless;
+        let (device, layouts) = (device.clone(), TreeLayouts::of(pipelines, &self.layout));
+        let samples = super::sample_count();
+        Some(move || TreeMain::new(&device, &layouts, samples, glowless))
+    }
+
+    /// Trade the main-pass pipelines for `other`'s (the other glow mode).
+    pub(super) fn swap_main(&mut self, other: &mut TreeMain) {
+        let Some(p) = self.pipelines.as_mut() else {
+            return;
+        };
+        use std::mem::swap;
+        swap(&mut p.main, &mut other.main);
+        swap(&mut p.leaves_depth, &mut other.leaves_depth);
+        swap(&mut p.leaves_equal, &mut other.leaves_equal);
+        swap(&mut p.impostor_depth, &mut other.impostor_depth);
+        swap(&mut p.impostor_equal, &mut other.impostor_equal);
+        p.glowless = !p.glowless;
     }
 
     /// Start building the pipelines on a worker thread (streaming only), so the first frame

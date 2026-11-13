@@ -8,7 +8,7 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 8] = [
+pub const NAMES: [&str; 9] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
@@ -17,6 +17,7 @@ pub const NAMES: [&str; 8] = [
     "tree_depth",
     "tree_gpu_cull",
     "tree_occlusion",
+    "glowless",
 ];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
@@ -26,6 +27,7 @@ static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
+static GLOWLESS: AtomicBool = AtomicBool::new(true);
 // Off by default (see `tree_occlusion`).
 static TREE_OCCLUSION: AtomicBool = AtomicBool::new(false);
 
@@ -39,6 +41,7 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "tree_depth" => Some(&TREE_DEPTH),
         "tree_gpu_cull" => Some(&TREE_GPU_CULL),
         "tree_occlusion" => Some(&TREE_OCCLUSION),
+        "glowless" => Some(&GLOWLESS),
         _ => None,
     }
 }
@@ -76,6 +79,11 @@ fn get(f: &AtomicBool) -> bool {
 /// `Renderer::main_pass`).
 pub fn terrain_late() -> bool {
     get(&TERRAIN_LATE)
+}
+
+/// Frames without emission draw the main pass without its glow target (render/glowless.rs).
+pub fn glowless() -> bool {
+    get(&GLOWLESS)
 }
 
 /// The main pass draws the sky after the opaque scene, depth tested on the far plane.

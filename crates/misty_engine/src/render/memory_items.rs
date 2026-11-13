@@ -149,9 +149,9 @@ pub(super) fn local_shadow_bytes(layers: u32) -> u64 {
 }
 
 impl RenderTarget {
-    /// Bytes of this view's images: MSAA HDR colour, emission and depth, the resolved HDR and
-    /// emission images, the output, the pre-finish image, the selection mask, the bloom mips
-    /// and the shadow mask's buffers.
+    /// Bytes of this view's images: MSAA HDR colour, emission (while it exists) and depth, the
+    /// resolved HDR and emission images, the output, the pre-finish image, the selection mask,
+    /// the bloom mips and the shadow mask's buffers.
     pub fn memory_bytes(&self) -> u64 {
         use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT};
         let (w, h) = self.size();
@@ -160,7 +160,9 @@ impl RenderTarget {
         let (ow, oh) = self.output_size();
         let out = |format| texture_bytes(format, ow, oh, 1, 1);
         let upscaled = if self.upscaled() { out(HDR_FORMAT) } else { 0 };
-        let full = at(HDR_FORMAT, self.samples()) * 2
+        // The MSAA emission image only while it exists (render/glowless.rs).
+        let glow = self.glow_msaa_view().is_some() as u64;
+        let full = at(HDR_FORMAT, self.samples()) * (1 + glow)
             + at(DEPTH_FORMAT, self.samples())
             + at(HDR_FORMAT, 1) * 2
             + out(COLOR_FORMAT) * 2
