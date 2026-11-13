@@ -334,18 +334,52 @@
     },
     {
       "id": 25,
-      "type": "OnUpdate",
+      "type": "OnCustomEvent",
       "position": [
         0.0,
         1110.0
-      ]
+      ],
+      "params": {
+        "name": "DashUsed",
+        "args": "ready"
+      }
     },
     {
       "id": 26,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        1110.0
+      ],
+      "params": {
+        "name": "Dash Ready At"
+      }
+    },
+    {
+      "id": 27,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        1350.0
+      ]
+    },
+    {
+      "id": 28,
+      "type": "Sequence",
+      "position": [
+        330.0,
+        1350.0
+      ],
+      "params": {
+        "count": "2"
+      }
+    },
+    {
+      "id": 29,
       "type": "Api",
       "position": [
-        80.0,
-        1205.0
+        410.0,
+        1445.0
       ],
       "params": {
         "owner": "Input",
@@ -359,19 +393,19 @@
       }
     },
     {
-      "id": 27,
+      "id": 30,
       "type": "Branch",
       "position": [
-        330.0,
-        1110.0
+        660.0,
+        1350.0
       ]
     },
     {
-      "id": 28,
+      "id": 31,
       "type": "Api",
       "position": [
-        660.0,
-        1110.0
+        990.0,
+        1350.0
       ],
       "params": {
         "owner": "SceneManager",
@@ -382,6 +416,100 @@
       "values": {
         "nameOrIndex": {
           "String": "NodeGameMenu"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "Api",
+      "position": [
+        160.0,
+        1787.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 33,
+      "type": "GetVariable",
+      "position": [
+        160.0,
+        1882.5
+      ],
+      "params": {
+        "name": "Dash Ready At"
+      }
+    },
+    {
+      "id": 34,
+      "type": "GreaterOrEqual",
+      "position": [
+        410.0,
+        1692.5
+      ]
+    },
+    {
+      "id": 35,
+      "type": "Branch",
+      "position": [
+        660.0,
+        1597.5
+      ]
+    },
+    {
+      "id": 36,
+      "type": "Api",
+      "position": [
+        740.0,
+        1692.5
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Dash Text"
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "Api",
+      "position": [
+        990.0,
+        1597.5
+      ],
+      "params": {
+        "owner": "#Text",
+        "member": "text",
+        "mode": "set"
+      },
+      "values": {
+        "Value": {
+          "String": "Dash: ready"
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "Api",
+      "position": [
+        990.0,
+        1845.0
+      ],
+      "params": {
+        "owner": "#Text",
+        "member": "text",
+        "mode": "set"
+      },
+      "values": {
+        "Value": {
+          "String": "Dash: ..."
         }
       }
     }
@@ -520,21 +648,87 @@
       "input": "In"
     },
     {
-      "from": 26,
-      "output": "Result",
-      "to": 27,
-      "input": "Condition"
+      "from": 25,
+      "output": "ready",
+      "to": 26,
+      "input": "Value"
     },
     {
       "from": 25,
       "output": "Out",
-      "to": 27,
+      "to": 26,
       "input": "In"
     },
     {
       "from": 27,
-      "output": "True",
+      "output": "Out",
       "to": 28,
+      "input": "In"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 30,
+      "input": "Condition"
+    },
+    {
+      "from": 28,
+      "output": "Then 0",
+      "to": 30,
+      "input": "In"
+    },
+    {
+      "from": 30,
+      "output": "True",
+      "to": 31,
+      "input": "In"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 34,
+      "input": "A"
+    },
+    {
+      "from": 33,
+      "output": "Value",
+      "to": 34,
+      "input": "B"
+    },
+    {
+      "from": 34,
+      "output": "Result",
+      "to": 35,
+      "input": "Condition"
+    },
+    {
+      "from": 28,
+      "output": "Then 1",
+      "to": 35,
+      "input": "In"
+    },
+    {
+      "from": 36,
+      "output": "Result",
+      "to": 37,
+      "input": "Target"
+    },
+    {
+      "from": 35,
+      "output": "True",
+      "to": 37,
+      "input": "In"
+    },
+    {
+      "from": 36,
+      "output": "Result",
+      "to": 38,
+      "input": "Target"
+    },
+    {
+      "from": 35,
+      "output": "False",
+      "to": 38,
       "input": "In"
     }
   ],
@@ -560,6 +754,13 @@
       "type": "bool",
       "value": {
         "Bool": false
+      }
+    },
+    {
+      "name": "Dash Ready At",
+      "type": "float",
+      "value": {
+        "Float": 0.0
       }
     }
   ]

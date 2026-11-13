@@ -243,6 +243,7 @@ fn node_game_plays_stage_one() {
     );
     assert_eq!(s.text("Hearts Text"), "Hearts: 3");
     assert_eq!(s.text("Stage Text"), "Stage 1");
+    assert_eq!(s.text("Dash Text"), "Dash: ready");
     // The Puff patrols.
     let puff = s.find("Puff 1").unwrap();
     let puff_x = s.pos(puff).x;
@@ -263,6 +264,7 @@ fn node_game_plays_stage_one() {
     let enemies = ["Puff 1", "Brute 1", "Puff 2"];
     let mut dashes = 0;
     let mut glowed = false;
+    let mut recharging = false;
     let mut brute_health = Vec::new();
     let mut jumped_from = Vec::new();
     let mut was_dashing = false;
@@ -301,6 +303,7 @@ fn node_game_plays_stage_one() {
             glowed |= c[0] > 2.0 && c[1] > 2.0 && c[2] > 2.0;
         }
         was_dashing = dashing;
+        recharging |= s.text("Dash Text") == "Dash: ...";
         if let Some(Value::Int(h)) = s.find("Brute 1").and_then(|b| s.variable(b, "Health"))
             && brute_health.last() != Some(&h)
         {
@@ -310,6 +313,7 @@ fn node_game_plays_stage_one() {
     }
     assert!(dashes >= 3, "dashed {dashes} times");
     assert!(glowed, "the dashing player glows white");
+    assert!(recharging, "the HUD shows the dash recharging");
     assert!(s.find("Puff 1").is_none(), "the Puff was destroyed");
     assert!(s.find("Brute 1").is_none(), "the Brute was destroyed");
     assert_eq!(brute_health, [2, 1], "the Brute took two hits");

@@ -4888,6 +4888,83 @@
         },
         "Rect Transform": {
           "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            28.0,
+            -72.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            400.0,
+            44.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            0.08,
+            0.1,
+            0.2,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 30.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "Dash: ready",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Dash Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 52
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
             1.0,
             1.0
           ],
