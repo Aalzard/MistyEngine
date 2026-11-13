@@ -128,20 +128,22 @@ fn texel_radii(t: vec4<u32>) -> vec4<u32> {
 }
 
 // At most two lights (channels 2 and 3 unused): two `u32`s per texel, [visibility 0 | 1
-// (unorm16 × 2), depth (f16 bits without the sign, 15) | frames (5) | radii 0, 1 (6 + 6)].
+// (unorm16 × 2), depth (the top 15 bits of its f32 bits, rounded: 7 mantissa bits, within
+// 0.4%) | frames (5) | radii 0, 1 (6 + 6)]. (No half floats: custom shaders' validation
+// lacks that capability.)
 fn narrow() -> bool {
     return mp.slots.z >= 8u && mp.slots.w >= 8u;
 }
 
 fn narrow_texel(t: vec4<u32>) -> vec2<u32> {
-    let d = pack2x16float(vec2<f32>(bitcast<f32>(t.z), 0.0)) & 0x7fffu;
+    let d = ((t.z + 0x8000u) >> 16u) & 0x7fffu;
     let f = min(t.w & 0xffu, 31u);
     let r = (vec2<u32>(t.w) >> vec2<u32>(8u, 14u)) & vec2<u32>(63u);
     return vec2<u32>(t.x, d | (f << 15u) | (r.x << 20u) | (r.y << 26u));
 }
 
 fn wide_texel(n: vec2<u32>) -> vec4<u32> {
-    let d = unpack2x16float(n.y & 0x7fffu).x;
+    let d = bitcast<f32>((n.y & 0x7fffu) << 16u);
     let f = (n.y >> 15u) & 31u;
     let r = (vec2<u32>(n.y) >> vec2<u32>(20u, 26u)) & vec2<u32>(63u);
     return vec4<u32>(n.x, 0xffffffffu, bitcast<u32>(d), f | (r.x << 8u) | (r.y << 14u));

@@ -9,7 +9,7 @@ struct ShadowMask {
     // Channel (0..3) of each light slot, 255 = none.
     channels: array<vec4<u32>, 2>,
     // x = 1: two u32s per pixel (at most two lights), [visibility 0 | 1 (unorm16 × 2),
-    // linear depth (f16 bits without the sign) | frames | blur radii]; else four:
+    // linear depth (top 15 bits of its f32 bits) | frames | blur radii]; else four:
     // [visibility 0 | 1, visibility 2 | 3, linear depth (f32 bits), frames | blur radii].
     pad: vec4<u32>,
     texels: array<vec2<u32>>,
@@ -40,7 +40,7 @@ fn shadow_mask_lookup(i: u32, world: vec3<f32>) -> f32 {
     let z = dot(world - view.camera_pos.xyz, shadow_params.view_axis.xyz);
     if (shadow_mask.pad.x == 1u) {
         let n = shadow_mask.texels[k];
-        if (abs(unpack2x16float(n.y & 0x7fffu).x - z) > 0.02 * z + 0.05) {
+        if (abs(bitcast<f32>((n.y & 0x7fffu) << 16u) - z) > 0.02 * z + 0.05) {
             return -1.0;
         }
         return unpack2x16unorm(n.x)[ch & 1u];
