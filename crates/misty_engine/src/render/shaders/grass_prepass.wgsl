@@ -19,10 +19,11 @@ struct GrassPrepassTargets {
 
 // Past three quarters of the prepass's range its blades thin out, each blade in or out whole
 // (a random share by its phase), none at the range: the effects lose the blades gradually
-// instead of at the edge of the last whole chunk drawn.
+// instead of at the edge of the last whole chunk drawn. Only for ranges of 12 m and more: the
+// 8 m range of the lower AO levels would thin the blades right in front of the camera.
 fn grass_prepass_out(b: BladeIn) -> bool {
     let range = grass.depth.y;
-    if (range <= 0.0) {
+    if (range < 12.0) {
         return false;
     }
     let dist = distance(grass.origin.xyz + b.position.xyz, grass.camera.xyz);

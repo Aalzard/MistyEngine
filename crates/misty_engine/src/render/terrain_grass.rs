@@ -54,8 +54,10 @@ pub(super) const BLADE_VERTICES: u32 = 10;
 pub(super) const CASTER_FADE: f32 = 0.6;
 /// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
 const COARSE_VERTICES: u32 = 8;
-/// Chunks further than this many LOD distances draw coarse blades.
-const COARSE_FROM: f32 = 1.5;
+/// Chunks further than this many LOD distances draw coarse blades (the fine cards morph into
+/// them first, grass_blade.wgsl `grass_coarse_morph`; at 1.5 the morphed band sat where the
+/// blades are still large on screen and moved the close golden shots by ~0.1).
+const COARSE_FROM: f32 = 2.5;
 /// Fewest blades a far chunk keeps (share of full density).
 const MIN_KEEP: f32 = 0.012;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.

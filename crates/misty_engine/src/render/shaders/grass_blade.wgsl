@@ -61,7 +61,7 @@ const GRASS_SEGMENTS: f32 = 4.0;
 const MIN_KEEP: f32 = 0.012;
 // Chunks further than this many LOD distances draw coarse cards (terrain_grass.rs
 // `COARSE_FROM`); the fine cards morph into the coarse card's shape before it.
-const COARSE_FROM: f32 = 1.5;
+const COARSE_FROM: f32 = 2.5;
 // Flowers (terrain/flowers.rs): keys scaled into [0, FLOWER_KEY), cards per flower, the head's
 // height on the plant card, the fewest flowers kept far away and how much bigger they grow.
 const FLOWER_KEY: f32 = 0.004;
@@ -496,12 +496,12 @@ fn grass_flower_head(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
 }
 
 // How far a fine card (four segments) at `dist` has morphed into the coarse card (three
-// segments): 0 up to 80 % of the distance where its chunk switches to coarse cards, 1 from
+// segments): 0 up to 95 % of the distance where its chunk switches to coarse cards, 1 from
 // there on. A chunk switches when its nearest point passes that distance, so all its blades
 // are past it then.
 fn grass_coarse_morph(dist: f32) -> f32 {
     let at = grass.look.x * COARSE_FROM;
-    return smoothstep(0.8 * at, at, dist);
+    return smoothstep(0.95 * at, at, dist);
 }
 
 // Vertex `vi` of the card of a blade's frame.

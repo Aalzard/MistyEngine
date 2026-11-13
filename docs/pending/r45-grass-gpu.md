@@ -131,24 +131,20 @@ difference × 8) and `lod_switch_sheet.jpg` (forced-switch differences × 8, bef
   above); fans that enter a chunk's drawn prefix still appear whole (both per blade, not
   rings).
 
-## Paused 2026-11-12 18:25 (user pause): where this stands
+## Finished 2026-11-13 (after the pause)
 
-- Committed: ebda8d5c (Rgba8Unorm card target), 8ea3aa74 (LOD fades), af25e9b7 (notes). The
-  tree is clean; nothing of r45 holds a build slot or the GPU lock.
-- Checks on 8ea3aa74: `cargo fmt --all --check` passes; clippy `--workspace --all-targets
-  --release`: 0 warnings; workspace tests: editor 918 passed, engine 1521 passed / 1 failed
-  (`render::hitch_tests::scripted_meadow_run_has_no_hitches`: one 95 ms wall-clock frame with
-  3.5 ms CPU and 9.6 ms GPU while the machine was 48 % busy with other jobs; not rerun alone
-  yet), every other crate passes.
-- **Golden shots: 19 of 20 pass, `meadow_low_close` drifts: mean 0.55 (limit 0.5)**. All
-  MeadowDemo shots moved 0.28–0.55 (Low the most: wide 0.47, behind 0.45, oak 0.42); cycles
-  0.00. Do not update the golden images. Was finding which fade causes it when paused: a
-  script (`scratchpad r45/gold.sh`) runs golden_shots with base.exe (base drift) and with
-  final.exe + the patches `nomorph`, `noprep`, `nofade` (scratchpad `r45/patches/`); it had
-  not started (waiting for the GPU lock).
-- **Next:** 1) run that attribution; likely fixes: start the coarse-card morph later (band
-  0.9–1.0 instead of 0.8–1.0) and/or keep the prepass thinning only where the prepass range
-  is ≥ 12 m (Low and Medium's 8 m range puts the thinning at 6–8 m, close to the camera); 2)
-  rebuild, rerun golden_shots under the lock (must pass), the hitch test alone, and the
-  forced-switch check (`lodcheck.sh`); 3) refresh the tables above and the Round 45 section of
-  docs/progress.md if numbers change.
+- Golden `meadow_low_close` drifted 0.55 (limit 0.5). Attribution with patches on the same
+  build: base itself 0.39; LOD changes off 0.40; width fade off 0.50; morph off 0.42. So the
+  morph was the cause: blades of fine chunks past the switch distance take the coarse shape,
+  and at 1.5 LOD distances (9.75 m in MeadowDemo) they are large on screen. Narrowing the
+  morph band (0.8 → 0.9 → 0.95) did not help (0.52, 0.51). Fix: the switch moved to 2.5 LOD
+  distances (`COARSE_FROM` in terrain_grass.rs and grass_blade.wgsl), morph over the last 5 %;
+  the prepass thinning only for ranges ≥ 12 m. Golden 20/20 (`meadow_low_close` 0.46).
+- Hitch test alone: passes. Clippy 0 warnings, fmt clean.
+- Final timings (High 1080p, base vs final, 2 interleaved runs; the second hero run was
+  spoiled by other GPU load, the quiet one is given): hero GPU 13.40 → 12.97 ms, visibility
+  2.37 → 2.11, shading 2.00 → 1.89, prepass 1.31 → 1.13; down sum 12.77 → 11.91; MeadowDemo
+  sum 14.33 → 13.66 (visibility 2.50 → 2.27: the finer cards out to 2.5 LOD distances cost
+  ~0.1 ms of the earlier 2.17).
+- The image table above was measured with the switch at 1.5 / morph 0.8; with 2.5 / 0.95 the
+  look change is smaller (golden measures above).
