@@ -61,7 +61,8 @@ pub fn install(project: &Path, name: &str) -> Result<PackageJson, String> {
         .find(|p| p.name == name)
         .ok_or_else(|| format!("{name} is not an optional package"))?;
     let mut m = Manifest::load(project)?;
-    m.dependencies.insert(name.to_owned(), REQUIREMENT.to_owned());
+    m.dependencies
+        .insert(name.to_owned(), REQUIREMENT.to_owned());
     m.save(project)?;
     Ok(info)
 }

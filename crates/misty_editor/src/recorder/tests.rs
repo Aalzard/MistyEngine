@@ -79,7 +79,10 @@ fn install_adds_the_dependency_and_the_ui_and_remove_takes_them_away() {
     assert!(installed(&s));
     let manifest = Manifest::load(&root).unwrap();
     assert_eq!(
-        manifest.dependencies.get(optional::RECORDER).map(String::as_str),
+        manifest
+            .dependencies
+            .get(optional::RECORDER)
+            .map(String::as_str),
         Some(optional::REQUIREMENT)
     );
     let lock = Lock::load(&root).unwrap();

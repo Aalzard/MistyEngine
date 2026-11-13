@@ -7,12 +7,12 @@ use std::path::Path;
 
 use egui::{RichText, Ui};
 
+use crate::i18n::tr;
 use crate::packages::manifest::{PackageJson, Source};
 use crate::packages::registry::RegistryPackage;
 use crate::packages::resolve::Origin;
 use crate::packages::semver::{Range, Version};
 use crate::packages::{Filter, PackagesWindow, RegistryState, builtin, install, optional};
-use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field};

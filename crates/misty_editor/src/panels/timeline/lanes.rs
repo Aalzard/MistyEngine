@@ -12,9 +12,9 @@ use misty_engine::timeline::{TimelineAsset, TimelineClip, Track, TrackKind, eval
 use super::{
     Axis, Drag, Geometry, MARKERS_H, PAD, RULER_H, Row, TimelineSel, headers, kind_color, ops,
 };
+use crate::i18n::tr;
 use crate::panels::AssetPayload;
 use crate::panels::animation::timeline::{tick_step, time_label};
-use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::{theme, timelines};
 

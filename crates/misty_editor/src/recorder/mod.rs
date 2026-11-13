@@ -158,7 +158,9 @@ pub fn package_changed(s: &mut EditorState) {
         s.recorder.list = None;
         s.recorder.pending.clear();
         s.recorder.status = None;
-        s.push(crate::actions::Action::CloseTab(crate::layout::Tab::Recorder));
+        s.push(crate::actions::Action::CloseTab(
+            crate::layout::Tab::Recorder,
+        ));
     }
 }
 
@@ -488,7 +490,13 @@ fn capture(gpu: &mut Gpu, s: &mut EditorState, a: &mut Active, index: u64) {
                 .readback
                 .get_or_insert_with(|| Readback::new(&gpu.state.device, w, h));
             if rb.fits(target) {
-                rb.capture(&gpu.state.device, &gpu.state.queue, target, index, &mut done);
+                rb.capture(
+                    &gpu.state.device,
+                    &gpu.state.queue,
+                    target,
+                    index,
+                    &mut done,
+                );
             } else {
                 // The view was resized: wait for the older frames, then scale this one.
                 rb.collect(&gpu.state.device, true, &mut done);
@@ -516,7 +524,13 @@ fn capture(gpu: &mut Gpu, s: &mut EditorState, a: &mut Active, index: u64) {
             let rb = a
                 .readback
                 .get_or_insert_with(|| Readback::new(&gpu.state.device, w, h));
-            rb.capture(&gpu.state.device, &gpu.state.queue, target, index, &mut done);
+            rb.capture(
+                &gpu.state.device,
+                &gpu.state.queue,
+                target,
+                index,
+                &mut done,
+            );
         }
     }
     for f in done {
@@ -554,8 +568,7 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
         stop_all(s, gpu.as_deref());
         return true;
     }
-    let ticked = std::mem::take(&mut s.recorder.ticked)
-        || (!play_needed && !s.play.in_play_mode());
+    let ticked = std::mem::take(&mut s.recorder.ticked) || (!play_needed && !s.play.in_play_mode());
     let mut active = std::mem::take(&mut s.recorder.active);
     if ticked {
         let dt = capture_dt_of(&active);

@@ -29,7 +29,9 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         ui.add_space(12.0);
         ui.vertical_centered(|ui| {
             ui.label(tr!("The Recorder package is not installed."));
-            ui.weak(tr!("Install it from Window ▸ Package Manager ▸ Built-in ▸ Recorder."));
+            ui.weak(tr!(
+                "Install it from Window ▸ Package Manager ▸ Built-in ▸ Recorder."
+            ));
             if ui.button(tr!("Open Package Manager")).clicked() {
                 s.push(crate::actions::Action::FocusTab(
                     crate::layout::Tab::PackageManager,
