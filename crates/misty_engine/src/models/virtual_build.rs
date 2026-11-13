@@ -9,7 +9,7 @@
 //! The primitives of one glTF mesh (one per material) are built together as one hierarchy of
 //! parts ([`VirtualMesh::build_parts`]), held in the first primitive's slot.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -169,13 +169,17 @@ fn build(src: &Source) -> VirtualBuild {
     }
 }
 
-/// Cache file of a model (by its GUID), `None` without one.
+/// Cache file of a model (by its GUID), `None` without one or without a project.
 pub fn cache_path(rel: &str) -> Option<PathBuf> {
     let guid = crate::asset_db::guid_of(rel)
         .or_else(|| crate::asset_db::meta::read_guid(&crate::assets::absolute(rel)))?;
-    Some(crate::assets::absolute(&format!(
-        "{LIBRARY_DIR}/{guid}.vgeo"
-    )))
+    cache_file(crate::assets::project_root().as_deref(), &guid.to_string())
+}
+
+/// The cache file of `guid` in project `root`. No project, no cache: the path was relative
+/// to the working folder (tests wrote a `Library` into the crate).
+fn cache_file(root: Option<&Path>, guid: &str) -> Option<PathBuf> {
+    Some(root?.join(LIBRARY_DIR).join(format!("{guid}.vgeo")))
 }
 
 fn wanted(model: &Model) -> Vec<bool> {
@@ -334,6 +338,16 @@ mod tests {
             assert!(t.elapsed().as_secs() < 60, "build never finished");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    /// Without a project the cache path was relative to the working folder: the engine's
+    /// tests wrote `Library/VirtualGeometry` into the crate.
+    #[test]
+    fn no_project_means_no_cache_file() {
+        assert_eq!(cache_file(None, "abc"), None);
+        let root = std::env::temp_dir().join("misty-vgeo-root");
+        let path = cache_file(Some(&root), "abc").unwrap();
+        assert!(path.starts_with(&root) && path.ends_with("VirtualGeometry/abc.vgeo"));
     }
 
     #[test]
