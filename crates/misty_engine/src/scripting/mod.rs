@@ -1683,11 +1683,25 @@ impl ScriptHost {
 /// would otherwise freeze the editor (Play runs on its UI thread) or the game for good.
 pub const FRAME_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// When the scripts running now must stop (checked by an instruction-count hook).
-struct Deadline(std::cell::Cell<Option<std::time::Instant>>);
+/// Longest a script's top level may run when the editor reads its fields (on every save, on
+/// the UI thread): `while true do end` there froze the editor, and again on every open.
+pub const INSPECT_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Most memory a script's top level may take when the editor reads its fields.
+const INSPECT_MEMORY: usize = 256 << 20;
+
+/// When the scripts running now must stop (checked by an instruction-count hook), and the
+/// limit that was armed (for the message).
+struct Deadline(
+    std::cell::Cell<Option<std::time::Instant>>,
+    std::cell::Cell<std::time::Duration>,
+);
 
 fn install_deadline(lua: &Lua) {
-    lua.set_app_data(Deadline(std::cell::Cell::new(None)));
+    lua.set_app_data(Deadline(
+        std::cell::Cell::new(None),
+        std::cell::Cell::new(FRAME_LIMIT),
+    ));
     let _ = lua.set_global_hook(
         mlua::HookTriggers::new().every_nth_instruction(10_000),
         |lua, debug| {
@@ -1706,7 +1720,7 @@ fn install_deadline(lua: &Lua) {
                     .unwrap_or_default();
                 return Err(mlua::Error::runtime(format!(
                     "{at}stopped after running for {} s in one frame (an endless loop?)",
-                    FRAME_LIMIT.as_secs()
+                    d.1.get().as_secs()
                 )));
             }
             Ok(mlua::VmState::Continue)
@@ -1716,8 +1730,16 @@ fn install_deadline(lua: &Lua) {
 
 /// Start (`on`) or stop the clock of [`FRAME_LIMIT`].
 fn arm_deadline(lua: &Lua, on: bool) {
+    arm_deadline_for(lua, on.then_some(FRAME_LIMIT));
+}
+
+/// Start the clock with `limit`, or stop it (`None`).
+fn arm_deadline_for(lua: &Lua, limit: Option<std::time::Duration>) {
     if let Some(d) = lua.app_data_ref::<Deadline>() {
-        d.0.set(on.then(|| std::time::Instant::now() + FRAME_LIMIT));
+        d.0.set(limit.map(|l| std::time::Instant::now() + l));
+        if let Some(l) = limit {
+            d.1.set(l);
+        }
     }
 }
 
@@ -1799,7 +1821,12 @@ pub struct ScriptInfo {
 pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
     let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
+    // The top level runs here: an endless loop or a runaway table must not hang the editor.
+    install_deadline(&lua);
+    arm_deadline_for(&lua, Some(INSPECT_LIMIT));
+    let _ = lua.set_memory_limit(lua.used_memory() + INSPECT_MEMORY);
     let class = eval_class(&lua, source, path)?;
+    arm_deadline_for(&lua, None);
     let attributes = attributes::parse(&class);
     let mut fields = Vec::new();
     for pair in class.pairs::<Value, Value>() {

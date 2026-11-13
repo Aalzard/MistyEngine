@@ -785,3 +785,21 @@ return Goals
     );
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The editor reads a script's fields by running its top level (on every save, on the UI
+/// thread): an endless loop there froze the editor for good, a runaway table filled memory.
+#[test]
+fn inspecting_a_script_stops_endless_top_level_loops_and_runaway_memory() {
+    let start = std::time::Instant::now();
+    let err = inspect_script("while true do end\nreturn {}", "Loop.lua").unwrap_err();
+    assert!(err.contains("endless loop"), "{err}");
+    assert!(start.elapsed() < std::time::Duration::from_secs(10));
+    let err = inspect_script(
+        "local t = {} while true do t[#t + 1] = string.rep('x', 1024) .. #t end return {}",
+        "Grow.lua",
+    )
+    .unwrap_err();
+    assert!(!err.is_empty());
+    // Ordinary scripts still inspect.
+    assert!(inspect_script("return { speed = 2 }", "Ok.lua").is_ok());
+}
