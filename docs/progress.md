@@ -4764,3 +4764,39 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+
+## Round 60 — Bug hunt 6: test hygiene, the v0.4.0 features, project lock, macro variables, NoonValley soak (branch r60-qa6)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r60-qa6.md`.
+
+### Test suite
+- A full test run no longer writes into `SampleProject`: tests that open the sample in the
+  editor (which imports it, extracting `Crate.fbx`'s materials and writing meta files) use one
+  temp copy per run.
+- The streaming flight test waits for cells on their way in instead of flying past them, so a
+  busy machine no longer makes it fail on the number of loads.
+
+### v0.4.0 features
+- **Light ▸ Glow**: a point or spot light's Glow Spread no longer flashes white as the camera
+  walks into the light; halos past the Spread cap keep their whole glow; NaN or infinite glow
+  numbers from a file can't turn bloom NaN.
+- **LOD cross-fade**: close thresholds no longer draw three levels at once (the band narrows to
+  fit), and a level that never draws no longer shows in its fade band.
+- **Weather audio**: Pause now holds rain, wind and thunder; a generated clip cut short is made
+  again; far scripted strikes no longer pile up pending thunder.
+- **Previews**: a broken `.mat` in view is read once, not every frame; texture previews are
+  dropped when unused and decode a few per frame.
+
+### Decisions
+- **Macro variables**: a macro's variable can be an **Outer** link to the graph's variable of
+  the same name; Collapse To Macro links the variables the collapsed nodes used, so they keep
+  reading and writing the graph's values. Own macro variables stay private per use.
+- **Project lock**: an editor locks `Library/ProjectLock` while the project is open. A second
+  editor opens it read-only (nothing of the project is saved) and asks Open Read-Only or
+  Cancel; a crash releases the lock.
+
+### Long session
+Fifteen minutes in NoonValley through the MCP bridge (52 Play / weather / camera / Stop
+cycles): memory and GPU memory level off after the first cycles, no Console warnings or
+errors.
