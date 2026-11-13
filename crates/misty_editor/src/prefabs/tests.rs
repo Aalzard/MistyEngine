@@ -135,6 +135,31 @@ fn apply_updates_asset_and_other_instances_revert_restores() {
     assert!(s.scene.prefab_link(other).is_some(), "unpack is undoable");
 }
 
+/// An instance dragged inside another instance of the same prefab was applied into the
+/// asset: the prefab contained itself, and each Apply nested it one level deeper.
+#[test]
+fn a_prefab_cannot_be_applied_into_itself() {
+    let mut s = state("self_nest");
+    let crate_e = s.scene.spawn("Crate", None);
+    let rel = make_prefab(&mut s, crate_e);
+    let other = instantiate(&mut s, &rel, None).unwrap();
+    let steps = s.undo.steps().len();
+    s.scene.set_parent(other, Some(crate_e), None, true);
+    apply(&mut s, Action::ApplyPrefab(crate_e));
+    let prefab = s.assets.prefab(&rel).unwrap();
+    assert!(
+        !prefab.nested_paths().contains(&rel),
+        "{:?}",
+        prefab.nested_paths()
+    );
+    assert_eq!(s.undo.steps().len(), steps, "nothing applied, no step");
+    assert_eq!(
+        s.scene.parent(other),
+        Some(crate_e),
+        "the scene is as it was"
+    );
+}
+
 /// A duplicate of an instance's child kept the original's prefab id: moved above the
 /// original it took the original's place in the instance, and Revert deleted the original.
 #[test]
