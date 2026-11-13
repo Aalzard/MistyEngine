@@ -456,6 +456,8 @@ def stage(index, rows, driver="Player Input"):
     dark = (0.08, 0.1, 0.2, 1.0)
     label(s, c, "Hearts Text", "Hearts: 3", 40, (0.0, 1.0), (28.0, -20.0), (400.0, 56.0), dark,
           "UpperLeft")
+    label(s, c, "Dash Text", "Dash: ready", 30, (0.0, 1.0), (28.0, -72.0), (400.0, 44.0), dark,
+          "UpperLeft")
     label(s, c, "Stage Text", f"Stage {index}", 40, (1.0, 1.0), (-28.0, -20.0), (400.0, 56.0),
           dark, "UpperRight")
     label(s, c, "Banner Text", "", 96, (0.5, 0.6), (0.0, 0.0), (1200.0, 140.0),

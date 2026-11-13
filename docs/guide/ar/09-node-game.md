@@ -89,7 +89,7 @@ Custom Event: DashPressed ─► Branch (cooldown over) ─► Set Dashing (true
 
 - **Goal** مُشغِّل على العلم: **On Trigger Enter ▸ Branch (CompareTag Player) ▸ Do Once ▸ Broadcast Custom Event** بالحدث *StageCleared*.
 - **Stage** يسمعه، فيعرض «Stage clear!» بالعقدة **Text: Set text**، وينتظر بعقدة **Delay**، ثم يستدعي **SceneManager: LoadScene** بمتغيره *Next Scene*. كل مرحلة تضبط *This Scene* و *Next Scene* في لوحة الخصائص، فيخدم مخطط واحد المراحل الثلاث كلها.
-- مخطط Player يعدّ *Hearts*. كل تغيير يُبث بالحدث *HeartsChanged* فيكتبه Stage على الشاشة. وعند الصفر يبث اللاعب *PlayerDied* فيحمّل Stage المشهد *This Scene* من جديد.
+- مخطط Player يعدّ *Hearts*. كل تغيير يُبث بالحدث *HeartsChanged* فيكتبه Stage على الشاشة. وعند الصفر يبث اللاعب *PlayerDied* فيحمّل Stage المشهد *This Scene* من جديد. وكل اندفاعة تبث *DashUsed* مع وقت جاهزية الاندفاعة التالية، فيكتب Stage تحت القلوب "Dash: ready" أو "Dash: ...".
 
 > [!WARNING]
 > العقدة **SceneManager: LoadScene** لا تجد إلا المشاهد المدرجة في **File ▸ Build Settings**. ومشاهد اللعبة الخمسة مدرجة هناك.

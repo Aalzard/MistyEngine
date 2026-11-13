@@ -162,7 +162,9 @@ def player():
     d = d.to(g.setv("Next Dash At", g.op("AddFloat", A=now(g), B=g.get("Dash Cooldown"))))
     d = d.to(tint(g, 4.0, 4.0, 4.0))
     d = d.to(g.call("#ParticleSystem", "Play"))
-    d.to(sound(g, SND_DASH, 0.5))
+    d = d.to(sound(g, SND_DASH, 0.5))
+    # The HUD shows when the next dash is ready.
+    d.to(g.broadcast("DashUsed", "ready", ready=g.get("Next Dash At")))
 
     fx = g.node("OnFixedUpdate")
     alive = fx.to(g.branch(g.get("Dead")))
@@ -556,6 +558,7 @@ def stage():
     g.var("This Scene", "string", SCENES["stage1"], obj=True)
     g.var("Next Scene", "string", SCENES["stage2"], obj=True)
     g.var("Done", "bool", False)
+    g.var("Dash Ready At", "float", 0.0)
 
     def find(name):
         return g.call("GameObject", "Find", Name=name)["Result"]
@@ -575,8 +578,20 @@ def stage():
     d = d.to(g.setv("Done", True), "False")
     d = d.to(g.api_set("#Text", "text", "Try again", find("Banner Text")))
     d.to(g.delay(1.0)).to(load_scene(g, g.get("This Scene")))
+    du = g.event("DashUsed", "ready")
+    du.to(g.setv("Dash Ready At", du["ready"]))
     up = g.node("OnUpdate")
-    up.to(g.branch(any_key_down(g, ["escape"]))).to(load_scene(g, SCENES["menu"]), "True")
+    s = up.to(g.seq(2))
+    s.to(g.branch(any_key_down(g, ["escape"])), "Then 0").to(
+        load_scene(g, SCENES["menu"]), "True"
+    )
+    # Dash cooldown: "Dash: ready" when E can dash again, "Dash: ..." while it recharges.
+    ready = s.to(
+        g.branch(g.op("GreaterOrEqual", A=now(g), B=g.get("Dash Ready At"))), "Then 1"
+    )
+    dash_text = find("Dash Text")
+    ready.to(g.api_set("#Text", "text", "Dash: ready", dash_text), "True")
+    ready.to(g.api_set("#Text", "text", "Dash: ...", dash_text), "False")
     return g
 
 

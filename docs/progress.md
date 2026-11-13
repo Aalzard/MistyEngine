@@ -4764,3 +4764,35 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+
+## Round 65 — A game made only with nodes: "Lumo's Leap" (branch r65-node-game)
+
+A short 2D platformer whose behaviour is all Script Graphs (no Lua, no Rust gameplay code), to
+prove the nodes a real game needs and to list what is broken or missing. The running notes and
+the issue list are `docs/pending/r65-node-game.md`.
+
+### The game
+- `SampleProject/Assets/NodeGame`: 13 graphs, 5 scenes (menu, three stages, win screen, all in
+  Build Settings), a burst prefab. Written by `python tools/node_game/node_game.py <project>`
+  (graph builder with auto layout, stages drawn as text maps); `--demo` puts the Autopilot
+  graph on the player, which beats all three stages by itself.
+- Run and jump with coyote time, a jump buffer and variable height; an E dash that glows white,
+  leaves a particle trail and shows its cooldown on the HUD ("Dash: ready" / "Dash: ...");
+  hearts, pits, stage restart; a Brute that takes two hits (flash, knock back, burst) and a Puff
+  that is pushed away and fades; enemies patrol between ledges and walls; the flag loads the
+  next stage; sounds from the project's audio; a smoothed follow camera.
+- User Guide chapter 9, "A game made only with nodes", in English and Arabic.
+- Tests (`crates/misty_editor/src/sample_node_game.rs`): the game is only Script Graphs that
+  compile and are all used; stage 1 played headlessly with simulated keys (run, dash kills a
+  Puff, the Brute takes two dashes, gaps jumped, stage 2 loads and starts); the menu and the
+  win screen.
+
+### Issues found (reported to the fixer, round 66)
+1. 2D triggers and collisions never reach Script Graphs (`dispatch_2d` calls only Lua).
+2. A UI Button's On Click cannot run a Script Graph's Custom Event.
+3. API nodes of variadic Lua functions (`Physics2D: Raycast`, `Rigidbody2D: AddForce`...) have
+   no input pins.
+4. No typed 2D physics nodes (raycast results are opaque Lua tables).
+- Also: PlayMode `yield(seconds)` never ends when the game loads scenes; 2D friction is
+  averaged so a frictionless player sticks to walls; capture windows open maximised; the MCP
+  bridge has no Script Graph tools; captures never fire with a Script Graph tab in front.

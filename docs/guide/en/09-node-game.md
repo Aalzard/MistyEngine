@@ -127,7 +127,8 @@ Each enemy has a Box Collider 2D with **Is Trigger** ticked and three graphs.
   Scene* and *Next Scene* in Properties, so one graph serves all three stages.
 - The Player graph counts *Hearts*. Each change is broadcast as *HeartsChanged*, and Stage
   writes it on the screen. At zero the player broadcasts *PlayerDied* and Stage loads *This
-  Scene* again.
+  Scene* again. A dash broadcasts *DashUsed* with the time the next one is ready, and Stage
+  shows "Dash: ready" or "Dash: ..." under the hearts.
 
 > [!WARNING]
 > **SceneManager: LoadScene** only finds scenes listed in **File ▸ Build Settings**. The five
