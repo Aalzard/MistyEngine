@@ -62,12 +62,51 @@ impl Layouts {
     }
 }
 
+/// The file as read: each layout on its own, so one that can't be read loses only itself.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct LoadedFile {
+    current_name: String,
+    current: Option<serde_json::Value>,
+    user: BTreeMap<String, serde_json::Value>,
+}
+
+/// A tab as read: `None` for a panel this editor doesn't have (saved by another version).
+#[derive(Clone)]
+struct LoadedTab(Option<Tab>);
+
+impl<'de> Deserialize<'de> for LoadedTab {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(LoadedTab(serde_json::from_value(v).ok()))
+    }
+}
+
+/// A saved dock without the tabs this editor doesn't know (`None` if unreadable or empty).
+fn dock_from(v: serde_json::Value) -> Option<DockState<Tab>> {
+    let dock: DockState<LoadedTab> = serde_json::from_value(v).ok()?;
+    let dock = dock.filter_map_tabs(|t| t.0);
+    let any = dock.iter_all_tabs().next().is_some();
+    any.then_some(dock)
+}
+
 /// Load the saved layouts and the last dock arrangement (default layout if missing or corrupt).
+/// One tab name this editor doesn't know (a newer version's panel) used to throw away every
+/// saved layout, and the next autosave wrote the defaults over the file.
 pub fn load(root: &Path) -> (Layouts, DockState<Tab>) {
-    let file: LayoutFile = std::fs::read_to_string(root.join(LAYOUT_FILE))
+    let loaded: LoadedFile = std::fs::read_to_string(root.join(LAYOUT_FILE))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();
+    let file = LayoutFile {
+        current_name: loaded.current_name,
+        current: loaded.current.and_then(dock_from),
+        user: loaded
+            .user
+            .into_iter()
+            .filter_map(|(name, v)| Some((name, dock_from(v)?)))
+            .collect(),
+    };
     let mut layouts = Layouts {
         user: file.user,
         ..Default::default()
@@ -237,6 +276,35 @@ mod tests {
         assert_eq!(file.current_name, "Mine");
         // Stable: serializing the loaded copy gives the same text.
         assert_eq!(to_json(&layouts, &back), text);
+    }
+
+    /// A tab this editor doesn't know (a newer version's panel) threw away every saved
+    /// layout, and the next autosave wrote the defaults over them.
+    #[test]
+    fn an_unknown_tab_drops_only_itself() {
+        let root = temp_root("unknown_tab");
+        let mut layouts = Layouts::default();
+        layouts
+            .user
+            .insert("Art".into(), DockState::new(vec![Tab::Console, Tab::Scene]));
+        layouts
+            .user
+            .insert("Coding".into(), DockState::new(vec![Tab::Hierarchy]));
+        layouts
+            .user
+            .insert("Gone".into(), DockState::new(vec![Tab::Console]));
+        let text = to_json(&layouts, &crate::layout::default_layout());
+        let text = text.replace("\"Console\"", "\"FuturePanel\"");
+        std::fs::create_dir_all(root.join("Library")).unwrap();
+        std::fs::write(root.join(LAYOUT_FILE), text).unwrap();
+        let (back, dock) = load(&root);
+        let tabs = |d: &DockState<Tab>| d.iter_all_tabs().map(|(_, t)| *t).collect::<Vec<_>>();
+        assert_eq!(tabs(&back.user["Coding"]), [Tab::Hierarchy]);
+        assert_eq!(tabs(&back.user["Art"]), [Tab::Scene]);
+        assert!(!back.user.contains_key("Gone"), "nothing left in it");
+        assert!(tabs(&dock).contains(&Tab::Scene));
+        assert!(!tabs(&dock).contains(&Tab::Console));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
