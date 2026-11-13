@@ -159,8 +159,10 @@ fn landing_reports_a_collision_and_triggers_are_flagged() {
 fn absurd_sizes_and_scales_build_and_step() {
     let mut scene = Scene::new("t");
     let big = scene.spawn("Big", None);
-    let mut t = Transform::default();
-    t.scale = Vec3::splat(1e30);
+    let t = Transform {
+        scale: Vec3::splat(1e30),
+        ..Default::default()
+    };
     scene.set_transform(big, t);
     let child = scene.spawn("Child", Some(big));
     scene.set_transform(child, t);

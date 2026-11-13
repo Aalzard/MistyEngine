@@ -249,7 +249,9 @@ impl Physics {
                         let flip = mirror.x < 0.0;
                         let tris = data
                             .indices
-                            .chunks_exact(3)
+                            .as_chunks::<3>()
+                            .0
+                            .iter()
                             .map(|t| {
                                 if flip {
                                     [t[0], t[2], t[1]]
