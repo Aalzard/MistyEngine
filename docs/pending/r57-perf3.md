@@ -97,17 +97,30 @@ per compound, not per trunk.
 - **Clouds traced only where the scene depth leaves them visible**: changes the temporal
   accumulation and the upsampling at edges; not done.
 
-## Status (paused 2026-11-13 ~17:55 by the user)
+## Status: done (main 19cccfb0 merged in)
 
-Committed: af8ce5ef shadow mask sizing; f54acae0 + 3f0407dc glowless main pass; 1d89c6c1
-per-frame walks; fb50f204 + next commit profiler scopes; aad450e3 rustfmt. The parallel
-trunk-collider experiment was reverted (not committed).
+- af5d96d5: the glowless pipelines always build on worker threads (the player renders with
+  background loads off, so it would have compiled them in place on frame 30); the memory test
+  expects the MSAA emission image only after a render made it; the shader-count hitch test
+  keeps the glow target (the workers count as builds); the glowless GPU test waits for them.
+- Auto-exposure control (merged main's NoonValley look, `noon_valley_shots`, mean /255):
+  glowless off vs off 0.011 / 0.013 / 0.000 (down / hero / inside); glowless with the
+  pipelines built on workers vs off 0.001 / 0.078 / 0.000; the old in-place build vs off
+  0.056 / 0.080 / 0.000. The down drift goes away once nothing stalls a frame, which supports
+  the Auto Exposure explanation; hero varies 0.01–0.10 between runs of the same binary.
+- Memory after the merge (NoonValley's new look): renderer 346.5 MB, view target 181.3 MB.
 
-Still to do on resume:
-- Checks: `cargo fmt --all --check` passed on the final tree; clippy and the full test run
-  never got a build slot before the pause (scratchpad `r57/checks.sh`). Then golden shots
-  under the GPU lock (copy the fresh `misty_engine-*.exe` from `release/deps`, run
-  `golden_shots --ignored` from `crates/misty_engine`).
-- Remove the baseline worktree `MistyWork57-base` (`git worktree remove`) and the scratch
-  project copies in `C:\MistyTry57` when done.
+## Checks (merge of main 19cccfb0 + af5d96d5 + ae40e937)
 
+- `cargo fmt --all --check`: pass. `cargo clippy --workspace --all-targets --release`: 0
+  warnings (after ae40e937).
+- Full `cargo test --workspace --release --no-fail-fast` (before af5d96d5): everything passed
+  but `renderer_items_match_known_allocations` and
+  `demo_scenes_compile_no_shader_after_their_first_frames`, both fixed in af5d96d5. The
+  engine lib suite after the fix: 1587 passed, 1 failed (`streaming_demo_flight_stays_within_budget`:
+  "8 loads", the known flaky test under load). It passed on its own, and so did the two fixed
+  tests and the glowless tests (12 passed).
+- Golden shots (20, under the GPU lock): pass, before and after af5d96d5.
+- A test run leaves `SampleProject/Assets/Models/Crate_Metal.mat`, `Crate_Metal_Normal.png`
+  and `Crate_Wood.mat` behind (from main's tests, not this branch); deleted.
+- The baseline worktree `MistyWork57-base` and `C:\MistyTry57` are removed.
