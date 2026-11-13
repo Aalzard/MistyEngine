@@ -163,9 +163,9 @@ pub(super) fn remap_refs(
 /// Every object reference held by `e`'s components: (component name, target).
 pub(super) fn object_refs(world: &hecs::World, e: Entity) -> Vec<(&'static str, Entity)> {
     let found = std::cell::RefCell::new(Vec::new());
-    let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();
-    names.dedup();
-    for name in names {
+    // Sorted and deduplicated: a component listed in several tables (Toggle, Slider…) was
+    // read once per table, so each of its references was reported more than once.
+    for name in ref_components() {
         let Some(value) = registry::find(name).and_then(|info| (info.to_json)(world, e)) else {
             continue;
         };
@@ -215,9 +215,7 @@ pub(super) fn remap_copied_refs(
     e: Entity,
     map: &std::collections::HashMap<Entity, Entity>,
 ) {
-    let mut names: Vec<&str> = all_refs().map(|r| r.0).collect();
-    names.dedup();
-    for name in names {
+    for name in ref_components() {
         let Some(info) = registry::find(name) else {
             continue;
         };
