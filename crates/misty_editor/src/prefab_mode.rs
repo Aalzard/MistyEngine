@@ -116,6 +116,44 @@ pub fn stashed_scenes(s: &mut EditorState) -> impl Iterator<Item = &mut Scene> {
     s.prefab_stages.iter_mut().map(|st| &mut st.stash.scene)
 }
 
+/// What autosave backs up in Prefab Mode, outermost first: the scenes underneath, the stage of
+/// each outer prefab (kept aside by the level opened from it), then the open prefab.
+pub fn backup_layers(s: &EditorState) -> Vec<crate::autosave::docs::Layer<'_>> {
+    use crate::autosave::docs::Layer;
+    let stages = &s.prefab_stages;
+    let mut out = Vec::with_capacity(stages.len() + 1);
+    for (i, st) in stages.iter().enumerate() {
+        let prefab = i
+            .checked_sub(1)
+            .map(|outer| (stages[outer].path.as_str(), stages[outer].root));
+        out.push(Layer {
+            scene: &st.stash.scene,
+            dirty: st.stash.scene_dirty,
+            dirty_list: &st.stash.dirty,
+            prefab,
+        });
+    }
+    if let Some(last) = stages.last() {
+        out.push(Layer {
+            scene: &s.scene,
+            dirty: s.scene_dirty,
+            dirty_list: &[],
+            prefab: Some((last.path.as_str(), last.root)),
+        });
+    }
+    out
+}
+
+/// Open the prefab at `rel` in Prefab Mode with `prefab` (a recovered backup) in place of its
+/// file's contents: the stage starts out changed, so Save writes it (and nothing else does).
+pub fn open_restored(s: &mut EditorState, rel: &str, prefab: Prefab) -> bool {
+    if !open_with(s, rel, None, Some(prefab)) {
+        return false;
+    }
+    s.scene_dirty = true;
+    true
+}
+
 pub fn apply(s: &mut EditorState, action: Action) {
     match action {
         Action::OpenPrefab { path, from } => {
@@ -132,6 +170,16 @@ pub fn apply(s: &mut EditorState, action: Action) {
 
 /// Open the prefab at `rel` in Prefab Mode (`from`: the instance it was opened from).
 pub fn open(s: &mut EditorState, rel: &str, from: Option<Entity>) -> bool {
+    open_with(s, rel, from, None)
+}
+
+/// [`open`], with `contents` in place of the prefab file's when given.
+fn open_with(
+    s: &mut EditorState,
+    rel: &str,
+    from: Option<Entity>,
+    contents: Option<Prefab>,
+) -> bool {
     if s.play.in_play_mode() {
         s.console.warn("Prefab Mode isn't available in Play mode.");
         return false;
@@ -150,8 +198,8 @@ pub fn open(s: &mut EditorState, rel: &str, from: Option<Entity>) -> bool {
         ));
         return false;
     }
-    let prefab = match s.assets.prefab(rel) {
-        Ok(p) => (*p).clone().with_ids(),
+    let prefab = match contents.map_or_else(|| s.assets.prefab(rel).map(|p| (*p).clone()), Ok) {
+        Ok(p) => p.with_ids(),
         Err(err) => {
             s.console.warn(format!("Could not open prefab: {err}"));
             return false;

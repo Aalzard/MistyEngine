@@ -17,6 +17,7 @@ mod asset_guids;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
+mod autosave;
 mod avatar_masks;
 mod branding;
 mod build_pipeline;
@@ -396,15 +397,10 @@ fn main() -> eframe::Result<()> {
     // Saves made on every change (a material while a slider is dragged) go through a writer
     // thread: each one flushes to the device, which a busy disk can take seconds over.
     misty_engine::asset_db::saver::set_background(true);
-    // A crash of the UI thread still writes the edits handed to that thread just before it
-    // (the last half second of a slider drag), waiting a few seconds at most.
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        previous(info);
-        if std::thread::current().name() == Some("main") {
-            misty_engine::asset_db::saver::flush_within(std::time::Duration::from_secs(5));
-        }
-    }));
+    // A crash of the UI thread writes a crash log (Library/Logs) and still writes the edits
+    // handed to that thread just before it (the last half second of a slider drag), waiting a
+    // few seconds at most; the editor frame then backs up unsaved work (`autosave::crash`).
+    autosave::crash::install_hook();
     // MCP modes talk on the pipes their client gave them; a terminal's console must not replace
     // them.
     if !std::env::args()
