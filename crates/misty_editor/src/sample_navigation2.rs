@@ -560,6 +560,10 @@ fn navigation_demo2_plays() {
     assert_eq!(ogres.len(), 2);
     let starts: Vec<Vec3> = crowd.iter().map(|e| scene.world_position(*e)).collect();
     let mut host = ScriptHost::start(&mut scene, physics, root);
+    // The rolling block's carving rebuilds on the background pool; on a busy machine they
+    // landed frames later, the crowd re-planned at other moments and walked through the mud
+    // more often (a flaky 240 > 180). Rebuilt in step, the run is the same every time.
+    host.with_navigation_mut(|n| n.sync_rebuilds = true);
     let mut time = Time::default();
     let mut min_gap = f32::MAX;
     let mut jumper_top: f32 = 0.0;
