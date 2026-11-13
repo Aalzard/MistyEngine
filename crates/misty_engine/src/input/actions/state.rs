@@ -159,6 +159,7 @@ impl ActionSet {
                     .collect()
             })
             .collect();
+        let now = self.now;
         for (m, map) in self.units.iter().enumerate() {
             for (a, units) in map.iter().enumerate() {
                 let st = &mut self.actions[m][a];
@@ -168,6 +169,27 @@ impl ActionSet {
                     .collect();
                 st.last = vec![None; units.len()];
                 st.driver = None;
+                if !st.enabled {
+                    continue;
+                }
+                // Mid-gesture (a rebind finished while a key was held): the fresh interaction
+                // state saw the held key as a new press (a second jump), and a release next
+                // frame left the action Started / Performed for good. It is canceled, and
+                // controls already held count as held, as when an action is enabled.
+                if matches!(st.phase, Phase::Started | Phase::Performed) {
+                    self.pending.push(ActionEvent {
+                        map: m,
+                        action: a,
+                        phase: Phase::Canceled,
+                        value: st.value.zero_like(),
+                        time: now,
+                        start_time: st.start_time,
+                        interaction: None,
+                        control: st.active_control.clone().unwrap_or_default(),
+                    });
+                    st.phase = Phase::Waiting;
+                }
+                st.prime = true;
             }
         }
     }

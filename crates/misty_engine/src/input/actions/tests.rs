@@ -455,6 +455,25 @@ fn hold_and_tap_on_one_binding_hand_over() {
     assert_eq!(phases(&ev), [Phase::Canceled]);
 }
 
+/// A rebind (or loaded overrides) while a key was held rebuilt every action's interaction
+/// state: the held key counted as a new press (a second jump), and nothing ever canceled the
+/// action that was in progress.
+#[test]
+fn a_rebind_while_a_key_is_held_cancels_instead_of_pressing_again() {
+    let b = Binding::to("<Keyboard>/e", KEYBOARD_MOUSE);
+    let mut set = one_action(Action::new("Use", ActionType::Button, ControlType::Button).with(b));
+    let ev = set.update(&frame(&[], &["e"]), 0.0);
+    assert!(phases(&ev).contains(&Phase::Performed), "{:?}", phases(&ev));
+    set.update(&frame(&["e"], &["e"]), 0.1);
+    assert!(set.set_override(0, 0, 0, "<Keyboard>/e"));
+    let ev = set.update(&frame(&["e"], &["e"]), 0.2);
+    assert_eq!(phases(&ev), [Phase::Canceled], "no second press while held");
+    let ev = set.update(&frame(&["e"], &[]), 0.3);
+    assert!(ev.is_empty(), "{:?}", phases(&ev));
+    let ev = set.update(&frame(&[], &["e"]), 0.4);
+    assert!(phases(&ev).contains(&Phase::Performed), "a new press works");
+}
+
 // ---- action types ----------------------------------------------------------------------------
 
 #[test]
