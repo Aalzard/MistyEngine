@@ -55,14 +55,20 @@ pub(super) fn two_bone(
     let ab = b - a;
     let bc = c - b;
     let (lab, lbc) = (ab.length(), bc.length());
-    if lab < EPS || lbc < EPS {
+    // `!(..)` so NaN bone positions return too (`clamp` below panics on NaN).
+    if !(lab >= EPS && lbc >= EPS) || !lab.is_finite() || !lbc.is_finite() {
         return;
     }
     let lac = (c - a).length();
-    // Keep the target within the reach of the chain (straight when too far).
-    let lat = (t - a)
-        .length()
-        .clamp((lab - lbc).abs() + EPS, (lab + lbc) * (1.0 - EPS));
+    // Keep the target within the reach of the chain (straight when too far). With a tip
+    // bone shorter than EPS * the arm the two bounds crossed and `clamp` panicked.
+    let lo = (lab - lbc).abs() + EPS;
+    let hi = ((lab + lbc) * (1.0 - EPS)).max(lo);
+    let lat = (t - a).length();
+    if !lat.is_finite() {
+        return;
+    }
+    let lat = lat.clamp(lo, hi);
 
     // Bend axis: the current bend plane, or the hint side, or any perpendicular.
     let mut axis = ab.cross(bc);
