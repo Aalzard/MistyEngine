@@ -378,6 +378,8 @@ impl UndoStack {
         // The active scene and scene file paths stay as they are now (multi-scene editing).
         let mut scene = snap.scene;
         scene.keep_open_set_from(to.scene);
+        // Objects made after the snapshot must not lend their handles to new objects.
+        scene.retire_ids_of(to.scene);
         let current = Snapshot {
             label: snap.label.clone(),
             scene: std::mem::replace(to.scene, scene),
@@ -415,6 +417,44 @@ mod tests {
         assert_eq!(s.redo_step().as_deref(), Some("Create Cube"));
         assert_eq!(s.scene.len(), 3);
         assert_eq!(s.selection.active(), Some(cube));
+    }
+
+    /// Undo put back a copy of the world in which every free id started at generation 1
+    /// again: a joint still pointing at a deleted body (or a panel remembering an object made
+    /// after the step) pointed at the next object created.
+    #[test]
+    fn handles_of_deleted_or_undone_objects_stay_dead_after_undo() {
+        use misty_engine::scene::FixedJoint;
+        let mut s = state("misty_undo_dead_handles");
+        let joint = s.scene.spawn("Joint", None);
+        let body = s.scene.spawn("Body", None);
+        s.scene.add(
+            joint,
+            FixedJoint {
+                connected_body: Some(body),
+                ..Default::default()
+            },
+        );
+        s.record("Delete Body");
+        s.scene.despawn(body);
+        s.record("Rename Joint");
+        s.scene.game_object_mut(joint).name = "Hinge".into();
+        s.undo_step();
+        s.record("Create Cube");
+        let cube = s.scene.spawn("Cube", None);
+        s.undo_step();
+        for _ in 0..8 {
+            let e = s.scene.spawn("New", None);
+            assert_ne!(e, body, "a deleted object's handle came back");
+            assert_ne!(e, cube, "an undone object's handle came back");
+        }
+        let target = s
+            .scene
+            .world
+            .get::<&FixedJoint>(joint)
+            .unwrap()
+            .connected_body;
+        assert!(!target.is_some_and(|t| s.scene.contains(t)));
     }
 
     #[test]

@@ -313,7 +313,9 @@ impl Scene {
     /// entry (see [`Scene::remove_streamed`]) and the reserved entities are freed.
     pub fn abandon_streamed(&mut self, load: StreamedLoad) {
         for e in load.unspawned() {
-            let _ = self.world.despawn(*e);
+            if self.world.despawn(*e).is_ok() {
+                self.note_free(*e);
+            }
         }
     }
 

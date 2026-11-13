@@ -107,6 +107,14 @@ pub struct Scene {
     /// Weather runtime: clocks, timelines, wetness and lightning (not saved, see
     /// [`crate::weather`]).
     pub weather: crate::weather::WeatherWorld,
+    /// Generation every id that was free when this world was copied was moved past (see
+    /// [`Scene::generation_bound`]).
+    generation_floor: u32,
+    /// Objects removed since then (each bumps one id's generation by one).
+    frees: u32,
+    /// One past the highest id freed in this world (trailing free ids have no live object
+    /// above them to show they were used).
+    free_top: u32,
 }
 
 impl Default for Scene {
@@ -115,16 +123,58 @@ impl Default for Scene {
     }
 }
 
+/// Generation part of an entity handle.
+fn generation_of(e: Entity) -> u32 {
+    (e.to_bits().get() >> 32) as u32
+}
+
+/// An empty object at id `id`, generation `generation`: despawned, the id is free at a
+/// generation above it (the id must not be live).
+fn placeholder(world: &mut World, id: u32, generation: u32) -> Option<Entity> {
+    let e = Entity::from_bits(u64::from(generation.max(1)) << 32 | u64::from(id))?;
+    world.spawn_at(e, ());
+    Some(e)
+}
+
+/// Free id `id` of `world` at a generation above `generation` (it must not be live).
+fn retire(world: &mut World, id: u32, generation: u32) {
+    if let Some(e) = placeholder(world, id, generation) {
+        let _ = world.despawn(e);
+    }
+}
+
 impl Clone for Scene {
     /// Deep copy with identical entity ids (used for undo snapshots and Play mode).
+    ///
+    /// Ids that are free here are moved past every generation this world may have handed
+    /// out: a fresh world would give them generation 1 again, so a reference left pointing at
+    /// a deleted object (a joint's body, a remembered panel target) came back to life on the
+    /// next object created after an undo or Play.
     fn clone(&self) -> Self {
         let mut world = World::new();
-        for e in self.world.iter().map(|r| r.entity()) {
-            let mut b = EntityBuilder::new();
-            for info in registry::components() {
-                (info.clone_into)(&self.world, e, &mut b);
+        let mut live: Vec<Entity> = self.world.iter().map(|r| r.entity()).collect();
+        live.sort_unstable_by_key(|e| e.id());
+        let generation = self.generation_bound().saturating_add(1);
+        let top = live.last().map_or(0, |e| e.id() + 1).max(self.free_top);
+        // Every id in ascending order, so each `spawn_at` is a fresh id for hecs (a free id
+        // is looked up in its free list, which made copies of worlds with many removed
+        // objects quadratic).
+        let mut next = live.iter().peekable();
+        let mut placeholders = Vec::new();
+        for id in 0..top {
+            match next.next_if(|e| e.id() == id) {
+                Some(&e) => {
+                    let mut b = EntityBuilder::new();
+                    for info in registry::components() {
+                        (info.clone_into)(&self.world, e, &mut b);
+                    }
+                    world.spawn_at(e, b.build());
+                }
+                None => placeholders.push(placeholder(&mut world, id, generation)),
             }
-            world.spawn_at(e, b.build());
+        }
+        for e in placeholders.into_iter().flatten() {
+            let _ = world.despawn(e);
         }
         Self {
             name: self.name.clone(),
@@ -138,6 +188,9 @@ impl Clone for Scene {
             next_scene_id: self.next_scene_id,
             spawn_into: self.spawn_into,
             weather: self.weather.clone(),
+            generation_floor: generation.saturating_add(1),
+            frees: 0,
+            free_top: top,
         }
     }
 }
@@ -156,6 +209,9 @@ impl Scene {
             next_scene_id: 1,
             spawn_into: None,
             weather: Default::default(),
+            generation_floor: 1,
+            frees: 0,
+            free_top: 0,
         }
     }
 
@@ -435,7 +491,51 @@ impl Scene {
             self.despawn(c);
         }
         self.detach(e);
-        let _ = self.world.despawn(e);
+        if self.world.despawn(e).is_ok() {
+            self.note_free(e);
+        }
+    }
+
+    /// Count a removed object for [`Scene::generation_bound`].
+    pub(crate) fn note_free(&mut self, e: Entity) {
+        self.frees = self.frees.saturating_add(1);
+        self.free_top = self.free_top.max(e.id().saturating_add(1));
+    }
+
+    /// Upper bound of the generations this world has handed out for any id: every id that
+    /// was free when it was copied starts at `generation_floor`, live ones keep theirs, and
+    /// each removal moves one id on by one.
+    fn generation_bound(&self) -> u32 {
+        let live = self
+            .world
+            .iter()
+            .map(|r| generation_of(r.entity()))
+            .max()
+            .unwrap_or(1);
+        self.generation_floor.max(live).saturating_add(self.frees)
+    }
+
+    /// Make sure no object created here from now on gets the id of an object of `other` (an
+    /// undo step or Play mode put this copy in its place): ids live in `other` but free here
+    /// are moved past both worlds' generations, so handles to `other`'s objects stay dead.
+    pub fn retire_ids_of(&mut self, other: &Scene) {
+        let mine: std::collections::HashSet<u32> =
+            self.world.iter().map(|r| r.entity().id()).collect();
+        let generation = self
+            .generation_bound()
+            .max(other.generation_bound())
+            .saturating_add(1);
+        let mut any = false;
+        for e in other.world.iter().map(|r| r.entity()) {
+            if !mine.contains(&e.id()) {
+                retire(&mut self.world, e.id(), generation);
+                self.free_top = self.free_top.max(e.id().saturating_add(1));
+                any = true;
+            }
+        }
+        if any {
+            self.generation_floor = self.generation_floor.max(generation.saturating_add(1));
+        }
     }
 
     /// Deep copy of `e` placed right after it, named "Name (1)", "Name (2)"…

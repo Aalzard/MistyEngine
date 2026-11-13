@@ -115,7 +115,10 @@ pub fn stop(s: &mut EditorState) {
     crate::multiplayer::on_play_stopped(s);
     s.runtime = None;
     crate::game_input::stop_rumble();
-    s.scene = session.scene;
+    let mut scene = session.scene;
+    // Objects spawned while playing must not lend their handles to new editor objects.
+    scene.retire_ids_of(&s.scene);
+    s.scene = scene;
     s.selection = session.selection;
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
