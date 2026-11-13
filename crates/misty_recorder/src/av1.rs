@@ -45,10 +45,8 @@ pub fn rgba_to_yuv420(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, Vec<u8>, Vec
                 s = (s.0 + r, s.1 + g, s.2 + b);
             }
             let (r, g, b) = (s.0 / 4, s.1 / 4, s.2 / 4);
-            u[cy * cw + cx] =
-                (((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128).clamp(0, 255) as u8;
-            v[cy * cw + cx] =
-                (((112 * r - 94 * g - 18 * b + 128) >> 8) + 128).clamp(0, 255) as u8;
+            u[cy * cw + cx] = (((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128).clamp(0, 255) as u8;
+            v[cy * cw + cx] = (((112 * r - 94 * g - 18 * b + 128) >> 8) + 128).clamp(0, 255) as u8;
         }
     }
     (y, u, v)
@@ -99,9 +97,7 @@ impl Av1 {
         f.planes[0].copy_from_raw_u8(&y, w, 1);
         f.planes[1].copy_from_raw_u8(&u, w.div_ceil(2), 1);
         f.planes[2].copy_from_raw_u8(&v, w.div_ceil(2), 1);
-        self.ctx
-            .send_frame(f)
-            .map_err(|e| format!("AV1: {e}"))?;
+        self.ctx.send_frame(f).map_err(|e| format!("AV1: {e}"))?;
         self.drain()
     }
 

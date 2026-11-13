@@ -131,13 +131,11 @@ impl Readback {
         s.busy = true;
         s.ready.store(false, Ordering::Release);
         let ready = s.ready.clone();
-        s.buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |r| {
-                // A failed map still frees the slot (its frame comes out black).
-                let _ = r;
-                ready.store(true, Ordering::Release);
-            });
+        s.buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            // A failed map still frees the slot (its frame comes out black).
+            let _ = r;
+            ready.store(true, Ordering::Release);
+        });
         self.queue.push_back((slot, index));
     }
 
@@ -211,13 +209,10 @@ pub fn fit(rgba: Vec<u8>, w: u32, h: u32, to_w: u32, to_h: u32) -> Vec<u8> {
         return rgba;
     }
     match image::RgbaImage::from_raw(w, h, rgba) {
-        Some(img) => image::imageops::resize(
-            &img,
-            to_w,
-            to_h,
-            image::imageops::FilterType::Triangle,
-        )
-        .into_raw(),
+        Some(img) => {
+            image::imageops::resize(&img, to_w, to_h, image::imageops::FilterType::Triangle)
+                .into_raw()
+        }
         None => vec![0; (to_w * to_h * 4) as usize],
     }
 }

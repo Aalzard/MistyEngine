@@ -218,9 +218,7 @@ impl Sink for WebmSink {
         self.file
             .seek(SeekFrom::Start(self.duration_at))
             .map_err(err)?;
-        self.file
-            .write_all(&duration.to_be_bytes())
-            .map_err(err)?;
+        self.file.write_all(&duration.to_be_bytes()).map_err(err)?;
         self.file.flush().map_err(err)?;
         Ok(vec![path])
     }

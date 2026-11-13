@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::schedule::{Schedule, Step};
 use crate::session::Recording;
 use crate::{
-    Frame, OutputFormat, Output, PatternContext, RangeMode, RecorderSettings, gif, h264, mp4,
-    webm,
+    Frame, Output, OutputFormat, PatternContext, RangeMode, RecorderSettings, gif, h264, mp4, webm,
 };
 
 fn temp(tag: &str) -> PathBuf {
@@ -175,7 +174,10 @@ fn gif_output_has_every_frame_and_its_timing() {
         })
         .sum();
     assert_eq!(total_ms, 500);
-    assert_eq!(gif::delay_cs(0, 30) + gif::delay_cs(1, 30) + gif::delay_cs(2, 30), 10);
+    assert_eq!(
+        gif::delay_cs(0, 30) + gif::delay_cs(1, 30) + gif::delay_cs(2, 30),
+        10
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -270,7 +272,9 @@ fn webm_output_holds_every_frame() {
 
 #[test]
 fn annex_b_streams_split_into_nal_units() {
-    let data = [0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 0, 1, 0x65, 4, 5];
+    let data = [
+        0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 0, 1, 0x65, 4, 5,
+    ];
     let nals = h264::split_annex_b(&data);
     assert_eq!(
         nals,

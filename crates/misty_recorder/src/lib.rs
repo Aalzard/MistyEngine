@@ -96,8 +96,8 @@ impl Output {
         width: u32,
         height: u32,
     ) -> Self {
-        let pattern = effective_pattern(&settings.pattern, settings.format)
-            .replace("<Frame>", FRAME_SLOT);
+        let pattern =
+            effective_pattern(&settings.pattern, settings.format).replace("<Frame>", FRAME_SLOT);
         let folder = if settings.folder.trim().is_empty() {
             project.join("Recordings")
         } else {

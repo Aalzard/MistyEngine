@@ -202,9 +202,7 @@ impl Mp4Writer {
         self.file
             .seek(SeekFrom::Start(self.mdat_at + 8))
             .map_err(err)?;
-        self.file
-            .write_all(&mdat_size.to_be_bytes())
-            .map_err(err)?;
+        self.file.write_all(&mdat_size.to_be_bytes()).map_err(err)?;
         self.file.flush().map_err(err)?;
         Ok(())
     }
