@@ -38,6 +38,14 @@ pub fn absolute(rel: &str) -> PathBuf {
     }
 }
 
+/// The project folder, when one is set ([`set_project_root`]).
+pub fn project_root() -> Option<PathBuf> {
+    PROJECT_ROOT
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 /// "Assets/…" path with forward slashes for a file inside the project (else the full path).
 pub fn relative(path: &Path) -> String {
     let root = PROJECT_ROOT.read().unwrap_or_else(|e| e.into_inner());

@@ -153,6 +153,21 @@ fn stage_cost(name: &str, s: &WorldBuilder, res: usize, ares: usize) -> f32 {
     }
 }
 
+/// Smallest and largest terrain size along each axis (metres), as the Inspector allows.
+pub const MIN_SIZE: f32 = 10.0;
+pub const MAX_SIZE: f32 = 8000.0;
+
+/// `size` within [`MIN_SIZE`]..[`MAX_SIZE`] (NaN gives the smallest).
+pub fn clamp_size(size: [f32; 3]) -> [f32; 3] {
+    size.map(|v| {
+        if v.is_nan() {
+            MIN_SIZE
+        } else {
+            v.clamp(MIN_SIZE, MAX_SIZE)
+        }
+    })
+}
+
 /// Run the pipeline without a cache. `None` when cancelled.
 pub fn run(req: &Request, progress: &Progress) -> Option<Output> {
     run_cached(req, progress, &mut Cache::default())
@@ -161,7 +176,22 @@ pub fn run(req: &Request, progress: &Progress) -> Option<Output> {
 /// Run the pipeline, reusing (and refreshing) `cache`. `None` when cancelled; the cache then
 /// keeps the stages that finished.
 pub fn run_cached(req: &Request, progress: &Progress, cache: &mut Cache) -> Option<Output> {
-    let s = &req.settings;
+    // The Inspector keeps the size in 10..8000 m, but scene files, templates and the MCP bridge
+    // don't: a height of 0 stored NaN heights, a negative one panicked the worker (`clamp`),
+    // and a width of 1e9 scattered for ever.
+    let mut sized;
+    let s = if req
+        .settings
+        .size
+        .iter()
+        .all(|v| (MIN_SIZE..=MAX_SIZE).contains(v))
+    {
+        &req.settings
+    } else {
+        sized = req.settings.clone();
+        sized.size = clamp_size(sized.size);
+        &sized
+    };
     let mut timings = Vec::new();
     let mut reused = Vec::new();
     let mut clock = Instant::now();

@@ -18,7 +18,7 @@ use hecs::Entity;
 use rapier3d::prelude as rp;
 
 use super::convert::{gv, parts, pose, rv};
-use super::{Physics, world_pose};
+use super::{Physics, world_mirror, world_pose};
 use crate::scene::{
     CharacterJoint, ConfigurableJoint, FixedJoint, HingeJoint, JointDrive, JointMotion,
     JointProjectionMode, Rigidbody, RotationDriveMode, Scene, SoftJointLimitSpring, SpringJoint,
@@ -118,6 +118,7 @@ struct Connection {
     handle: rp::RigidBodyHandle,
     pos: Vec3,
     rot: Quat,
+    /// World scale with the mirror sign (`world_mirror`).
     scale: Vec3,
 }
 
@@ -164,7 +165,7 @@ impl Physics {
                     handle: b.handle,
                     pos,
                     rot,
-                    scale,
+                    scale: scale * world_mirror(scene, c),
                 };
             }
             self.warnings.push(format!(
@@ -718,7 +719,8 @@ fn anchors(
     connected_anchor: Vec3,
 ) -> (Vec3, Vec3) {
     let (ps, rs, ss) = world_pose(scene, e);
-    let local = anchor * ss;
+    // Mirrored objects (negative scale) mirror their anchors, as collider centres do.
+    let local = anchor * ss * world_mirror(scene, e);
     let world = ps + rs * local;
     let connected = if auto {
         to.rot.inverse() * (world - to.pos)

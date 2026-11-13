@@ -138,7 +138,12 @@ pub fn move_objects(s: &mut EditorState, objects: &[Entity], id: SceneId) {
     for e in moving {
         s.scene.move_to_scene(e, id);
     }
-    // References between scenes are not allowed (they would be lost on save).
+    warn_cross_scene_references(s);
+}
+
+/// Warn about references between scenes (not allowed: they would be lost on save), after
+/// objects moved from one scene to another.
+pub fn warn_cross_scene_references(s: &mut EditorState) {
     for scene in s.scene.loaded_scenes() {
         for w in s.scene.cross_scene_references(scene) {
             s.console.warn(format!(

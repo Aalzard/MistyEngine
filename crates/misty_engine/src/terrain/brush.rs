@@ -183,6 +183,16 @@ pub fn paint_holes(d: &mut TerrainData, b: &Brush, fill: bool) -> bool {
     if fill && changed && !d.has_holes() {
         d.holes.clear();
     }
+    // Trees over a new hole stood in the air, their trunk colliders blocking the opening
+    // (new trees are never planted in holes; grass and details skip them).
+    if !fill && changed {
+        let size = d.size;
+        let trees = std::mem::take(&mut d.trees.instances);
+        d.trees.instances = trees
+            .into_iter()
+            .filter(|t| !d.hole_at(t.position.x * size.x, t.position.y * size.z))
+            .collect();
+    }
     changed
 }
 

@@ -161,3 +161,32 @@ fn dynamic_bodies_land_on_a_controller() {
     let y = scene.world_position(crate_e).y;
     assert!(y > 2.0, "rests on the controller's head: {y}");
 }
+
+/// A mirrored Character Controller (negative scale) mirrors its capsule's centre, as collider
+/// centres do.
+#[test]
+fn mirrored_controllers_mirror_their_centre() {
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Player", None);
+    let mut t = Transform::from_position(Vec3::ZERO);
+    t.scale = Vec3::new(-1.0, 1.0, 1.0);
+    scene.set_transform(e, t);
+    scene.add(
+        e,
+        CharacterController {
+            center: Vec3::new(2.0, 1.0, 0.0),
+            ..Default::default()
+        },
+    );
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let down = |x: f32| {
+        physics.raycast(
+            Vec3::new(x, 10.0, 0.0),
+            Vec3::NEG_Y,
+            20.0,
+            crate::physics::ALL_LAYERS,
+        )
+    };
+    assert!(down(-2.0).is_some(), "the capsule is at x = -2");
+    assert!(down(2.0).is_none());
+}

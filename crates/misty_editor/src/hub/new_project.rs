@@ -20,6 +20,18 @@ pub struct NewProject {
     job: Option<JoinHandle<Result<PathBuf, String>>>,
 }
 
+/// Make the project at `folder` (on the worker). A failure removes what it made, but only a
+/// folder it made: one that appeared after the name was checked (another program, a second
+/// Hub) was deleted with whatever it held.
+fn create_project(folder: PathBuf, template: Template, samples: bool) -> Result<PathBuf, String> {
+    let existed = folder.exists();
+    let result = templates::create_with(&folder, template, samples);
+    if result.is_err() && !existed {
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+    result.map(|()| folder)
+}
+
 impl NewProject {
     pub fn new(location: &Path) -> Self {
         Self {
@@ -48,12 +60,7 @@ impl NewProject {
                 let samples = self.include_samples;
                 self.error = None;
                 self.job = Some(std::thread::spawn(move || {
-                    let result = templates::create_with(&folder, template, samples);
-                    if result.is_err() {
-                        // Don't leave a half-made project behind (the folder was new).
-                        let _ = std::fs::remove_dir_all(&folder);
-                    }
-                    result.map(|()| folder)
+                    create_project(folder, template, samples)
                 }));
             }
             Err(e) => self.error = Some(e),
@@ -318,5 +325,26 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
                 .color(p.dim);
             ui.add(egui::Label::new(text).truncate());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A folder that appeared after the name was checked (and so made the template refuse)
+    /// was deleted with everything in it.
+    #[test]
+    fn a_failed_create_keeps_a_folder_it_did_not_make() {
+        let folder = std::env::temp_dir().join(format!("misty_hub_keep_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("notes.txt"), "mine").unwrap();
+        assert!(create_project(folder.clone(), Template::default(), false).is_err());
+        assert!(
+            folder.join("notes.txt").is_file(),
+            "someone else's folder stays"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

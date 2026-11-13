@@ -383,6 +383,50 @@ return P
     assert!(logs.iter().any(|(_, t)| t == "fov 50.0"), "{logs:?}");
 }
 
+/// A virtual camera's `dutch`, `xAxis`, `yAxis` and impulse forces of NaN are refused: they
+/// went on into the brain's camera (a NaN view), the axes for good.
+#[test]
+fn nan_virtual_camera_numbers_and_impulses_are_refused() {
+    let probe = r#"
+local P = {}
+function P:Start()
+    local v = self.gameObject:GetComponent("VirtualCamera")
+    for _, f in ipairs({ "dutch", "xAxis", "yAxis" }) do
+        Debug.Log(f .. " " .. tostring(pcall(function() v[f] = 0 / 0 end)))
+    end
+    Debug.Log("force " .. tostring(pcall(function() Impulse.GenerateImpulse(self.gameObject, 0 / 0) end)))
+    Debug.Log("velocity " .. tostring(pcall(function()
+        Impulse.GenerateImpulse(self.gameObject, Vector3.new(0 / 0, 0, 0))
+    end)))
+    Debug.Log("dutch " .. v.dutch)
+end
+return P
+"#;
+    let root = project(&[("P.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Free Look", None);
+    scene.add(e, crate::vcam::VirtualCamera::free_look());
+    scene.add(e, crate::vcam::ImpulseSource::default());
+    attach(&mut scene, e, "P.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    for want in [
+        "dutch false",
+        "xAxis false",
+        "yAxis false",
+        "force false",
+        "velocity false",
+        "dutch 0.0",
+    ] {
+        assert!(logs.iter().any(|(_, t)| t == want), "{want}: {logs:?}");
+    }
+    let v = scene
+        .world
+        .get::<&crate::vcam::VirtualCamera>(e)
+        .unwrap()
+        .clone();
+    assert!(v.orbital.x_axis.value.is_finite() && v.orbital.y_axis.value.is_finite());
+}
+
 /// `AudioSource.volume = 0/0` (an AmbienceZones Blend Distance of 0 did this) is refused:
 /// NaN passed the clamp and reached the mixer.
 #[test]
@@ -784,4 +828,22 @@ return Goals
         "{saved}"
     );
     std::fs::remove_dir_all(root).ok();
+}
+
+/// The editor reads a script's fields by running its top level (on every save, on the UI
+/// thread): an endless loop there froze the editor for good, a runaway table filled memory.
+#[test]
+fn inspecting_a_script_stops_endless_top_level_loops_and_runaway_memory() {
+    let start = std::time::Instant::now();
+    let err = inspect_script("while true do end\nreturn {}", "Loop.lua").unwrap_err();
+    assert!(err.contains("endless loop"), "{err}");
+    assert!(start.elapsed() < std::time::Duration::from_secs(10));
+    let err = inspect_script(
+        "local t = {} while true do t[#t + 1] = string.rep('x', 1024) .. #t end return {}",
+        "Grow.lua",
+    )
+    .unwrap_err();
+    assert!(!err.is_empty());
+    // Ordinary scripts still inspect.
+    assert!(inspect_script("return { speed = 2 }", "Ok.lua").is_ok());
 }

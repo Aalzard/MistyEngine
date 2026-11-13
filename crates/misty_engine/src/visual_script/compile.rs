@@ -569,6 +569,11 @@ fn expand(
 
 type PinKey = (u32, Rc<str>);
 
+/// Exec nodes compiled inside each other before the rest of a chain is left for later.
+const MAX_ENTRY_DEPTH: u32 = 32;
+/// Longest chain of data nodes feeding each other.
+const MAX_DATA_DEPTH: usize = 128;
+
 struct Compiler<'a> {
     nodes: HashMap<u32, &'a FNode>,
     /// (node, input) → (source node, output).
@@ -590,6 +595,8 @@ struct Compiler<'a> {
     /// Pure nodes computed in the current run.
     emitted: HashSet<u32>,
     visiting: HashSet<u32>,
+    /// Exec entries being compiled inside each other ([`Compiler::goto`]).
+    depth: u32,
     vars: Vec<VarInfo>,
     var_index: HashMap<String, (VarScope, u16)>,
     object_vars: Vec<VarInfo>,
@@ -716,6 +723,15 @@ impl<'a> Compiler<'a> {
             _ => {}
         }
         if self.is_pure(src) && !self.emitted.contains(&src) {
+            // Each node of a data chain is pulled inside the next: bounded, or a long chain
+            // overflows the stack.
+            if self.visiting.len() >= MAX_DATA_DEPTH {
+                self.error(
+                    src,
+                    format!("this data chain is too long (over {MAX_DATA_DEPTH} nodes in a row)"),
+                );
+                return self.alloc(Value::Nil);
+            }
             if !self.visiting.insert(src) {
                 self.error(src, "data wires loop back into this node");
                 return self.alloc(Value::Nil);
@@ -933,7 +949,18 @@ impl<'a> Compiler<'a> {
                     Some(&pc) => {
                         self.emit(Op::Jump(pc));
                     }
-                    None => self.compile_entry(n, &p),
+                    // A long chain compiled each next node inside the last one: 10 000 nodes
+                    // overflowed the stack (the editor checks on every edit). Past a depth the
+                    // rest is compiled later and jumped to.
+                    None if self.depth >= MAX_ENTRY_DEPTH => {
+                        let at = self.emit(Op::Jump(PENDING));
+                        self.fixups.push((at, key));
+                    }
+                    None => {
+                        self.depth += 1;
+                        self.compile_entry(n, &p);
+                        self.depth -= 1;
+                    }
                 }
             }
         }
@@ -1369,6 +1396,7 @@ pub fn compile(g: &ScriptGraph, files: &dyn Resolver) -> Result<Program, Vec<Gra
         state: HashMap::new(),
         emitted: HashSet::new(),
         visiting: HashSet::new(),
+        depth: 0,
         vars,
         var_index,
         object_vars,

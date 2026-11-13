@@ -323,3 +323,31 @@ fn adding_a_joint_adds_a_rigidbody() {
     let joint = names.iter().position(|n| n == "Hinge Joint").unwrap();
     assert!(rb < joint, "{names:?}");
 }
+
+/// A mirrored body (negative scale) mirrors its joint anchors, as its collider centres: the
+/// spring was attached on the other side of what was drawn.
+#[test]
+fn mirrored_bodies_mirror_their_joint_anchors() {
+    let mut scene = Scene::new("t");
+    let e = body(
+        &mut scene,
+        "Mirrored",
+        Vec3::ZERO,
+        Vec3::new(-1.0, 1.0, 1.0),
+    );
+    scene.add(
+        e,
+        SpringJoint {
+            anchor: Vec3::new(1.0, 0.0, 0.0),
+            auto_configure_connected_anchor: true,
+            ..Default::default()
+        },
+    );
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let (a, b) = physics.spring_anchors()[0];
+    assert!((a - Vec3::new(-1.0, 0.0, 0.0)).length() < 1e-4, "{a}");
+    assert!(
+        (b - a).length() < 1e-4,
+        "auto connected anchor at the same place: {b}"
+    );
+}

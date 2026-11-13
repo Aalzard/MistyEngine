@@ -10,6 +10,14 @@ use misty_engine::scene::{
 use crate::actions::{Action, Create};
 use crate::state::EditorState;
 
+/// Whether `entity` has a script in `slot`.
+fn has_script_slot(s: &EditorState, entity: Entity, slot: usize) -> bool {
+    s.scene
+        .world
+        .get::<&Scripts>(entity)
+        .is_ok_and(|x| slot < x.list.len())
+}
+
 /// Apply a scene command. Returns the action back if it is not a scene command.
 pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
     // Prefab Mode: Ctrl+S saves the prefab; replacing the scenes leaves Prefab Mode first.
@@ -211,6 +219,10 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             }
         }
         Action::RemoveScript { entity, slot } => {
+            // Nothing to remove (a stale slot, a deleted object): no undo step.
+            if !has_script_slot(s, entity, slot) {
+                return None;
+            }
             s.record("Remove Script");
             let empty = match s.scene.world.get::<&mut Scripts>(entity) {
                 Ok(mut scripts) => {
@@ -226,6 +238,9 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             }
         }
         Action::ResetScript { entity, slot } => {
+            if !has_script_slot(s, entity, slot) {
+                return None;
+            }
             s.record("Reset Script");
             if let Ok(mut scripts) = s.scene.world.get::<&mut Scripts>(entity)
                 && let Some(r) = scripts.list.get_mut(slot)

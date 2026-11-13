@@ -318,6 +318,16 @@ fn wasd_composite_and_shift_modifier_drive_actions() {
 
 // ---- processors ------------------------------------------------------------------------------
 
+/// "nan" and "inf" parse as numbers: a hand-edited `clamp(min=nan,max=nan)` panicked
+/// (`f32::clamp` with NaN bounds) on every input; such parameters take their defaults.
+#[test]
+fn non_finite_processor_parameters_take_their_defaults() {
+    let f = |text: &str, v: f32| processors::apply(text, Value::Float(v)).as_float();
+    assert_eq!(f("clamp(min=nan,max=nan)", 0.5), 0.5);
+    assert_eq!(f("scale(factor=inf)", 0.5), 0.5);
+    assert!(f("axisDeadzone(min=NaN,max=0.8)", 0.5).is_finite());
+}
+
 #[test]
 fn processors_filter_values_in_order() {
     let f = |text: &str, v: f32| processors::apply(text, Value::Float(v)).as_float();
@@ -453,6 +463,25 @@ fn hold_and_tap_on_one_binding_hand_over() {
     assert!((seen[0].time - seen[0].start_time - 0.4).abs() < 1e-9);
     let ev = set.update(&frame(&["e"], &[]), 1.7);
     assert_eq!(phases(&ev), [Phase::Canceled]);
+}
+
+/// A rebind (or loaded overrides) while a key was held rebuilt every action's interaction
+/// state: the held key counted as a new press (a second jump), and nothing ever canceled the
+/// action that was in progress.
+#[test]
+fn a_rebind_while_a_key_is_held_cancels_instead_of_pressing_again() {
+    let b = Binding::to("<Keyboard>/e", KEYBOARD_MOUSE);
+    let mut set = one_action(Action::new("Use", ActionType::Button, ControlType::Button).with(b));
+    let ev = set.update(&frame(&[], &["e"]), 0.0);
+    assert!(phases(&ev).contains(&Phase::Performed), "{:?}", phases(&ev));
+    set.update(&frame(&["e"], &["e"]), 0.1);
+    assert!(set.set_override(0, 0, 0, "<Keyboard>/e"));
+    let ev = set.update(&frame(&["e"], &["e"]), 0.2);
+    assert_eq!(phases(&ev), [Phase::Canceled], "no second press while held");
+    let ev = set.update(&frame(&["e"], &[]), 0.3);
+    assert!(ev.is_empty(), "{:?}", phases(&ev));
+    let ev = set.update(&frame(&[], &["e"]), 0.4);
+    assert!(phases(&ev).contains(&Phase::Performed), "a new press works");
 }
 
 // ---- action types ----------------------------------------------------------------------------

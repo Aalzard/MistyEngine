@@ -19,6 +19,9 @@ use super::{AREA_WALKABLE, AgentSettings};
 const VERSION: u32 = 2;
 const POLY_BITS: u32 = 16;
 const POLY_MASK: u32 = (1 << POLY_BITS) - 1;
+/// Tiles a mesh can address: the tile index has the high 16 bits of a [`PolyRef`]. More
+/// would alias the polygons of the first tiles.
+pub const MAX_TILES: usize = 1 << (32 - POLY_BITS);
 
 /// A polygon: tile index << 16 | polygon index.
 pub type PolyRef = u32;
@@ -265,7 +268,7 @@ impl NavMesh {
             cell_size: settings.cell_size,
             ..Default::default()
         };
-        for t in tiles {
+        for t in tiles.into_iter().take(MAX_TILES) {
             let i = m.tiles.len() as u32;
             m.lookup.insert((t.x, t.z), i);
             m.tiles.push(Arc::new(t));
@@ -695,6 +698,7 @@ impl NavMesh {
                     self.tiles[i as usize] = Arc::new(t);
                     i
                 }
+                None if self.tiles.len() >= MAX_TILES => continue,
                 None => {
                     let i = self.tiles.len() as u32;
                     self.lookup.insert((t.x, t.z), i);
@@ -821,6 +825,12 @@ impl NavMesh {
                 })
                 .collect();
             return Ok(Self::new(f.agent, f.cell_size, polys));
+        }
+        if f.tiles.len() > MAX_TILES {
+            return Err(format!(
+                "invalid nav mesh: {} tiles (at most {MAX_TILES})",
+                f.tiles.len()
+            ));
         }
         let mut tiles = Vec::new();
         for t in f.tiles {

@@ -1045,7 +1045,16 @@ fn base64_and_secrets() {
     );
     assert_ne!(a, b);
     assert!(tools::project_path("Assets/A.lua").is_ok());
-    for bad in ["/etc/passwd", "C:/x", "Assets/../x", "", "Assets//x"] {
+    // "Assets/." named the Assets folder itself: asset.delete binned all of it.
+    for bad in [
+        "/etc/passwd",
+        "C:/x",
+        "Assets/../x",
+        "",
+        "Assets//x",
+        "Assets/.",
+        "Assets/./x",
+    ] {
         assert!(tools::project_path(bad).is_err(), "{bad}");
     }
 }
@@ -1188,5 +1197,56 @@ fn read_console_keeps_its_indices_when_lines_are_dropped() {
             .iter()
             .any(|l| l.as_str().unwrap().contains("Created 'Cube'"))
     );
+    cleanup(s);
+}
+
+/// `asset.delete` with "Assets/." passed the check that keeps the Assets folder itself out of
+/// reach, and moved the whole folder to the Recycle Bin.
+#[test]
+fn asset_delete_refuses_the_assets_folder_spelled_with_a_dot() {
+    let mut s = project("delete_dot");
+    let assets = s.project.root.join("Assets");
+    for path in ["Assets/.", "Assets/./", "./Assets/."] {
+        err(&mut s, "asset.delete", json!({ "path": path }));
+        assert!(assets.is_dir(), "{path}");
+    }
+    cleanup(s);
+}
+
+/// 1e39 is a JSON number but infinity as an f32: positions, rotations and field values past
+/// the f32 range made objects' matrices NaN.
+#[test]
+fn numbers_past_the_f32_range_are_refused() {
+    let mut s = project("huge_numbers");
+    ok(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "name": "Box"}),
+    );
+    let objects = s.scene.len();
+    err(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "rotation": [1e39, 0, 0]}),
+    );
+    err(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "position": [0, -1e39, 0]}),
+    );
+    for (field, value) in [
+        ("euler", json!([1e39, 0, 0])),
+        ("position", json!([1e39, 0, 0])),
+        ("scale.0", json!(-1e39)),
+    ] {
+        err(
+            &mut s,
+            "scene.set_field",
+            json!({"object": "Box", "component": "Transform", "field": field, "value": value}),
+        );
+    }
+    let e = tools::resolve(&s, "Box").unwrap();
+    assert!(s.scene.world_matrix(e).is_finite());
+    assert_eq!(s.scene.len(), objects, "nothing was created");
     cleanup(s);
 }

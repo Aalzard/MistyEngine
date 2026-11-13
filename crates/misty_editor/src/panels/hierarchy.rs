@@ -790,6 +790,7 @@ fn apply_drop(state: &mut EditorState, dragged: &[Entity], drop: Drop) {
         many => format!("{} Objects", many.len()),
     };
     state.record(&format!("Reparent {who}"));
+    let scenes_before: Vec<_> = dragged.iter().map(|&e| state.scene.scene_of(e)).collect();
     let mut prev: Option<Entity> = None;
     for &e in dragged {
         let scene = &mut state.scene;
@@ -816,6 +817,14 @@ fn apply_drop(state: &mut EditorState, dragged: &[Entity], drop: Drop) {
             }
         }
         prev = Some(e);
+    }
+    // Dropped into another scene's object (or between its rows): same warning as Move To Scene.
+    if dragged
+        .iter()
+        .zip(scenes_before)
+        .any(|(&e, before)| state.scene.scene_of(e) != before)
+    {
+        crate::open_scenes::warn_cross_scene_references(state);
     }
 }
 
@@ -1119,6 +1128,39 @@ mod tests {
         let light = s.scene.roots_in(0)[0];
         apply_drop(s, &[cam], Drop::Before(light));
         assert_eq!(s.scene.roots_in(0), [cam, light]);
+    }
+
+    /// A drop into another scene's object moves the subtree across scenes: a reference left
+    /// behind gets the warning Move To Scene gives.
+    #[test]
+    fn dropping_into_another_scenes_object_warns_about_cross_scene_references() {
+        let mut s = state();
+        let mut level = misty_engine::scene::Scene::new("Level");
+        level.spawn("Ground", None);
+        s.scene
+            .load_additive("Assets/Level.scene", &level.to_json())
+            .unwrap();
+        let ground = s.scene.find_by_name("Ground").unwrap();
+        let toggle = s.scene.spawn("Toggle", None);
+        let graphic = s.scene.spawn("Check", None);
+        s.scene.add(
+            toggle,
+            misty_engine::scene::UiToggle {
+                graphic: Some(graphic),
+                ..Default::default()
+            },
+        );
+        let warnings = |s: &EditorState| {
+            s.console
+                .entries()
+                .iter()
+                .filter(|e| e.message.contains("Cross-scene references"))
+                .count()
+        };
+        assert_eq!(warnings(&s), 0);
+        apply_drop(&mut s, &[graphic], Drop::Into(ground));
+        assert_ne!(s.scene.scene_of(graphic), s.scene.scene_of(toggle));
+        assert_eq!(warnings(&s), 1);
     }
 
     /// Row menu ▸ Move To View / Align With View place the object at the Scene view (undoable).
