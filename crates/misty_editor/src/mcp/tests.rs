@@ -1347,13 +1347,13 @@ fn graph_tools_build_a_script_graph_and_attach_it() {
         json!({ "object": id, "component": path }),
     );
     let e = tools::resolve(&s, &id).unwrap();
-    let scripts = s
+    let first = s
         .scene
         .world
         .get::<&misty_engine::scene::Scripts>(e)
-        .unwrap()
-        .clone();
-    assert_eq!(scripts.list[0].path, path);
+        .map(|x| x.list[0].path.clone())
+        .unwrap();
+    assert_eq!(first, path);
     // Removing a node drops its wires.
     ok(
         &mut s,
