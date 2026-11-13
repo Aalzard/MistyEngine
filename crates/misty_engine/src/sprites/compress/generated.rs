@@ -527,7 +527,7 @@ pub fn make(
                 }
                 let (chain, key, root) = (chain.clone(), k.clone(), root.clone());
                 let (srgb, coverage) = (spec.srgb, spec.coverage);
-                rayon::spawn(move || {
+                crate::background::pool().spawn(move || {
                     let spec = Spec {
                         recipe: "",
                         format: Some(format),

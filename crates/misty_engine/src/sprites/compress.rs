@@ -557,7 +557,7 @@ pub fn texture_upload(rel: &str, usage: Use, bc: bool) -> Result<Upload, String>
             match choose(&imp, platform, &img, usage) {
                 Some(format) if fresh => {
                     let (rel, copy) = (rel.to_owned(), img.clone());
-                    rayon::spawn(move || {
+                    crate::background::pool().spawn(move || {
                         let c = encode(copy, format, srgb, mips);
                         write_cache(&key, &c);
                         PENDING
