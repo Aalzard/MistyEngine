@@ -4579,3 +4579,42 @@ One commit per bug, each with a regression test; the running list with a status 
   16 KB.
 - **NaN**: `AudioSource` numbers refuse NaN; AmbienceZones with Blend Distance 0 and the First
   Person controller with Step Length 0 no longer produce NaN.
+
+## Round 55 — Performance round 2: parallel command encoding, shadow mask bandwidth, first-frame stalls (branch r55-perf2)
+
+Notes, method and every measurement: `docs/pending/r55-perf2.md`.
+
+- **CPU, `Render.Submit.Finish`**: wgpu 30 validates and encodes a frame's commands when its
+  encoder is finished. The frame now closes an encoder after the shadow maps, the clouds and
+  fog, the screen-space passes, the main pass and TAA (`render/frame_encoder.rs`); rayon
+  finishes each closed part while the render thread records the next, and the parts are
+  submitted together. NoonValley High 1080p CPU render 3.63 → 2.80 ms (hero), 3.00 → 2.09
+  (inside), 3.62 → 2.61 (down); in the editor `Render.Submit.Finish` 1.7 → 0.55 ms
+  (NoonValley), 2.6 → 0.73 (MeadowDemo), 0.41 → 0.15 (StreamingDemo, whole frames 2.6 → 2.3
+  ms). NoonValley and MeadowDemo editor frames stay GPU-bound (~7 / ~8.7 ms).
+- **GPU, shadow mask**: with at most two soft-shadowed lights (the sun alone, most scenes) its
+  texels are 8 bytes instead of 16 (depth kept as the rounded top 15 bits of its f32, frames,
+  two blur radii). Hero 0.76 → 0.68 ms, down 0.97 → 0.88. Images within run-to-run noise.
+- **First-frame stalls** (bug hunt 3): the tree GPU-culling pipelines are prebuilt on a worker
+  with the tree pipelines and `warm_up` waits for them (first run `Trees.GpuCull` 600 → 22 ms
+  in NoonValley, 418 → 62 in MeadowDemo; NoonValley's worst frame 800 → 278 ms); the flower
+  atlas is made and uploaded on its worker (`Grass.FlowerAtlas`, up to 187 ms, off the main
+  thread).
+- **First run of a fresh copy**: no Misty GI bake in NoonValley or MeadowDemo; the wait is
+  the BC7 / BC1 encodes of the renderer-made and imported textures (97 MB of
+  `Library/TextureCache` for NoonValley). They ran on rayon's global pool on every core, where
+  the frame's own parallel loops queued behind them; they now run on their own pool of half
+  the cores. Frames while loading: NoonValley median 9.2 → 8.2 ms, p90 31 → 27; MeadowDemo
+  10.8 → 10.0, p90 24.7 → 23.0; settle time unchanged (~24 / ~21 s on a lightly loaded
+  machine; the same binary took 127 s with two builds running).
+- **Not changed**: the 4× MSAA emission target (66 MB at 1080p) needs a no-emission variant of
+  23 main-pass pipeline builders; tree textures already map to BC7; GTAO trace (a cheaper
+  per-tap transform made no difference: not ALU-bound); sun shaft march and composite (the
+  remaining ideas change the shafts).
+- **Measuring**: editor capture runs now start from each scene's Main Camera (the Scene view
+  camera is kept per project, so runs inherited the previous scene's view), and two binaries
+  alternating on one project copy recompile each other's pipeline cache (compare same-binary
+  runs back to back).
+- **Checks**: fmt pass; clippy 0 warnings; golden shots 20/20 (MeadowDemo ≤ 0.08 mean,
+  CyclesRoom 0.00); workspace tests all pass (engine 1566, editor 929, player 11, dedicated
+  server 1, MCP end-to-end 1).

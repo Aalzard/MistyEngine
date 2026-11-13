@@ -15,6 +15,7 @@ pub mod environment;
 pub mod fast_paths;
 mod finish;
 mod frame_debug;
+mod frame_encoder;
 mod frame_lists;
 mod glow;
 mod gpu_culling;
@@ -2019,9 +2020,7 @@ impl Renderer {
         frame_debug::set_size(&self.capture, target.size());
 
         crate::profile_scope!("Render.Encode");
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("misty frame"),
-        });
+        let mut encoder = frame_encoder::FrameEncoder::new(device);
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         if let Some(t) = &self.pass_timer {
             t.begin(&mut encoder);
@@ -2057,6 +2056,9 @@ impl Renderer {
             self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         }
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
+        // Each split hands the commands recorded so far to a worker, which finishes them (wgpu's
+        // validation and encoding) while the next part records (see `frame_encoder`).
+        encoder.split(device);
         self.weather_occlusion_pass(device, &mut encoder, frame, &lists.prep);
         self.mark(&mut encoder, "Weather occlusion");
         {
@@ -2091,6 +2093,7 @@ impl Renderer {
         self.mark(&mut encoder, "Clouds");
         self.froxel_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Froxel fog");
+        encoder.split(device);
         // The first phase's clusters (also drawn by the screen-space prepass below).
         self.vgeo
             .cull(&mut encoder, 0, 1, &|v| self.vgeo_cull_event(v));
@@ -2145,6 +2148,7 @@ impl Renderer {
             self.screen_trace_passes(&mut encoder, target, t);
         }
         self.mark(&mut encoder, "SSGI / SSR");
+        encoder.split(device);
         // Without the screen-space prepass the marking reads the main pass's multisampled depth,
         // which then must be stored and decompressed: every other frame is enough (marked pages
         // stay wanted for a second, the guard band covers the frame between).
@@ -2253,6 +2257,7 @@ impl Renderer {
             }
         }
         self.mark(&mut encoder, "Main pass (rest)");
+        encoder.split(device);
         if self.vsm.wants_marks() {
             let depth = target.depth_view();
             (self.vsm).encode_mark(
@@ -2305,6 +2310,7 @@ impl Renderer {
             (self.taa).stretch(device, &mut encoder, &self.view_bind_group, input, output);
         }
         self.mark(&mut encoder, "TAA");
+        encoder.split(device);
         self.weather_passes(device, queue, &mut encoder, target, frame);
         self.mark(&mut encoder, "Weather");
         let composite = self.postfx_passes(device, &mut encoder, target);
@@ -2335,7 +2341,7 @@ impl Renderer {
                 encoder.finish()
             };
             crate::profile_scope!("Render.Submit.Queue");
-            queue.submit([commands]);
+            queue.submit(commands);
         }
         self.vgeo.stats_submitted();
         self.trees.cull_submitted();

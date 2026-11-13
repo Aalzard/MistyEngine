@@ -43,6 +43,7 @@ const BLUR: f32 = 1.0;
 /// Mesh group slot (17 is the screen-space GI/reflection texels).
 pub(super) const BINDING: u32 = 18;
 const HEADER_BYTES: u64 = 64;
+/// Bytes per pixel with three or four lights (eight with at most two).
 const TEXEL_BYTES: u64 = 16;
 const NO_CHANNEL: u32 = 255;
 
@@ -413,7 +414,8 @@ impl Renderer {
         let header = Header {
             info: [1, size.0, size.1, 0],
             channels,
-            pad: [0; 4],
+            // At most two lights: half-size texels (shadow_mask.wgsl `narrow`).
+            pad: [u32::from(slots.len() <= 2), 0, 0, 0],
         };
         for b in &state.buffers {
             queue.write_buffer(b, 0, bytemuck::bytes_of(&header));
