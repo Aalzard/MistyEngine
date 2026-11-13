@@ -985,3 +985,21 @@ fn write_template_thumbnails() {
             .unwrap();
     }
 }
+
+/// A World Builder size the Inspector can't make (scene files, templates, the MCP bridge): a
+/// height of 0 stored NaN heights, a negative one panicked the worker thread.
+#[test]
+fn degenerate_sizes_generate_finite_terrain() {
+    for size in [
+        [100.0, 0.0, 100.0],
+        [100.0, -5.0, 100.0],
+        [f32::NAN, 60.0, 100.0],
+    ] {
+        let mut req = request(33, vec![]);
+        req.settings.size = size;
+        req.stages = Stages::All;
+        let out = run(&req);
+        assert!(out.data.heights.iter().all(|h| h.is_finite()), "{size:?}");
+        assert!(out.data.size.is_finite() && out.data.size.min_element() >= 10.0);
+    }
+}
