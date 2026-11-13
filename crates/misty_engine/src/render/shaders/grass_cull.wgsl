@@ -109,6 +109,11 @@ fn visible(k: Kind, root: vec3<f32>, height: f32, key: f32) -> bool {
             return false;
         }
     }
+    // Every blade shrinks away to nothing at the draw distance, the flat fans too
+    // (grass_blade.wgsl `grass_blade_frame`).
+    if (dist >= k.lod.x * (1.0 + MARGIN)) {
+        return false;
+    }
     if (k.lod.y < 0.5) {
         return true;
     }

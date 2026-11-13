@@ -604,6 +604,9 @@ pub(super) struct TerrainCache {
     /// How far from the camera the sun's shadows reach (chunks within it keep their camera
     /// LOD in the shadow maps; see [`ChunkDraw::shadow_lod`]).
     shadow_reach: f32,
+    /// How far the screen-space prepass draws grass (0 = not at all), for the grass
+    /// uniforms: its blades thin out towards that edge instead of ending at whole chunks.
+    grass_prepass_range: f32,
     frustum: Option<Frustum>,
     started: Instant,
     /// Calls of [`TerrainCache::prepare`] (when each terrain was last drawn).
@@ -776,6 +779,7 @@ impl TerrainCache {
             next_atlas_id: 1,
             camera: Vec3::ZERO,
             shadow_reach: 0.0,
+            grass_prepass_range: 0.0,
             frustum: None,
             started: Instant::now(),
             frame: 0,
@@ -945,6 +949,12 @@ impl TerrainCache {
     /// chunks' shadow-map detail in the next [`TerrainCache::select`].
     pub fn set_shadow_reach(&mut self, distance: f32) {
         self.shadow_reach = distance;
+    }
+
+    /// How far the screen-space prepass draws grass this frame (None = not at all), for the
+    /// grass uniforms of the next [`TerrainCache::select`].
+    pub fn set_grass_prepass_range(&mut self, range: Option<f32>) {
+        self.grass_prepass_range = range.unwrap_or(0.0);
     }
 
     /// Pick each chunk's LOD and visibility for the camera, and update grass around it
@@ -1141,6 +1151,7 @@ impl TerrainCache {
             }
             let casts = d.details.cast_shadows && t.cast_shadows;
             let near = near_map && casts;
+            let prepass_range = self.grass_prepass_range;
             let params = |shadow: Option<(f32, f32)>, near_radius: f32| {
                 GrassParams::new(
                     &d.details,
@@ -1157,6 +1168,7 @@ impl TerrainCache {
                 .with_vis_index(i as u32)
                 .with_flowers(d.flowers.lod_distance)
                 .with_species(&d.detail_layers)
+                .with_prepass(prepass_range)
             };
             // (Made once per terrain, rewritten every frame: no buffers or groups to create,
             // track and drop per frame; again when the atlas changes.)

@@ -6,6 +6,11 @@
 //!   written as `<level>_<view>.png` into `MISTY_NOON_DIR`.
 //! - `noon_valley_times`: median GPU frame time and the GPU time of every part, per view and
 //!   level (`MISTY_NOON_VIEWS`, default `hero,away`; `MISTY_QUALITY`, default `high,ultra`).
+//! - `noon_valley_dolly`: a camera dolly from one view (`MISTY_NOON_VIEWS`, default `hero`):
+//!   the camera walks forward `MISTY_DOLLY_STEP` m a frame (default 0.1) for
+//!   `MISTY_DOLLY_FRAMES` frames (default 48) after 32 still ones, every moving frame written
+//!   as `dolly_<n>.png` into `MISTY_NOON_DIR` (High, `MISTY_SIZE`): consecutive frames show
+//!   whether anything pops as the distances change.
 
 use std::path::PathBuf;
 
@@ -293,6 +298,50 @@ fn noon_valley_shots() {
             eprintln!("wrote {}", path.display());
         }
     }
+}
+
+#[test]
+#[ignore = "writes look-check renders; run on purpose"]
+fn noon_valley_dolly() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let dir = PathBuf::from(std::env::var("MISTY_NOON_DIR").expect("MISTY_NOON_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let name = std::env::var("MISTY_NOON_VIEWS").unwrap_or_else(|_| "hero".into());
+    let num = |key: &str, default: f32| {
+        std::env::var(key)
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(default)
+    };
+    let frames = num("MISTY_DOLLY_FRAMES", 48.0) as usize;
+    let step = num("MISTY_DOLLY_STEP", 0.1);
+    let mut gv = noon_view(&name).expect("view");
+    let (w, h) = size();
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &QualityLevel::high());
+    let target = r.create_view_target(&device, w, h);
+    let fwd = gv.camera.rotation * Vec3::Z;
+    let ahead = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero();
+    for i in 0..32 + frames {
+        if i >= 32 {
+            // Forward along the ground, the eye at the same height above it.
+            let from = gv.camera.position;
+            let mut to = from + ahead * step;
+            to.y += ground_at(&gv, to) - ground_at(&gv, from);
+            gv.camera.position = to;
+        }
+        r.render(&device, &queue, &target, &gv.frame());
+        if i >= 32 {
+            let img = image::RgbaImage::from_raw(w, h, read_back(&device, &queue, &target))
+                .expect("read back");
+            img.save(dir.join(format!("dolly_{:03}.png", i - 32)))
+                .unwrap();
+        }
+    }
+    eprintln!("wrote {frames} dolly frames into {}", dir.display());
 }
 
 #[test]

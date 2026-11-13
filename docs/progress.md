@@ -4453,3 +4453,42 @@ once: no blending, no sorting), and the shadow casters take the camera's state. 
 - **Left**: no time-based fade for camera cuts (a jump lands in the new state at once); the
   dither still shows as fine noise on a crown edge against the sky while it is in a band
   (TAA averages it, not fully, and not on the screen border).
+
+## Round 45 — Cheaper grass on the GPU, grass LOD without pops (branch r45-grass-gpu)
+
+### Done (docs/pending/r45-grass-gpu.md)
+- **Grass visibility card target in 8 bits** (`grass_vis.rs`, `grass_vis.wgsl`): triangle,
+  facing and coverage in an Rgba8Unorm target (4 bytes a sample, was 8): the 4× MSAA raster
+  and the resolve move a third less memory. Same picture (mean 0.07/255).
+- **Grass LOD fades** (`grass_blade.wgsl`, `grass_cull.wgsl`, `grass_prepass.wgsl`,
+  `terrain_grass.rs`):
+  - Fine → coarse cards: chunks now switch at 2.5 LOD distances (was 1.5), and the fine cards
+    slide their rows onto the coarse card's over the last 5 % before it, so the switch shows
+    nothing (it showed as a band across the meadow: forced-switch difference 0.121 →
+    0.003/255). At 1.5 the morphed blades were still large on screen and pushed
+    `meadow_low_close` over the golden limit.
+  - Draw-distance edge: every blade's width fades with the draw-distance fade (the flat fans
+    kept their width past it to the end of the last chunk), and nothing past the draw
+    distance is drawn.
+  - Screen-space prepass: with a range of 12 m or more (High AO, 20 m) its blades thin out
+    over the last quarter of the range instead of ending at whole chunks; the 8 m range of
+    the lower AO levels is left as it was.
+- Diagnostics of where the grass time goes (table in the pending doc), harness additions:
+  `MISTY_GRASS_CLOCK=1` (wind clock running in the timings), `noon_valley_dolly`, test knobs
+  `MISTY_GRASS_COARSE_FROM` / `MISTY_GRASS_DROP_BEYOND`.
+- High 1920×1080 (final build, interleaved with the base; other jobs shared the GPU, so the
+  hero figures are from the one quiet run): NoonValley hero GPU 13.40 → 12.97 ms (grass
+  visibility 2.37 → 2.11, shading 2.00 → 1.89, screen-space prepass 1.31 → 1.13); down
+  sum of passes 12.77 → 11.91 (visibility 2.48 → 1.73); MeadowDemo 14.33 → 13.66
+  (visibility 2.50 → 2.27, shading 1.67 → 1.58, prepass 0.51 → 0.35).
+- Checks: fmt, clippy 0 warnings, workspace tests (editor 918, engine 1521 + the hitch test
+  that failed under load passes alone), golden shots 20/20 (MeadowDemo 0.19–0.46 against a
+  base that already sits at 0.19–0.39 from earlier rounds; cycles 0.00).
+
+### Not done
+- Hero still above 12 ms. Tried and dropped: per-pixel composite with sample masks (slower),
+  two-segment far cards and one-segment fans (no gain), motion vectors for sample 0 only
+  (no gain), a smooth leaf count (changes the turf beyond the golden tolerance). The leaf
+  count across a card still steps per tuft, and fans entering a chunk's drawn prefix still
+  appear whole (per blade, not rings). Next costs: the near grass shadow map (0.7 ms), grass
+  in the prepass, sun shafts (1.0 ms).

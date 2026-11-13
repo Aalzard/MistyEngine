@@ -40,7 +40,8 @@ struct GrassParams {
     // x = shortest and y = tallest blade of the turf (m), z = height variation, w = the
     // quality level's share of the blades (the rest grow wider).
     canopy: vec4<f32>,
-    // x = depth shading (0..1).
+    // x = depth shading (0..1), y = how far the screen-space prepass draws grass (m, 0 = not
+    // at all; grass_prepass.wgsl).
     depth: vec4<f32>,
     // The grass species' (dryness, tint): layer 2i in xy, layer 2i + 1 in zw.
     species: array<vec4<f32>, 8>,
@@ -58,6 +59,9 @@ struct GrassParams {
 const CELL_ASPECT = array<f32, 8>(0.28, 0.28, 0.28, 0.28, 0.069, 0.057, 0.146, 0.151);
 const GRASS_SEGMENTS: f32 = 4.0;
 const MIN_KEEP: f32 = 0.012;
+// Chunks further than this many LOD distances draw coarse cards (terrain_grass.rs
+// `COARSE_FROM`); the fine cards morph into the coarse card's shape before it.
+const COARSE_FROM: f32 = 2.5;
 // Flowers (terrain/flowers.rs): keys scaled into [0, FLOWER_KEY), cards per flower, the head's
 // height on the plant card, the fewest flowers kept far away and how much bigger they grow.
 const FLOWER_KEY: f32 = 0.004;
@@ -361,20 +365,17 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
         let down = (grass.camera.y - root.y) / max(dist, 1e-3);
         width *= 1.0 + 0.3 * smoothstep(0.2, 0.9, down);
     }
-    var thin = 1.0;
     let least = dist * grass.screen.x * 0.8;
-    if (!shadow && width < least) {
-        thin = width / least;
-        width = least;
-    }
     // As many leaves across as the card is wider than its specimen, each at least two
-    // pixels wide (the shadow pass, without a pixel size, follows the specimen alone).
+    // pixels wide (the shadow pass, without a pixel size, follows the specimen alone). Taken
+    // from the card's full width: the fade below narrows the leaves, it doesn't re-cut them.
     var repeat = 1.0;
     if (!seed_head) {
         let natural = max(b.position.w * CELL_ASPECT[cell], 1e-4);
-        var fit = width / natural;
+        let card = select(width, max(width, least), !shadow);
+        var fit = card / natural;
         if (!shadow && grass.screen.x > 0.0) {
-            fit = min(fit, width / (least * 2.5));
+            fit = min(fit, card / (least * 2.5));
         }
         repeat = clamp(round(fit), 1.0, 4.0);
         // Shadow casters grow the next leaf in from the card's edge as the blade widens with
@@ -384,6 +385,16 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
         if (shadow) {
             repeat = clamp(fit, 1.0, 4.0);
         }
+    }
+    // Towards the draw distance every blade shrinks away, the flat fans too (they kept their
+    // width past the draw distance to the end of the last chunk, an edge that moved chunk by
+    // chunk): narrower, then thinner than a pixel and fainter (`thin`), nothing at the draw
+    // distance (the culling leaves out everything past it).
+    width *= fade;
+    var thin = 1.0;
+    if (!shadow && width < least) {
+        thin = width / least;
+        width = least;
     }
 
     // Wind: gust waves rolling across the field, and a fast flutter whose phase runs along
@@ -484,6 +495,15 @@ fn grass_flower_head(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
     return v;
 }
 
+// How far a fine card (four segments) at `dist` has morphed into the coarse card (three
+// segments): 0 up to 95 % of the distance where its chunk switches to coarse cards, 1 from
+// there on. A chunk switches when its nearest point passes that distance, so all its blades
+// are past it then.
+fn grass_coarse_morph(dist: f32) -> f32 {
+    let at = grass.look.x * COARSE_FROM;
+    return smoothstep(0.95 * at, at, dist);
+}
+
 // Vertex `vi` of the card of a blade's frame.
 fn grass_blade_point(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
     if (f.flower == 2u) {
@@ -491,8 +511,21 @@ fn grass_blade_point(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
     }
     let coarse = vi >= 100u;
     let k = select(vi, vi - 100u, coarse);
-    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
+    let row = k / 2u;
+    var t = f32(row) / select(GRASS_SEGMENTS, 3.0, coarse);
+    if (!coarse) {
+        // Towards the switch to coarse cards the fine card's five rows slide along the blade
+        // to the coarse card's four (0, 1/3, 2/3 and the tip twice): fully morphed, it is the
+        // coarse card exactly (its last two triangles empty), so the switch shows nothing.
+        let m = grass_coarse_morph(f.dist);
+        t = mix(t, f32(min(row, 3u)) / 3.0, m);
+    }
     let side = select(-0.5, 0.5, (k & 1u) == 1u);
+    return grass_card_point(f, b, t, side);
+}
+
+// The point `t` (0 = root .. 1 = top) on edge `side` (-0.5 / 0.5) of a blade's curved card.
+fn grass_card_point(f: BladeFrame, b: BladeIn, t: f32, side: f32) -> BladeVertex {
     let phase = b.shape.w;
     let theta = f.theta;
     let a = theta * t;

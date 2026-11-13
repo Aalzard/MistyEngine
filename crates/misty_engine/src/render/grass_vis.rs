@@ -26,8 +26,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use super::grass_pool::{BladePool, MAX_PAGES};
 use super::pipelines::{self, Pipelines};
 
-/// Triangle, facing and coverage (alpha to coverage reads target 0's alpha).
-const CARD_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+/// Triangle, facing and coverage (alpha to coverage reads target 0's alpha), a byte each.
+const CARD_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// The blade id as raw float bits (core WebGPU has no multisampled integer targets).
 const ID_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
 /// Resolve output per slot (colour, coverage as four halves).
@@ -478,7 +478,7 @@ impl VisTargets {
             slots: slots_view,
             composite_group,
             #[cfg(test)]
-            bytes: pixels * (samples as u64 * (8 + 4 + 8 + 4) + 8),
+            bytes: pixels * (samples as u64 * (4 + 4 + 8 + 4) + 8),
         }
     }
 }
