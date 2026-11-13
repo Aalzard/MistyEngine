@@ -633,3 +633,36 @@ fn prefabs_with_unknown_components_are_not_written_back() {
         "the file keeps the component"
     );
 }
+
+/// Undoing Apply put the scene back but not the `.prefab` file: the asset kept the applied
+/// version, and every other instance then showed the old values as overrides.
+#[test]
+fn undoing_apply_puts_the_prefab_file_back() {
+    let mut s = state("undo_apply");
+    let crate_e = s.scene.spawn("Crate", None);
+    let lid = s.scene.spawn("Lid", Some(crate_e));
+    let rel = make_prefab(&mut s, crate_e);
+    let other = instantiate(&mut s, &rel, None).unwrap();
+    let other_lid = child(&s, other, "Lid");
+    set_scale(&mut s, lid, 3.0);
+    apply(&mut s, Action::ApplyPrefab(crate_e));
+    assert_eq!(s.scene.transform(other_lid).scale, Vec3::splat(3.0));
+    assert!(keys(&mut s, other).is_empty());
+    s.undo_step();
+    assert_eq!(s.scene.transform(other_lid).scale, Vec3::ONE);
+    assert!(
+        keys(&mut s, other).is_empty(),
+        "the asset is back: the other instance has no overrides"
+    );
+    assert!(
+        !keys(&mut s, crate_e).is_empty(),
+        "the edit is an override again"
+    );
+    // The file itself, not only the cache.
+    s.assets = crate::assets::AssetDatabase::open(&s.project.root);
+    assert!(keys(&mut s, other).is_empty());
+    s.redo_step();
+    assert_eq!(s.scene.transform(other_lid).scale, Vec3::splat(3.0));
+    assert!(keys(&mut s, other).is_empty());
+    assert!(keys(&mut s, crate_e).is_empty());
+}

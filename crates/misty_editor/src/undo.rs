@@ -10,8 +10,11 @@
 //! The history is a list of steps: `past` are applied (newest last), `future` can be redone
 //! (next first at the end). [`UndoStack::jump`] moves to any point, like Edit ▸ Undo History.
 
+use std::rc::Rc;
+
 use misty_engine::assets::Material;
 use misty_engine::scene::Scene;
+use misty_engine::scene::prefab::Prefab;
 
 use crate::anim_clips::{ClipSnapshot, ClipStore};
 use crate::assets::AssetDatabase;
@@ -37,6 +40,27 @@ impl MaterialUndo {
             rel: self.rel,
             material: current,
         }
+    }
+}
+
+/// Prefab files as they were before an Apply (the asset and the prefabs that use it).
+pub struct PrefabUndo {
+    pub files: Vec<(String, Rc<Prefab>)>,
+}
+
+impl PrefabUndo {
+    /// Write these prefabs back; returns the versions they replaced.
+    fn restore(self, assets: &mut AssetDatabase) -> PrefabUndo {
+        let mut current = Vec::new();
+        // Last written first, so a file saved twice ends as it was before the first save.
+        for (rel, prefab) in self.files.into_iter().rev() {
+            if let Ok(now) = assets.prefab(&rel) {
+                current.push((rel.clone(), now));
+            }
+            let _ = assets.save_prefab(&rel, &prefab);
+        }
+        current.reverse();
+        PrefabUndo { files: current }
     }
 }
 
@@ -86,6 +110,7 @@ pub struct Snapshot {
     pub terrain: Option<TerrainUndo>,
     pub material: Option<MaterialUndo>,
     pub imports: Option<ImportUndo>,
+    pub prefabs: Option<PrefabUndo>,
     /// Approximate memory held (for the history cap).
     bytes: usize,
 }
@@ -103,6 +128,7 @@ impl Snapshot {
             terrain: None,
             material: None,
             imports: None,
+            prefabs: None,
             bytes: 0,
         }
     }
@@ -186,6 +212,20 @@ impl UndoStack {
             rel: rel.to_owned(),
             material: before.clone(),
         });
+        self.commit(snap);
+        self.reset_interaction();
+    }
+
+    /// Like [`UndoStack::push`], also writing prefab files `before` back on undo (an Apply).
+    pub fn push_prefabs(
+        &mut self,
+        label: &str,
+        scene: &Scene,
+        selection: &Selection,
+        before: Vec<(String, Rc<Prefab>)>,
+    ) {
+        let mut snap = Snapshot::new(label, scene, selection);
+        snap.prefabs = Some(PrefabUndo { files: before });
         self.commit(snap);
         self.reset_interaction();
     }
@@ -388,6 +428,7 @@ impl UndoStack {
             terrain: snap.terrain.map(TerrainUndo::restore),
             material: snap.material.map(|m| m.restore(to.assets)),
             imports: snap.imports.map(|i| i.restore(to)),
+            prefabs: snap.prefabs.map(|p| p.restore(to.assets)),
             bytes: snap.bytes,
         };
         (snap.label, current)

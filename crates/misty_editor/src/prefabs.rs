@@ -264,10 +264,14 @@ fn apply_some(s: &mut EditorState, root: Entity, keys: &[Override]) {
         .iter()
         .any(|k| matches!(k, Override::AddedObject { .. }));
     let new = s.scene.apply_prefab_overrides(root, &old, keys);
-    match save_and_follow(s, &rel, &old, &new) {
+    let mut saved = Vec::new();
+    match save_and_follow(s, &rel, &old, &new, &mut saved) {
         Ok(changed) => {
+            // The step puts the prefab files back too (the asset, and prefabs that use it):
+            // undone, the asset kept the applied version and instances showed overrides.
+            s.undo
+                .push_prefabs("Apply Prefab", &before, &s.selection, saved);
             if changed > 0 || ids_given {
-                s.undo.push("Apply Prefab", &before, &s.selection);
                 s.scene_dirty = true;
             }
             s.console.info(format!("Applied changes to {rel}"));
@@ -293,7 +297,7 @@ pub fn save_changed(
     new: &Prefab,
 ) -> Result<usize, String> {
     let before = s.scene.clone();
-    let changed = save_and_follow(s, rel, old, new)?;
+    let changed = save_and_follow(s, rel, old, new, &mut Vec::new())?;
     if changed > 0 {
         s.undo
             .push("Update Prefab Instances", &before, &s.selection);
@@ -303,11 +307,13 @@ pub fn save_changed(
 }
 
 /// [`save_changed`] without the undo step.
+/// `saved` gets each prefab file it wrote, as it was before.
 fn save_and_follow(
     s: &mut EditorState,
     rel: &str,
     old: &Prefab,
     new: &Prefab,
+    saved: &mut Vec<(String, Rc<Prefab>)>,
 ) -> Result<usize, String> {
     // An instance of the prefab dragged or pasted inside one of its own instances (or into
     // its Prefab Mode) would be written into it: every Apply then nested it one level deeper.
@@ -324,8 +330,9 @@ fn save_and_follow(
     }
     let new = with_records(&mut s.assets, new);
     s.assets.save_prefab(rel, &new)?;
+    saved.push((rel.to_owned(), Rc::new(old.clone())));
     crate::live_reload::assets::note_prefab(s, rel);
-    Ok(propagate(s, rel, old, &new))
+    Ok(propagate_saving(s, rel, old, &new, saved))
 }
 
 /// The asset at `rel` changed from `old` to `new` (already saved): instances in the open
@@ -333,6 +340,17 @@ fn save_and_follow(
 /// prefabs that use it are updated and saved, and so on up. Not an undo step by itself (see
 /// [`save_changed`]). Returns how many instances changed in the scene being edited.
 pub fn propagate(s: &mut EditorState, rel: &str, old: &Prefab, new: &Prefab) -> usize {
+    propagate_saving(s, rel, old, new, &mut Vec::new())
+}
+
+/// [`propagate`], noting in `saved` each prefab file it wrote, as it was before.
+fn propagate_saving(
+    s: &mut EditorState,
+    rel: &str,
+    old: &Prefab,
+    new: &Prefab,
+    saved: &mut Vec<(String, Rc<Prefab>)>,
+) -> usize {
     let mut queue: Vec<(String, Prefab, Prefab)> = vec![(rel.to_owned(), old.clone(), new.clone())];
     let mut done: Vec<String> = Vec::new();
     let mut changed = 0;
@@ -358,6 +376,7 @@ pub fn propagate(s: &mut EditorState, rel: &str, old: &Prefab, new: &Prefab) -> 
             let dep_new = with_records(&mut s.assets, &dep_new);
             match s.assets.save_prefab(&dep, &dep_new) {
                 Ok(()) => {
+                    saved.push((dep.clone(), dep_old.clone()));
                     crate::live_reload::assets::note_prefab(s, &dep);
                     s.console
                         .info(format!("Updated {dep} (uses {})", display_name(&path)));
