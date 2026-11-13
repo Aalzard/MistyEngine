@@ -4657,3 +4657,33 @@ One commit per bug, each with a regression test; the running list with a status 
   big agent radius and tiny voxels made multi-GB tiles.
 - **Build**: a build folder inside the project spelled in another letter case (Windows)
   passed the output check.
+
+## Round 54 — NoonValley look against the reference photos (branch r54-noon-look)
+
+Scene content only (generator `sample_noon_valley.rs` and the files it writes); no engine
+changes. Details, numbers and timings per round: `docs/pending/r54-noon-look.md`. Views:
+`docs/screenshots/r54/level_*.jpg`.
+
+- **Cliffs**: two more sites in the first view; each site's core is one continuous slab of
+  limestone (faces and ledges, no litter, a few small trees on the ledges), stepped in beds of
+  12–24 m that the 4 m height samples resolve; Limestone 2048², much darker and warmer (sunlit
+  terrain here renders bright, so the rock's albedo is ~0.035).
+- **Meadow**: the far meadow read cream because past the grass's draw distance the terrain
+  stands in for the grass from the ground texture and the grass colours (`ground_tint`);
+  layer 0 and the hill turf now use a generated dark turf (`MeadowTurf*.png`), the grass is
+  darker and greener, taller and more uneven (0.2–0.62 m, Tall Grass 0.55–0.95 m), the flower
+  drifts fewer and smaller, global saturation −10. Far meadow 132/139/77 → ~108/120/75 sRGB
+  (reference 85/97/59); near and mid meadow within a few levels of the reference.
+- **Light and sky**: ambient gradient 0.8 and less blue (darker crown shade), far contact
+  shadows 1.0, hillside crowns ~35 % darker, greyer sky tint, haze 1900 m with a greyer
+  albedo, eye adaptation down to −3 EV, softer cumulus.
+- **Forest**: carpets over most of the treeline wood's floor (wider plants, fewer of them),
+  undergrowth in open cells and hollows, a "Forest Herbs" grass detail layer over the litter
+  near the meadow, darker and less translucent fern and groundcover leaves, the Forest Haze
+  box only behind the wood's edge; a cheaper groundcover recipe (−1.5 M triangles inside).
+- **Cost** (High 1920×1080, sum of GPU parts): first view 12.9 → 12.0 ms; inside the wood
+  11.7 → 14.7 ms (groundcover shadows and the herbs).
+- **Still differs**: the slabs read smooth grey-green rather than bright tan with deep layered
+  shadows; clouds smaller and more numerous (no size control); sky and far hills brighter and
+  bluer than the photo; the wood floor in `inside` shows bare sunlit litter between grass-like
+  herbs, and `inside2` is greener and brighter than the photo's dark olive.
