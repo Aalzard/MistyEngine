@@ -108,9 +108,16 @@ impl From<TransformFile> for Transform {
         let finite = |v: Vec3, or: Vec3| if v.is_finite() { v } else { or };
         Self {
             position: finite(f.position, d.position),
-            rotation: glam::Vec4::from(f.rotation)
-                .try_normalize()
-                .map_or(d.rotation, Quat::from_vec4),
+            // Rotations already about unit length stay exactly as written (scenes save
+            // byte-identical).
+            rotation: if f.rotation.is_finite() && (f.rotation.length_squared() - 1.0).abs() < 1e-3
+            {
+                f.rotation
+            } else {
+                glam::Vec4::from(f.rotation)
+                    .try_normalize()
+                    .map_or(d.rotation, Quat::from_vec4)
+            },
             scale: finite(f.scale, d.scale),
             euler_hint: finite(f.euler_hint, d.euler_hint),
         }
