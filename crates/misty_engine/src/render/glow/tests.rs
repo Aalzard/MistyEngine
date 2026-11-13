@@ -202,3 +202,35 @@ fn scenes_gather_halos_and_flares() {
     assert!(list[1].halo.is_none() && list[1].flare.is_some());
     assert_eq!(list[1].color, [1.0; 3], "a flare without a light is white");
 }
+
+/// A point light's Glow Spread halo stays about as bright as its sprite when the camera walks
+/// up to the light, and fades out with the sprite (it used to put the sprite's whole bloom
+/// share, which grows with the sprite's screen area, into Gaussians around one point: about
+/// 10^4 times brighter at 0.1 m than at 10 m, a white flash over the screen).
+#[test]
+fn halo_spread_stays_bounded_as_the_camera_walks_into_the_light() {
+    use super::spread::{HaloSprite, halo_spread};
+    use crate::scene::LightGlow;
+    let cam = camera();
+    let env = Environment::default();
+    let f = frame(&cam, &env, PostSettings::default());
+    let glow = LightGlow {
+        spread: 0.5,
+        ..Default::default()
+    };
+    let peak = |d: f32| {
+        let sprite = HaloSprite {
+            position: cam.position + cam.forward() * d,
+            radius: 1.0,
+            color: Vec3::ONE,
+            falloff: 0.5,
+        };
+        halo_spread(&f, &sprite, &glow, 16.0 / 9.0, 3.0).map(|s| s.weight[0])
+    };
+    let far = peak(10.0).expect("a spread halo at 10 m");
+    let near = peak(1.5).expect("a spread halo at 1.5 m");
+    assert!(far.is_finite() && far > 0.0, "{far}");
+    assert!(near < far * 4.0, "near {near} vs far {far}");
+    assert_eq!(peak(0.1), None, "faded out with the sprite inside it");
+    assert_eq!(peak(0.25), None);
+}

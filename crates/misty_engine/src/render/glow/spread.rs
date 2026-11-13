@@ -254,19 +254,42 @@ pub(super) fn halo_spread(
     if c.w <= 1e-4 {
         return None;
     }
+    // The sprite fades out as the camera walks into it (glow.wgsl `vs_halo`): so does its
+    // bloom, and so does this share of it.
+    let d = cam.position.distance(h.position);
+    let near = smoothstep(0.3, 1.2, d / h.radius.max(1e-3));
+    if near <= 0.0 {
+        return None;
+    }
     let p = to_q(c, 1e-4, aspect);
     // Projected radius: a point the radius away along the camera's up axis.
     let up = vp * (h.position + cam.rotation * Vec3::Y * h.radius).extend(1.0);
     let r = to_q(up, 1e-4, aspect).distance(p);
+    // The glow goes around a square of the sprite's screen area, not around its centre
+    // point: a big sprite (a camera near the light) spread its energy, which grows with the
+    // sprite's area, over Gaussians of a fixed width and peaked far above the sprite itself.
+    let half = r * std::f32::consts::PI.sqrt() * 0.5;
+    let square = [
+        p + Vec2::new(-half, -half),
+        p + Vec2::new(half, -half),
+        p + Vec2::new(half, half),
+        p + Vec2::new(-half, half),
+    ];
     spread_around(
-        [p; 4],
+        square,
         bloomed(&frame.post, h.color),
-        h.falloff * r * r * share,
+        h.falloff * r * r * share * near,
         g.spread,
         aspect,
         (h.position, true),
         (h.radius * 0.35).clamp(0.1, 1.0),
     )
+}
+
+/// WGSL `smoothstep`.
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Screen integral of the halo sprite's falloff (glow.wgsl `fs_halo`) over the unit disc,
