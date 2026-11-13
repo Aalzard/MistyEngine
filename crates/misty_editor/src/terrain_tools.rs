@@ -362,7 +362,11 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         TerrainTool::RaiseLower => brush::raise(d, &b, dt, shift),
         TerrainTool::SetHeight => brush::set_height(d, &b, dt, target),
         TerrainTool::Smooth => brush::smooth(d, &b, dt),
-        TerrainTool::Paint if flowers => misty_engine::terrain::flowers::paint(d, &b, dt, shift),
+        // Blend by Opacity like the other paint tools (it was given the frame time).
+        TerrainTool::Paint if flowers => {
+            let k = (brush::PAINT_RATE * b.strength * dt).min(1.0);
+            misty_engine::terrain::flowers::paint(d, &b, k, shift)
+        }
         TerrainTool::Paint if generated => auto_paint::generate_in_brush(d, &b, dt),
         TerrainTool::Paint => brush::paint(d, &b, dt, layer),
         TerrainTool::Holes => {
@@ -669,6 +673,40 @@ mod tests {
         );
         assert_eq!(s.undo.undo_label(), None);
         let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(&s.project.root);
+    }
+
+    /// Paint Flowers passed the frame time as the blend: Opacity did nothing (0 still painted).
+    #[test]
+    fn the_flower_brush_follows_opacity() {
+        let mut s = state("flower_opacity");
+        create(&mut s, None);
+        let e = s.selection.active().unwrap();
+        let rel = s
+            .scene
+            .world
+            .get::<&Terrain>(e)
+            .unwrap()
+            .terrain_data
+            .clone();
+        let path = s.project.root.join(&rel).to_string_lossy().into_owned();
+        store::insert(
+            &path,
+            TerrainData::load(std::path::Path::new(&path)).unwrap(),
+        );
+        s.scene.world.get::<&mut Terrain>(e).unwrap().terrain_data = path.clone();
+        s.terrain_tools.size = 20.0;
+        s.terrain_tools.paint_flowers = true;
+        let map = |path: &str| store::get(path).unwrap().0.flowers.map.clone();
+        // From an empty mask: a stroke at Opacity 0 leaves it as it was.
+        store::modify(&path, |d| {
+            let n = d.alphamap_resolution;
+            d.flowers.map = vec![0; n * n];
+        });
+        s.terrain_tools.strength = 0.0;
+        let before = map(&path);
+        demo_stroke(&mut s, TerrainTool::Paint);
+        assert_eq!(map(&path), before, "Opacity 0 paints nothing");
         let _ = std::fs::remove_dir_all(&s.project.root);
     }
 
