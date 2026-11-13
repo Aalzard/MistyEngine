@@ -744,7 +744,9 @@ impl ParticleEmitter {
         }
         let duration = system.main.duration.max(0.05);
         while dt > 0.0 && self.emitting {
-            let slice = dt.min(duration - self.time);
+            // Duration lowered below the cycle clock (an edit while playing): wrap now
+            // instead of a negative slice that added time to the frame.
+            let slice = dt.min((duration - self.time).max(0.0));
             let (from, to) = (self.time, self.time + slice);
             if system.emission.enabled {
                 self.emit_rate(system, world, g, slice, dt);

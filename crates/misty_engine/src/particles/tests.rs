@@ -104,6 +104,23 @@ fn burst_probability_zero_never_fires() {
     assert_eq!(e.count(), 0);
 }
 
+/// Lowering Duration below the cycle clock while playing wraps the cycle; the negative slice
+/// it made used to add the difference to the frame (3.5 s of particles in one frame).
+#[test]
+fn shortening_duration_while_playing_emits_no_extra_particles() {
+    let mut s = system();
+    s.emission.rate_over_time = MinMax::constant(100.0);
+    s.main.duration = 5.0;
+    s.main.looping = true;
+    let mut e = started(&s);
+    run(&mut e, &s, 4.5);
+    let before = e.count();
+    s.main.duration = 1.0;
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    let added = e.count() - before;
+    assert!(added <= 3, "{added} particles in one frame");
+}
+
 #[test]
 fn particles_die_after_their_lifetime() {
     let mut s = system();
