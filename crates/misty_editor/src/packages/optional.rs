@@ -49,6 +49,7 @@ pub fn is_optional(name: &str) -> bool {
 }
 
 /// Whether `project`'s manifest lists the optional package `name`.
+#[cfg(test)]
 pub fn installed(project: &Path, name: &str) -> bool {
     Manifest::load(project).is_ok_and(|m| m.dependencies.contains_key(name))
 }
@@ -106,14 +107,5 @@ impl Installed {
 
     pub fn has(&self, name: &str) -> bool {
         self.0.contains(name)
-    }
-
-    /// Mark a package installed or not (tests, and right after Install / Remove).
-    pub fn set(&mut self, name: &str, on: bool) {
-        if on {
-            self.0.insert(name.to_owned());
-        } else {
-            self.0.remove(name);
-        }
     }
 }

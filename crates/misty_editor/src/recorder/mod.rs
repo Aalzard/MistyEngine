@@ -208,8 +208,8 @@ pub fn named_camera(
     let c = scene
         .world
         .get::<&misty_engine::scene::Camera>(e)
-        .ok()?
-        .clone();
+        .ok()
+        .map(|c| (*c).clone())?;
     let (_, rotation, position) = scene.world_matrix(e).to_scale_rotation_translation();
     let projection = if c.orthographic {
         Projection::Orthographic { size: c.ortho_size }
@@ -657,7 +657,8 @@ fn poll_finishing(s: &mut EditorState) {
     s.recorder.finishing = still;
 }
 
-/// Block until every recording is finished and written (tests, quitting).
+/// Block until every recording is finished and written.
+#[cfg(test)]
 pub fn wait_all(s: &mut EditorState, gpu: Option<&Gpu>) {
     stop_all(s, gpu);
     while !s.recorder.finishing.is_empty() {

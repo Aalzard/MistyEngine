@@ -246,9 +246,9 @@ fn recording_runs_the_game_at_the_capture_rate() {
     run_frames(&mut s, 200);
     wait_all(&mut s, None);
     let gif = root.join("Recordings/SampleScene_001.gif");
-    use image::AnimationDecoder;
+    use misty_engine::image::AnimationDecoder;
     let file = std::io::BufReader::new(std::fs::File::open(&gif).unwrap());
-    let frames = image::codecs::gif::GifDecoder::new(file)
+    let frames = misty_engine::image::codecs::gif::GifDecoder::new(file)
         .unwrap()
         .into_frames()
         .collect_frames()
