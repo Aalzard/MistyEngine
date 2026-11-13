@@ -261,6 +261,9 @@ pub struct ParticleEmitter {
     pub trails: BTreeMap<u32, Trail>,
     /// Events of the last step for sub emitters.
     pub events: Vec<SubEmitEvent>,
+    /// Birth events of particles emitted between steps (`Emit`, a sub emitter firing into
+    /// this one): handed on with the next step's events.
+    pending: Vec<SubEmitEvent>,
     /// Start Delay still to wait before emitting.
     delay_left: f32,
     /// Fractional particles carried between frames by Rate over Time.
@@ -283,6 +286,7 @@ impl Default for ParticleEmitter {
             clock: 0.0,
             trails: BTreeMap::new(),
             events: Vec::new(),
+            pending: Vec::new(),
             delay_left: 0.0,
             accumulator: 0.0,
             bursts_fired: Vec::new(),
@@ -399,8 +403,20 @@ impl ParticleEmitter {
     pub fn emit(&mut self, system: &ParticleSystem, world: &Mat4, n: u32) {
         // No more tries than free slots: `Emit(4294967295)` spun 4 billion times.
         let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        let before = self.events.len();
         for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, None);
+        }
+        self.keep_birth_events(before);
+    }
+
+    /// Move the events made since `before` (births outside a step) to `pending`: the next
+    /// step cleared them before they were routed, so a sub emitter's own Birth sub emitters
+    /// never fired.
+    fn keep_birth_events(&mut self, before: usize) {
+        if self.events.len() > before {
+            let born = self.events.split_off(before);
+            self.pending.extend(born);
         }
     }
 
@@ -414,9 +430,11 @@ impl ParticleEmitter {
         inherit: Inherit,
     ) {
         let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        let before = self.events.len();
         for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, Some((at, inherit)));
         }
+        self.keep_birth_events(before);
     }
 
     /// Advance by `dt` seconds without colliders.
@@ -428,6 +446,7 @@ impl ParticleEmitter {
     /// for this slice of the cycle. Events for sub emitters land in `events`.
     pub fn step_with(&mut self, system: &ParticleSystem, world: &Mat4, env: StepEnv, dt: f32) {
         self.events.clear();
+        self.events.append(&mut self.pending);
         if self.state == PlayState::Paused || dt <= 0.0 {
             return;
         }

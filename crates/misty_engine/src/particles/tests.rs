@@ -750,6 +750,53 @@ fn rotation_size_and_color_modules() {
     assert_eq!(old.curve().evaluate(1.0, 0.0), 0.25);
 }
 
+/// A sub emitter's own Birth sub emitter fires: the births a trigger made in it were
+/// cleared at the start of its next step, before they were handed on.
+#[test]
+fn birth_sub_emitters_of_a_sub_emitter_fire() {
+    let mut scene = Scene::new("Chain");
+    let parent = scene.spawn("Rocket", None);
+    let triggered = |emitter: &str| {
+        let mut s = system();
+        s.main.simulation_space = SimulationSpace::World;
+        s.sub_emitters.enabled = true;
+        s.sub_emitters.list = vec![SubEmitter {
+            trigger: SubEmitterTrigger::Birth,
+            emitter: emitter.into(),
+            count: 1,
+            ..Default::default()
+        }];
+        s
+    };
+    let mut s = triggered("Trail");
+    s.emission.rate_over_time = MinMax::constant(0.0);
+    s.emission.bursts = vec![Burst {
+        count: 3,
+        ..Default::default()
+    }];
+    scene.add(parent, s);
+    let trail = scene.spawn("Trail", Some(parent));
+    let mut t = triggered("Smoke");
+    t.main.play_on_awake = false;
+    scene.add(trail, t);
+    let smoke = scene.spawn("Smoke", Some(trail));
+    let mut k = system();
+    k.main.simulation_space = SimulationSpace::World;
+    k.main.play_on_awake = false;
+    scene.add(smoke, k);
+    for _ in 0..5 {
+        update(&mut scene, DT, DEFAULT_GRAVITY);
+    }
+    let count = |e| {
+        scene
+            .world
+            .get::<&ParticleEmitter>(e)
+            .map_or(0, |em| em.count())
+    };
+    assert_eq!(count(trail), 3, "one per rocket");
+    assert_eq!(count(smoke), 3, "one per trail particle");
+}
+
 #[test]
 fn sub_emitters_fire_on_birth_collision_and_death() {
     let mut scene = Scene::new("Sub Emitters");
