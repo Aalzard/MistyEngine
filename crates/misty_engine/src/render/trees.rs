@@ -910,6 +910,9 @@ pub(super) struct TreeRenderer {
     /// GPU culling (trees_cull.rs): its pipelines, every terrain's trees on the GPU, and the
     /// terrains culled this frame (index = `Batch::list.0`).
     cull_pipelines: Option<super::trees_cull::CullPipelines>,
+    /// The culling pipelines being built on a worker since the renderer was made (streaming
+    /// only; NoonValley's first frame spent 0.7–0.8 s compiling them).
+    cull_prebuilt: super::prebuilt::Prebuilt<super::trees_cull::CullPipelines>,
     gpu_terrains: HashMap<String, super::trees_cull::TerrainCull>,
     gpu_frame: Vec<String>,
 }
@@ -924,6 +927,7 @@ impl TreeRenderer {
     /// Wait for the pipelines being built on a worker (see `Prebuilt::wait`).
     pub(in crate::render) fn wait_prebuilt(&mut self) {
         self.prebuilt.wait();
+        self.cull_prebuilt.wait();
     }
 
     pub fn new(device: &wgpu::Device) -> Self {
@@ -993,6 +997,7 @@ impl TreeRenderer {
             near_count: 0,
             near_candidates: 0,
             cull_pipelines: None,
+            cull_prebuilt: Default::default(),
             gpu_terrains: HashMap::new(),
             gpu_frame: Vec::new(),
         }
@@ -1050,6 +1055,11 @@ impl TreeRenderer {
     /// Start building the pipelines on a worker thread (streaming only), so the first frame
     /// of a scene with trees does not compile them.
     pub fn prebuild(&mut self, device: &wgpu::Device, pipelines: &super::pipelines::Pipelines) {
+        let cull_device = device.clone();
+        self.cull_prebuilt =
+            super::prebuilt::Prebuilt::spawn("misty tree cull pipelines", move || {
+                super::trees_cull::CullPipelines::new(&cull_device)
+            });
         let (device, layouts) = (device.clone(), TreeLayouts::of(pipelines, &self.layout));
         let samples = super::sample_count();
         self.prebuilt = super::prebuilt::Prebuilt::spawn("misty tree pipelines", move || {
@@ -1183,7 +1193,9 @@ impl TreeRenderer {
         }
         // With the background loads on, the trees wait for their pipelines (being built on
         // a worker since the renderer was made) instead of the frame.
-        if self.pipelines.is_none() && self.background && self.prebuilt.building() {
+        let building = (self.pipelines.is_none() && self.prebuilt.building())
+            || (self.cull_pipelines.is_none() && self.cull_prebuilt.building());
+        if self.background && building {
             self.loading += 1;
             return;
         }
@@ -1745,9 +1757,11 @@ impl TreeRenderer {
         shadows: &mut [Vec<Batch>],
     ) {
         use super::trees_cull::{CullPipelines, ProtoGpu, TerrainCull, TreeGpu, list_index};
-        let pipelines = self
-            .cull_pipelines
-            .get_or_insert_with(|| CullPipelines::new(device));
+        if self.cull_pipelines.is_none() {
+            let built = (self.cull_prebuilt.take()).unwrap_or_else(|| CullPipelines::new(device));
+            self.cull_pipelines = Some(built);
+        }
+        let pipelines = self.cull_pipelines.as_mut().expect("made above");
         let s = &t.data.trees;
         let n = s.prototypes.len();
         let current = self
