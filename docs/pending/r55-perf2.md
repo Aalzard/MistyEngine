@@ -153,5 +153,6 @@ Unchanged: renderer allocations 460 MB, view target 213 MB (base and branch). Fi
 - `cargo test --workspace --release --no-fail-fast`: all pass: engine 1566 (111 ignored),
   editor 929, player 11, dedicated server 1, MCP end-to-end 1. (An earlier run on the
   half-float version of the shadow mask failed 18 custom-shader / shader-graph tests; fixed
-  by f99c1a23.)
+  by f99c1a23.) The engine's lib tests were rerun on their own as well (a cancelled
+  earlier run had overlapped the full run): 1566 passed, the process exits cleanly.
 - Golden shots (20, under the GPU lock): all pass (MeadowDemo ≤ 0.08 mean, CyclesRoom 0.00).
