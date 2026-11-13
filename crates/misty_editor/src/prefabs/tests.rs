@@ -517,6 +517,30 @@ fn prefab_mode_opens_nested_levels_and_variants_show_base_overrides() {
     assert!(vp.root_components().contains(&"Light".to_owned()));
 }
 
+/// Deleting a prefab that is open in Prefab Mode closes it: Save used to write the deleted
+/// prefab back as a new file.
+#[test]
+fn deleting_a_prefab_open_in_prefab_mode_closes_it() {
+    let mut s = state("delete_open");
+    let cube = s.scene.spawn("Cube", None);
+    let rel = make_prefab(&mut s, cube);
+    apply(
+        &mut s,
+        Action::OpenPrefab {
+            path: rel.clone(),
+            from: None,
+        },
+    );
+    assert!(crate::prefab_mode::active(&s));
+    let abs = s.assets.absolute(&rel);
+    crate::commands::apply(&mut s, Action::DeleteAsset(abs.clone()));
+    assert!(!abs.exists());
+    assert!(!crate::prefab_mode::active(&s), "Prefab Mode closed");
+    assert!(s.scene.contains(cube), "back in the scene");
+    apply(&mut s, Action::SavePrefabStage);
+    assert!(!abs.exists(), "not written back");
+}
+
 #[test]
 fn prefab_mode_auto_save_writes_each_change() {
     let mut s = state("autosave");
