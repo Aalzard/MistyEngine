@@ -416,6 +416,24 @@ pub fn details_section(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Ter
                         &mut s.ground_tint,
                         0.0..=1.0,
                     );
+                    ch |= slider(
+                        ui,
+                        &crate::i18n::tr!("Far Field"),
+                        &crate::i18n::tr!(
+                            "Past the blades the ground keeps the grass's colour, blade detail and shade, fading in as the blades fade out (0 = off).",
+                        ),
+                        &mut s.far_field,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        &crate::i18n::tr!("Far Field Brightness"),
+                        &crate::i18n::tr!(
+                            "Brightness of the far field against the lit blades: match it where the grass fades out.",
+                        ),
+                        &mut s.far_field_brightness,
+                        0.2..=2.0,
+                    );
                     ui.label("Cast Shadows").on_hover_text(
                         "Blades near the camera cast shadows (Quality ▸ Grass Shadows sets how far).",
                     );

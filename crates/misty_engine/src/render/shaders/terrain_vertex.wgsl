@@ -34,7 +34,8 @@ struct TerrainParams {
     // rgb = the fans' colour against the ground's looking into the sun / with it behind.
     ground_tint: vec4<f32>,
     ground_front: vec4<f32>,
-    // x = chunks per side (`chunk_layers`, terrain_layers.wgsl).
+    // x = chunks per side (`chunk_layers`, terrain_layers.wgsl), y = grass far field (0 = off),
+    // z = its brightness.
     chunks: vec4<f32>,
 };
 

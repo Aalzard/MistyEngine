@@ -1473,7 +1473,13 @@ impl TreeRenderer {
                     }
                 }
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
-                if s.cast_shadows && t.cast_shadows && !beyond && dist < shadow_reach + radius {
+                // (Small plants only within their own shadow distance, when one is set.)
+                let plant_reach = if model_radius < SMALL_PLANT && s.plant_shadow_distance > 0.0 {
+                    s.plant_shadow_distance.min(shadow_reach)
+                } else {
+                    shadow_reach
+                };
+                if s.cast_shadows && t.cast_shadows && !beyond && dist < plant_reach + radius {
                     for (slot, cf) in cascade_frusta.iter().enumerate() {
                         if !cf.intersects(&bounds)
                             || !casts_into(model_radius, radius, f.cascades[slot].texel)
@@ -1915,7 +1921,7 @@ impl TreeRenderer {
             f.view_proj,
             lod,
             &cascades,
-            shadow_reach,
+            [shadow_reach, s.plant_shadow_distance.max(0.0)],
             &bounds,
             |proto, level| match protos.get(proto) {
                 Some(Some((_, tree))) => {

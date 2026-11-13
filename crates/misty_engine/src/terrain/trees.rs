@@ -80,6 +80,11 @@ pub struct TreeSettings {
     /// dense forest's shadows cost much less).
     #[serde(default = "one", skip_serializing_if = "is_one")]
     pub shadow_detail: f32,
+    /// Small plants (ferns, ground cover: smaller than a bush) cast sun shadows only this far
+    /// from the camera (metres; 0 = as far as the trees). A floor carpeted with plants keeps
+    /// its contact shade close by for much less shadow-map work. Left out of the file at 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub plant_shadow_distance: f32,
 }
 
 fn one() -> f32 {
@@ -108,6 +113,7 @@ impl Default for TreeSettings {
             lod_fade: DEFAULT_LOD_FADE,
             cast_shadows: true,
             shadow_detail: 1.0,
+            plant_shadow_distance: 0.0,
         }
     }
 }
@@ -192,6 +198,11 @@ impl TreeSettings {
             self.shadow_detail.clamp(0.1, 1.0)
         } else {
             1.0
+        };
+        self.plant_shadow_distance = if self.plant_shadow_distance.is_finite() {
+            self.plant_shadow_distance.clamp(0.0, 10_000.0)
+        } else {
+            0.0
         };
     }
 
@@ -563,6 +574,18 @@ mod tests {
         assert_eq!(s.prototypes.len(), 2);
         let protos: Vec<u16> = s.instances.iter().map(|t| t.prototype).collect();
         assert_eq!(protos, vec![0, 1]);
+    }
+
+    #[test]
+    fn plant_shadow_distance_stays_out_of_files_at_zero() {
+        let text = serde_json::to_string(&TreeSettings::default()).unwrap();
+        assert!(!text.contains("plant_shadow"), "{text}");
+        let s = TreeSettings {
+            plant_shadow_distance: 12.0,
+            ..Default::default()
+        };
+        let back: TreeSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.plant_shadow_distance, 12.0);
     }
 
     #[test]

@@ -82,10 +82,22 @@ pub struct CloudsOverride {
     /// keep their exact text.
     #[serde(skip_serializing_if = "is_zero")]
     pub cumulus: f32,
+    /// 0.25..4: scales the cloud shapes (1 = the default heaps, 2 = heaps twice as wide and
+    /// half as many). Left out of the file at 1.
+    #[serde(skip_serializing_if = "is_one")]
+    pub size: f32,
+    /// 0..1: softer, less eroded edges that fade gradually into the sky. Left out of the file
+    /// at 0.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub softness: f32,
 }
 
 fn is_zero(v: &f32) -> bool {
     *v == 0.0
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
 }
 
 impl Default for CloudsOverride {
@@ -105,6 +117,8 @@ impl Default for CloudsOverride {
             shadows: true,
             shadow_opacity: 0.8,
             cumulus: 0.0,
+            size: 1.0,
+            softness: 0.0,
         };
         CloudPreset::Cloudy.apply(&mut o);
         o
@@ -142,5 +156,24 @@ mod tests {
         let o: CloudsOverride = serde_json::from_str(r#"{ "active": true }"#).unwrap();
         assert!(o.is_on());
         assert_eq!(o.altitude, CloudsOverride::default().altitude);
+        assert_eq!(o.size, 1.0);
+        assert_eq!(o.softness, 0.0);
+    }
+
+    #[test]
+    fn size_and_softness_stay_out_of_files_at_their_defaults() {
+        let text = serde_json::to_string(&CloudsOverride::default()).unwrap();
+        assert!(
+            !text.contains("size") && !text.contains("softness"),
+            "{text}"
+        );
+        let o = CloudsOverride {
+            size: 2.5,
+            softness: 0.4,
+            ..Default::default()
+        };
+        let back: CloudsOverride =
+            serde_json::from_str(&serde_json::to_string(&o).unwrap()).unwrap();
+        assert_eq!(back, o);
     }
 }
