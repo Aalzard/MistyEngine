@@ -588,4 +588,48 @@ mod tests {
         s.redo_step();
         assert_eq!(s.assets.materials[rel].metallic, 0.9);
     }
+
+    #[test]
+    fn removing_or_resetting_a_missing_script_records_no_undo_step() {
+        use crate::actions::Action;
+        let mut s = state("misty_undo_remove_missing_script");
+        let cam = s.scene.roots()[0];
+        crate::commands::apply(
+            &mut s,
+            Action::RemoveScript {
+                entity: cam,
+                slot: 0,
+            },
+        );
+        crate::commands::apply(
+            &mut s,
+            Action::ResetScript {
+                entity: cam,
+                slot: 3,
+            },
+        );
+        assert!(s.undo.steps().is_empty(), "{:?}", s.undo.steps());
+        crate::commands::apply(
+            &mut s,
+            Action::AddScript {
+                entity: cam,
+                path: "Assets/Scripts/A.lua".into(),
+            },
+        );
+        crate::commands::apply(
+            &mut s,
+            Action::RemoveScript {
+                entity: cam,
+                slot: 5,
+            },
+        );
+        crate::commands::apply(
+            &mut s,
+            Action::RemoveScript {
+                entity: cam,
+                slot: 0,
+            },
+        );
+        assert_eq!(s.undo.steps(), vec!["Add Script", "Remove Script"]);
+    }
 }
