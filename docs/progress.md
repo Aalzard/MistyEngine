@@ -4764,3 +4764,32 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+
+## Round 63 — Behaviour Trees package: visual AI for enemies and NPCs (branch r63-behaviour-trees)
+
+An **optional built-in package** (Package Manager ▸ Built-in ▸ Behaviour Trees ▸ Install), not
+installed by default; it uses the same `packages/optional.rs` mechanism as r61-recorder. Notes,
+merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
+
+- **Assets and editor**: `.btree` files and the Behaviour Tree window (Window ▸ AI, or
+  double-click): node canvas on the shared node-graph widgets, Nodes palette with drag and drop
+  (custom Lua leaves and Script Graph events found in the project), Node panel, Blackboard
+  panel, undo/redo, copy/cut/paste/duplicate, comments, groups, linking by dragging, Arrange.
+- **Nodes**: Sequence, Selector, Parallel (Require All / One), Random Selector; Inverter,
+  Repeat (N / forever / until fail), Cooldown, Time Limit, Conditional (blackboard compare with
+  Self / Lower Priority / Both aborts), Force Success / Failure; Move To, Wait, Play Animation,
+  Set Animator Parameter, Look At, Set Blackboard, Log; Is In Range, Can See Target (range, field
+  of view, line of sight), Has Line of Sight; Run Script Graph, Run Lua, custom Lua leaves.
+- **Blackboard**: typed keys (bool, int, float, vector, object, string), per-agent values,
+  shared keys per share group, overrides on the agent.
+- **Runtime**: Behaviour Tree Agent component (tree, tick rate, start on play, restart, share
+  group, seed, overrides); trees compiled to a flat node list, ticks that allocate nothing,
+  event-driven aborts (observers re-check only when their key's version changes), seeded
+  random choices.
+- **Debugging**: in Play mode the window follows the selected agent: running nodes glow,
+  finished ones flash green or red, the Blackboard shows live values.
+- **Scripting**: the `BehaviourTree` Lua table (GetValue, SetValue, HasKey, Start, Stop,
+  Restart, IsRunning, GetStatus, Finish), also Script Graph nodes; `docs/api` regenerated.
+- **Sample**: `BehaviourTreeDemo` scene: a guard that patrols, chases the player when it sees
+  them, attacks in range, searches and returns to patrol. User Guide chapter 9 (English and
+  Arabic); Turkish and Arabic UI strings.
