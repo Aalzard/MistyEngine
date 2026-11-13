@@ -209,6 +209,11 @@ impl Physics {
                 let w = &mut self.wheels[i];
                 let inertia = wheel_inertia(c);
                 w.omega += c.motor_torque * dt / inertia;
+                if !w.omega.is_finite() {
+                    // A NaN or huge Motor Torque (scripts): the NaN reached the friction limits below
+                    // and `clamp(-NaN, NaN)` panicked.
+                    w.omega = 0.0;
+                }
                 w.omega = slow_down(w.omega, c, dt, inertia);
                 w.spin = (w.spin + w.omega * dt) % std::f32::consts::TAU;
             }
@@ -337,6 +342,11 @@ impl Physics {
         let load_dt = contact.load * dt;
         let w = &mut self.wheels[i];
         w.omega += c.motor_torque * dt / inertia;
+        if !w.omega.is_finite() {
+            // A NaN or huge Motor Torque (scripts): the NaN reached the friction limits below
+            // and `clamp(-NaN, NaN)` panicked.
+            w.omega = 0.0;
+        }
 
         // Forward, with the wheel free to spin…
         let spin_per_impulse = radius * radius / inertia;
@@ -388,8 +398,9 @@ impl Physics {
             spin_per_impulse: if locked { 0.0 } else { spin_per_impulse },
             radius,
             inertia,
-            limit_f: jf.abs(),
-            limit_s: js.abs(),
+            // A NaN Steer Angle (scripts) turns the axes to NaN; no grip then, not a panic.
+            limit_f: finite_or_zero(jf.abs()),
+            limit_s: finite_or_zero(js.abs()),
             most: c.forward_friction.peak().max(c.sideways_friction.peak()) * load_dt,
             locked,
             acc_f: 0.0,
@@ -565,4 +576,9 @@ fn inv_mass_at(body: &rp::RigidBody, point: Vec3, dir: Vec3) -> f32 {
     let lin = gv(mp.effective_inv_mass) * dir;
     let ang = gv(mp.effective_world_inv_inertia * rxd);
     (lin.dot(dir) + gv(rxd).dot(ang)).max(0.0)
+}
+
+/// `v`, or 0 when it is NaN or infinite.
+fn finite_or_zero(v: f32) -> f32 {
+    if v.is_finite() { v } else { 0.0 }
 }

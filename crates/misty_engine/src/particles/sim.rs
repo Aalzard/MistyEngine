@@ -15,6 +15,8 @@ use super::shape;
 
 /// Step used to simulate Prewarm.
 const PREWARM_STEP: f32 = 1.0 / 30.0;
+/// Longest Prewarm run (seconds of simulation inside Play).
+const MAX_PREWARM: f32 = 300.0;
 
 /// Salts of the per-particle random numbers (one per module term).
 pub mod salt {
@@ -259,6 +261,9 @@ pub struct ParticleEmitter {
     pub trails: BTreeMap<u32, Trail>,
     /// Events of the last step for sub emitters.
     pub events: Vec<SubEmitEvent>,
+    /// Birth events of particles emitted between steps (`Emit`, a sub emitter firing into
+    /// this one): handed on with the next step's events.
+    pending: Vec<SubEmitEvent>,
     /// Start Delay still to wait before emitting.
     delay_left: f32,
     /// Fractional particles carried between frames by Rate over Time.
@@ -281,6 +286,7 @@ impl Default for ParticleEmitter {
             clock: 0.0,
             trails: BTreeMap::new(),
             events: Vec::new(),
+            pending: Vec::new(),
             delay_left: 0.0,
             accumulator: 0.0,
             bursts_fired: Vec::new(),
@@ -357,10 +363,17 @@ impl ParticleEmitter {
         if system.main.prewarm && system.main.looping {
             // Run one whole cycle (without delay) so the effect starts "full".
             self.delay_left = 0.0;
-            let mut t = 0.0;
-            while t < system.main.duration {
+            // Counted steps: `t += 1/30` stops growing past 2^20 s (Duration 2e6 never
+            // ended), and a huge Duration is capped.
+            let duration = system.main.duration;
+            let duration = if duration.is_finite() {
+                duration.clamp(0.0, MAX_PREWARM)
+            } else {
+                0.0
+            };
+            let steps = (duration / PREWARM_STEP).ceil() as u32;
+            for _ in 0..steps {
                 self.step(system, world, gravity, PREWARM_STEP);
-                t += PREWARM_STEP;
             }
             self.total_time = 0.0;
             self.events.clear();
@@ -390,8 +403,20 @@ impl ParticleEmitter {
     pub fn emit(&mut self, system: &ParticleSystem, world: &Mat4, n: u32) {
         // No more tries than free slots: `Emit(4294967295)` spun 4 billion times.
         let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        let before = self.events.len();
         for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, None);
+        }
+        self.keep_birth_events(before);
+    }
+
+    /// Move the events made since `before` (births outside a step) to `pending`: the next
+    /// step cleared them before they were routed, so a sub emitter's own Birth sub emitters
+    /// never fired.
+    fn keep_birth_events(&mut self, before: usize) {
+        if self.events.len() > before {
+            let born = self.events.split_off(before);
+            self.pending.extend(born);
         }
     }
 
@@ -405,9 +430,11 @@ impl ParticleEmitter {
         inherit: Inherit,
     ) {
         let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        let before = self.events.len();
         for _ in 0..(n as usize).min(free) {
             self.spawn(system, world, Vec3::ZERO, 0.0, Some((at, inherit)));
         }
+        self.keep_birth_events(before);
     }
 
     /// Advance by `dt` seconds without colliders.
@@ -419,6 +446,7 @@ impl ParticleEmitter {
     /// for this slice of the cycle. Events for sub emitters land in `events`.
     pub fn step_with(&mut self, system: &ParticleSystem, world: &Mat4, env: StepEnv, dt: f32) {
         self.events.clear();
+        self.events.append(&mut self.pending);
         if self.state == PlayState::Paused || dt <= 0.0 {
             return;
         }
@@ -735,7 +763,9 @@ impl ParticleEmitter {
         }
         let duration = system.main.duration.max(0.05);
         while dt > 0.0 && self.emitting {
-            let slice = dt.min(duration - self.time);
+            // Duration lowered below the cycle clock (an edit while playing): wrap now
+            // instead of a negative slice that added time to the frame.
+            let slice = dt.min((duration - self.time).max(0.0));
             let (from, to) = (self.time, self.time + slice);
             if system.emission.enabled {
                 self.emit_rate(system, world, g, slice, dt);
@@ -771,10 +801,16 @@ impl ParticleEmitter {
             .sample_at(cycle, &mut self.rng)
             .max(0.0);
         self.accumulator += rate * slice;
+        if !self.accumulator.is_finite() {
+            // An infinite rate made the accumulator NaN: emission was dead from then on.
+            self.accumulator = f32::MAX;
+        }
         let n = self.accumulator.floor();
-        self.accumulator -= n;
+        self.accumulator = (self.accumulator - n).clamp(0.0, 1.0);
         let n = n as u32;
-        for i in 0..n {
+        // No more tries than free slots: Rate 1e12 spun 4 billion times a frame.
+        let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        for i in 0..n.min(free as u32) {
             // Spread births across the slice so low frame rates don't clump particles.
             let born_at = slice * (i as f32 + 0.5) / n as f32;
             let age = (remaining - born_at).max(0.0);
@@ -803,13 +839,16 @@ impl ParticleEmitter {
                     break;
                 }
                 let at = b.time + fired as f32 * b.interval.max(0.01);
-                if at < from || at >= to {
+                // `!(..)` so a NaN time ends the loop too.
+                if !(at >= from && at < to) {
                     break;
                 }
                 self.bursts_fired[i] += 1;
                 if self.rng.next_f32() < b.probability {
                     let age = (to - at) + after;
-                    for _ in 0..b.count {
+                    let free =
+                        (system.main.max_particles as usize).saturating_sub(self.particles.len());
+                    for _ in 0..(b.count as usize).min(free) {
                         self.spawn(system, world, g, age, None);
                     }
                 }

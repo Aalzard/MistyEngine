@@ -75,6 +75,24 @@ pub(super) fn crossed(prev: f32, cur: f32, event: f32, length: f32, looping: boo
     }
 }
 
+/// An event at clip time `event` was passed between clock times `prev` and `cur` under `mode`.
+/// Ping Pong plays the clip forwards then backwards, so each event comes round twice every
+/// two lengths (it used to fire on the first forward pass only).
+pub(super) fn event_crossed(prev: f32, cur: f32, event: f32, length: f32, mode: WrapMode) -> bool {
+    match mode {
+        WrapMode::Loop => crossed(prev, cur, event, length, true),
+        WrapMode::PingPong if length > 0.0 => {
+            let period = 2.0 * length;
+            let back = period - event;
+            // At 0 and at the end the way back meets the way out: one event, not two.
+            let apart = (back - event).rem_euclid(period);
+            crossed(prev, cur, event, period, true)
+                || (apart > 1e-5 && apart < period - 1e-5 && crossed(prev, cur, back, period, true))
+        }
+        _ => crossed(prev, cur, event, length, false),
+    }
+}
+
 pub struct AnimationPlayer {
     root: PathBuf,
     clips: HashMap<String, Option<Arc<AnimationClip>>>,
@@ -227,9 +245,8 @@ impl AnimationPlayer {
             if ended {
                 st.playing = false;
             }
-            let looping = matches!(mode, WrapMode::Loop);
             for ev in &clip.events {
-                if crossed(prev, st.time, ev.time, clip.length, looping) {
+                if event_crossed(prev, st.time, ev.time, clip.length, mode) {
                     events.push((e, ev.function.clone()));
                 }
             }

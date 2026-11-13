@@ -5,7 +5,7 @@
 use super::blocks::{Attribute, BlockKind, Composition, ContextType, OrientMode, ShapeMode};
 use super::codegen::{CpuExpr, SpawnBlock, compile, property_data, ramp_data};
 use super::graph::{
-    BlendMode, ContextKind, EffectGraph, OutputKind, OutputSettings, PropertyValue,
+    BlendMode, ContextKind, EffectGraph, Link, OutputKind, OutputSettings, PropertyValue,
 };
 use super::operators::{AttributeRead, OperatorKind, RandomMode};
 use super::spawn::{self, SpawnState};
@@ -258,6 +258,22 @@ fn bursts_fire_at_their_times() {
     // One big step covers several bursts at once.
     let mut st = SpawnState::default();
     assert_eq!(spawn::step(&[periodic], &mut st, &props(), 1.0), 40);
+}
+
+/// Many periodic hits in one step times a big Count saturate (1000 × 5e6 wrapped round to
+/// 705 032 704 in release builds and panicked in debug ones).
+#[test]
+fn periodic_burst_counts_saturate() {
+    let periodic = SpawnBlock {
+        kind: BlockKind::PeriodicBurst,
+        inputs: vec![
+            ("Count", CpuExpr::Const(5e6)),
+            ("Period", CpuExpr::Const(0.001)),
+            ("Delay", CpuExpr::Const(0.0)),
+        ],
+    };
+    let mut st = SpawnState::default();
+    assert_eq!(spawn::step(&[periodic], &mut st, &props(), 1.0), u32::MAX);
 }
 
 #[test]
@@ -905,4 +921,28 @@ fn errors_inside_a_subgraph_land_on_its_node() {
         errors.iter().any(|e| e.message.contains("nested")),
         "{errors:?}"
     );
+}
+
+/// A file whose links make a loop (hand-edited or merged: `connect` refuses loops) loads with
+/// the loop cut; compiling it used to recurse until the stack overflowed.
+#[test]
+fn effect_graph_files_with_link_loops_load_without_the_loop() {
+    let mut g = EffectGraph::new_default();
+    let a = g.add_operator(OperatorKind::Add, [-300.0, 0.0]);
+    let b = g.add_operator(OperatorKind::Add, [-150.0, 0.0]);
+    g.connect(a, "Out", b, "A").unwrap();
+    let spawn = g.context_of(ContextType::Spawn).unwrap().blocks[0].id;
+    g.connect(b, "Out", spawn, "Rate").unwrap();
+    for (from, to) in [(b, a), (a, a)] {
+        g.links.push(Link {
+            from,
+            output: "Out".into(),
+            to,
+            input: "B".into(),
+        });
+    }
+    let back = EffectGraph::from_json(&g.to_json()).unwrap();
+    assert_eq!(back.links.len(), 2, "{:?}", back.links);
+    assert!(back.links.iter().all(|l| l.to != a));
+    compiles(&back, "loop cut");
 }

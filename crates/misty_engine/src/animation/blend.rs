@@ -95,7 +95,27 @@ pub fn simple_directional(points: &[Vec2], p: Vec2) -> Vec<f32> {
     let (pa, pb) = (points[a], points[b]);
     let wedge = if a == b { 2.0 * PI } else { ccw(pa, pb) };
     let mut parts: Vec<(usize, f32)> = Vec::new();
-    if wedge < PI - EPS {
+    if a != b && wedge < EPS {
+        // Two motions in the same direction (walk and run along +Y): blend by distance along
+        // it. The triangle split divided by zero: the idle played alone, or NaN weights (rest
+        // pose) for an input a hair to one side.
+        let (near, far) = if pa.length() <= pb.length() {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        let (l0, l1) = (points[near].length(), points[far].length());
+        let t = p.dot(points[near] / l0).max(0.0);
+        if t <= l0 {
+            parts.push((near, t / l0));
+        } else if l1 - l0 < EPS {
+            parts.push((near, 1.0));
+        } else {
+            let f = ((t - l0) / (l1 - l0)).min(1.0);
+            parts.push((near, 1.0 - f));
+            parts.push((far, f));
+        }
+    } else if wedge < PI - EPS {
         // p = wa·A + wb·B inside the triangle (centre, A, B); beyond the A–B line both shrink.
         let det = pa.perp_dot(pb);
         let wa = p.perp_dot(pb) / det;

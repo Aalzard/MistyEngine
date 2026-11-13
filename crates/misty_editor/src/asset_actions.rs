@@ -353,6 +353,7 @@ fn delete(s: &mut EditorState, path: &Path) {
     match asset_ops::delete_to_trash(&[path.to_path_buf()]) {
         Ok(()) => {
             misty_engine::asset_db::removed(&rel);
+            crate::prefab_mode::deleted(s, &rel);
             let under = |p: &Path| p.starts_with(path);
             if s.project.selected.as_deref().is_some_and(under) {
                 s.project.selected = None;

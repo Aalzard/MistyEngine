@@ -95,6 +95,22 @@ pub fn rename(s: &mut EditorState, old: &str, new: &str) {
     }
 }
 
+/// Prefab asset (or folder) `rel` was deleted: leave the Prefab Mode levels editing it (and
+/// those opened from them), discarding their changes. Kept open, Save wrote the deleted
+/// prefab back as a new file.
+pub fn deleted(s: &mut EditorState, rel: &str) {
+    let gone = |p: &str| p == rel || p.starts_with(&format!("{rel}/"));
+    let Some(level) = s.prefab_stages.iter().position(|st| gone(&st.path)) else {
+        return;
+    };
+    while s.prefab_stages.len() > level {
+        close(s);
+    }
+    s.console.warn(format!(
+        "Closed Prefab Mode: {rel} was deleted (unsaved changes were dropped)."
+    ));
+}
+
 /// Scenes kept aside by Prefab Mode (they follow prefab changes too).
 pub fn stashed_scenes(s: &mut EditorState) -> impl Iterator<Item = &mut Scene> {
     s.prefab_stages.iter_mut().map(|st| &mut st.stash.scene)

@@ -45,6 +45,24 @@ fn rate_over_time_emits_rate_times_seconds() {
     assert_eq!(slow.count(), 20);
 }
 
+/// Prewarm with a huge Duration ends: `t += 1/30` stopped growing past 2^20 s, so a looping
+/// system with Duration 2e6 never finished Play.
+#[test]
+fn prewarm_with_a_huge_duration_ends() {
+    let mut s = system();
+    s.emission.rate_over_time = MinMax::constant(10.0);
+    s.main.max_particles = 20;
+    s.main.looping = true;
+    s.main.prewarm = true;
+    s.main.duration = 2e6;
+    let start = std::time::Instant::now();
+    let e = started(&s);
+    assert_eq!(e.count(), 20);
+    s.main.duration = f32::INFINITY;
+    let _ = started(&s);
+    assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
+}
+
 #[test]
 fn bursts_fire_once_per_cycle_and_repeat() {
     let mut s = system();
@@ -84,6 +102,23 @@ fn burst_probability_zero_never_fires() {
     let mut e = started(&s);
     run(&mut e, &s, 1.0);
     assert_eq!(e.count(), 0);
+}
+
+/// Lowering Duration below the cycle clock while playing wraps the cycle; the negative slice
+/// it made used to add the difference to the frame (3.5 s of particles in one frame).
+#[test]
+fn shortening_duration_while_playing_emits_no_extra_particles() {
+    let mut s = system();
+    s.emission.rate_over_time = MinMax::constant(100.0);
+    s.main.duration = 5.0;
+    s.main.looping = true;
+    let mut e = started(&s);
+    run(&mut e, &s, 4.5);
+    let before = e.count();
+    s.main.duration = 1.0;
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    let added = e.count() - before;
+    assert!(added <= 3, "{added} particles in one frame");
 }
 
 #[test]
@@ -715,6 +750,53 @@ fn rotation_size_and_color_modules() {
     assert_eq!(old.curve().evaluate(1.0, 0.0), 0.25);
 }
 
+/// A sub emitter's own Birth sub emitter fires: the births a trigger made in it were
+/// cleared at the start of its next step, before they were handed on.
+#[test]
+fn birth_sub_emitters_of_a_sub_emitter_fire() {
+    let mut scene = Scene::new("Chain");
+    let parent = scene.spawn("Rocket", None);
+    let triggered = |emitter: &str| {
+        let mut s = system();
+        s.main.simulation_space = SimulationSpace::World;
+        s.sub_emitters.enabled = true;
+        s.sub_emitters.list = vec![SubEmitter {
+            trigger: SubEmitterTrigger::Birth,
+            emitter: emitter.into(),
+            count: 1,
+            ..Default::default()
+        }];
+        s
+    };
+    let mut s = triggered("Trail");
+    s.emission.rate_over_time = MinMax::constant(0.0);
+    s.emission.bursts = vec![Burst {
+        count: 3,
+        ..Default::default()
+    }];
+    scene.add(parent, s);
+    let trail = scene.spawn("Trail", Some(parent));
+    let mut t = triggered("Smoke");
+    t.main.play_on_awake = false;
+    scene.add(trail, t);
+    let smoke = scene.spawn("Smoke", Some(trail));
+    let mut k = system();
+    k.main.simulation_space = SimulationSpace::World;
+    k.main.play_on_awake = false;
+    scene.add(smoke, k);
+    for _ in 0..5 {
+        update(&mut scene, DT, DEFAULT_GRAVITY);
+    }
+    let count = |e| {
+        scene
+            .world
+            .get::<&ParticleEmitter>(e)
+            .map_or(0, |em| em.count())
+    };
+    assert_eq!(count(trail), 3, "one per rocket");
+    assert_eq!(count(smoke), 3, "one per trail particle");
+}
+
 #[test]
 fn sub_emitters_fire_on_birth_collision_and_death() {
     let mut scene = Scene::new("Sub Emitters");
@@ -908,4 +990,35 @@ fn emitting_a_huge_count_stops_at_max_particles() {
     e.emit(&s, &Mat4::IDENTITY, u32::MAX);
     assert_eq!(e.count(), 100);
     assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+}
+
+/// Rate over Time and bursts stop trying at Max Particles: Rate 1e12 (or a burst of
+/// 4294967295) spun billions of times a frame, and an infinite rate left the accumulator NaN,
+/// so the system never emitted again.
+#[test]
+fn huge_rates_and_bursts_stop_at_max_particles() {
+    let mut s = system();
+    s.main.max_particles = 50;
+    s.emission.rate_over_time = MinMax::constant(1e12);
+    let start = std::time::Instant::now();
+    let mut e = started(&s);
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    assert_eq!(e.count(), 50);
+    s.emission.rate_over_time = MinMax::constant(0.0);
+    s.emission.bursts = vec![Burst {
+        time: 0.0,
+        count: u32::MAX,
+        ..Default::default()
+    }];
+    let mut e = started(&s);
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    assert_eq!(e.count(), 50);
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+    // An infinite rate still emits (and keeps emitting after the particles die).
+    s.emission.bursts.clear();
+    s.emission.rate_over_time = MinMax::constant(f32::INFINITY);
+    s.main.start_lifetime = MinMax::constant(0.05);
+    let mut e = started(&s);
+    run(&mut e, &s, 0.5);
+    assert_eq!(e.count(), 50);
 }

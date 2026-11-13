@@ -163,9 +163,9 @@ pub(super) fn remap_refs(
 /// Every object reference held by `e`'s components: (component name, target).
 pub(super) fn object_refs(world: &hecs::World, e: Entity) -> Vec<(&'static str, Entity)> {
     let found = std::cell::RefCell::new(Vec::new());
-    let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();
-    names.dedup();
-    for name in names {
+    // Sorted and deduplicated: a component listed in several tables (Toggle, Slider…) was
+    // read once per table, so each of its references was reported more than once.
+    for name in ref_components() {
         let Some(value) = registry::find(name).and_then(|info| (info.to_json)(world, e)) else {
             continue;
         };
@@ -215,9 +215,7 @@ pub(super) fn remap_copied_refs(
     e: Entity,
     map: &std::collections::HashMap<Entity, Entity>,
 ) {
-    let mut names: Vec<&str> = all_refs().map(|r| r.0).collect();
-    names.dedup();
-    for name in names {
+    for name in ref_components() {
         let Some(info) = registry::find(name) else {
             continue;
         };
@@ -411,6 +409,57 @@ impl Scene {
         // Editable Meshes are baked into the runtime mesh cache, not saved as meshes.
         crate::mesh_builder::sync(self);
         entities
+    }
+
+    /// Objects `pairs` were just pasted from (source, copy): give each copy the source's
+    /// references to objects outside the copied set (a Button's target, a joint's body) when
+    /// the source still exists and the target is alive in the copy's scene. The file format
+    /// the clipboard uses drops them (Duplicate kept them). A component whose source changed
+    /// since the copy is left as pasted.
+    pub fn restore_outside_refs(&mut self, pairs: &[(Entity, Entity)]) {
+        let map: std::collections::HashMap<Entity, Entity> = pairs.iter().copied().collect();
+        for &(src, dst) in pairs {
+            if !self.contains(src) || !self.contains(dst) || src == dst {
+                continue;
+            }
+            let scene = self.scene_of(dst);
+            for name in ref_components() {
+                let Some(info) = registry::find(name) else {
+                    continue;
+                };
+                let (Some(from), Some(now)) = (
+                    (info.to_json)(&self.world, src),
+                    (info.to_json)(&self.world, dst),
+                ) else {
+                    continue;
+                };
+                let inside = |bits: u64| {
+                    let e = Entity::from_bits(bits)?;
+                    map.get(&e).map(|c| c.to_bits().get())
+                };
+                // What the paste made of the source as it is now: equal, or it changed since.
+                let mut pasted = BTreeMap::from([(name.to_owned(), from.clone())]);
+                remap_refs(&mut pasted, inside);
+                let mut now = BTreeMap::from([(name.to_owned(), now)]);
+                now.values_mut().for_each(tidy_numbers);
+                pasted.values_mut().for_each(tidy_numbers);
+                if pasted != now {
+                    continue;
+                }
+                let mut kept = BTreeMap::from([(name.to_owned(), from)]);
+                remap_refs(&mut kept, |bits| {
+                    inside(bits).or_else(|| {
+                        let e = Entity::from_bits(bits)?;
+                        (self.contains(e) && self.scene_of(e) == scene).then_some(bits)
+                    })
+                });
+                if kept != pasted
+                    && let Some(v) = kept.remove(name)
+                {
+                    let _ = (info.from_json)(&mut self.world, dst, v);
+                }
+            }
+        }
     }
 
     /// Serialise to the `.scene` JSON text.
@@ -711,5 +760,21 @@ mod tests {
         assert_eq!(loaded.name, "Level");
         assert_eq!(loaded.len(), sample().len());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// A damaged Transform loads tidy: a rotation of length 1e30 scaled the whole matrix to
+    /// infinity (physics then panicked), and numbers too big for f32 were read as infinity.
+    #[test]
+    fn damaged_transforms_load_tidy() {
+        let text = r#"{"version":1,"objects":[{"parent":null,"components":{
+            "GameObject":{"name":"A"},
+            "Transform":{"position":[1e39,2,3],"rotation":[-1e30,0,0,1],"scale":[1,1e39,1]}}}]}"#;
+        let (s, _) = Scene::from_json("T", text).unwrap();
+        let e = s.find_by_name("A").unwrap();
+        let t = s.transform(e);
+        assert!((t.rotation.length() - 1.0).abs() < 1e-5, "{:?}", t.rotation);
+        assert_eq!(t.position, Vec3::ZERO);
+        assert_eq!(t.scale, Vec3::ONE);
+        assert!(s.world_matrix(e).is_finite());
     }
 }

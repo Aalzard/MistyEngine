@@ -272,7 +272,15 @@ fn apply_some(s: &mut EditorState, root: Entity, keys: &[Override]) {
             }
             s.console.info(format!("Applied changes to {rel}"));
         }
-        Err(err) => s.console.warn(format!("Could not apply: {err}")),
+        Err(err) => {
+            // Applying gave instance objects new prefab ids: put the scene back as it was
+            // (nothing was saved, and no undo step records the change).
+            let mut before = before;
+            before.retire_ids_of(&s.scene);
+            s.scene = before;
+            s.selection.retain_existing(&s.scene);
+            s.console.warn(format!("Could not apply: {err}"));
+        }
     }
 }
 
@@ -301,6 +309,19 @@ fn save_and_follow(
     old: &Prefab,
     new: &Prefab,
 ) -> Result<usize, String> {
+    // An instance of the prefab dragged or pasted inside one of its own instances (or into
+    // its Prefab Mode) would be written into it: every Apply then nested it one level deeper.
+    let mut used = new.nested_paths();
+    used.extend(new.base().map(str::to_owned));
+    if used
+        .iter()
+        .any(|u| u == rel || uses_deep(&mut s.assets, u, rel, 0))
+    {
+        return Err(format!(
+            "{} can't contain an instance of itself",
+            display_name(rel)
+        ));
+    }
     let new = with_records(&mut s.assets, new);
     s.assets.save_prefab(rel, &new)?;
     crate::live_reload::assets::note_prefab(s, rel);

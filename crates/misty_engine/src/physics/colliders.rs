@@ -7,7 +7,7 @@ use rapier3d::prelude as rp;
 
 use super::convert::{pose, rv};
 use super::material::PhysicsMaterial;
-use super::{Physics, layers, world_pose};
+use super::{MAX_EXTENT, Physics, layers, world_mirror, world_pose};
 use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Scene, SphereCollider,
 };
@@ -136,6 +136,9 @@ impl Physics {
     ) -> Vec<(rp::ColliderBuilder, Option<PhysicsMaterial>)> {
         let w = &scene.world;
         let (_, _, s) = world_pose(scene, e);
+        // Mirrored objects (a negative scale) mirror their colliders' centres and meshes too:
+        // they sat on the other side, an asymmetric mesh unmirrored.
+        let mirror = world_mirror(scene, e);
         let name = scene.name(e);
         let paths = [
             w.get::<&BoxCollider>(e)
@@ -172,13 +175,15 @@ impl Physics {
                     .restitution_combine_rule(m.bounce_combine.rapier()),
                 None => b.friction(surface.friction).restitution(surface.bounciness),
             };
-            (b.sensor(trigger), center * s, material.clone())
+            let center =
+                (center * s * mirror).clamp(Vec3::splat(-MAX_EXTENT), Vec3::splat(MAX_EXTENT));
+            (b.sensor(trigger), center, material.clone())
         };
         let mut shaped: Vec<(rp::ColliderBuilder, Vec3, Option<PhysicsMaterial>)> = Vec::new();
         if let Ok(c) = w.get::<&BoxCollider>(e)
             && c.enabled
         {
-            let h = (c.size * s * 0.5).max(Vec3::splat(1e-3));
+            let h = (c.size * s * 0.5).clamp(Vec3::splat(1e-3), Vec3::splat(MAX_EXTENT));
             shaped.push(finish(
                 rp::ColliderBuilder::cuboid(h.x, h.y, h.z),
                 c.center,
@@ -190,7 +195,7 @@ impl Physics {
         if let Ok(c) = w.get::<&SphereCollider>(e)
             && c.enabled
         {
-            let r = (c.radius * s.max_element()).max(1e-3);
+            let r = (c.radius * s.max_element()).clamp(1e-3, MAX_EXTENT);
             shaped.push(finish(
                 rp::ColliderBuilder::ball(r),
                 c.center,
@@ -204,8 +209,8 @@ impl Physics {
         {
             let axis = c.direction.min(2) as usize;
             let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
-            let r = (c.radius * s[a].max(s[b])).max(1e-3);
-            let half = (c.height * s[axis] * 0.5 - r).max(0.0);
+            let r = (c.radius * s[a].max(s[b])).clamp(1e-3, MAX_EXTENT);
+            let half = (c.height * s[axis] * 0.5 - r).clamp(0.0, MAX_EXTENT);
             let builder = match axis {
                 0 => rp::ColliderBuilder::capsule_x(half, r),
                 1 => rp::ColliderBuilder::capsule_y(half, r),
@@ -222,7 +227,7 @@ impl Physics {
                     let verts: Vec<rp::Vector> = data
                         .vertices
                         .iter()
-                        .map(|v| rv(Vec3::from(v.position) * s))
+                        .map(|v| rv(Vec3::from(v.position) * s * mirror))
                         .collect();
                     let dynamic = self.bodies.get(&e).is_some_and(|b| !b.kinematic);
                     let builder = if c.convex || dynamic {
@@ -234,12 +239,27 @@ impl Physics {
                         rp::ColliderBuilder::convex_hull(&verts)
                     } else if let Some(shape) = mesh_ref
                         .as_ref()
+                        .filter(|_| mirror == Vec3::ONE)
                         .and_then(|r| super::shape_cache::take(r, s))
                     {
                         // Built ahead on a background thread (a streamed cell).
                         Some(rp::ColliderBuilder::new(shape))
                     } else {
-                        let tris = data.indices.chunks(3).map(|t| [t[0], t[1], t[2]]).collect();
+                        // Mirroring turns the triangles inside out: keep them facing out.
+                        let flip = mirror.x < 0.0;
+                        let tris = data
+                            .indices
+                            .as_chunks::<3>()
+                            .0
+                            .iter()
+                            .map(|t| {
+                                if flip {
+                                    [t[0], t[2], t[1]]
+                                } else {
+                                    [t[0], t[1], t[2]]
+                                }
+                            })
+                            .collect();
                         rp::ColliderBuilder::trimesh(verts, tris).ok()
                     };
                     match builder {
@@ -269,7 +289,9 @@ impl Physics {
 
 /// Wrap a shape in a compound so its centre offset survives the outer position.
 pub(super) fn offset(b: rp::ColliderBuilder, center: Vec3) -> rp::ColliderBuilder {
-    if center == Vec3::ZERO {
+    // A composite shape (a Mesh Collider's triangles) can't go inside a compound (parry
+    // panics); a non-finite centre (a damaged scene) has nowhere to go.
+    if center == Vec3::ZERO || !center.is_finite() || b.shape.as_composite_shape().is_some() {
         return b;
     }
     let shape = b.shape.clone();

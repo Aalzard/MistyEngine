@@ -320,4 +320,30 @@ mod tests {
         assert_eq!(s.scene.active_scene(), b);
         assert_eq!(s.scene.scene_of(cam), 0);
     }
+
+    /// Pasting next to a top-level object of a scene that isn't the active one put the copy
+    /// in the active scene (listed among the other scene's objects, saved into the active
+    /// scene's file).
+    #[test]
+    fn paste_next_to_another_scenes_object_goes_into_that_scene() {
+        use crate::actions::Action;
+        use crate::commands::apply;
+        let mut s = state("paste");
+        let b = open_additive(&mut s, "Assets/Scenes/B.scene").unwrap();
+        let ground = s.scene.find_by_name("Ground").unwrap();
+        assert_eq!(s.scene.scene_of(ground), b);
+        s.selection.set(ground);
+        apply(&mut s, Action::CopyObjects);
+        apply(
+            &mut s,
+            Action::PasteObjects {
+                text: None,
+                as_child: false,
+            },
+        );
+        let pasted = s.selection.active().unwrap();
+        assert_ne!(pasted, ground);
+        assert_eq!(s.scene.scene_of(pasted), b);
+        assert_eq!(s.scene.roots_in(b), [ground, pasted]);
+    }
 }

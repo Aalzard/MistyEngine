@@ -15,6 +15,8 @@ use crate::scene::Scene;
 
 /// Most voxel columns a bake covers; bigger levels get coarser voxels.
 const MAX_COLUMNS: f32 = 16_000_000.0;
+/// Most voxels of agent radius (tile padding); bigger agents get coarser voxels.
+const MAX_BORDER: f32 = 256.0;
 
 /// Progress callback: (fraction done, stage).
 pub type Progress<'a> = &'a (dyn Fn(f32, &'static str) + Sync);
@@ -39,6 +41,11 @@ pub fn settings_for(
         if columns > MAX_COLUMNS {
             cell *= (columns / MAX_COLUMNS).sqrt();
         }
+    }
+    // Every tile is padded by radius / cell voxels: Agent Radius 50 with Voxel Size 0.01 made
+    // 10 000-voxel borders, about 2.4 GB per tile (several tiles at once on the pool).
+    if agent.radius.is_finite() {
+        cell = cell.max(agent.radius / MAX_BORDER);
     }
     BuildSettings {
         agent,
@@ -164,4 +171,32 @@ pub fn reused_tiles(previous: &NavMesh, now: &NavMesh) -> usize {
                 .is_some_and(|i| previous.tiles()[i as usize].hash == t.hash)
         })
         .count()
+}
+
+#[cfg(test)]
+mod border_tests {
+    use super::*;
+    use crate::scene::Scene;
+
+    /// A big agent with tiny voxels keeps the tile padding bounded (it was radius / voxel
+    /// size: 5000 voxels on each side of every tile for Agent Radius 50, Voxel Size 0.01).
+    #[test]
+    fn big_agents_with_tiny_voxels_get_coarser_voxels() {
+        let mut s = Scene::new("T");
+        super::super::tests::floor(&mut s, 0.0, 0.0, 10.0, 10.0);
+        let input = geometry::collect_static(&s);
+        let agent = AgentSettings {
+            radius: 50.0,
+            ..Default::default()
+        };
+        let st = settings_for(&input, agent, 0, 0.01, 0, 0.0);
+        assert!(
+            agent.radius / st.cell_size <= MAX_BORDER + 0.01,
+            "{}",
+            st.cell_size
+        );
+        // Ordinary agents keep the voxel size asked for.
+        let st = settings_for(&input, AgentSettings::default(), 0, 0.1, 0, 0.0);
+        assert!((st.cell_size - 0.1).abs() < 1e-6);
+    }
 }

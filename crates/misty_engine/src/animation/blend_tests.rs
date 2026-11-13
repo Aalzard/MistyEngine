@@ -87,6 +87,19 @@ fn simple_directional_without_a_centre_normalises() {
     close(&simple_directional(&fb, v(0.5, 0.5)), &[0.5, 0.5, 0.0]);
 }
 
+/// Walk and run in the same direction (idle at the centre) blend by distance: the input
+/// between them played the idle alone, and a hair to one side gave NaN weights (rest pose).
+#[test]
+fn simple_directional_blends_motions_in_the_same_direction_by_distance() {
+    let pts = [v(0.0, 0.0), v(0.0, 1.0), v(0.0, 2.0)];
+    close(&simple_directional(&pts, v(0.0, 1.5)), &[0.0, 0.5, 0.5]);
+    close(&simple_directional(&pts, v(0.0, 0.5)), &[0.5, 0.5, 0.0]);
+    close(&simple_directional(&pts, v(0.0, 3.0)), &[0.0, 0.0, 1.0]);
+    let w = simple_directional(&pts, v(-1e-6, 1.5));
+    assert!(w.iter().all(|x| x.is_finite()), "{w:?}");
+    assert!((w.iter().sum::<f32>() - 1.0).abs() < 1e-3, "{w:?}");
+}
+
 #[test]
 fn freeform_cartesian_uses_gradient_bands() {
     let square = [v(0.0, 0.0), v(1.0, 0.0), v(0.0, 1.0), v(1.0, 1.0)];

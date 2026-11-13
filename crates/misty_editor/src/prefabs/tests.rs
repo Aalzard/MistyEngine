@@ -135,6 +135,49 @@ fn apply_updates_asset_and_other_instances_revert_restores() {
     assert!(s.scene.prefab_link(other).is_some(), "unpack is undoable");
 }
 
+/// An instance dragged inside another instance of the same prefab was applied into the
+/// asset: the prefab contained itself, and each Apply nested it one level deeper.
+#[test]
+fn a_prefab_cannot_be_applied_into_itself() {
+    let mut s = state("self_nest");
+    let crate_e = s.scene.spawn("Crate", None);
+    let rel = make_prefab(&mut s, crate_e);
+    let other = instantiate(&mut s, &rel, None).unwrap();
+    let steps = s.undo.steps().len();
+    s.scene.set_parent(other, Some(crate_e), None, true);
+    apply(&mut s, Action::ApplyPrefab(crate_e));
+    let prefab = s.assets.prefab(&rel).unwrap();
+    assert!(
+        !prefab.nested_paths().contains(&rel),
+        "{:?}",
+        prefab.nested_paths()
+    );
+    assert_eq!(s.undo.steps().len(), steps, "nothing applied, no step");
+    assert_eq!(
+        s.scene.parent(other),
+        Some(crate_e),
+        "the scene is as it was"
+    );
+}
+
+/// A duplicate of an instance's child kept the original's prefab id: moved above the
+/// original it took the original's place in the instance, and Revert deleted the original.
+#[test]
+fn a_duplicate_inside_an_instance_never_takes_the_originals_place() {
+    let mut s = state("dup_id");
+    let cube = s.scene.spawn("Cube", None);
+    let lid = s.scene.spawn("Lid", Some(cube));
+    make_prefab(&mut s, cube);
+    s.selection.set(lid);
+    crate::commands::apply(&mut s, Action::DuplicateSelected);
+    let copy = s.selection.active().unwrap();
+    assert_ne!(copy, lid);
+    s.scene.set_parent(copy, Some(cube), Some(0), false);
+    apply(&mut s, Action::RevertPrefab(cube));
+    assert!(s.scene.contains(lid), "the original stays");
+    assert!(!s.scene.contains(copy), "the copy was the added object");
+}
+
 #[test]
 fn per_item_apply_and_revert_keep_other_instances_overrides() {
     let mut s = state("items");
@@ -472,6 +515,30 @@ fn prefab_mode_opens_nested_levels_and_variants_show_base_overrides() {
     let vp = s.assets.prefab(&variant).unwrap();
     assert_eq!(vp.base(), Some(cart_rel.as_str()));
     assert!(vp.root_components().contains(&"Light".to_owned()));
+}
+
+/// Deleting a prefab that is open in Prefab Mode closes it: Save used to write the deleted
+/// prefab back as a new file.
+#[test]
+fn deleting_a_prefab_open_in_prefab_mode_closes_it() {
+    let mut s = state("delete_open");
+    let cube = s.scene.spawn("Cube", None);
+    let rel = make_prefab(&mut s, cube);
+    apply(
+        &mut s,
+        Action::OpenPrefab {
+            path: rel.clone(),
+            from: None,
+        },
+    );
+    assert!(crate::prefab_mode::active(&s));
+    let abs = s.assets.absolute(&rel);
+    crate::commands::apply(&mut s, Action::DeleteAsset(abs.clone()));
+    assert!(!abs.exists());
+    assert!(!crate::prefab_mode::active(&s), "Prefab Mode closed");
+    assert!(s.scene.contains(cube), "back in the scene");
+    apply(&mut s, Action::SavePrefabStage);
+    assert!(!abs.exists(), "not written back");
 }
 
 #[test]

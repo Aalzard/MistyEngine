@@ -1361,7 +1361,13 @@ fn write_transform(
         let from = yaw_of(current.xz().try_normalize().unwrap_or(Vec2::Y));
         let to = yaw_of(v);
         let diff = (to - from + 540.0).rem_euclid(360.0) - 180.0;
-        let turn = diff.clamp(-comp.angular_speed * dt, comp.angular_speed * dt);
+        // A negative or NaN Angular Speed (scripts, scene files) made `clamp` panic.
+        let max = (comp.angular_speed * dt).abs();
+        let turn = if max.is_nan() {
+            0.0
+        } else {
+            diff.clamp(-max, max)
+        };
         let yaw = (from + turn).to_radians();
         scene.set_world_rotation(e, Quat::from_rotation_y(yaw));
     }
