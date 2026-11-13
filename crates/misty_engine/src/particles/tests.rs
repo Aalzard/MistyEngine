@@ -909,3 +909,34 @@ fn emitting_a_huge_count_stops_at_max_particles() {
     assert_eq!(e.count(), 100);
     assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
 }
+
+/// Rate over Time and bursts stop trying at Max Particles: Rate 1e12 (or a burst of
+/// 4294967295) spun billions of times a frame, and an infinite rate left the accumulator NaN,
+/// so the system never emitted again.
+#[test]
+fn huge_rates_and_bursts_stop_at_max_particles() {
+    let mut s = system();
+    s.main.max_particles = 50;
+    s.emission.rate_over_time = MinMax::constant(1e12);
+    let start = std::time::Instant::now();
+    let mut e = started(&s);
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    assert_eq!(e.count(), 50);
+    s.emission.rate_over_time = MinMax::constant(0.0);
+    s.emission.bursts = vec![Burst {
+        time: 0.0,
+        count: u32::MAX,
+        ..Default::default()
+    }];
+    let mut e = started(&s);
+    e.step(&s, &Mat4::IDENTITY, DEFAULT_GRAVITY, DT);
+    assert_eq!(e.count(), 50);
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+    // An infinite rate still emits (and keeps emitting after the particles die).
+    s.emission.bursts.clear();
+    s.emission.rate_over_time = MinMax::constant(f32::INFINITY);
+    s.main.start_lifetime = MinMax::constant(0.05);
+    let mut e = started(&s);
+    run(&mut e, &s, 0.5);
+    assert_eq!(e.count(), 50);
+}

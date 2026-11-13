@@ -771,10 +771,16 @@ impl ParticleEmitter {
             .sample_at(cycle, &mut self.rng)
             .max(0.0);
         self.accumulator += rate * slice;
+        if !self.accumulator.is_finite() {
+            // An infinite rate made the accumulator NaN: emission was dead from then on.
+            self.accumulator = f32::MAX;
+        }
         let n = self.accumulator.floor();
-        self.accumulator -= n;
+        self.accumulator = (self.accumulator - n).clamp(0.0, 1.0);
         let n = n as u32;
-        for i in 0..n {
+        // No more tries than free slots: Rate 1e12 spun 4 billion times a frame.
+        let free = (system.main.max_particles as usize).saturating_sub(self.particles.len());
+        for i in 0..n.min(free as u32) {
             // Spread births across the slice so low frame rates don't clump particles.
             let born_at = slice * (i as f32 + 0.5) / n as f32;
             let age = (remaining - born_at).max(0.0);
@@ -803,13 +809,16 @@ impl ParticleEmitter {
                     break;
                 }
                 let at = b.time + fired as f32 * b.interval.max(0.01);
-                if at < from || at >= to {
+                // `!(..)` so a NaN time ends the loop too.
+                if !(at >= from && at < to) {
                     break;
                 }
                 self.bursts_fired[i] += 1;
                 if self.rng.next_f32() < b.probability {
                     let age = (to - at) + after;
-                    for _ in 0..b.count {
+                    let free =
+                        (system.main.max_particles as usize).saturating_sub(self.particles.len());
+                    for _ in 0..(b.count as usize).min(free) {
                         self.spawn(system, world, g, age, None);
                     }
                 }
