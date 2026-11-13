@@ -476,7 +476,9 @@ impl ScriptGraphWindow {
         }
         let mut name = "Macro".to_owned();
         let mut k = 1;
-        while view.macro_graph(&name).is_some() {
+        // Not the name of a macro this one is inside either: compiling takes a macro inside
+        // one of the same name for a macro that uses itself.
+        while view.macro_graph(&name).is_some() || self.macro_path.contains(&name) {
             k += 1;
             name = format!("Macro {k}");
         }

@@ -289,6 +289,41 @@ fn copy_paste_and_collapse_to_macro() {
     assert!(w.at_root());
 }
 
+/// Collapsing inside the macro "Macro" named the new one "Macro" too (only the open view's
+/// names were looked at): the root graph then failed with "the subgraph uses itself".
+#[test]
+fn a_macro_collapsed_inside_a_macro_gets_its_own_name() {
+    let mut g = start_graph();
+    let a = g.add_node("MultiplyFloat", [300.0, 300.0]);
+    let b = g.add_node("MultiplyFloat", [500.0, 300.0]);
+    let log = g.add_node_with(
+        "Api",
+        &[("owner", "Debug"), ("member", "Log"), ("mode", "call")],
+        [700.0, 100.0],
+    );
+    g.connect(a, "Result", b, "A", &NoFiles).unwrap();
+    g.connect(b, "Result", log, "Message", &NoFiles).unwrap();
+    g.connect(1, "Out", log, "In", &NoFiles).unwrap();
+    let (mut s, root) = project("nested_macro", &g);
+    let w = &mut s.script_graph;
+    w.selected = [a, b].into();
+    assert_eq!(w.collapse_to_macro(&root).as_deref(), Some("Macro"));
+    w.enter_macro("Macro");
+    let inner = w
+        .view()
+        .nodes
+        .iter()
+        .find(|n| n.kind == "MultiplyFloat")
+        .unwrap()
+        .id;
+    w.selected = [inner].into();
+    let name = w.collapse_to_macro(&root).expect("collapsed");
+    assert_ne!(name, "Macro");
+    w.leave_macro(0);
+    let errors = compile::check(&w.graph, &NoFiles);
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
 #[test]
 fn most_of_the_lua_api_is_available_as_nodes() {
     let entries = search::api_entries();
