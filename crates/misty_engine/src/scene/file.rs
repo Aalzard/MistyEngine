@@ -423,10 +423,14 @@ impl Scene {
 
     /// Parse `.scene` JSON. Unknown components are skipped with a warning.
     pub fn from_json(name: &str, text: &str) -> Result<(Scene, LoadReport), String> {
-        let (parts, mut report) = read_scene_parts(text)?;
+        let (parts, mut report) = {
+            crate::profile_scope!("Scene.Parse");
+            read_scene_parts(text)?
+        };
         let mut scene = Scene::new(name);
         scene.render_settings = parts.lighting;
         scene.navigation = parts.navigation;
+        crate::profile_scope!("Scene.Spawn");
         scene.spawn_entries(parts.objects, None, &mut report);
         Ok((scene, report))
     }
