@@ -39,6 +39,7 @@ mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
+pub mod recorder_api;
 pub mod render_settings_api;
 pub mod rigging_api;
 pub mod save_api;

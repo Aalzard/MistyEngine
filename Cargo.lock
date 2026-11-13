@@ -2666,6 +2666,7 @@ dependencies = [
  "getrandom 0.3.4",
  "glam 0.34.2",
  "misty_engine",
+ "misty_recorder",
  "mlua",
  "png",
  "pollster 0.4.0",

@@ -30,6 +30,8 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
+9. [Recording videos and GIFs](09-recorder.md): the optional Recorder package, MP4, WebM,
+   GIF and picture sequences at a fixed frame rate, from the window or a Timeline.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

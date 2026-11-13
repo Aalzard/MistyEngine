@@ -182,6 +182,14 @@ fn status_line(ui: &mut Ui, s: &EditorState) {
     }
 }
 
+/// "Manual" here means by hand, not the documentation.
+fn range_label(r: RangeMode) -> String {
+    match r {
+        RangeMode::Manual => tr!("Manual#range"),
+        other => tr(other.label()),
+    }
+}
+
 fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     ui.label(tr(label));
     add(ui);
@@ -306,10 +314,10 @@ pub fn settings_ui(
             if !clip {
                 row(ui, "Start / Stop", |ui| {
                     egui::ComboBox::from_id_salt((id, "range"))
-                        .selected_text(tr(r.range.label()))
+                        .selected_text(range_label(r.range))
                         .show_ui(ui, |ui| {
                             for v in RangeMode::ALL {
-                                ui.selectable_value(&mut r.range, v, tr(v.label()));
+                                ui.selectable_value(&mut r.range, v, range_label(v));
                             }
                         });
                 });

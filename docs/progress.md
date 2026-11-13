@@ -4764,3 +4764,26 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+## Round 61 — The Recorder package: video, GIF and image sequences in capture time (branch r61-recorder)
+
+Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
+
+- **Optional built-in packages**: the Package Manager's Built-in list ends with packages that
+  ship with the editor but are not installed by default (marked Optional). Install adds them
+  to `Packages/manifest.json` (locked as `builtin`, nothing copied); Remove takes them out with
+  their settings file. New projects, templates and existing projects don't get them.
+- **Recorder** (`com.misty.recorder`, Window ▸ General ▸ Recorder once installed): a list of
+  recorders, each with a source (Scene Viewer, a camera, the Editor Scene), an output (MP4
+  H.264, WebM AV1, GIF, PNG or JPG sequence), resolution (match the view or custom), frame
+  rate, start / stop (manual, frame range, time range, Timeline clip), output folder, file
+  name with wildcards (`<Scene>_<Take>_<Frame>` ...) and an auto-incrementing take.
+- **Capture time**: while recording, every Play-mode frame advances exactly one frame of the
+  recording, so slow machines record smooth files. Frames are rendered into the recorder's
+  own target, copied back through a 4-buffer staging ring and encoded on worker threads;
+  bounded queues make capture wait rather than drop frames.
+- **Encoders built in** (new crate `misty_recorder`, editor only): OpenH264 compiled from
+  source (BSD-2) with our own MP4 writer, rav1e (BSD-2, pure Rust) with our own WebM writer,
+  GIF / PNG / JPG through `image`. Videos are silent for now.
+- **Timeline Recorder track**: a clip records while its timeline plays it in Play mode.
+- **Lua**: `Recorder.Start([name])`, `Recorder.Stop()`, `Recorder.isRecording`.
+- **Docs**: User Guide chapter 9 (English and Arabic), Turkish and Arabic UI strings.
