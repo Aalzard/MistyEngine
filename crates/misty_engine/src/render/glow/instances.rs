@@ -233,9 +233,8 @@ pub(super) fn build(frame: &Frame, aspect: f32, flares: bool, bloom_gain: f32) -
     for s in sources {
         if let Some(h) = &s.halo
             && out.halos.len() < MAX_HALOS
-            && let Some(i) = halo(frame, s, h)
+            && let Some(mut i) = halo(frame, s, h)
         {
-            out.halos.push(i);
             // Glow Spread: its share of the halo's bloom, as Gaussians around it.
             let sprite = HaloSprite {
                 position: s.position,
@@ -247,7 +246,13 @@ pub(super) fn build(frame: &Frame, aspect: f32, flares: bool, bloom_gain: f32) -
                 && let Some(sp) = halo_spread(frame, &sprite, &s.glow, aspect, bloom_gain)
             {
                 out.spreads.push(sp);
+            } else {
+                // No spread halo (past the cap, or nothing of it shows): the halo keeps its
+                // whole bloom instead of handing a share to a halo that isn't drawn (lights
+                // past the 64th glowed `spread` × dimmer).
+                i.shape[2] = 0.0;
             }
+            out.halos.push(i);
         }
         if flares
             && flaring < MAX_FLARES

@@ -234,3 +234,34 @@ fn halo_spread_stays_bounded_as_the_camera_walks_into_the_light() {
     assert_eq!(peak(0.1), None, "faded out with the sprite inside it");
     assert_eq!(peak(0.25), None);
 }
+
+/// Every halo that hands a share of its bloom to Glow Spread has a spread halo drawn for it:
+/// past the spread cap the halos keep their whole bloom (they used to lose the share).
+#[test]
+fn halos_past_the_spread_cap_keep_their_bloom() {
+    use crate::scene::LightGlow;
+    let cam = camera();
+    let glows: Vec<GlowSource> = (0..100)
+        .map(|i| {
+            let mut s = source(
+                LightType::Point,
+                Vec3::new((i % 10) as f32 - 5.0, (i / 10) as f32 * 0.5, 5.0),
+                Vec3::Z,
+            );
+            s.glow = LightGlow {
+                spread: 0.5,
+                ..Default::default()
+            };
+            s
+        })
+        .collect();
+    let env = Environment {
+        glows,
+        ..Default::default()
+    };
+    let f = frame(&cam, &env, PostSettings::default());
+    let list = instances::build(&f, 16.0 / 9.0, false, 3.0);
+    assert!(list.halos.len() > list.spreads.len(), "the cap is reached");
+    let sharing = list.halos.iter().filter(|h| h.shape[2] > 0.0).count();
+    assert_eq!(sharing, list.spreads.len());
+}
