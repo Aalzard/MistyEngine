@@ -192,10 +192,21 @@ struct Run {
     /// stops the run, and the next frame starts again.
     shape: (usize, bool),
     todo: Vec<DocRef>,
+    /// Scene copies being serialised on worker threads.
+    workers: Vec<std::sync::mpsc::Receiver<DocSnapshot>>,
     written: usize,
     bytes: usize,
     cost: Duration,
     slowest: Duration,
+}
+
+impl Run {
+    fn write(&mut self, s: &mut EditorState, snap: &DocSnapshot) {
+        if let Some((bytes, _)) = write_backup(s, snap, false) {
+            self.written += 1;
+            self.bytes += bytes;
+        }
+    }
 }
 
 /// Autosave and recovery state of the open project.
@@ -341,6 +352,7 @@ pub fn tick(s: &mut EditorState, now: Instant, busy: bool, idle_for: Duration) {
         s.autosave.run = Some(Run {
             shape: docs::shape(s),
             todo,
+            workers: Vec::new(),
             written: 0,
             bytes: 0,
             cost: Duration::ZERO,
@@ -365,21 +377,30 @@ fn step(s: &mut EditorState, now: Instant) {
     let frame_start = Instant::now();
     while let Some(doc) = run.todo.pop() {
         let t0 = Instant::now();
-        let snap = docs::snapshot(s, &doc);
+        let started = docs::start_snapshot(s, &doc);
         let took = t0.elapsed();
         run.cost += took;
         run.slowest = run.slowest.max(took);
-        if let Some(snap) = snap
-            && let Some((bytes, _)) = write_backup(s, &snap, false)
-        {
-            run.written += 1;
-            run.bytes += bytes;
+        match started {
+            docs::Started::Done(Some(snap)) => run.write(s, &snap),
+            docs::Started::Done(None) => {}
+            docs::Started::Worker(rx) => run.workers.push(rx),
         }
         if frame_start.elapsed() >= FRAME_BUDGET {
             break;
         }
     }
-    if !run.todo.is_empty() {
+    // Scenes the workers finished (one that panicked is dropped).
+    let mut waiting = Vec::new();
+    for rx in std::mem::take(&mut run.workers) {
+        match rx.try_recv() {
+            Ok(snap) => run.write(s, &snap),
+            Err(std::sync::mpsc::TryRecvError::Empty) => waiting.push(rx),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {}
+        }
+    }
+    run.workers = waiting;
+    if !run.todo.is_empty() || !run.workers.is_empty() {
         s.autosave.run = Some(run);
         return;
     }

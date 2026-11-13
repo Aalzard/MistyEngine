@@ -37,11 +37,13 @@ fn begin_session(s: &mut EditorState, pid: u32, ago: Duration) -> session::Start
 /// Run one autosave now, to the end.
 fn autosave_now(s: &mut EditorState) {
     request_now(s);
-    for _ in 0..100 {
+    // Scene snapshots finish on worker threads: wait for them (30 s at most).
+    for _ in 0..3000 {
         tick(s, Instant::now(), false, Duration::from_secs(10));
         if s.autosave.run.is_none() {
             return;
         }
+        std::thread::sleep(Duration::from_millis(10));
     }
     panic!("the autosave run did not finish");
 }
@@ -721,24 +723,37 @@ fn autosave_cost_on_a_big_scene_stays_within_budget() {
             best = best.min(t.elapsed());
             bytes = snap.body.len();
         }
-        let t = Instant::now();
-        let copy = s.scene.clone();
-        let clone = t.elapsed();
-        drop(copy);
+        // What an autosave costs the main thread: the scene copy (its JSON is written on a
+        // worker thread).
+        let mut main = Duration::MAX;
+        for _ in 0..3 {
+            let t = Instant::now();
+            let started = docs::start_snapshot(s, &docs::DocRef::Scene { layer: 0, id: 0 });
+            main = main.min(t.elapsed());
+            match started {
+                docs::Started::Worker(rx) => assert_eq!(rx.recv().unwrap().body.len(), bytes),
+                docs::Started::Done(_) => panic!("scenes are serialised on a worker"),
+            }
+        }
         report.push_str(&format!(
-            "{name}: snapshot {:.2} ms ({} KB), scene clone {:.2} ms\n",
+            "{name}: JSON {:.2} ms ({} KB, on a worker), main thread {:.2} ms\n",
             best.as_secs_f64() * 1000.0,
             bytes / 1024,
-            clone.as_secs_f64() * 1000.0
+            main.as_secs_f64() * 1000.0
         ));
-        (best, clone)
+        (best, main)
     };
-    let (noon, _) = measure(&mut s, "NoonValley");
-    let (stress, _) = measure(&mut s, "StressDemo");
+    let (_, noon) = measure(&mut s, "NoonValley");
+    // A whole run of NoonValley: one document, not big.
+    s.autosave.backed_up.clear();
+    autosave_now(&mut s);
+    assert_eq!(s.autosave.last.documents, 1);
+    assert!(!s.autosave.big, "{:?}", s.autosave.last);
+    let (_, stress) = measure(&mut s, "StressDemo");
     println!("{report}");
     assert!(
-        noon < Duration::from_millis(40),
-        "NoonValley snapshot took {noon:?} (budget 40 ms)\n{report}"
+        noon < Duration::from_millis(8),
+        "NoonValley autosave took {noon:?} of main-thread time (budget 8 ms)\n{report}"
     );
     // A whole autosave run of the stress scene: written, and marked big when slow.
     s.autosave.backed_up.clear();
