@@ -481,11 +481,10 @@ fn variadic_api_functions_get_documented_pins() {
     for (owner, member, args) in [
         (
             "Physics2D",
-            "Raycast",
+            "RaycastAll",
             "origin, direction, [distance], [layerMask]",
         ),
-        ("#Rigidbody2D", "AddForce", "force, [mode]"),
-        ("#Rigidbody2D", "MovePosition", "position"),
+        ("#Tilemap", "SetTile", "cell, tile"),
         ("Input", "GetButton", "name"),
         ("#Tilemap", "GetTile", "cell"),
     ] {

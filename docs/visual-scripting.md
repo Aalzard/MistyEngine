@@ -87,16 +87,18 @@ The common members run natively with typed pins: Transform position / localPosit
 eulerAngles / localEulerAngles / localScale / forward / right / up / rotation (a Quaternion, graph
 only), Translate, Rotate, LookAt; GameObject name, tag, activeSelf, SetActive, CompareTag,
 GameObject.Find, Destroy; Rigidbody velocity and AddForce; Physics.Raycast (Hit, Point, Normal,
-Distance, Collider); Time; Input.GetKey / GetKeyDown / GetKeyUp / GetMouseButton(Down) /
+Distance, Collider); Rigidbody 2D velocity, angularVelocity, AddForce and MovePosition;
+Physics2D.Raycast (Hit, Point, Normal, Distance, Collider), OverlapCircle, OverlapCircleAll (a
+List), OverlapBox and OverlapPoint (2D values travel as Vector3 with z = 0; a Layer Mask of -1
+means the default layers); Time; Input.GetKey / GetKeyDown / GetKeyUp / GetMouseButton(Down) /
 GetAxis; Debug.Log / LogWarning / LogError. The others call the Lua binding: their pins take any
 value, numbers, strings, booleans, Vector3, GameObjects and lists convert both ways, rotations
 travel as Euler angles, and other Lua values (a hit table, a component) pass through as opaque
 values you can read with **Get Lua Field**.
 
 Functions whose binding takes a variable argument list get the arguments documented in the
-reference, for example Physics2D: Raycast (origin, direction, [distance], [layerMask]),
-Rigidbody2D: AddForce (force, [mode]), Rigidbody2D: MovePosition (position) and Input: GetButton
-(name). Optional arguments are dimmed pins: while one is unconnected and unset it is left out of
+reference, for example Physics2D: RaycastAll (origin, direction, [distance], [layerMask]),
+Input: GetButton (name) and Tilemap: SetTile (cell, tile). Optional arguments are dimmed pins: while one is unconnected and unset it is left out of
 the call, so the function uses its default.
 
 ### 2D physics events

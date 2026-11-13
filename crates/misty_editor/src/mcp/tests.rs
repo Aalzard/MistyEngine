@@ -1250,3 +1250,117 @@ fn numbers_past_the_f32_range_are_refused() {
     assert_eq!(s.scene.len(), objects, "nothing was created");
     cleanup(s);
 }
+
+/// graph.*: create a Script Graph, add nodes and a variable, wire and set pins, read it back
+/// (pins, wires, no compile problems) and attach it with scene.add_component.
+#[test]
+fn graph_tools_build_a_script_graph_and_attach_it() {
+    let mut s = project("graph_tools");
+    let path = "Assets/Graphs/Coin.vgraph";
+    let made = ok(
+        &mut s,
+        "graph.create",
+        json!({ "path": "Assets/Graphs/Coin", "empty": true }),
+    );
+    assert_eq!(made["path"], path);
+    ok(
+        &mut s,
+        "graph.add_variable",
+        json!({ "path": path, "name": "Score", "type": "Int", "scope": "Object" }),
+    );
+    let ev = ok(
+        &mut s,
+        "graph.add_node",
+        json!({ "path": path, "kind": "OnTriggerEnter2D" }),
+    )["node"]["id"]
+        .as_u64()
+        .unwrap();
+    let log = ok(
+        &mut s,
+        "graph.add_node",
+        json!({
+            "path": path,
+            "kind": "Api",
+            "params": { "owner": "Debug", "member": "Log", "mode": "call" },
+            "values": { "Message": "coin" },
+        }),
+    );
+    let log_id = log["node"]["id"].as_u64().unwrap();
+    assert!(
+        log["node"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["name"] == "Message")
+    );
+    let wired = ok(
+        &mut s,
+        "graph.connect",
+        json!({ "path": path, "from_node": ev, "from_pin": "Out", "to_node": log_id, "to_pin": "In" }),
+    );
+    assert_eq!(wired["errors"], json!([]));
+    // Wrong pins and types are refused with the reason.
+    assert!(
+        err(
+            &mut s,
+            "graph.connect",
+            json!({ "path": path, "from_node": ev, "from_pin": "Other", "to_node": log_id, "to_pin": "In" }),
+        )
+        .contains("cannot connect")
+    );
+    assert!(
+        err(
+            &mut s,
+            "graph.add_node",
+            json!({ "path": path, "kind": "Bogus" }),
+        )
+        .contains("unknown node type")
+    );
+    assert!(
+        err(
+            &mut s,
+            "graph.set_value",
+            json!({ "path": path, "node": log_id, "pin": "Nope", "value": 1 }),
+        )
+        .contains("no input")
+    );
+    let read = ok(&mut s, "graph.read", json!({ "path": path }));
+    assert_eq!(read["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(read["wires"].as_array().unwrap().len(), 1);
+    assert_eq!(read["variables"][0]["scope"], "Object");
+    assert_eq!(read["errors"], json!([]));
+    // The file is a real graph the engine compiles.
+    let g = misty_engine::visual_script::ScriptGraph::load(&s.project.root.join(path)).unwrap();
+    assert!(
+        misty_engine::visual_script::compile(&g, &misty_engine::visual_script::NoFiles).is_ok()
+    );
+    // Attach it to an object.
+    let made = ok(
+        &mut s,
+        "scene.create_object",
+        json!({ "kind": "empty", "name": "Coin" }),
+    );
+    let id = made["id"].as_str().unwrap().to_owned();
+    ok(
+        &mut s,
+        "scene.add_component",
+        json!({ "object": id, "component": path }),
+    );
+    let e = tools::resolve(&s, &id).unwrap();
+    let scripts = s
+        .scene
+        .world
+        .get::<&misty_engine::scene::Scripts>(e)
+        .unwrap()
+        .clone();
+    assert_eq!(scripts.list[0].path, path);
+    // Removing a node drops its wires.
+    ok(
+        &mut s,
+        "graph.remove_node",
+        json!({ "path": path, "node": ev }),
+    );
+    let read = ok(&mut s, "graph.read", json!({ "path": path }));
+    assert_eq!(read["wires"], json!([]));
+    cleanup(s);
+}

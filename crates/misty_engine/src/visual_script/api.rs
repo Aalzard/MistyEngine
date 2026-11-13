@@ -350,6 +350,136 @@ fn raycast(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
     Ok(())
 }
 
+// ---- 2D physics (Rigidbody 2D, Physics2D) --------------------------------------------------------
+
+/// A 2D vector pin value (z dropped).
+fn v2(cx: &Cx<'_>, s: Slot) -> glam::Vec2 {
+    cx.v3(s).truncate()
+}
+
+fn v2_out(v: glam::Vec2) -> Value {
+    Value::Vec3(v.extend(0.0))
+}
+
+/// A Layer Mask pin: negative = `default`.
+fn layer_mask(cx: &Cx<'_>, s: Slot, default: u32) -> u32 {
+    let m = cx.i(s);
+    if m < 0 { default } else { m as u32 }
+}
+
+fn velocity2d_get(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let v = with_target(cx, i, |w, e| w.physics2d.velocity(e).unwrap_or_default())?;
+    cx.set(o[0], v2_out(v));
+    Ok(())
+}
+
+fn velocity2d_set(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(), String> {
+    let e = cx.obj(i[0])?;
+    let v = v2(cx, i[1]);
+    cx.world.physics2d.set_velocity(e, v);
+    Ok(())
+}
+
+fn angular_velocity2d_get(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let v = with_target(cx, i, |w, e| w.physics2d.angular_velocity(e).unwrap_or(0.0))?;
+    cx.set(o[0], Value::Float(v));
+    Ok(())
+}
+
+fn angular_velocity2d_set(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(), String> {
+    let e = cx.obj(i[0])?;
+    let v = cx.f(i[1]);
+    cx.world.physics2d.set_angular_velocity(e, v);
+    Ok(())
+}
+
+fn add_force2d(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(), String> {
+    let e = cx.obj(i[0])?;
+    let f = v2(cx, i[1]);
+    let mode = cx.s(i[2]);
+    let mode = if mode.is_empty() { "Force" } else { &mode };
+    let w = &mut *cx.world;
+    let dv = crate::scripting::physics2d_api::delta_velocity(w, e, f, mode);
+    let v = w.physics2d.velocity(e).unwrap_or_default();
+    w.physics2d.set_velocity(e, v + dv);
+    Ok(())
+}
+
+fn move_position2d(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(), String> {
+    let e = cx.obj(i[0])?;
+    let p = v2(cx, i[1]);
+    cx.world.physics2d.move_body(e, Some(p), None);
+    Ok(())
+}
+
+fn raycast2d(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let origin = v2(cx, i[0]);
+    let dir = v2(cx, i[1]);
+    let max = cx.f(i[2]);
+    let max = if max <= 0.0 { f32::INFINITY } else { max };
+    let mask = layer_mask(cx, i[3], crate::physics::DEFAULT_RAYCAST_LAYERS);
+    let hit = cx.world.physics2d.raycast(origin, dir, max, mask);
+    match hit {
+        Some(h) => {
+            cx.set(o[0], Value::Bool(true));
+            cx.set(o[1], v2_out(h.point));
+            cx.set(o[2], v2_out(h.normal));
+            cx.set(o[3], Value::Float(h.distance));
+            cx.set(o[4], Value::Object(h.entity));
+        }
+        None => {
+            cx.set(o[0], Value::Bool(false));
+            cx.set(o[1], Value::Vec3(Vec3::ZERO));
+            cx.set(o[2], Value::Vec3(Vec3::ZERO));
+            cx.set(o[3], Value::Float(0.0));
+            cx.set(o[4], Value::Nil);
+        }
+    }
+    Ok(())
+}
+
+/// The first object found, or nil.
+fn first_object(found: &[hecs::Entity]) -> Value {
+    found.first().map_or(Value::Nil, |e| Value::Object(*e))
+}
+
+fn overlap_circle_all(cx: &Cx<'_>, i: &[Slot]) -> Vec<hecs::Entity> {
+    let mask = layer_mask(cx, i[2], crate::physics::ALL_LAYERS);
+    cx.world
+        .physics2d
+        .overlap_circle_all(v2(cx, i[0]), cx.f(i[1]), mask)
+}
+
+fn overlap_circle2d(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let found = overlap_circle_all(cx, i);
+    cx.set(o[0], first_object(&found));
+    Ok(())
+}
+
+fn overlap_circle_all2d(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let found = overlap_circle_all(cx, i);
+    let list = found.into_iter().map(Value::Object).collect();
+    cx.set(o[0], Value::List(std::rc::Rc::new(list)));
+    Ok(())
+}
+
+fn overlap_box2d(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let mask = layer_mask(cx, i[3], crate::physics::ALL_LAYERS);
+    let found = cx
+        .world
+        .physics2d
+        .overlap_box_all(v2(cx, i[0]), v2(cx, i[1]), cx.f(i[2]), mask);
+    cx.set(o[0], first_object(&found));
+    Ok(())
+}
+
+fn overlap_point2d(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
+    let mask = layer_mask(cx, i[1], crate::physics::ALL_LAYERS);
+    let found = cx.world.physics2d.overlap_point_all(v2(cx, i[0]), mask);
+    cx.set(o[0], first_object(&found));
+    Ok(())
+}
+
 fn axis_value(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
     let name = cx.s(i[0]);
     let v =
@@ -508,6 +638,103 @@ pub static NATIVE: &[NativeApi] = &[
         ],
         true,
         raycast
+    ),
+    // Rigidbody 2D (Vector3 pins; z is ignored and 0 on the way out)
+    get!("#Rigidbody2D", "velocity", Vector3, velocity2d_get),
+    set!("#Rigidbody2D", "velocity", Vector3, V0, velocity2d_set),
+    get!(
+        "#Rigidbody2D",
+        "angularVelocity",
+        Float,
+        angular_velocity2d_get
+    ),
+    set!(
+        "#Rigidbody2D",
+        "angularVelocity",
+        Float,
+        D::F(0.0),
+        angular_velocity2d_set
+    ),
+    call!(
+        "#Rigidbody2D",
+        "AddForce",
+        &[("Force", Vector3, V0), ("Mode", Str, D::S("Force"))],
+        &[],
+        false,
+        add_force2d
+    ),
+    call!(
+        "#Rigidbody2D",
+        "MovePosition",
+        &[("Position", Vector3, V0)],
+        &[],
+        false,
+        move_position2d
+    ),
+    // Physics 2D (Layer Mask -1 = the default layers)
+    call!(
+        "Physics2D",
+        "Raycast",
+        &[
+            ("Origin", Vector3, V0),
+            ("Direction", Vector3, D::V(1.0, 0.0, 0.0)),
+            ("Distance", Float, D::F(1000.0)),
+            ("Layer Mask", Int, D::I(-1))
+        ],
+        &[
+            ("Hit", Bool),
+            ("Point", Vector3),
+            ("Normal", Vector3),
+            ("Distance", Float),
+            ("Collider", GameObject)
+        ],
+        true,
+        raycast2d
+    ),
+    call!(
+        "Physics2D",
+        "OverlapCircle",
+        &[
+            ("Center", Vector3, V0),
+            ("Radius", Float, D::F(0.5)),
+            ("Layer Mask", Int, D::I(-1))
+        ],
+        &[("Result", GameObject)],
+        true,
+        overlap_circle2d
+    ),
+    call!(
+        "Physics2D",
+        "OverlapCircleAll",
+        &[
+            ("Center", Vector3, V0),
+            ("Radius", Float, D::F(0.5)),
+            ("Layer Mask", Int, D::I(-1))
+        ],
+        &[("Result", PinType::List)],
+        true,
+        overlap_circle_all2d
+    ),
+    call!(
+        "Physics2D",
+        "OverlapBox",
+        &[
+            ("Center", Vector3, V0),
+            ("Size", Vector3, D::V(1.0, 1.0, 0.0)),
+            ("Angle", Float, D::F(0.0)),
+            ("Layer Mask", Int, D::I(-1))
+        ],
+        &[("Result", GameObject)],
+        true,
+        overlap_box2d
+    ),
+    call!(
+        "Physics2D",
+        "OverlapPoint",
+        &[("Point", Vector3, V0), ("Layer Mask", Int, D::I(-1))],
+        &[("Result", GameObject)],
+        true,
+        overlap_point2d
     ),
     // Time
     get!("Time", "deltaTime", Float, time_delta),
