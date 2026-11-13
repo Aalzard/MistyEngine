@@ -122,7 +122,14 @@ pub struct Physics {
     material_assets: HashMap<String, Option<material::PhysicsMaterial>>,
     ragdolls: ragdoll::Ragdolls,
     cloth: cloth::ClothSystem,
+    /// Profiler ▸ Physics ▸ Triggers: (sensor count, collider count it was taken at, frames
+    /// since). Counting walks every collider (a forest's ~100 000 tree trunks: ~2 ms), so it
+    /// is taken again when the collider count changes, or once a second.
+    trigger_count: std::sync::Mutex<(usize, usize, u32)>,
 }
+
+/// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
+const TRIGGER_RECOUNT_FRAMES: u32 = 60;
 
 /// Smallest world scale a collider is built with (a zero scale made degenerate shapes).
 const MIN_SCALE: f32 = 1e-3;
@@ -169,6 +176,7 @@ impl Physics {
             material_assets: HashMap::new(),
             ragdolls: ragdoll::Ragdolls::default(),
             cloth: cloth::ClothSystem::default(),
+            trigger_count: std::sync::Mutex::new((0, usize::MAX, 0)),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -335,7 +343,16 @@ impl Physics {
                 active += 1;
             }
         }
-        let triggers = w.colliders.iter().filter(|(_, c)| c.is_sensor()).count();
+        let triggers = {
+            let mut t = self.trigger_count.lock().unwrap_or_else(|e| e.into_inner());
+            t.2 += 1;
+            if t.1 != w.colliders.len() || t.2 >= TRIGGER_RECOUNT_FRAMES {
+                t.0 = w.colliders.iter().filter(|(_, c)| c.is_sensor()).count();
+                t.1 = w.colliders.len();
+                t.2 = 0;
+            }
+            t.0
+        };
         let contacts = w
             .narrow_phase
             .contact_pairs()
