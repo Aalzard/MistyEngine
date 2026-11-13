@@ -35,6 +35,32 @@ fn localizer() -> Localizer {
     )
 }
 
+/// A CSV row shorter than the header (a spreadsheet leaves trailing empty cells off) deleted
+/// the translations in the columns it didn't reach, and saved at once (no undo).
+#[test]
+fn short_csv_rows_keep_the_translations_they_dont_reach() {
+    let mut t = table();
+    let (_, changed) = t
+        .merge_csv(
+            "Key,en,fr,ar
+hello,Hi {name}
+",
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert_eq!(t.get("hello", "en"), Some("Hi {name}"));
+    assert_eq!(t.get("hello", "fr"), Some("Bonjour, {name} !"));
+    assert_eq!(t.get("hello", "ar"), Some("مرحبا، {name}!"));
+    // An empty cell that is there still clears.
+    t.merge_csv(
+        "Key,en,fr
+hello,Hi {name},
+",
+    )
+    .unwrap();
+    assert_eq!(t.get("hello", "fr"), None);
+}
+
 #[test]
 fn csv_round_trip_keeps_quotes_commas_and_line_breaks() {
     let mut t = table();

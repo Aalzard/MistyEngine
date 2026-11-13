@@ -254,7 +254,11 @@ impl StringTable {
                 e.comment = c.clone();
             }
             for (i, l) in &locale_cols {
-                let v = row.get(*i).cloned().unwrap_or_default();
+                // A short row (trailing cells left off, as spreadsheets write them) keeps the
+                // translations it doesn't reach; only an empty cell that is there clears one.
+                let Some(v) = row.get(*i).cloned() else {
+                    continue;
+                };
                 let old = e.values.get(l).cloned().unwrap_or_default();
                 if v != old {
                     changed += 1;
