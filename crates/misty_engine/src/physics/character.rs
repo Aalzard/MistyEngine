@@ -7,7 +7,7 @@ use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterCo
 use rapier3d::prelude as rp;
 
 use super::convert::{gv, pose, rv};
-use super::{Body, Physics, layers, world_pose};
+use super::{Body, Physics, layers, world_mirror, world_pose};
 use crate::scene::{CharacterController, Scene};
 
 pub(super) struct Controller {
@@ -84,9 +84,11 @@ impl Physics {
         );
         let layer = scene.game_object(e).layer;
         let shape = rp::SharedShape::capsule_y(half, radius);
+        // A mirrored object (negative scale) mirrors the capsule's centre, as collider centres do.
+        let center = cc.center * s * world_mirror(scene, e);
         let collider = super::colliders::offset(
             rp::ColliderBuilder::new(shape.clone()).friction(0.0),
-            cc.center * s,
+            center,
         )
         .collision_groups(layers::groups(&self.settings, layer))
         .active_events(rp::ActiveEvents::COLLISION_EVENTS);
@@ -94,7 +96,7 @@ impl Physics {
         self.controllers.insert(
             e,
             Controller {
-                center: cc.center * s,
+                center,
                 settings: cc,
                 handle,
                 collider,
@@ -129,7 +131,7 @@ impl Physics {
         let radius = (cc.radius * s.x.max(s.z)).clamp(1e-3, super::MAX_EXTENT);
         let half = (cc.height * s.y * 0.5 - radius).clamp(0.0, super::MAX_EXTENT);
         let shape = rp::SharedShape::capsule_y(half, radius);
-        let center = cc.center * s;
+        let center = cc.center * s * world_mirror(scene, e);
         c.settings = cc;
         c.shape = shape.clone();
         c.center = center;
