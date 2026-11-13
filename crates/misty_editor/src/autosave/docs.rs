@@ -85,9 +85,14 @@ pub const FORMAT: u32 = 1;
 #[derive(Clone, Debug, PartialEq)]
 pub enum DocRef {
     /// Scene `id` of backup layer `layer` (see [`layers`]).
-    Scene { layer: usize, id: SceneId },
+    Scene {
+        layer: usize,
+        id: SceneId,
+    },
     /// The prefab of backup layer `layer`.
-    Prefab { layer: usize },
+    Prefab {
+        layer: usize,
+    },
     ScriptGraph,
     ShaderGraph,
     EffectGraph,
@@ -293,7 +298,9 @@ pub fn snapshot(s: &mut EditorState, doc: &DocRef) -> Option<DocSnapshot> {
             let ls = layers(s);
             let l = ls.get(*layer)?;
             let (path, root) = l.prefab?;
-            l.scene.contains(root).then(|| prefab_snapshot(l.scene, path, root))
+            l.scene
+                .contains(root)
+                .then(|| prefab_snapshot(l.scene, path, root))
         }
         DocRef::ScriptGraph => {
             let w = &s.script_graph;

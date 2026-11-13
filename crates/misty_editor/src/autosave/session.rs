@@ -147,7 +147,11 @@ pub fn mark_clean(root: &Path, session: &Session) -> Result<(), String> {
 }
 
 /// A panic: the marker says the session crashed (and where its log is).
-pub fn mark_crashed(root: &Path, session: &Session, crash_log: Option<String>) -> Result<(), String> {
+pub fn mark_crashed(
+    root: &Path,
+    session: &Session,
+    crash_log: Option<String>,
+) -> Result<(), String> {
     let mut m = Marker::load(root)
         .filter(|m| m.session == session.id)
         .unwrap_or_else(|| session.marker());

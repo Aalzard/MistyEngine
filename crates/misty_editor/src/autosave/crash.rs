@@ -122,7 +122,9 @@ pub fn install_hook() {
         if std::thread::current().name() != Some("main") {
             return;
         }
-        let location = info.location().map(|l| format!("{}:{}", l.file(), l.line()));
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()));
         let message = panic_message(info.payload(), location);
         let backtrace = std::backtrace::Backtrace::force_capture().to_string();
         let context = lock(&CONTEXT).clone();
@@ -168,10 +170,9 @@ pub fn after_panic(s: &mut EditorState, payload: &(dyn Any + Send)) -> Outcome {
         .unwrap_or_else(|| (panic_message(payload, None), None));
     // Each document on its own: one that can't be serialised doesn't stop the others.
     if s.autosave.session.is_some() {
-        let docs = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::docs::dirty_docs(s)
-        }))
-        .unwrap_or_default();
+        let docs =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::docs::dirty_docs(s)))
+                .unwrap_or_default();
         for doc in docs {
             let snap = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 super::docs::snapshot(s, &doc)

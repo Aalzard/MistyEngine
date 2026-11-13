@@ -150,7 +150,10 @@ fn newest_backup(dir: &Path) -> Option<(Header, PathBuf)> {
         let Some((header, _)) = docs::parse_backup(&bytes) else {
             continue;
         };
-        if best.as_ref().is_none_or(|(b, _)| header.time_ms > b.time_ms) {
+        if best
+            .as_ref()
+            .is_none_or(|(b, _)| header.time_ms > b.time_ms)
+        {
             best = Some((header, path));
         }
     }
@@ -196,7 +199,9 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             let w = &mut s.script_graph;
             w.open(&file, rel);
             w.edit("Restore Autosave", false, |g| *g = graph);
-            s.push(crate::actions::Action::FocusTab(crate::layout::Tab::ScriptGraph));
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::ScriptGraph,
+            ));
             Ok(())
         }
         DocKind::ShaderGraph => {
@@ -206,7 +211,9 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             let w = &mut s.shader_graph;
             w.open(&file, rel);
             w.edit("Restore Autosave", false, |g| *g = graph);
-            s.push(crate::actions::Action::FocusTab(crate::layout::Tab::ShaderGraph));
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::ShaderGraph,
+            ));
             Ok(())
         }
         DocKind::EffectGraph => {
@@ -216,7 +223,9 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             let w = &mut s.effect_graph;
             w.open(&file, rel);
             w.edit("Restore Autosave", false, |g| *g = graph);
-            s.push(crate::actions::Action::FocusTab(crate::layout::Tab::EffectGraph));
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::EffectGraph,
+            ));
             Ok(())
         }
         DocKind::Script => {
@@ -224,12 +233,16 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             let ce = &mut s.code_editor;
             if ce.open(rel, None).is_err() {
                 // The script's file is gone: open the backup as a new script there (unsaved).
-                return Err(tr!("The script's file is missing: save the backup by hand."));
+                return Err(tr!(
+                    "The script's file is missing: save the backup by hand."
+                ));
             }
             let i = ce.active;
             let doc = &mut ce.docs[i];
             doc.editor.reload(body);
-            s.push(crate::actions::Action::FocusTab(crate::layout::Tab::CodeEditor));
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::CodeEditor,
+            ));
             Ok(())
         }
     }

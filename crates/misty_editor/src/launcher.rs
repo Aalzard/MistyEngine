@@ -183,9 +183,8 @@ impl eframe::App for Launcher {
             Self::Editor(editor) => {
                 // A panic in the editor frame: back up unsaved work, finish the crash log and
                 // exit, instead of unwinding out of the window loop (see `autosave::crash`).
-                let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    editor.ui(ui, frame)
-                }));
+                let run =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| editor.ui(ui, frame)));
                 if let Err(payload) = run {
                     editor.crashed(&*payload);
                     std::process::exit(101);

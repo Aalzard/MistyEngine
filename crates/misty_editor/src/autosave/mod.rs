@@ -271,9 +271,9 @@ pub fn begin(s: &mut EditorState, prefs: Prefs, started: Result<session::Started
                 );
             }
         }
-        Err(e) => s
-            .console
-            .warn(format!("Autosave is off: could not write the session marker: {e}")),
+        Err(e) => s.console.warn(format!(
+            "Autosave is off: could not write the session marker: {e}"
+        )),
     }
 }
 
@@ -392,7 +392,11 @@ fn step(s: &mut EditorState, now: Instant) {
 /// Hand one snapshot to the saver (or write it now: `direct`, the panic path). Returns the size
 /// and the backup file, or `None` when the document hasn't changed since its last backup or the write
 /// failed.
-pub fn write_backup(s: &mut EditorState, snap: &DocSnapshot, direct: bool) -> Option<(usize, PathBuf)> {
+pub fn write_backup(
+    s: &mut EditorState,
+    snap: &DocSnapshot,
+    direct: bool,
+) -> Option<(usize, PathBuf)> {
     let a = &mut s.autosave;
     let dir = a.session.as_ref()?.dir.join(snap.folder_name());
     let hash = snap.content_hash();

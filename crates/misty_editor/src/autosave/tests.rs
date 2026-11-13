@@ -82,25 +82,46 @@ fn autosave_backs_up_only_dirty_documents_atomically() {
 
     // Nothing changed: nothing is written.
     autosave_now(&mut s);
-    assert!(files_in(&session_dir).is_empty(), "{:?}", files_in(&session_dir));
+    assert!(
+        files_in(&session_dir).is_empty(),
+        "{:?}",
+        files_in(&session_dir)
+    );
     assert_eq!(s.autosave.last.saved_at_ms, None);
 
     // A saved scene with an unsaved change: one backup, its file untouched.
-    dirty_scene(&mut s, "Assets/Scenes/Level.scene", "Saved Object", "Unsaved Object");
+    dirty_scene(
+        &mut s,
+        "Assets/Scenes/Level.scene",
+        "Saved Object",
+        "Unsaved Object",
+    );
     let file = root.join("Assets/Scenes/Level.scene");
     let before = std::fs::read(&file).unwrap();
     autosave_now(&mut s);
     let backups = files_in(&session_dir);
     assert_eq!(backups.len(), 1, "{backups:?}");
-    let name = backups[0].file_name().unwrap().to_string_lossy().into_owned();
-    assert_eq!(name, format!("0.{BACKUP_EXT}"), "no temp files left: {backups:?}");
+    let name = backups[0]
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        name,
+        format!("0.{BACKUP_EXT}"),
+        "no temp files left: {backups:?}"
+    );
     let bytes = std::fs::read(&backups[0]).unwrap();
     let (header, body) = docs::parse_backup(&bytes).expect("a backup file");
     assert_eq!(header.kind, DocKind::Scene);
     assert_eq!(header.path.as_deref(), Some("Assets/Scenes/Level.scene"));
     assert!(body.contains("Unsaved Object"));
     assert!(!header.emergency);
-    assert_eq!(std::fs::read(&file).unwrap(), before, "the scene file is never written");
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        before,
+        "the scene file is never written"
+    );
     assert!(!String::from_utf8_lossy(&before).contains("Unsaved Object"));
     assert_eq!(s.autosave.last.documents, 1);
     assert!(s.autosave.last.saved_at_ms.is_some());
@@ -118,7 +139,12 @@ fn autosave_backs_up_only_dirty_documents_atomically() {
     assert_eq!(backups.len(), KEEP, "{backups:?}");
     let newest = backups
         .iter()
-        .map(|p| docs::parse_backup(&std::fs::read(p).unwrap()).unwrap().0.time_ms)
+        .map(|p| {
+            docs::parse_backup(&std::fs::read(p).unwrap())
+                .unwrap()
+                .0
+                .time_ms
+        })
         .max()
         .unwrap();
     assert!(newest >= header.time_ms);
@@ -144,11 +170,16 @@ fn autosave_covers_graphs_and_scripts_with_unsaved_changes() {
     std::fs::write(root.join("Assets/Scripts/Mover.lua"), "-- saved\n").unwrap();
     let mut s = state(&root);
     begin_session(&mut s, DEAD_PID_A, Duration::ZERO);
-    s.code_editor.open("Assets/Scripts/Mover.lua", None).unwrap();
+    s.code_editor
+        .open("Assets/Scripts/Mover.lua", None)
+        .unwrap();
     assert!(docs::dirty_docs(&s).is_empty());
     let doc = &mut s.code_editor.docs[0];
     doc.editor.reload("-- edited, not saved\n");
-    assert_eq!(docs::dirty_docs(&s), [docs::DocRef::Script("Assets/Scripts/Mover.lua".into())]);
+    assert_eq!(
+        docs::dirty_docs(&s),
+        [docs::DocRef::Script("Assets/Scripts/Mover.lua".into())]
+    );
     autosave_now(&mut s);
     let backups = files_in(s.autosave.session_dir().unwrap());
     assert_eq!(backups.len(), 1);
@@ -173,17 +204,41 @@ fn the_interval_waits_for_the_user_and_for_idle_on_big_snapshots() {
     let idle = Duration::from_secs(30);
     // Not before the interval.
     assert!(!t.should_start(&prefs, t0 + Duration::from_secs(10), false, idle, false));
-    assert!(!t.should_start(&prefs, t0 + interval - Duration::from_millis(1), false, idle, false));
+    assert!(!t.should_start(
+        &prefs,
+        t0 + interval - Duration::from_millis(1),
+        false,
+        idle,
+        false
+    ));
     // Due: starts.
     assert!(t.should_start(&prefs, t0 + interval, false, idle, false));
     t.done(t0 + interval);
     // The next one counts from the last autosave.
-    assert!(!t.should_start(&prefs, t0 + interval * 2 - Duration::from_secs(1), false, idle, false));
+    assert!(!t.should_start(
+        &prefs,
+        t0 + interval * 2 - Duration::from_secs(1),
+        false,
+        idle,
+        false
+    ));
     // Mid-drag: waits, at most MAX_WAIT_FOR_INPUT.
     let due = t0 + interval * 2;
     assert!(!t.should_start(&prefs, due, true, Duration::ZERO, false));
-    assert!(!t.should_start(&prefs, due + Duration::from_secs(30), true, Duration::ZERO, false));
-    assert!(t.should_start(&prefs, due + MAX_WAIT_FOR_INPUT, true, Duration::ZERO, false));
+    assert!(!t.should_start(
+        &prefs,
+        due + Duration::from_secs(30),
+        true,
+        Duration::ZERO,
+        false
+    ));
+    assert!(t.should_start(
+        &prefs,
+        due + MAX_WAIT_FOR_INPUT,
+        true,
+        Duration::ZERO,
+        false
+    ));
     t.done(due + MAX_WAIT_FOR_INPUT);
 
     // A big snapshot waits for the user to pause (IDLE_FOR), at most one more interval.
@@ -228,7 +283,12 @@ fn an_unclean_exit_is_detected_and_its_backups_offered() {
     // Session A: unsaved work backed up, then the power goes (no clean exit).
     let mut a = state(&root);
     begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
-    dirty_scene(&mut a, "Assets/Scenes/Level.scene", "Saved", "Lost In Crash");
+    dirty_scene(
+        &mut a,
+        "Assets/Scenes/Level.scene",
+        "Saved",
+        "Lost In Crash",
+    );
     autosave_now(&mut a);
     let a_dir = a.autosave.session_dir().unwrap().to_path_buf();
     drop(a);
@@ -237,7 +297,10 @@ fn an_unclean_exit_is_detected_and_its_backups_offered() {
     // Session B opens the project.
     let mut b = state(&root);
     let started = begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
-    let previous = started.previous.as_ref().expect("the last session's marker");
+    let previous = started
+        .previous
+        .as_ref()
+        .expect("the last session's marker");
     assert!(!previous.clean_exit);
     assert_eq!(previous.pid, DEAD_PID_A);
     assert!(!started.other_editor, "the old process is gone");
@@ -324,20 +387,47 @@ fn the_recovery_list_has_documents_newer_than_their_files() {
         )
     };
     // Newer than its file: offered.
-    plant_backup(&root, &old_session, &snap(Some("Assets/Scenes/Newer.scene"), "Newer"), now + 60_000);
+    plant_backup(
+        &root,
+        &old_session,
+        &snap(Some("Assets/Scenes/Newer.scene"), "Newer"),
+        now + 60_000,
+    );
     // Saved after the backup: stale.
-    let stale = plant_backup(&root, &old_session, &snap(Some("Assets/Scenes/Older.scene"), "Older"), now - 600_000);
+    let stale = plant_backup(
+        &root,
+        &old_session,
+        &snap(Some("Assets/Scenes/Older.scene"), "Older"),
+        now - 600_000,
+    );
     // Never saved: offered.
     plant_backup(&root, &old_session, &snap(None, "Untitled"), now + 30_000);
     // File gone since: offered.
-    plant_backup(&root, &old_session, &snap(Some("Assets/Scenes/Deleted.scene"), "Deleted"), now + 10_000);
+    plant_backup(
+        &root,
+        &old_session,
+        &snap(Some("Assets/Scenes/Deleted.scene"), "Deleted"),
+        now + 10_000,
+    );
     // A backup cut short before its header ended: not a document.
-    let broken = root.join(AUTOSAVE_DIR).join(&old_session).join("scene-Broken-00000000");
+    let broken = root
+        .join(AUTOSAVE_DIR)
+        .join(&old_session)
+        .join("scene-Broken-00000000");
     std::fs::create_dir_all(&broken).unwrap();
-    std::fs::write(broken.join(format!("0.{BACKUP_EXT}")), "{\"misty_autosave\":1,\"ki").unwrap();
+    std::fs::write(
+        broken.join(format!("0.{BACKUP_EXT}")),
+        "{\"misty_autosave\":1,\"ki",
+    )
+    .unwrap();
     // The same document in a later crashed session: one row, the newest backup.
     let later_session = format!("{}-{DEAD_PID_B}", now - 1_000_000);
-    plant_backup(&root, &later_session, &snap(Some("Assets/Scenes/Newer.scene"), "Newer"), now + 120_000);
+    plant_backup(
+        &root,
+        &later_session,
+        &snap(Some("Assets/Scenes/Newer.scene"), "Newer"),
+        now + 120_000,
+    );
 
     let scan = recovery::scan(&root, None);
     let rows: Vec<(String, Option<String>, Option<u64>)> = scan
@@ -362,7 +452,10 @@ fn the_recovery_list_has_documents_newer_than_their_files() {
     begin_session(&mut s, std::process::id(), Duration::ZERO);
     let dialog: &RecoveryDialog = s.autosave.recovery.as_ref().unwrap();
     assert_eq!(dialog.items.len(), 3);
-    assert!(!dialog.unclean, "no marker: nothing says the last session crashed");
+    assert!(
+        !dialog.unclean,
+        "no marker: nothing says the last session crashed"
+    );
     assert!(!stale.exists());
     assert!(!broken.exists());
     let _ = std::fs::remove_dir_all(&root);
@@ -374,7 +467,12 @@ fn restore_opens_the_backup_as_changed_and_leaves_the_file_alone() {
     // Session A: an unsaved change to Level.scene, then a crash.
     let mut a = state(&root);
     begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
-    dirty_scene(&mut a, "Assets/Scenes/Level.scene", "Saved Object", "Recovered Object");
+    dirty_scene(
+        &mut a,
+        "Assets/Scenes/Level.scene",
+        "Saved Object",
+        "Recovered Object",
+    );
     autosave_now(&mut a);
     drop(a);
     let file = root.join("Assets/Scenes/Level.scene");
@@ -383,7 +481,10 @@ fn restore_opens_the_backup_as_changed_and_leaves_the_file_alone() {
     // Session B reopens the scene, then restores.
     let mut b = state(&root);
     crate::scene_files::open_initial(&mut b);
-    assert_eq!(b.scene.active_path().as_deref(), Some("Assets/Scenes/Level.scene"));
+    assert_eq!(
+        b.scene.active_path().as_deref(),
+        Some("Assets/Scenes/Level.scene")
+    );
     assert!(b.scene.find_by_name("Recovered Object").is_none());
     begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
     assert_eq!(b.autosave.recovery.as_ref().unwrap().items.len(), 1);
@@ -393,13 +494,24 @@ fn restore_opens_the_backup_as_changed_and_leaves_the_file_alone() {
     assert!(b.scene.find_by_name("Recovered Object").is_some());
     assert!(b.scene.find_by_name("Saved Object").is_some());
     assert!(b.scene_dirty);
-    assert_eq!(crate::scene_files::dirty_now(&b).len(), 1, "the scene shows as changed");
+    assert_eq!(
+        crate::scene_files::dirty_now(&b).len(),
+        1,
+        "the scene shows as changed"
+    );
     crate::scene_files::refresh_dirty(&mut b);
     assert!(crate::scene_files::window_title(&b).contains("Level*"));
-    assert_eq!(std::fs::read(&file).unwrap(), on_disk, "the file is untouched");
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        on_disk,
+        "the file is untouched"
+    );
     // The old backups stay until this session has its own (and exits cleanly).
     assert!(dirs.iter().all(|d| d.exists()));
-    assert!(b.autosave.timer.as_ref().unwrap().now, "backed up again at once");
+    assert!(
+        b.autosave.timer.as_ref().unwrap().now,
+        "backed up again at once"
+    );
     autosave_now(&mut b);
     assert_eq!(files_in(b.autosave.session_dir().unwrap()).len(), 1);
     clean_exit(&mut b);
@@ -417,7 +529,9 @@ fn restoring_an_untitled_scene_and_a_prefab() {
     let r = scene.spawn("Crate", None);
     scene.spawn("Lid", Some(r));
     let prefab = misty_engine::scene::prefab::Prefab::from_scene(&scene, r);
-    prefab.save(&root.join("Assets/Prefabs/Crate.prefab")).unwrap();
+    prefab
+        .save(&root.join("Assets/Prefabs/Crate.prefab"))
+        .unwrap();
     let on_disk = std::fs::read(root.join("Assets/Prefabs/Crate.prefab")).unwrap();
     // The backup: the prefab with another child.
     scene.spawn("Handle", Some(r));
@@ -439,10 +553,16 @@ fn restoring_an_untitled_scene_and_a_prefab() {
     recovery::restore_items(&mut s, true);
     assert!(s.autosave.recovery.is_none(), "{:?}", s.console.last());
     // The prefab opened in Prefab Mode, changed, over the untitled scene.
-    assert_eq!(crate::prefab_mode::open_path(&s).as_deref(), Some("Assets/Prefabs/Crate.prefab"));
+    assert_eq!(
+        crate::prefab_mode::open_path(&s).as_deref(),
+        Some("Assets/Prefabs/Crate.prefab")
+    );
     assert!(s.scene.find_by_name("Handle").is_some());
     assert!(s.scene_dirty);
-    assert_eq!(std::fs::read(root.join("Assets/Prefabs/Crate.prefab")).unwrap(), on_disk);
+    assert_eq!(
+        std::fs::read(root.join("Assets/Prefabs/Crate.prefab")).unwrap(),
+        on_disk
+    );
     // Leaving without saving brings back the untitled scene, changed.
     crate::prefab_mode::close(&mut s);
     assert!(s.scene.find_by_name("Never Saved").is_some());
@@ -502,7 +622,12 @@ fn a_panic_writes_an_emergency_backup_and_a_crash_log() {
     let root = project("panic");
     let mut s = state(&root);
     begin_session(&mut s, DEAD_PID_A, Duration::from_secs(60));
-    dirty_scene(&mut s, "Assets/Scenes/Level.scene", "Saved", "Unsaved When It Crashed");
+    dirty_scene(
+        &mut s,
+        "Assets/Scenes/Level.scene",
+        "Saved",
+        "Unsaved When It Crashed",
+    );
     s.console.info("a console line before the crash");
     // The editor frame panics (the launcher catches it the same way).
     let payload = std::panic::catch_unwind(|| {
@@ -552,12 +677,18 @@ fn backup_files_say_what_they_hold() {
     assert_eq!(h.time_ms, 1_700_000_000_000);
     assert_eq!(body, snap.body);
     let folder = snap.folder_name();
-    assert!(folder.starts_with("shader_graph-Water_Ripples_shadergraph-"), "{folder}");
+    assert!(
+        folder.starts_with("shader_graph-Water_Ripples_shadergraph-"),
+        "{folder}"
+    );
     assert!(docs::parse_backup(b"not a backup").is_none());
     assert!(docs::parse_backup(b"{\"misty_autosave\":99,\"kind\":\"scene\",\"path\":null,\"name\":\"x\",\"time_ms\":1}\n{}").is_none());
     // Dates.
     let t = session::utc(1_700_000_000_000);
-    assert_eq!((t.year, t.month, t.day, t.hour, t.minute), (2023, 11, 14, 22, 13));
+    assert_eq!(
+        (t.year, t.month, t.day, t.hour, t.minute),
+        (2023, 11, 14, 22, 13)
+    );
     assert_eq!(session::utc(0).year, 1970);
     assert_eq!(session::local_clock(1_700_000_000_000).len(), 5);
 }
@@ -567,15 +698,18 @@ fn backup_files_say_what_they_hold() {
 /// scenes) marks the next autosave to wait for the user to pause.
 #[test]
 fn autosave_cost_on_a_big_scene_stays_within_budget() {
-    let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject/Assets/Scenes");
+    let sample =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject/Assets/Scenes");
     let root = project("cost");
     let mut s = state(&root);
     begin_session(&mut s, DEAD_PID_A, Duration::ZERO);
     let mut report = String::new();
     let mut measure = |s: &mut EditorState, name: &str| -> (Duration, Duration) {
-        let (scene, _) = misty_engine::scene::Scene::load(&sample.join(format!("{name}.scene"))).unwrap();
+        let (scene, _) =
+            misty_engine::scene::Scene::load(&sample.join(format!("{name}.scene"))).unwrap();
         s.scene = scene;
-        s.scene.set_scene_path(0, &format!("Assets/Scenes/{name}.scene"));
+        s.scene
+            .set_scene_path(0, &format!("Assets/Scenes/{name}.scene"));
         crate::scene_files::reset_after_load(s);
         s.scene_dirty = true;
         // The best of three (the machine may be busy with other tests).
