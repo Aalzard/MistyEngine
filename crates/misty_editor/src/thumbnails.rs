@@ -93,6 +93,25 @@ impl Thumbnails {
     }
 }
 
+fn decode(path: &Path) -> Option<egui::ColorImage> {
+    if misty_engine::hdri::is_hdri(&path.to_string_lossy()) {
+        // HDR images: tonemapped (auto exposure) so the sky reads at a glance.
+        let img = misty_engine::hdri::HdrImage::load(path).ok()?;
+        let (w, h, rgba) = misty_engine::hdri::preview::rgba8(&img, SIZE);
+        return Some(egui::ColorImage::from_rgba_unmultiplied(
+            [w as usize, h as usize],
+            &rgba,
+        ));
+    }
+    let img = misty_engine::image::open(path).ok()?;
+    let small = img.thumbnail(SIZE, SIZE).into_rgba8();
+    let size = [small.width() as usize, small.height() as usize];
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        size,
+        small.as_raw(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,23 +153,4 @@ mod tests {
         assert!(t.cache.contains_key(&paths[2]));
         let _ = std::fs::remove_dir_all(&dir);
     }
-}
-
-fn decode(path: &Path) -> Option<egui::ColorImage> {
-    if misty_engine::hdri::is_hdri(&path.to_string_lossy()) {
-        // HDR images: tonemapped (auto exposure) so the sky reads at a glance.
-        let img = misty_engine::hdri::HdrImage::load(path).ok()?;
-        let (w, h, rgba) = misty_engine::hdri::preview::rgba8(&img, SIZE);
-        return Some(egui::ColorImage::from_rgba_unmultiplied(
-            [w as usize, h as usize],
-            &rgba,
-        ));
-    }
-    let img = misty_engine::image::open(path).ok()?;
-    let small = img.thumbnail(SIZE, SIZE).into_rgba8();
-    let size = [small.width() as usize, small.height() as usize];
-    Some(egui::ColorImage::from_rgba_unmultiplied(
-        size,
-        small.as_raw(),
-    ))
 }
