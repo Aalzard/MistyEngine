@@ -402,7 +402,8 @@ pub fn project_path(path: &str) -> Result<String, String> {
     if p.is_empty()
         || p.starts_with('/')
         || p.contains(':')
-        || p.split('/').any(|seg| seg == ".." || seg.is_empty())
+        // "Assets/." is the Assets folder itself (asset.delete moved all of it to the bin).
+        || p.split('/').any(|seg| seg == ".." || seg == "." || seg.is_empty())
     {
         return Err(format!(
             "\"{path}\" must be a project-relative path like \"Assets/Scripts/Player.lua\""

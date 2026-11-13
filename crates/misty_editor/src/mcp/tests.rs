@@ -1045,7 +1045,16 @@ fn base64_and_secrets() {
     );
     assert_ne!(a, b);
     assert!(tools::project_path("Assets/A.lua").is_ok());
-    for bad in ["/etc/passwd", "C:/x", "Assets/../x", "", "Assets//x"] {
+    // "Assets/." named the Assets folder itself: asset.delete binned all of it.
+    for bad in [
+        "/etc/passwd",
+        "C:/x",
+        "Assets/../x",
+        "",
+        "Assets//x",
+        "Assets/.",
+        "Assets/./x",
+    ] {
         assert!(tools::project_path(bad).is_err(), "{bad}");
     }
 }
@@ -1188,5 +1197,18 @@ fn read_console_keeps_its_indices_when_lines_are_dropped() {
             .iter()
             .any(|l| l.as_str().unwrap().contains("Created 'Cube'"))
     );
+    cleanup(s);
+}
+
+/// `asset.delete` with "Assets/." passed the check that keeps the Assets folder itself out of
+/// reach, and moved the whole folder to the Recycle Bin.
+#[test]
+fn asset_delete_refuses_the_assets_folder_spelled_with_a_dot() {
+    let mut s = project("delete_dot");
+    let assets = s.project.root.join("Assets");
+    for path in ["Assets/.", "Assets/./", "./Assets/."] {
+        err(&mut s, "asset.delete", json!({ "path": path }));
+        assert!(assets.is_dir(), "{path}");
+    }
     cleanup(s);
 }
