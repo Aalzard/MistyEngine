@@ -77,14 +77,15 @@ fn fs_tree_prepass_impostor(in: TreePrepassOut) -> TreePrepassTargets {
         textureSampleBias(tree_albedo, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.y,
     );
+    if (tex.a < 0.5 || tree_faded(in.misc.x, in.clip.xy)) {
+        discard;
+    }
+    // (After the test: a far hillside's impostors overlap, most fragments are cut away.)
     let nt = mix(
         textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z),
         textureSampleBias(tree_normal_map, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.y,
     );
-    if (tex.a < 0.5 || tree_faded(in.misc.x, in.clip.xy)) {
-        discard;
-    }
     let m = nt.xyz * 2.0 - 1.0;
     let toward = in.normal;
     let right = vec3<f32>(toward.z, 0.0, -toward.x);

@@ -4511,3 +4511,27 @@ once: no blending, no sorting), and the shadow casters take the camera's state. 
 - **Generator** (`sample_meadow.rs`): writes those values, and the prefab instances' override
   records as the editor saves them (the rocks' scale overrides; the player's record empty, as
   saved). `write_meadow_rocks` keeps the records too. The round 49 Ambience object is kept.
+## Round 52 — Performance: GPU passes, CPU frame, VRAM (branch r52-perf)
+
+Notes, method and every measurement: `docs/pending/r52-perf.md`. Grass left to r45-grass-gpu.
+
+- **GTAO denoise** loads its workgroup's 14 × 14 tile of AO texels and prepass normals into
+  shared memory once (each texel was read by up to 49 neighbours, each tap with a
+  full-resolution normal fetch). NoonValley hero GTAO 0.63 → 0.51 ms, inside 0.94 → 0.76 ms.
+- **Screen-space prepass**: tree impostors read their two normal-map taps only after the
+  coverage test (a wooded hillside's impostors overlap and most fragments are cut away).
+  Hero prepass 1.30 → 1.16 ms.
+- **VRAM**: the local light shadow array (16 × 1024², 64 MB) is made on the first frame a
+  spot, point or rectangle light plans a shadow, not with the renderer: NoonValley renderer
+  allocations 520 → 460 MB. New ignored test `noon_valley_memory` lists them.
+- **CPU, profiling**: the Profiler's physics trigger counter walked every collider each
+  frame while recording (NoonValley's ~100 000 tree trunks: ~2.4 ms a frame in Play with the
+  Profiler on); it is now recounted when the collider count changes or once a second.
+- **Totals** (High 1920 × 1080, sum of the per-pass medians, 3 interleaved runs of the base
+  and final builds): hero 13.45 → 13.14 ms, inside 11.69 → 11.52 ms, down 12.78 → 12.59 ms. Images: mean difference 0.00–0.04/255 (hero, down, inside); golden
+  measure against main's own output ≤ 0.07 on every MeadowDemo shot, CyclesRoom 0.00.
+- **Found, not changed**: on main f101d418 16 of the 20 golden shots (all MeadowDemo) drift
+  by 32–78 against `docs/golden` since round 49 merged the user's MeadowDemo look edits
+  (depth of field, auto exposure, clouds); the references need retaking by the user.
+  Sun shafts at 24 steps instead of 32 on Medium (High's tier) would save 0.13 ms for a
+  0.01–0.02/255 difference in still shots (not changed: a default's look in motion).

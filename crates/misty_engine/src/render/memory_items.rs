@@ -72,10 +72,10 @@ impl Renderer {
             "Shadow Map",
             &format!(
                 "Local light shadow layers ({} × {}²)",
-                shadows::MAX_LOCAL_LAYERS,
+                self.shadows.local_layers,
                 shadows::LOCAL_SIZE
             ),
-            local_shadow_bytes(),
+            local_shadow_bytes(self.shadows.local_layers),
         );
         push(
             MemCategory::RenderTargets,
@@ -142,10 +142,9 @@ impl Renderer {
     }
 }
 
-/// Local light shadow array bytes.
-pub(super) fn local_shadow_bytes() -> u64 {
+/// Bytes of a local light shadow array of `layers` layers.
+pub(super) fn local_shadow_bytes(layers: u32) -> u64 {
     let size = shadows::LOCAL_SIZE;
-    let layers = shadows::MAX_LOCAL_LAYERS as u32;
     texture_bytes(super::SHADOW_FORMAT, size, size, 1, layers)
 }
 
@@ -173,5 +172,54 @@ impl RenderTarget {
             })
             .sum();
         full + bloom
+    }
+}
+
+/// NoonValley's GPU allocations after the hero view settles at High 1920 × 1080, largest first,
+/// with the process working set (`MISTY_NOON_VIEWS`, default `hero`). Prints only.
+#[cfg(test)]
+mod noon_memory {
+    use crate::quality::QualityLevel;
+    use crate::render::Renderer;
+    use crate::render::gpu_tests::headless;
+    use crate::render::noon_valley_tests::noon_view;
+
+    #[test]
+    #[ignore = "memory report, prints only"]
+    fn noon_valley_memory() {
+        let Some((device, queue)) = headless() else {
+            eprintln!("no GPU adapter: skipped");
+            return;
+        };
+        let mb = |b: u64| b as f64 / (1024.0 * 1024.0);
+        let names = std::env::var("MISTY_NOON_VIEWS").unwrap_or_else(|_| "hero".into());
+        for name in names.split(',') {
+            let Some(view) = noon_view(name) else {
+                continue;
+            };
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &QualityLevel::high());
+            let target = r.create_view_target(&device, 1920, 1080);
+            let frame = view.frame();
+            for _ in 0..60 {
+                r.render(&device, &queue, &target, &frame);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            }
+            let mut items = r.memory_items();
+            items.sort_by_key(|i| std::cmp::Reverse(i.bytes));
+            let total: u64 = items.iter().map(|i| i.bytes).sum();
+            eprintln!(
+                "== noon {name}: renderer {:.1} MB, view target {:.1} MB, working set {:.1} MB",
+                mb(total),
+                mb(target.memory_bytes()),
+                mb(crate::memory_snapshot::working_set().unwrap_or(0))
+            );
+            for (name, bytes) in r.made_texture_bytes() {
+                eprintln!("   made textures: {name:<20} {:9.2} MB", mb(bytes));
+            }
+            for i in items.iter().take(40) {
+                eprintln!("   {:9.2} MB  {:<16} {}", mb(i.bytes), i.kind, i.name);
+            }
+        }
     }
 }

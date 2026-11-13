@@ -1274,7 +1274,7 @@ impl Renderer {
         ];
         let shadow_bytes = 4
             * (self.shadows.directional_size.pow(2) as u64 * cascades::MAX_CASCADES as u64
-                + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
+                + shadows::LOCAL_SIZE.pow(2) as u64 * self.shadows.local_layers as u64);
         let vgeo_bytes = self.vgeo.memory_bytes();
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
@@ -1861,6 +1861,10 @@ impl Renderer {
             drop(tree_hiz);
             (lists, plan, rebuilt, near_sun)
         };
+        // The local light shadow array is made full size the first time a light needs it.
+        if self.shadows.ensure_local_layers(device, plan.local.len()) {
+            self.rebuild_draw_groups(device);
+        }
         // The near-camera grass shadow map follows the camera (off: its uniform says so).
         let near_sun = near_sun.filter(|_| self.terrains.has_grass_near_shadow());
         let grass_near = (self.shadows.grass_near).prepare(queue, near_sun, frame.camera.position);

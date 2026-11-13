@@ -47,6 +47,9 @@ pub struct ShadowMaps {
     pub cascade_views: Vec<wgpu::TextureView>,
     pub local_array_view: wgpu::TextureView,
     pub local_layer_views: Vec<wgpu::TextureView>,
+    /// Layers of the local light array: one (unused) until a frame plans a local shadow, then
+    /// [`MAX_LOCAL_LAYERS`] (64 MB at 1024², not spent in scenes lit by the sun alone).
+    pub local_layers: u32,
     pub sampler: wgpu::Sampler,
     pub view_buffer: wgpu::Buffer,
     pub view_bind_group: wgpu::BindGroup,
@@ -101,6 +104,17 @@ impl ShadowPlan {
 }
 
 impl ShadowMaps {
+    /// Room for `layers` local light layers (all of them once any is needed); true when the
+    /// array was made anew (the bind groups holding it must be rebuilt).
+    pub fn ensure_local_layers(&mut self, device: &wgpu::Device, layers: usize) -> bool {
+        if layers <= self.local_layers as usize {
+            return false;
+        }
+        (self.local_array_view, self.local_layer_views) = local_maps(device, MAX_LOCAL_LAYERS);
+        self.local_layers = MAX_LOCAL_LAYERS as u32;
+        true
+    }
+
     pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
         Self::with_size(device, view_layout, DIRECTIONAL_SIZE, 1)
     }
@@ -112,47 +126,13 @@ impl ShadowMaps {
         directional_size: u32,
         grass_near_size: u32,
     ) -> Self {
-        let texture = |label, size: u32, layers: u32| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width: size,
-                    height: size,
-                    depth_or_array_layers: layers,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: SHADOW_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | TEST_COPY,
-                view_formats: &[],
-            })
-        };
-        let directional = texture(
+        let directional = shadow_texture(
+            device,
             "misty directional shadow",
             directional_size,
             MAX_CASCADES as u32,
         );
-        let local = texture("misty local shadows", LOCAL_SIZE, MAX_LOCAL_LAYERS as u32);
-        let local_array_view = local.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
-        let layer_views = |texture: &wgpu::Texture, layers: usize| {
-            (0..layers as u32)
-                .map(|layer| {
-                    texture.create_view(&wgpu::TextureViewDescriptor {
-                        dimension: Some(wgpu::TextureViewDimension::D2),
-                        base_array_layer: layer,
-                        array_layer_count: Some(1),
-                        ..Default::default()
-                    })
-                })
-                .collect()
-        };
-        let local_layer_views = layer_views(&local, MAX_LOCAL_LAYERS);
+        let (local_array_view, local_layer_views) = local_maps(device, 1);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("misty shadow sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -193,6 +173,7 @@ impl ShadowMaps {
             cascade_views: layer_views(&directional, MAX_CASCADES),
             local_array_view,
             local_layer_views,
+            local_layers: 1,
             sampler,
             view_buffer,
             view_bind_group,
@@ -205,6 +186,49 @@ impl ShadowMaps {
             ),
         }
     }
+}
+
+fn shadow_texture(device: &wgpu::Device, label: &str, size: u32, layers: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: layers,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: SHADOW_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | TEST_COPY,
+        view_formats: &[],
+    })
+}
+
+/// One view per array layer (rendered into).
+fn layer_views(texture: &wgpu::Texture, layers: usize) -> Vec<wgpu::TextureView> {
+    (0..layers as u32)
+        .map(|layer| {
+            texture.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: layer,
+                array_layer_count: Some(1),
+                ..Default::default()
+            })
+        })
+        .collect()
+}
+
+/// The local light array with `layers` layers: its sampled view and one view per layer.
+fn local_maps(device: &wgpu::Device, layers: usize) -> (wgpu::TextureView, Vec<wgpu::TextureView>) {
+    let local = shadow_texture(device, "misty local shadows", LOCAL_SIZE, layers as u32);
+    let array = local.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    });
+    (array, layer_views(&local, layers))
 }
 
 /// [`plan_with`] measuring the casters' bounds itself (square view, installed quality).
