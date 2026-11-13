@@ -195,6 +195,9 @@ pub fn weight(scene: &Scene, e: Entity, kind: Kind) -> f32 {
 
 /// Every enabled, active Rig Builder (inside `root` when given).
 fn builders(scene: &Scene, root: Option<Entity>) -> Vec<Entity> {
+    if !scene.has_any::<RigBuilder>() {
+        return Vec::new();
+    }
     scene
         .walk()
         .into_iter()

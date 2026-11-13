@@ -791,7 +791,11 @@ impl NavRuntime {
         let mut agents: Vec<(Entity, NavMeshAgent)> = Vec::new();
         let mut obstacle_list: Vec<(Entity, NavMeshObstacle)> = Vec::new();
         let mut link_list: Vec<(Entity, NavMeshLink)> = Vec::new();
-        for (e, _) in scene.walk() {
+        // (Nothing to collect in most scenes: no walk of the whole hierarchy then.)
+        let any = scene.has_any::<NavMeshAgent>()
+            || scene.has_any::<NavMeshObstacle>()
+            || scene.has_any::<NavMeshLink>();
+        for (e, _) in if any { scene.walk() } else { Vec::new() } {
             if !scene.active_in_hierarchy(e) {
                 continue;
             }

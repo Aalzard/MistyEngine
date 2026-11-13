@@ -127,6 +127,9 @@ pub struct UiInteraction {
 
 /// Settings from the scene's Event System (defaults without one).
 pub fn settings(scene: &Scene) -> EventSystem {
+    if !scene.has_any::<EventSystem>() {
+        return EventSystem::default();
+    }
     scene
         .walk()
         .into_iter()
