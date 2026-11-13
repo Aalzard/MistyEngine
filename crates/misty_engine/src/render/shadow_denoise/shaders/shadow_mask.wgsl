@@ -72,11 +72,13 @@ struct MaskParams {
     slots: vec4<u32>,
 };
 
+// Texels: four `u32`s per pixel (see `pack_texel`), or two when the mask covers at most two
+// lights (`narrow`): half the memory traffic of every pass that reads or writes it.
 struct ShadowMask {
     info: vec4<u32>,
     channels: array<vec4<u32>, 2>,
     pad: vec4<u32>,
-    texels: array<vec4<u32>>,
+    texels: array<vec2<u32>>,
 };
 
 @group(0) @binding(0) var<uniform> mp: MaskParams;
@@ -123,6 +125,42 @@ fn texel_frames(t: vec4<u32>) -> u32 {
 
 fn texel_radii(t: vec4<u32>) -> vec4<u32> {
     return (vec4<u32>(t.w) >> vec4<u32>(8u, 14u, 20u, 26u)) & vec4<u32>(63u);
+}
+
+// At most two lights (channels 2 and 3 unused): two `u32`s per texel, [visibility 0 | 1
+// (unorm16 × 2), depth (f16 bits without the sign, 15) | frames (5) | radii 0, 1 (6 + 6)].
+fn narrow() -> bool {
+    return mp.slots.z >= 8u && mp.slots.w >= 8u;
+}
+
+fn narrow_texel(t: vec4<u32>) -> vec2<u32> {
+    let d = pack2x16float(vec2<f32>(bitcast<f32>(t.z), 0.0)) & 0x7fffu;
+    let f = min(t.w & 0xffu, 31u);
+    let r = (vec2<u32>(t.w) >> vec2<u32>(8u, 14u)) & vec2<u32>(63u);
+    return vec2<u32>(t.x, d | (f << 15u) | (r.x << 20u) | (r.y << 26u));
+}
+
+fn wide_texel(n: vec2<u32>) -> vec4<u32> {
+    let d = unpack2x16float(n.y & 0x7fffu).x;
+    let f = (n.y >> 15u) & 31u;
+    let r = (vec2<u32>(n.y) >> vec2<u32>(20u, 26u)) & vec2<u32>(63u);
+    return vec4<u32>(n.x, 0xffffffffu, bitcast<u32>(d), f | (r.x << 8u) | (r.y << 14u));
+}
+
+fn src_texel(i: u32) -> vec4<u32> {
+    if (narrow()) {
+        return wide_texel(src.texels[i]);
+    }
+    return vec4<u32>(src.texels[2u * i], src.texels[2u * i + 1u]);
+}
+
+fn put_texel(i: u32, t: vec4<u32>) {
+    if (narrow()) {
+        dst.texels[i] = narrow_texel(t);
+    } else {
+        dst.texels[2u * i] = t.xy;
+        dst.texels[2u * i + 1u] = t.zw;
+    }
 }
 
 var<workgroup> tile: array<vec4<f32>, 64>;
@@ -173,7 +211,7 @@ fn cs_trace(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocat
     }
     let index = texel_index(id.xy);
     if (!surface) {
-        dst.texels[index] = pack_texel(vec4<f32>(1.0), SKY, 0u, vec4<u32>(0u));
+        put_texel(index, pack_texel(vec4<f32>(1.0), SKY, 0u, vec4<u32>(0u)));
         return;
     }
     // This frame's 3×3 neighbourhood (within the tile): last frame's value is kept inside it.
@@ -207,7 +245,7 @@ fn cs_trace(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocat
             value = mix(kept, raw, 1.0 / f32(frames));
         }
     }
-    dst.texels[index] = pack_texel(value, z, frames, radii);
+    put_texel(index, pack_texel(value, z, frames, radii));
 }
 
 struct History {
@@ -246,7 +284,7 @@ fn history_at(world: vec3<f32>, px: vec2<f32>, velocity: vec2<f32>) -> History {
         if (any(q < vec2<i32>(0)) || f32(q.x) >= mp.size.x || f32(q.y) >= mp.size.y) {
             continue;
         }
-        let t = src.texels[texel_index(vec2<u32>(q))];
+        let t = src_texel(texel_index(vec2<u32>(q)));
         let frames_t = texel_frames(t);
         if (frames_t == 0u || abs(texel_depth(t) - r.z) > 0.03 * r.z + 0.02) {
             continue;
@@ -271,11 +309,11 @@ fn cs_filter(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let index = texel_index(id.xy);
-    let t = src.texels[index];
+    let t = src_texel(index);
     let z = texel_depth(t);
     let radii = texel_radii(t);
     if (z >= SKY || mp.settings.y <= 0.0 || all(radii == vec4<u32>(0u))) {
-        dst.texels[index] = t;
+        put_texel(index, t);
         return;
     }
     let n = normalize(textureLoad(normal_tex, vec2<i32>(id.xy), 0).xyz);
@@ -312,10 +350,10 @@ fn cs_filter(@builtin(global_invocation_id) id: vec3<u32>) {
             let nq = textureLoad(normal_tex, q, 0).xyz;
             let wn = pow(max(dot(n, nq), 0.0), 8.0);
             let w = exp(-s * s * 2.0) * wn * exp(-plane / plane_tolerance);
-            sum += texel_values(src.texels[texel_index(vec2<u32>(q))])[c] * w;
+            sum += texel_values(src_texel(texel_index(vec2<u32>(q))))[c] * w;
             weight += w;
         }
         out[c] = sum / weight;
     }
-    dst.texels[index] = pack_texel(out, z, texel_frames(t), radii);
+    put_texel(index, pack_texel(out, z, texel_frames(t), radii));
 }

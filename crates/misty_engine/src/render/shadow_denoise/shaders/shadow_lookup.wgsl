@@ -8,10 +8,11 @@ struct ShadowMask {
     info: vec4<u32>,
     // Channel (0..3) of each light slot, 255 = none.
     channels: array<vec4<u32>, 2>,
+    // x = 1: two u32s per pixel (at most two lights), [visibility 0 | 1 (unorm16 × 2),
+    // linear depth (f16 bits without the sign) | frames | blur radii]; else four:
+    // [visibility 0 | 1, visibility 2 | 3, linear depth (f32 bits), frames | blur radii].
     pad: vec4<u32>,
-    // Per pixel: [visibility 0 | 1 (unorm16 × 2), visibility 2 | 3, linear depth (f32 bits),
-    // history frames (8 bits) | blur radii (4 × 6 bits)].
-    texels: array<vec4<u32>>,
+    texels: array<vec2<u32>>,
 };
 
 @group(1) @binding(18) var<storage, read> shadow_mask: ShadowMask;
@@ -35,12 +36,20 @@ fn shadow_mask_lookup(i: u32, world: vec3<f32>) -> f32 {
         return -1.0;
     }
     let p = vec2<u32>(px);
-    let t = shadow_mask.texels[p.y * shadow_mask.info.y + p.x];
-    let depth = bitcast<f32>(t.z);
+    let k = p.y * shadow_mask.info.y + p.x;
     let z = dot(world - view.camera_pos.xyz, shadow_params.view_axis.xyz);
-    if (abs(depth - z) > 0.02 * z + 0.05) {
+    if (shadow_mask.pad.x == 1u) {
+        let n = shadow_mask.texels[k];
+        if (abs(unpack2x16float(n.y & 0x7fffu).x - z) > 0.02 * z + 0.05) {
+            return -1.0;
+        }
+        return unpack2x16unorm(n.x)[ch & 1u];
+    }
+    let a = shadow_mask.texels[2u * k];
+    let b = shadow_mask.texels[2u * k + 1u];
+    if (abs(bitcast<f32>(b.x) - z) > 0.02 * z + 0.05) {
         return -1.0;
     }
-    let v = vec4<f32>(unpack2x16unorm(t.x), unpack2x16unorm(t.y));
+    let v = vec4<f32>(unpack2x16unorm(a.x), unpack2x16unorm(a.y));
     return v[ch];
 }
