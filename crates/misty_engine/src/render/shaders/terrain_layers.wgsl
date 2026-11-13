@@ -397,20 +397,7 @@ fn terrain_surface(in: MeshOut) -> Surface {
             }
             let detail = clamp(soil / max(dot(mean, luma), 1e-3), 0.3, 2.5);
             let tufts = mix(1.0, 0.72 + 0.56 * mottle, smoothstep(8.0, 40.0, dist));
-            // The blades glow looking towards the sun (light through them) and read darker
-            // with it behind the camera (their shaded sides); flat ground does neither.
-            var glow = 1.0;
-            let count = u32(lights.info.x);
-            for (var i = 0u; i < count; i++) {
-                let li = lights.items[i];
-                if (u32(li.dir_type.w) == 0u) {
-                    let to_light = -normalize(li.dir_type.xyz);
-                    let v = normalize(in.world - view.camera_pos.xyz);
-                    glow = clamp(1.0 + 0.94 * dot(v.xz, to_light.xz), 0.5, 1.5);
-                    break;
-                }
-            }
-            let field = grass * (terrain.chunks.z * glow) * tufts * detail;
+            let field = grass * terrain.chunks.z * tufts * detail;
             s.albedo = mix(s.albedo, field, wf);
             s.smoothness *= 1.0 - wf;
             // Tufts: a fine octave (faded out where one pixel covers it, so it never
@@ -419,7 +406,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
             let g1 = grass_noise_grad(local.xz / 0.8 + 13.1);
             let g2 = grass_noise_grad(local.xz / 3.5 + 27.7);
             let tilt = g1.yz * (0.3 * fine) + g2.yz * 0.35;
-            let tufted = normalize(n - vec3<f32>(tilt.x, 0.0, tilt.y));
+            // Blades grow upright whatever the slope: they are lit more like level ground
+            // than the slope under them.
+            let upright = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), 0.6));
+            let tufted = normalize(upright - vec3<f32>(tilt.x, 0.0, tilt.y));
             s.normal = normalize(mix(s.normal, tufted, wf));
             // The blades shade each other: less sky light deep in the canopy.
             far_ao = mix(1.0, 0.7 + 0.2 * mottle, wf);

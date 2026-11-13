@@ -4687,3 +4687,30 @@ changes. Details, numbers and timings per round: `docs/pending/r54-noon-look.md`
   shadows; clouds smaller and more numerous (no size control); sky and far hills brighter and
   bluer than the photo; the wood floor in `inside` shows bare sunlit litter between grass-like
   herbs, and `inside2` is greener and brighter than the photo's dark olive.
+
+## Round 59 — NoonValley: no line where the grass ends (branch r59-noon2)
+
+Details, measurements and the later rounds: `docs/pending/r59-noon2.md`. Before / after:
+`docs/screenshots/r59/fade_*.jpg`.
+
+- **Grass far field** (new terrain grass setting, Grass & Details ▸ Far Field / Far Field
+  Brightness; off by default and left out of files when off, so existing terrains and the
+  golden scenes are unchanged): where grass grows, from a few metres on and all of it past the
+  blades, the ground takes the grass's look instead of the bare turf texture: the grass's own
+  colours and patches at the lit blades' brightness, blade-scale detail from the ground
+  texture, tufts in the normal that catch the sun (lit as upright blades, not as the slope
+  under them), and the canopy's self-shade. It fades in as the blades thin out, so the
+  blades end without a line.
+- **Meadow turf** regenerated at 2048²: about 110 000 short blades in every direction with
+  lighter tips over dark shade, yellower and deeper-green clumps, a few straw blades; the
+  height and normal maps come from the blades.
+- **Measured** with the grass drawn and not drawn (same terrain shading, eye adaptation off):
+  the grass's luminance over the terrain's under it, just inside the grass's far edge, in four
+  views: 0.91 / 1.03 / 0.92 / 1.11 (1.00 = no step). Before, the far meadow past the blades read
+  as a pale, smooth band (the grass mass 25–50 % darker at the edge).
+- **Also in this commit, not used by any scene yet** (all default off and left out of files at
+  their defaults): Volumetric Clouds ▸ Size and Softness (bigger, fewer heaps; smoother edges),
+  and Tree Rendering ▸ Plant Shadow Distance (small plants cast sun shadows only near the
+  camera). NoonValley takes them up in the next rounds.
+- Checks: fmt clean, clippy 0 warnings, tests 936 editor (with `noon_valley_matches_its_generator`)
+  + 1588 engine + the rest passed, golden 20 / 20 unchanged.

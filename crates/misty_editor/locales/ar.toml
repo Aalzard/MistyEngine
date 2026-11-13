@@ -389,6 +389,7 @@
 [inspector]
 "Scales the penumbra: 1 = the light's physical size (rectangle lights: their width and height), larger = softer, 0 = as sharp as the shadow map allows." = "يغيّر حجم شبه الظل: 1 = الحجم الفعلي للضوء (عرض الأضواء المستطيلة وارتفاعها)، والأكبر أنعم، و0 بأقصى حدة تسمح بها خريطة الظل."
 "Lock Properties" = "قفل الخصائص"
+"Softness" = "النعومة"
 "Static" = "ثابت"
 "Tag" = "الوسم"
 "Layer" = "الطبقة"
@@ -981,6 +982,8 @@
 "Trees cast shadows" = "تلقي الأشجار ظلالًا"
 "Shadow Detail" = "تفاصيل الظلال"
 "Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)" = "تفاصيل الأشجار في ظلال الشمس (أقل: شبكات أخف ولوحات أبكر؛ ظلال الغابة الكثيفة تكلّف أقل بكثير)"
+"Plant Shadow Distance" = "مسافة ظلال النباتات"
+"Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)" = "تُلقي النباتات الصغيرة (السراخس والغطاء الأرضي) ظلالًا فقط على هذا القرب من الكاميرا (0 = بقدر بُعد الأشجار)"
 "Prefabs" = "القوالب الجاهزة"
 "{count} placed. Double-click to open the prefab, drag to reorder." = "الموضوع: {count}. انقر نقرًا مزدوجًا لفتح القالب الجاهز، واسحب لإعادة الترتيب."
 "Add Prefab" = "إضافة قالب جاهز"

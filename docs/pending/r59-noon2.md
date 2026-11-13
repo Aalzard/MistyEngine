@@ -1,46 +1,57 @@
-# NoonValley round 59 (branch r59-noon2) — WIP, paused
+# NoonValley round 59 (branch r59-noon2)
 
 Disks: target `E:/MistyTargets/r59-noon2`, TMP `C:\MistyTry\r59tmp`, shots
 `E:/MistyTargets/r59-shots/<run>` (scratch). Scripts in the session scratchpad `r59/`
 (`env.sh`, `fade.sh`/`fade.py` grass on/off measurement, `both.sh` build, `regen.sh`).
 
-## Round 1 (top priority): grass-to-ground transition — in progress, not yet verified
+## Round 1: grass-to-ground transition (done)
 
-Engine (default off, so MeadowDemo/golden unchanged; not yet golden-checked):
+Engine (default off, so MeadowDemo / golden unchanged):
 - `DetailSettings::far_field` (0..1, out of the file at 0) and `far_field_brightness`
-  (0.2..2, out of the file at 1); passed in `TerrainParams.chunks.yz`.
-- `terrain_layers.wgsl`: where grass grows, from 4–24 m on, the ground takes the grass's
-  colour and patches × brightness × a view term (blades glow looking towards the sun, darker
-  with it behind: `1 + 0.94·dot(view.xz, to_light.xz)`), blade-scale detail from the ground
-  texture relative to its mean, a tufted normal (two noise octaves, the fine one faded by pixel
-  footprint) and canopy AO (`far_ao`). The plain ground-tint path is unchanged when far_field=0
-  (its near darkening `under` now only applies with a ground tint).
-- Editor: Grass & Details ▸ Far Field / Far Field Brightness sliders (tr/ar strings added).
-- Test knobs: `MISTY_NOON_GRASS=farfield:..,farbright:..,tint:..`.
+  (0.2..2, out of the file at 1), passed in `TerrainParams.chunks.yz`.
+- `terrain_layers.wgsl`: where grass grows, weight `far_field × cover × smoothstep(4, 24, dist)`:
+  albedo = grass colour with its patches and swathes × brightness × tuft mottle × the ground
+  texture's detail relative to its own mean (mip 12); normal = upright (mix of the terrain
+  normal and +Y, 0.6) tilted by two noise octaves (the 0.8 m one faded by pixel footprint);
+  ambient occlusion `far_ao`. A view term (blades glowing towards the sun) was tried and
+  dropped: the needed brightness did not follow the sun direction but the slope (sun-facing
+  slopes lit the flat ground more than the blades), hence the upright normal.
+- Editor: Grass & Details ▸ Far Field, Far Field Brightness (tr / ar).
+- Test knobs: `MISTY_NOON_GRASS=farfield:..,farbright:..,tint:..,plantshadow:..`.
+- Scene: `meadow_turf()` 2048² blades; `far_field 1.0`, `far_field_brightness 0.3`.
 
-Scene: `meadow_turf()` rewritten (2048², ~110k short blades in every direction, lighter tips,
-yellow / deep-green clumps, straw blades, height map from the blades); `far_field: 1.0`,
-`far_field_brightness: 0.46`. NOT regenerated yet (the scene files on disk are the old ones).
+Measurement (`fade.sh` in the scratchpad: each view rendered with the grass and with
+`MISTY_GRASS_DROP_BEYOND=-1`, same terrain shading, `MISTY_NOON_AE=off`; the grass's far edge
+found as the topmost rows where most ground pixels change; ratio = grass-on luminance over
+grass-off on the same pixels, 16–60 rows inside the edge, flowers masked out):
 
-Measurement (`fade.sh`: grass on vs `MISTY_GRASS_DROP_BEYOND=-1`, same terrain shading, eye
-adaptation off; "grass / terrain under it" = luminance of the grass-on band just inside the
-grass's far edge over the same pixels with grass off, 1.00 = no step):
-- before (main): visible pale smooth band past the blades (grazing view); hero step 1.25×.
-- far field 1.0, brightness 0.6 (old turf, no view term): pose 0.90, hero 0.85.
-- brightness 0.47: pose 0.99, hero 0.90 → the view term above was fitted from these two
-  (blades vs far field per band: hero 0.067/0.091, pose 0.099/0.106).
+| run | brightness | measuring pose | hero | away | left |
+|---|---|---|---|---|---|
+| main (far field off) | – | visible pale band; hero step 1.25× | | | |
+| e1 (old turf) | 0.6 | 0.90 | 0.85 | | |
+| e2 (old turf) | 0.47 | 0.99 | 0.90 | | |
+| r1 (new turf, view term 0.94) | 0.46 | 0.94 | 0.86 | | |
+| r2 (view term 1.74) | 0.40 | 1.02 | 1.08 | 0.67 | 0.86 |
+| r3a (upright normal, no view term) | 0.36 | 1.07 | 0.90 | 0.82 | 0.98 |
+| r3b | 0.28 | 0.93 | 1.08 | 0.89 | 1.16 |
+| r4 (committed) | 0.30 | 0.91 | 1.03 | 0.92 | 1.11 |
 
-Next: finish the build (`both.sh`), `regen.sh`, `fade.sh r1`, check both views ≈1.0 and the
-grazing shot by eye, adjust brightness, then checks + golden, commit round 1 with before/after
-shots (`docs/screenshots/r59/fade_*.jpg`, ours only) and a Round 59 section in progress.md.
+Still differs: ±10 % per view (the blades' brightness depends on the slope and sun in ways a
+single brightness does not follow); at eye level the far meadow is still a little lighter than
+the grass mass (more haze and the sun-facing far slopes), and where the grass ends on a crest
+the line follows the crest.
 
-## Later rounds (not started in the repo)
+Checks for round 1 (tree with the cloud and plant-shadow engine controls too): fmt clean,
+clippy `--workspace --all-targets --release` 0 warnings, `cargo test --workspace --release
+--no-fail-fast` 936 editor + 1588 engine + 11 + 3 passed, 0 failed; golden 20 / 20 ok.
 
-- Clouds: `CloudsOverride::size` (0.25..4, out of the file at 1) and `softness` (0..1, out of
-  the file at 0), shader `cloud_common.wgsl` (base tile × size, detail tile × √size, less
-  erosion and `pow` edge falloff with softness), Size / Softness sliders (Softness tr/ar
-  added). Kept aside in `git stash` "r59 clouds wip" (also saved as `clouds-wip.patch` in the
-  scratchpad); NoonValley would use size 2.4, softness 0.5, coverage 0.34, thickness 1500.
-- Forest perf idea: a per-terrain plant shadow distance for small plants (radius <
-  `SMALL_PLANT`), CPU path in `render/trees.rs` and GPU `trees_cull.wgsl` (`counts.w` free).
+## Later rounds
+
+- Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
+  1) and `softness` (0..1, out of the file at 0); `cloud_common.wgsl`: base tile × size, detail
+  tile × √size, less erosion and a `pow` edge falloff with softness (uniform `shadow.zw`);
+  Size / Softness sliders. The `git stash` "r59 clouds wip" is now applied (can be dropped).
+- Plant Shadow Distance (engine in the round-1 commit): `TreeSettings::plant_shadow_distance`
+  (0 = off): small plants (model radius < `SMALL_PLANT`) cast into the cascades only within it
+  (CPU path `render/trees.rs`, GPU `trees_cull.wgsl` via `counts.w`).
 - Cliffs, sky/haze, herbs, bark: not started.

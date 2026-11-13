@@ -209,6 +209,11 @@ pub(super) fn march_uniform(m: &MarchInputs) -> MarchUniform {
             q.shadow_extent,
             q.shadow_steps as f32,
         ],
-        shadow: [origin.x, origin.y, 0.0, 0.0],
+        shadow: [
+            origin.x,
+            origin.y,
+            o.size.clamp(0.25, 4.0),
+            o.softness.clamp(0.0, 1.0),
+        ],
     }
 }

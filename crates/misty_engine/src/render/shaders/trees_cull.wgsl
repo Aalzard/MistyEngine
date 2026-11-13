@@ -14,7 +14,8 @@ struct Params {
     // x = end of the full mesh, y = start of the impostors, z = draw distance (metres, LOD
     // bias applied), w = reach of the shadow cascades (metres).
     lod: vec4<f32>,
-    // x = views (1 + cascades), y = prototypes, z = lists.
+    // x = views (1 + cascades), y = prototypes, z = lists, w = the small plants' shadow
+    // distance (f32 bits; 0 = the cascades' reach).
     counts: vec4<u32>,
     // x = Hi-Z mip levels (0 = no occlusion test), yz = the target's size (pixels), w = the LOD
     // cross-fade band (a share of each switch distance; 0 = instant).
@@ -216,8 +217,13 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
             append_pair(proto, 2u, 3u, far, t);
         }
     }
-    // The cascades: their own level, within their reach.
-    if (dist < params.lod.w + radius) {
+    // The cascades: their own level, within their reach (small plants within their own).
+    var reach = params.lod.w;
+    let plant_reach = bitcast<f32>(params.counts.w);
+    if (b.y < SMALL_PLANT && plant_reach > 0.0) {
+        reach = min(reach, plant_reach);
+    }
+    if (dist < reach + radius) {
         for (var v = 1u; v < params.counts.x; v++) {
             // A small plant casts only where the cascade's texels resolve it (trees.rs
             // `casts_into`).

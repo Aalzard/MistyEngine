@@ -314,7 +314,7 @@ fn grass() -> details::DetailSettings {
         depth_shading: 0.65,
         // Past the blades the ground keeps the grass's look: no line where they end.
         far_field: 1.0,
-        far_field_brightness: 0.46,
+        far_field_brightness: 0.3,
     }
 }
 
