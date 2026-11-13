@@ -40,6 +40,8 @@ pub(crate) struct CanvasState {
     /// Where the add menu opened (screen) and the parent a new node joins.
     menu_at: Option<Pos2>,
     pub menu_parent: Option<u32>,
+    /// The add menu shown after a link was dropped on empty canvas.
+    pub add_menu: bool,
     /// Comment / group being dragged.
     comment_drag: Option<usize>,
     group_drag: Option<usize>,
@@ -293,7 +295,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
                 None => {
                     s.behaviour_tree.canvas.menu_at = hover;
                     s.behaviour_tree.canvas.menu_parent = Some(from);
-                    ui.memory_mut(|m| m.open_popup(egui::Id::new("bt_add_menu")));
+                    s.behaviour_tree.canvas.add_menu = true;
                 }
             }
         }
@@ -354,7 +356,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     resp.context_menu(|ui| canvas_menu(ui, s));
     // The add menu after a link dropped on empty canvas.
     let popup = egui::Id::new("bt_add_menu");
-    if ui.memory(|m| m.is_popup_open(popup)) {
+    if s.behaviour_tree.canvas.add_menu {
         let at = s.behaviour_tree.canvas.menu_at.unwrap_or(area.center());
         let mut close = false;
         egui::Area::new(popup)
@@ -370,7 +372,8 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
                 });
             });
         if close || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            ui.memory_mut(|m| m.close_popup(popup));
+            s.behaviour_tree.canvas.add_menu = false;
+            s.behaviour_tree.canvas.menu_parent = None;
         }
     }
 

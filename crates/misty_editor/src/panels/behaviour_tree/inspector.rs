@@ -331,7 +331,8 @@ fn settings(ui: &mut Ui, n: &mut BtNode, keys: &[(String, KeyType)], root: &Path
             ui.end_row();
             if op.needs_value() {
                 ui.label(tr!("Value"));
-                value_field(ui, value, key_type(key).unwrap_or(value.key_type()));
+                let ty = key_type(key).unwrap_or(value.key_type());
+                value_field(ui, value, ty);
                 ui.end_row();
             }
             ui.label(tr!("Abort"));
@@ -400,7 +401,8 @@ fn settings(ui: &mut Ui, n: &mut BtNode, keys: &[(String, KeyType)], root: &Path
             key_field(ui, &tr!("From Key"), from_key, keys, &KeyType::ALL, true);
             if from_key.is_empty() {
                 ui.label(tr!("Value"));
-                value_field(ui, value, key_type(key).unwrap_or(value.key_type()));
+                let ty = key_type(key).unwrap_or(value.key_type());
+                value_field(ui, value, ty);
                 ui.end_row();
             }
         }

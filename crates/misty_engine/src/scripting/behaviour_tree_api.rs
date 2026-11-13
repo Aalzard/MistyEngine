@@ -61,7 +61,7 @@ fn from_lua(v: &Value) -> Result<BbValue> {
         Value::Boolean(b) => BbValue::Bool(*b),
         Value::Integer(i) => BbValue::Int(*i),
         Value::Number(n) => BbValue::Float(*n as f32),
-        Value::String(s) => BbValue::String(s.to_str()?.to_owned()),
+        Value::String(s) => BbValue::String((*s.to_str()?).to_owned()),
         Value::UserData(ud) => {
             if let Ok(v) = ud.borrow::<LVec3>() {
                 BbValue::Vector(v.0)

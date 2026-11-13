@@ -404,3 +404,24 @@ fn texts_are_translated() {
     }
     assert!(missing.is_empty(), "untranslated:\n{}", missing.join("\n"));
 }
+
+/// The `BehaviourTree` Lua table is also Script Graph nodes (get / set values, start / stop /
+/// restart, finish), from the same binding table as the Lua reference.
+#[test]
+fn script_graphs_get_behaviour_tree_nodes() {
+    let entries = crate::panels::script_graph::search::api_entries();
+    for member in [
+        "GetValue", "SetValue", "HasKey", "Start", "Stop", "Restart", "IsRunning", "GetStatus",
+        "Finish",
+    ] {
+        assert!(
+            entries.iter().any(|e| {
+                e.params
+                    .iter()
+                    .any(|(k, v)| k == "owner" && v == "BehaviourTree")
+                    && e.params.iter().any(|(k, v)| k == "member" && v == member)
+            }),
+            "no Script Graph node for BehaviourTree.{member}"
+        );
+    }
+}
