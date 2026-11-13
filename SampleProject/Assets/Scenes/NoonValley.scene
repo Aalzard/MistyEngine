@@ -47,9 +47,9 @@
       ],
       "kind": "Procedural",
       "sky_tint": [
-        0.15,
-        0.27,
-        0.42
+        0.16,
+        0.24,
+        0.36
       ],
       "sun_disk": "HighQuality",
       "sun_size": 0.04
@@ -279,7 +279,7 @@
             "active": true,
             "altitude": 1400.0,
             "ambient": 1.0,
-            "coverage": 0.33,
+            "coverage": 0.325,
             "cumulus": 1.0,
             "density": 0.7,
             "enabled": true,

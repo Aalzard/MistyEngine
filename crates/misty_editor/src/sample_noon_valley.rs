@@ -67,8 +67,6 @@ fn with_leaves(mut t: TreeAsset, name: &str) -> TreeAsset {
     t.leaf_translucency = nv_texture(&format!("{name}Translucency"));
     t
 }
-// The sample's hill turf.
-const TURF: &str = "Assets/Textures/Terrain/Meadow.png";
 
 /// 4 km of valley (4 m between height samples, like MeadowDemo).
 const SIZE: Vec3 = Vec3::new(4096.0, 1000.0, 4096.0);
@@ -405,12 +403,12 @@ fn forest_herbs(d: &TerrainData) -> DetailLayer {
         .collect();
     DetailLayer {
         name: "Forest Herbs".into(),
-        density: 90.0,
-        height: [0.1, 0.26],
-        width: 0.09,
-        bend: 1.2,
+        density: 45.0,
+        height: [0.08, 0.2],
+        width: 0.15,
+        bend: 1.4,
         dryness: 0.0,
-        tint: -0.55,
+        tint: -0.65,
         seed_heads: 0.0,
         map,
         ..DetailLayer::grass("Forest Herbs")
@@ -535,7 +533,7 @@ fn limestone() -> [RgbaImage; 3] {
             let moss = smooth(0.68, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.95, bed);
             // (Grey, about half as bright as fresh limestone: weathered faces seen from the
             // meadow read mid-grey through the haze, not white.)
-            let mut c = [0.034, 0.031, 0.022].map(|k| {
+            let mut c = [0.038, 0.032, 0.02].map(|k| {
                 k * (0.84 + 0.22 * bed_tone)
                     * (0.78 + 0.4 * blocks)
                     * (0.9 + 0.2 * lumps)
@@ -761,9 +759,9 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 2,
                 leaf_density: 2.4,
                 leaf_size: 0.62,
-                leaf_color: [0.52, 0.55, 0.46],
+                leaf_color: [0.45, 0.48, 0.38],
                 leaf_variation: 0.35,
-                translucency: 0.5,
+                translucency: 0.35,
                 crown_shading: 0.85,
                 wind: TreeWind {
                     trunk_bend: 0.2,
@@ -785,16 +783,18 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 trunk_radius: 0.02,
                 leader: 0.0,
                 trunk_bend: 0.0,
-                branches: 10,
+                // (Fewer, larger leaves: the same cover for about half the triangles, which
+                // keeps the wood's carpets and their shadows affordable.)
+                branches: 8,
                 branch_angle: 75.0,
                 branch_curve: -0.3,
                 twigs: 3,
-                leaf_density: 2.6,
-                leaf_size: 0.38,
+                leaf_density: 1.7,
+                leaf_size: 0.48,
                 // Matte leaves (the atlas holds their own dark greens): little light through.
-                leaf_color: [0.56, 0.58, 0.5],
+                leaf_color: [0.46, 0.48, 0.4],
                 leaf_variation: 0.45,
-                translucency: 0.25,
+                translucency: 0.1,
                 crown_shading: 0.6,
                 wind: TreeWind {
                     trunk_bend: 0.1,
@@ -1170,8 +1170,11 @@ fn terrain_data() -> TerrainData {
         },
         TerrainLayer {
             name: "Hill Turf".into(),
-            diffuse: Some(TURF.into()),
-            tile_size: [6.0, 6.0],
+            // (The meadow's dark turf, larger: the sample's turf read pale on the slopes.)
+            diffuse: Some(TURF_GROUND.into()),
+            normal_map: Some(TURF_GROUND_NORMAL.into()),
+            height_map: Some(TURF_GROUND_HEIGHT.into()),
+            tile_size: [5.0, 5.0],
             rules: rules([22.0, 48.0], 1),
             ..Default::default()
         },
@@ -1397,7 +1400,7 @@ fn volume() -> PostProcessVolume {
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.33;
+    c.coverage = 0.325;
     c.density = 0.7;
     c.shape = 0.6;
     c.altitude = 1400.0;
@@ -1460,7 +1463,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.15, 0.27, 0.42];
+    rs.skybox.sky_tint = [0.16, 0.24, 0.36];
     // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
     // the Forest Floor layer's Occlusion sets the shade instead.)
     rs.realtime_gi = false;
@@ -1637,7 +1640,6 @@ fn noon_valley_matches_its_generator() {
         FOREST_FLOOR,
         FOREST_FLOOR_NORMAL,
         FOREST_FLOOR_HEIGHT,
-        TURF,
     ] {
         assert!(root.join(rel).exists(), "{rel}");
     }

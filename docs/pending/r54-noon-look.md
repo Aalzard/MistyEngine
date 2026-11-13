@@ -21,6 +21,7 @@ writes under `SampleProject/Assets/NoonValley/` and `Assets/Scenes/NoonValley.sc
 | d | – | 19.9 ms | carpets under the whole near forest: dropped |
 | f | 16.3 ms | 28.2 ms | open wood up to the hill's foot (machine loaded, CPU 23 ms): dropped |
 | j | 13.2 / 10.4 ms | 15.9 / 8.4 ms | round 2; CPU numbers inflated by other jobs' load |
+| m | 13.5 / 4.0 ms (parts 12.0) | 19.4 / 4.3 ms (parts 14.7) | round 3; base parts were 12.9 / 11.7: hero cheaper, inside +3 ms (groundcover shadows 3.5 vs 2.6, trees 2.3 vs 1.8, herbs 0.9) |
 
 ## Rounds
 
@@ -54,6 +55,32 @@ median: `inside` 0.019, `inside2` 0.047 (reference 0.028).
   (cheap cover for the bare floor in `inside`). Forest Haze box only behind the wood's edge.
   Tried and dropped: carpets under the whole near forest (+8 ms inside), the open wood up to
   the hill's foot (+12 ms).
+
+- **k–m (third commit):** Hill Turf uses the dark meadow turf too (5 m tile: the sample's
+  turf read pale yellow on the slopes and the cliff sites' rims); fern and groundcover leaves
+  darker and less translucent (inside2 less lime); herbs broader, lower, darker (45/m²,
+  0.15 m wide); sky tint 0.16/0.24/0.36 (sky top 127/147/191 → 126/143/182 with clouds in the
+  region, 93/113/159 without; reference 76/90/112); cloud coverage 0.325 (0.3 left the first
+  view empty; the cloud field's size is fixed, so they stay smaller and more numerous than
+  the reference's); limestone a little warmer. Groundcover recipe: 8 branches, leaf density
+  1.7 of 0.48 m leaves (was 10, 2.6 of 0.38): 15.0 → 13.5 M triangles inside.
+
+Numbers after m (reference / ours): meadow near 59/76/18 / 54/72/21, meadow mid 76/87/43 /
+71/84/37, far meadow 85/97/59 / ~108/120/75, hillside crowns 36/52/39 / 50/60/37. Forest
+lower-half luminance median `inside` 0.024, `inside2` 0.041 (reference 0.028).
+
+## Still differs (after m)
+
+- Cliffs: one continuous slab per site now, but it reads as a smooth grey-green patch, not
+  the reference's bright tan slabs with deep layered shadows; the site in the first view is
+  small and high (the hill is steeper and closer than the reference's).
+- Clouds: many small heaps; the reference has a few big soft ones (no cloud-size control in
+  the scene settings).
+- Sky and far hills still brighter and bluer than the (darker, greyer) reference.
+- `inside`: herbs read as short grass tufts on bare sunlit litter, not broad leaves;
+  `inside2` greener and brighter than the reference's dark olive; trunks and crowns lack the
+  reference's fine detail.
+- Inside GPU +3 ms over the start (parts 14.7 vs 11.7 ms).
 
 ## Still differs (after j)
 
