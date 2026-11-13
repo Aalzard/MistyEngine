@@ -40,60 +40,6 @@
     },
     {
       "id": 4,
-      "type": "OnUpdate",
-      "position": [
-        0.0,
-        337.5
-      ]
-    },
-    {
-      "id": 5,
-      "type": "GetVariable",
-      "position": [
-        -420.0,
-        622.5
-      ],
-      "params": {
-        "name": "Player"
-      }
-    },
-    {
-      "id": 6,
-      "type": "IsValid",
-      "position": [
-        -170.0,
-        527.5
-      ]
-    },
-    {
-      "id": 7,
-      "type": "GetVariable",
-      "position": [
-        -420.0,
-        812.5
-      ],
-      "params": {
-        "name": "Dead"
-      }
-    },
-    {
-      "id": 8,
-      "type": "Not",
-      "position": [
-        -170.0,
-        717.5
-      ]
-    },
-    {
-      "id": 9,
-      "type": "And",
-      "position": [
-        80.0,
-        432.5
-      ]
-    },
-    {
-      "id": 10,
       "type": "Api",
       "position": [
         -90.0,
@@ -106,7 +52,7 @@
       }
     },
     {
-      "id": 11,
+      "id": 5,
       "type": "GetVariable",
       "position": [
         -340.0,
@@ -117,7 +63,7 @@
       }
     },
     {
-      "id": 12,
+      "id": 6,
       "type": "Api",
       "position": [
         -90.0,
@@ -130,7 +76,7 @@
       }
     },
     {
-      "id": 13,
+      "id": 7,
       "type": "Distance",
       "position": [
         160.0,
@@ -138,7 +84,7 @@
       ]
     },
     {
-      "id": 14,
+      "id": 8,
       "type": "GetVariable",
       "position": [
         160.0,
@@ -149,10 +95,64 @@
       }
     },
     {
-      "id": 15,
+      "id": 9,
       "type": "Less",
       "position": [
         410.0,
+        432.5
+      ]
+    },
+    {
+      "id": 10,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 11,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        622.5
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 12,
+      "type": "IsValid",
+      "position": [
+        -170.0,
+        527.5
+      ]
+    },
+    {
+      "id": 13,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        812.5
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 14,
+      "type": "Not",
+      "position": [
+        -170.0,
+        717.5
+      ]
+    },
+    {
+      "id": 15,
+      "type": "And",
+      "position": [
+        80.0,
         432.5
       ]
     },
@@ -357,23 +357,29 @@
       "from": 5,
       "output": "Value",
       "to": 6,
-      "input": "Object"
+      "input": "Target"
     },
     {
-      "from": 7,
+      "from": 4,
       "output": "Value",
-      "to": 8,
-      "input": "Value"
+      "to": 7,
+      "input": "A"
     },
     {
       "from": 6,
+      "output": "Value",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 7,
       "output": "Result",
       "to": 9,
       "input": "A"
     },
     {
       "from": 8,
-      "output": "Result",
+      "output": "Value",
       "to": 9,
       "input": "B"
     },
@@ -381,46 +387,40 @@
       "from": 11,
       "output": "Value",
       "to": 12,
-      "input": "Target"
-    },
-    {
-      "from": 10,
-      "output": "Value",
-      "to": 13,
-      "input": "A"
-    },
-    {
-      "from": 12,
-      "output": "Value",
-      "to": 13,
-      "input": "B"
+      "input": "Object"
     },
     {
       "from": 13,
+      "output": "Value",
+      "to": 14,
+      "input": "Value"
+    },
+    {
+      "from": 12,
       "output": "Result",
       "to": 15,
       "input": "A"
     },
     {
       "from": 14,
-      "output": "Value",
+      "output": "Result",
       "to": 15,
       "input": "B"
     },
     {
-      "from": 9,
+      "from": 15,
       "output": "Result",
       "to": 16,
       "input": "Condition"
     },
     {
-      "from": 4,
+      "from": 10,
       "output": "Out",
       "to": 16,
       "input": "In"
     },
     {
-      "from": 15,
+      "from": 9,
       "output": "Result",
       "to": 17,
       "input": "Condition"
@@ -524,14 +524,6 @@
   ],
   "variables": [
     {
-      "name": "Reach",
-      "type": "float",
-      "value": {
-        "Float": 0.85
-      },
-      "scope": "Object"
-    },
-    {
       "name": "Dead",
       "type": "bool",
       "value": {
@@ -545,11 +537,26 @@
       "value": "None"
     },
     {
+      "name": "Touching",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
       "name": "Next Hit At",
       "type": "float",
       "value": {
         "Float": 0.0
       }
+    },
+    {
+      "name": "Reach",
+      "type": "float",
+      "value": {
+        "Float": 0.85
+      },
+      "scope": "Object"
     }
   ]
 }
