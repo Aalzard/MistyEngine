@@ -346,6 +346,23 @@ fn hole_brush() -> Brush {
     }
 }
 
+/// Cutting a hole under planted trees left them standing in the air, their trunk colliders
+/// blocking the opening.
+#[test]
+fn holes_take_the_trees_standing_in_them() {
+    let mut d = sloped();
+    let at = |x: f32, z: f32, d: &TerrainData| crate::terrain::trees::TreeInstance {
+        position: Vec2::new(x / d.size.x, z / d.size.z),
+        ..Default::default()
+    };
+    let inside = at(16.5, 16.5, &d);
+    let outside = at(2.5, 2.5, &d);
+    d.trees.instances = vec![inside, outside];
+    assert!(brush::paint_holes(&mut d, &hole_brush(), false));
+    assert_eq!(d.trees.instances.len(), 1);
+    assert_eq!(d.trees.instances[0].position, outside.position);
+}
+
 #[test]
 fn hole_brush_cuts_and_fills_cells() {
     let mut d = sloped();
