@@ -140,6 +140,17 @@ fn world_pose(scene: &Scene, e: Entity) -> (Vec3, Quat, Vec3) {
     (pos, rot, scale.max(Vec3::splat(MIN_SCALE)))
 }
 
+/// The mirror a negative world scale adds: `world_pose` keeps the scale's size only, and the
+/// rotation it returns is a proper one, so a mirrored object's offsets (collider centres,
+/// mesh points) need this sign. Same axis as glam's decomposition (x when mirrored).
+fn world_mirror(scene: &Scene, e: Entity) -> Vec3 {
+    if scene.world_matrix(e).determinant() < 0.0 {
+        Vec3::new(-1.0, 1.0, 1.0)
+    } else {
+        Vec3::ONE
+    }
+}
+
 impl Physics {
     /// Build with default settings and the given gravity.
     pub fn build(scene: &Scene, gravity: Vec3) -> Self {

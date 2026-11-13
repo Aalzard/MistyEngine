@@ -7,7 +7,7 @@ use rapier3d::prelude as rp;
 
 use super::convert::{pose, rv};
 use super::material::PhysicsMaterial;
-use super::{Physics, layers, world_pose};
+use super::{Physics, layers, world_mirror, world_pose};
 use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Scene, SphereCollider,
 };
@@ -136,6 +136,9 @@ impl Physics {
     ) -> Vec<(rp::ColliderBuilder, Option<PhysicsMaterial>)> {
         let w = &scene.world;
         let (_, _, s) = world_pose(scene, e);
+        // Mirrored objects (a negative scale) mirror their colliders' centres and meshes too:
+        // they sat on the other side, an asymmetric mesh unmirrored.
+        let mirror = world_mirror(scene, e);
         let name = scene.name(e);
         let paths = [
             w.get::<&BoxCollider>(e)
@@ -172,7 +175,7 @@ impl Physics {
                     .restitution_combine_rule(m.bounce_combine.rapier()),
                 None => b.friction(surface.friction).restitution(surface.bounciness),
             };
-            (b.sensor(trigger), center * s, material.clone())
+            (b.sensor(trigger), center * s * mirror, material.clone())
         };
         let mut shaped: Vec<(rp::ColliderBuilder, Vec3, Option<PhysicsMaterial>)> = Vec::new();
         if let Ok(c) = w.get::<&BoxCollider>(e)
@@ -222,7 +225,7 @@ impl Physics {
                     let verts: Vec<rp::Vector> = data
                         .vertices
                         .iter()
-                        .map(|v| rv(Vec3::from(v.position) * s))
+                        .map(|v| rv(Vec3::from(v.position) * s * mirror))
                         .collect();
                     let dynamic = self.bodies.get(&e).is_some_and(|b| !b.kinematic);
                     let builder = if c.convex || dynamic {
@@ -234,12 +237,25 @@ impl Physics {
                         rp::ColliderBuilder::convex_hull(&verts)
                     } else if let Some(shape) = mesh_ref
                         .as_ref()
+                        .filter(|_| mirror == Vec3::ONE)
                         .and_then(|r| super::shape_cache::take(r, s))
                     {
                         // Built ahead on a background thread (a streamed cell).
                         Some(rp::ColliderBuilder::new(shape))
                     } else {
-                        let tris = data.indices.chunks(3).map(|t| [t[0], t[1], t[2]]).collect();
+                        // Mirroring turns the triangles inside out: keep them facing out.
+                        let flip = mirror.x < 0.0;
+                        let tris = data
+                            .indices
+                            .chunks_exact(3)
+                            .map(|t| {
+                                if flip {
+                                    [t[0], t[2], t[1]]
+                                } else {
+                                    [t[0], t[1], t[2]]
+                                }
+                            })
+                            .collect();
                         rp::ColliderBuilder::trimesh(verts, tris).ok()
                     };
                     match builder {
