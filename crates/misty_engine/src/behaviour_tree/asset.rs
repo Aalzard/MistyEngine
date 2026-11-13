@@ -805,6 +805,65 @@ impl BehaviourTree {
         }
     }
 
+    /// Lay the tree out from the Root: one column per depth, leaves one under another and each
+    /// parent level with the middle of its children (nodes not under the Root are left alone).
+    pub fn arrange(&mut self) {
+        const COLUMN: f32 = 250.0;
+        const ROW: f32 = 78.0;
+        let Some(root) = self.root().map(|n| n.id) else {
+            return;
+        };
+        let origin = self.node(root).map_or([0.0, 0.0], |n| n.position);
+        let mut next_row = 0.0f32;
+        let mut placed: std::collections::HashMap<u32, [f32; 2]> = Default::default();
+        // Post-order with an explicit stack: (node, depth, children done).
+        let mut stack = vec![(root, 0usize, false)];
+        let mut guard = 0;
+        while let Some((id, depth, done)) = stack.pop() {
+            guard += 1;
+            if guard > self.nodes.len() * 4 + 8 {
+                break;
+            }
+            let kids: Vec<u32> = self
+                .node(id)
+                .map(|n| n.children.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|c| self.node(*c).is_some() && !placed.contains_key(c))
+                .collect();
+            if !done && !kids.is_empty() {
+                stack.push((id, depth, true));
+                for c in kids.iter().rev() {
+                    stack.push((*c, depth + 1, false));
+                }
+                continue;
+            }
+            let x = origin[0] + depth as f32 * COLUMN;
+            let ys: Vec<f32> = self
+                .node(id)
+                .map(|n| n.children.clone())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|c| placed.get(c).map(|p| p[1]))
+                .collect();
+            let y = if ys.is_empty() {
+                let y = origin[1] + next_row * ROW;
+                next_row += 1.0;
+                y
+            } else {
+                (ys[0] + ys[ys.len() - 1]) * 0.5
+            };
+            placed.insert(id, [x, y]);
+        }
+        // Centre the tree on the Root's old height.
+        let shift = placed.get(&root).map_or(0.0, |p| origin[1] - p[1]);
+        for n in &mut self.nodes {
+            if let Some(p) = placed.get(&n.id) {
+                n.position = [p[0], p[1] + shift];
+            }
+        }
+    }
+
     /// Rename a key everywhere nodes use it.
     pub fn rename_key(&mut self, old: &str, new: &str) {
         for k in &mut self.keys {

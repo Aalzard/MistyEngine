@@ -394,9 +394,17 @@ impl Host for GameHost<'_> {
     }
 
     fn move_progress(&mut self) -> (f32, bool) {
-        self.world(|w| match w.navigation.state(self.e) {
-            Some(st) => (st.remaining_distance(), st.has_path() || st.path_pending),
-            None => (0.0, false),
+        self.world(|w| {
+            let stop = w
+                .scene
+                .world
+                .get::<&crate::navigation::NavMeshAgent>(self.e)
+                .map_or(0.0, |a| a.stopping_distance.max(0.0));
+            match w.navigation.state(self.e) {
+                Some(st) if st.path_pending => (f32::INFINITY, true),
+                Some(st) if st.has_path() => ((st.remaining_distance() - stop).max(0.0), true),
+                _ => (0.0, false),
+            }
         })
     }
 

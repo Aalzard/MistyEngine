@@ -72,7 +72,8 @@ pub trait Host {
     fn object_position(&mut self, e: Entity) -> Option<Vec3>;
     /// Start walking (or re-plan) to `dest`; false when no path can be planned.
     fn move_start(&mut self, dest: Vec3) -> bool;
-    /// Distance left to walk and whether the agent still has a path.
+    /// Distance left before the agent stops (its stopping distance taken off; infinite while a
+    /// path is being planned) and whether it still has a path.
     fn move_progress(&mut self) -> (f32, bool);
     /// Stop walking.
     fn move_stop(&mut self);
@@ -552,8 +553,9 @@ impl ExecState {
                     return Status::Running;
                 }
                 let (left, has_path) = h.move_progress();
-                if !has_path && left <= *acceptance {
-                    // Arrived at the closest reachable point.
+                if left <= 0.05 {
+                    // Stopped at the destination (within the agent's stopping distance), or at
+                    // the closest point it can reach.
                     return Status::Success;
                 }
                 if !has_path {

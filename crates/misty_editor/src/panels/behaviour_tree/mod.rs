@@ -18,6 +18,7 @@ mod inspector;
 mod palette;
 
 pub use inspector::{assets_with, value_field};
+pub use palette::scan as palette_scan;
 #[cfg(test)]
 mod tests;
 
@@ -690,6 +691,14 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     .clicked()
                 {
                     s.behaviour_tree.redo();
+                }
+                if ui
+                    .button(tr!("Arrange"))
+                    .on_hover_text(tr!("Lay the tree out from the Root"))
+                    .clicked()
+                {
+                    s.behaviour_tree.edit("Arrange", false, |t| t.arrange());
+                    s.behaviour_tree.canvas.frame_all = true;
                 }
                 ui.separator();
                 let name = s
