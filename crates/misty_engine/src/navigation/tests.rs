@@ -448,3 +448,46 @@ fn obstacles_push_agents_away() {
     }
     assert!(s.world_position(e).x > 4.0);
 }
+
+/// A mesh past 65 536 tiles once aliased the polygons of tile 65 536 onto tile 0 (the tile
+/// index has 16 bits of a poly ref): such files are refused and meshes stop at the limit.
+#[test]
+fn nav_meshes_never_alias_polygons_of_tiles_past_the_limit() {
+    use navmesh::{MAX_TILES, Tile, tile_of};
+    let n = MAX_TILES + 3;
+    let square = |x: i32| {
+        let x = x as f32 * 2.0;
+        NavPoly::new(
+            vec![
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::new(x, 0.0, 1.0),
+                Vec3::new(x + 1.0, 0.0, 1.0),
+                Vec3::new(x + 1.0, 0.0, 0.0),
+            ],
+            AREA_WALKABLE,
+        )
+    };
+    let tiles: Vec<Tile> = (0..n as i32)
+        .map(|x| Tile::new(x, 0, vec![square(x)], 0))
+        .collect();
+    let mut m = NavMesh::from_tiles(Default::default(), tiles);
+    m.replace_tiles(vec![Tile::new(-1, 0, vec![square(-1)], 0)]);
+    assert!(m.tiles().len() <= MAX_TILES);
+    let refs: std::collections::HashSet<_> = m.polys().map(|(r, _)| r).collect();
+    assert_eq!(refs.len(), m.tiles().len(), "one distinct ref per tile");
+    assert!(
+        refs.iter()
+            .all(|&r| (tile_of(r) as usize) < m.tiles().len())
+    );
+    let mut text = String::from(
+        r#"{"version":2,"agent":{"radius":0.5,"height":2.0,"step_height":0.75,"max_slope":45.0},"cell_size":0.2,"tiles":["#,
+    );
+    for x in 0..n {
+        if x > 0 {
+            text.push(',');
+        }
+        text.push_str(&format!(r#"{{"x":{x},"z":0,"polygons":[]}}"#));
+    }
+    text.push_str("]}");
+    assert!(NavMesh::from_json(&text).is_err());
+}
