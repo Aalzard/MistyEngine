@@ -672,9 +672,9 @@ pub(super) struct TerrainCache {
     frame: u64,
 }
 
-/// Flower layers being built on a worker thread. (Behind a lock only so the renderer stays
-/// `Sync`.)
-type LayersRx = std::sync::Mutex<std::sync::mpsc::Receiver<super::terrain_grass::FlowerLayers>>;
+/// A flower atlas being built and uploaded on a worker thread (its upload took ~190 ms of the
+/// frame in NoonValley). (Behind a lock only so the renderer stays `Sync`.)
+type LayersRx = std::sync::Mutex<std::sync::mpsc::Receiver<Atlas>>;
 
 /// A grass atlas with flower layers: being built on a worker thread, or uploaded (with its id;
 /// `next`: built again on a worker now that its blocks are in the texture cache, the uploaded
@@ -688,14 +688,25 @@ enum FlowerAtlas {
     },
 }
 
-/// Build the flower layers of `kinds` on a worker thread.
-fn spawn_flower_layers(kinds: &[crate::terrain::flowers::FlowerKind], ctx: Ctx) -> LayersRx {
+/// Build the flower layers of `kinds` and the atlas holding them on a worker thread.
+fn spawn_flower_layers(
+    kinds: &[crate::terrain::flowers::FlowerKind],
+    ctx: Ctx,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> LayersRx {
     let (tx, rx) = std::sync::mpsc::channel();
     let kinds = kinds.to_vec();
+    let (device, queue) = (device.clone(), queue.clone());
     let spawned = std::thread::Builder::new()
         .name("misty flower atlas".into())
         .spawn(move || {
-            let _ = tx.send(super::terrain_grass::flower_layers(&kinds, &ctx));
+            let layers = super::terrain_grass::flower_layers(&kinds, &ctx);
+            let _ = tx.send(super::terrain_grass::atlas_array(
+                &device,
+                &queue,
+                Some(&layers),
+            ));
         });
     if let Err(e) = spawned {
         eprintln!("flower atlas worker: {e}");
@@ -725,7 +736,7 @@ fn flower_atlas<'a>(
             atlases.clear();
         }
         let state = if streaming {
-            FlowerAtlas::Building(spawn_flower_layers(kinds, ctx.clone()))
+            FlowerAtlas::Building(spawn_flower_layers(kinds, ctx.clone(), device, queue))
         } else {
             let layers = super::terrain_grass::flower_layers(kinds, &ctx);
             *next_id += 1;
@@ -742,10 +753,7 @@ fn flower_atlas<'a>(
         FlowerAtlas::Building(rx) => {
             let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
             let atlas = match got {
-                Ok(layers) => {
-                    crate::profile_scope!("Grass.FlowerAtlas");
-                    super::terrain_grass::atlas_array(device, queue, Some(&layers))
-                }
+                Ok(atlas) => atlas,
                 Err(std::sync::mpsc::TryRecvError::Empty) => return None,
                 // The worker failed: draw without the flowers' textures from now on.
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -763,7 +771,7 @@ fn flower_atlas<'a>(
             // Went up uncompressed while its blocks were encoded: build it again (cache hits).
             if next.is_none() && atlas.outdated() {
                 if streaming {
-                    *next = Some(spawn_flower_layers(kinds, ctx));
+                    *next = Some(spawn_flower_layers(kinds, ctx, device, queue));
                 } else {
                     let layers = super::terrain_grass::flower_layers(kinds, &ctx);
                     *atlas = super::terrain_grass::atlas_array(device, queue, Some(&layers));
@@ -774,9 +782,8 @@ fn flower_atlas<'a>(
             if let Some(rx) = next {
                 let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
                 match got {
-                    Ok(layers) => {
-                        crate::profile_scope!("Grass.FlowerAtlas");
-                        *atlas = super::terrain_grass::atlas_array(device, queue, Some(&layers));
+                    Ok(built) => {
+                        *atlas = built;
                         *next_id += 1;
                         *id = *next_id;
                         *next = None;
