@@ -390,6 +390,7 @@ mod tests {
         use crate::render::*;
         use crate::scene::PrimitiveMesh;
         use glam::{Mat4, Quat, Vec3};
+        use super::QUIET_FRAMES;
         let Some((device, queue)) = headless() else {
             eprintln!("no GPU adapter: skipped");
             return;
