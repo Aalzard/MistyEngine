@@ -385,9 +385,9 @@ pub fn mode() -> Mode {
     }
 }
 
-/// The workers of background encodes ([`Mode::Background`]): a quarter of the cores, so the
-/// editor keeps most of the machine while a fresh project encodes its textures (BC7 at a
-/// few hundred thousand blocks a second per core: seconds of all cores for a big scene).
+/// The workers of background encodes ([`Mode::Background`]): half the cores, so the editor
+/// keeps the other half while a fresh project encodes its textures (NoonValley: minutes of
+/// one core; a quarter of the cores took two to four times as long to settle).
 /// Its own pool: rayon's global one runs the frame's parallel loops, which would wait behind
 /// queued encodes, and the background pool's workers run below normal priority, where a busy
 /// machine (a build) could hold the encodes back for minutes.
@@ -396,7 +396,7 @@ pub(crate) fn encode_pool() -> &'static rayon::ThreadPool {
     POOL.get_or_init(|| {
         let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
         rayon::ThreadPoolBuilder::new()
-            .num_threads((cores / 4).max(1))
+            .num_threads((cores / 2).max(1))
             .thread_name(|i| format!("misty texture encode {i}"))
             .build()
             .expect("texture encode thread pool")
