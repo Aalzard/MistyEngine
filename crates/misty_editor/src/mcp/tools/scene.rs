@@ -7,8 +7,9 @@ use misty_engine::scene::{GameObject, LightType, PrimitiveMesh, ScriptValue, Scr
 use serde_json::{Value, json};
 
 use super::{
-    Cx, Kind, Outcome, Tool, assets_path, object_id, object_path, object_ref_schema, object_schema,
-    opt_bool, opt_str, opt_u64, opt_vec3, resolve, resolve_many, str_arg, summary, vec3_schema,
+    Cx, Kind, Outcome, Tool, assets_path, finite_numbers, object_id, object_path,
+    object_ref_schema, object_schema, opt_bool, opt_str, opt_u64, opt_vec3, resolve, resolve_many,
+    str_arg, summary, vec3_schema,
 };
 use crate::actions::{Action, Create};
 use crate::state::EditorState;
@@ -690,6 +691,7 @@ fn set_field(cx: &mut Cx<'_>, args: &Value) -> Result<Outcome, String> {
     let component = str_arg(args, "component")?;
     let field = str_arg(args, "field")?;
     let value = args.get("value").cloned().unwrap_or(Value::Null);
+    finite_numbers(&value)?;
     let path = split_field(field);
     let Some(top) = path.first().copied() else {
         return Err("\"field\" is empty".into());

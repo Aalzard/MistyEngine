@@ -1212,3 +1212,41 @@ fn asset_delete_refuses_the_assets_folder_spelled_with_a_dot() {
     }
     cleanup(s);
 }
+
+/// 1e39 is a JSON number but infinity as an f32: positions, rotations and field values past
+/// the f32 range made objects' matrices NaN.
+#[test]
+fn numbers_past_the_f32_range_are_refused() {
+    let mut s = project("huge_numbers");
+    ok(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "name": "Box"}),
+    );
+    let objects = s.scene.len();
+    err(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "rotation": [1e39, 0, 0]}),
+    );
+    err(
+        &mut s,
+        "scene.create_object",
+        json!({"kind": "cube", "position": [0, -1e39, 0]}),
+    );
+    for (field, value) in [
+        ("euler", json!([1e39, 0, 0])),
+        ("position", json!([1e39, 0, 0])),
+        ("scale.0", json!(-1e39)),
+    ] {
+        err(
+            &mut s,
+            "scene.set_field",
+            json!({"object": "Box", "component": "Transform", "field": field, "value": value}),
+        );
+    }
+    let e = tools::resolve(&s, "Box").unwrap();
+    assert!(s.scene.world_matrix(e).is_finite());
+    assert_eq!(s.scene.len(), objects, "nothing was created");
+    cleanup(s);
+}

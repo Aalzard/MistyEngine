@@ -302,8 +302,25 @@ pub fn opt_vec3(args: &Value, name: &str) -> Result<Option<glam::Vec3>, String> 
         .map(|a| a.iter().map(|x| x.as_f64().map(|f| f as f32)).collect())
         .unwrap_or(None);
     match nums.as_deref() {
-        Some([x, y, z]) => Ok(Some(glam::Vec3::new(*x, *y, *z))),
+        // 1e39 is a JSON number but infinite as an f32: an infinite position or rotation
+        // made the object's matrix NaN (and the scene unsavable).
+        Some([x, y, z]) if [x, y, z].iter().all(|v| v.is_finite()) => {
+            Ok(Some(glam::Vec3::new(*x, *y, *z)))
+        }
         _ => Err(format!("\"{name}\" must be three numbers [x, y, z]")),
+    }
+}
+
+/// Refuse numbers past the f32 range anywhere in `v`: the engine's fields are f32, and 1e39
+/// would be read as infinity.
+pub fn finite_numbers(v: &Value) -> Result<(), String> {
+    match v {
+        Value::Number(n) if n.as_f64().is_some_and(|f| !(f as f32).is_finite()) => Err(format!(
+            "{n} is out of range (numbers must be within ±3.4e38)"
+        )),
+        Value::Array(a) => a.iter().try_for_each(finite_numbers),
+        Value::Object(o) => o.values().try_for_each(finite_numbers),
+        _ => Ok(()),
     }
 }
 
