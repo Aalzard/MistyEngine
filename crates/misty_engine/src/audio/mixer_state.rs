@@ -142,7 +142,7 @@ impl MixerState {
         let target = self.blend(&valid);
         self.weights = valid;
         // NaN (a script's 0/0) made every value NaN and the transition never ended.
-        if !(time > 0.0) {
+        if time.is_nan() || time <= 0.0 {
             self.transition = None;
             self.current = target;
         } else {
