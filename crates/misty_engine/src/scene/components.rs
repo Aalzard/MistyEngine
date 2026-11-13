@@ -68,13 +68,53 @@ impl Default for GameObject {
 
 /// Local position/rotation/scale relative to the parent.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
+#[serde(from = "TransformFile")]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
     pub scale: Vec3,
     /// Euler angles last typed by the user, kept so the Inspector shows e.g. 360 instead of 0.
     pub euler_hint: Vec3,
+}
+
+/// A Transform as read from a file, before [`Transform::from`] tidies it.
+#[derive(Deserialize)]
+#[serde(default)]
+struct TransformFile {
+    position: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+    euler_hint: Vec3,
+}
+
+impl Default for TransformFile {
+    fn default() -> Self {
+        let t = Transform::default();
+        Self {
+            position: t.position,
+            rotation: t.rotation,
+            scale: t.scale,
+            euler_hint: t.euler_hint,
+        }
+    }
+}
+
+impl From<TransformFile> for Transform {
+    /// Rotations are made unit length and numbers too big for f32 (read as infinity) fall
+    /// back to the defaults: a damaged scene's rotation of length 1e30 scaled the object's
+    /// whole matrix to infinity, and physics panicked on it.
+    fn from(f: TransformFile) -> Self {
+        let d = Transform::default();
+        let finite = |v: Vec3, or: Vec3| if v.is_finite() { v } else { or };
+        Self {
+            position: finite(f.position, d.position),
+            rotation: glam::Vec4::from(f.rotation)
+                .try_normalize()
+                .map_or(d.rotation, Quat::from_vec4),
+            scale: finite(f.scale, d.scale),
+            euler_hint: finite(f.euler_hint, d.euler_hint),
+        }
+    }
 }
 
 impl Default for Transform {

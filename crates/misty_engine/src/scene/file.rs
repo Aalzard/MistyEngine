@@ -761,4 +761,20 @@ mod tests {
         assert_eq!(loaded.len(), sample().len());
         std::fs::remove_dir_all(dir).ok();
     }
+
+    /// A damaged Transform loads tidy: a rotation of length 1e30 scaled the whole matrix to
+    /// infinity (physics then panicked), and numbers too big for f32 were read as infinity.
+    #[test]
+    fn damaged_transforms_load_tidy() {
+        let text = r#"{"version":1,"objects":[{"parent":null,"components":{
+            "GameObject":{"name":"A"},
+            "Transform":{"position":[1e39,2,3],"rotation":[-1e30,0,0,1],"scale":[1,1e39,1]}}}]}"#;
+        let (s, _) = Scene::from_json("T", text).unwrap();
+        let e = s.find_by_name("A").unwrap();
+        let t = s.transform(e);
+        assert!((t.rotation.length() - 1.0).abs() < 1e-5, "{:?}", t.rotation);
+        assert_eq!(t.position, Vec3::ZERO);
+        assert_eq!(t.scale, Vec3::ONE);
+        assert!(s.world_matrix(e).is_finite());
+    }
 }
