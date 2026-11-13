@@ -273,11 +273,23 @@ pub enum EventKind {
     TriggerExit,
     CollisionEnter,
     CollisionExit,
+    /// 2D physics (Rigidbody 2D and Collider 2D): the On Trigger/Collision … 2D nodes.
+    TriggerEnter2D,
+    TriggerStay2D,
+    TriggerExit2D,
+    CollisionEnter2D,
+    CollisionStay2D,
+    CollisionExit2D,
     Destroy,
     Enable,
     Disable,
-    Input { action: String, mode: InputMode },
-    Custom { name: Rc<str> },
+    Input {
+        action: String,
+        mode: InputMode,
+    },
+    Custom {
+        name: Rc<str>,
+    },
     Timer,
 }
 
@@ -1428,6 +1440,12 @@ pub fn compile(g: &ScriptGraph, files: &dyn Resolver) -> Result<Program, Vec<Gra
             "OnTriggerExit" => EventKind::TriggerExit,
             "OnCollisionEnter" => EventKind::CollisionEnter,
             "OnCollisionExit" => EventKind::CollisionExit,
+            "OnTriggerEnter2D" => EventKind::TriggerEnter2D,
+            "OnTriggerStay2D" => EventKind::TriggerStay2D,
+            "OnTriggerExit2D" => EventKind::TriggerExit2D,
+            "OnCollisionEnter2D" => EventKind::CollisionEnter2D,
+            "OnCollisionStay2D" => EventKind::CollisionStay2D,
+            "OnCollisionExit2D" => EventKind::CollisionExit2D,
             "OnDestroy" => EventKind::Destroy,
             "OnEnable" => EventKind::Enable,
             "OnDisable" => EventKind::Disable,

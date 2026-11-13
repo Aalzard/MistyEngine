@@ -4,6 +4,7 @@
 mod anim;
 mod animator;
 mod audio_editors;
+mod call_methods;
 pub(crate) mod card;
 mod cloth_editors;
 mod cloud_editors;

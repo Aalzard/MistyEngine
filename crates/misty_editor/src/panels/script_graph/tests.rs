@@ -472,3 +472,61 @@ fn a_breakpoint_pauses_play_and_step_and_continue_drive_the_flow() {
     assert_eq!(s.play, crate::state::PlayState::Playing);
     crate::play::stop(&mut s);
 }
+
+/// Lua functions taking `...` in Rust get their documented arguments as pins; optional ones
+/// (`[, x]`) are optional pins.
+#[test]
+fn variadic_api_functions_get_documented_pins() {
+    let entries = search::api_entries();
+    for (owner, member, args) in [
+        (
+            "Physics2D",
+            "Raycast",
+            "origin, direction, [distance], [layerMask]",
+        ),
+        ("#Rigidbody2D", "AddForce", "force, [mode]"),
+        ("#Rigidbody2D", "MovePosition", "position"),
+        ("Input", "GetButton", "name"),
+        ("#Tilemap", "GetTile", "cell"),
+    ] {
+        let e = entries
+            .iter()
+            .find(|e| {
+                let p = |k: &str| {
+                    e.params
+                        .iter()
+                        .find(|(x, _)| x == k)
+                        .map(|(_, v)| v.as_str())
+                };
+                p("owner") == Some(owner)
+                    && p("member") == Some(member)
+                    && p("mode") == Some("call")
+            })
+            .unwrap_or_else(|| panic!("{owner}.{member}"));
+        let got = e
+            .params
+            .iter()
+            .find(|(k, _)| k == "args")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(got, Some(args), "{owner}.{member}");
+        let node = misty_engine::visual_script::Node {
+            id: 1,
+            kind: "Api".into(),
+            position: [0.0; 2],
+            params: e.params.iter().cloned().collect(),
+            values: Default::default(),
+        };
+        let ports = misty_engine::visual_script::api::ports(&node);
+        let pins: Vec<(String, bool)> = ports
+            .inputs
+            .iter()
+            .filter(|p| !p.ty.is_exec() && p.name != "Target")
+            .map(|p| (p.name.clone(), p.optional))
+            .collect();
+        let want: Vec<(String, bool)> = args
+            .split(", ")
+            .map(|a| (a.trim_matches(['[', ']']).to_owned(), a.starts_with('[')))
+            .collect();
+        assert_eq!(pins, want, "{owner}.{member}");
+    }
+}

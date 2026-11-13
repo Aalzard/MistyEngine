@@ -1439,3 +1439,11 @@
 "How strongly the light's visible shape glows, independent of how much it lights the scene." = "مدى قوة توهج الشكل المرئي للضوء، بشكل مستقل عن مقدار إضاءته للمشهد."
 "0 = tight, 1 = wide and soft: the same glow over a wider, smoother falloff, so its core is less harsh. Adds no brightness." = "0 = ضيق، 1 = واسع وناعم: التوهج نفسه موزع على تلاشٍ أوسع وأنعم، فيصبح مركزه أقل حدة. لا يضيف سطوعًا."
 "Tones down the blown-out white core of the light's visible shape. Its glow stays." = "يخفف المركز الأبيض المحترق للشكل المرئي للضوء. يبقى توهجه كما هو."
+
+[ui_calls]
+"Method" = "الدالة"
+"Custom Event" = "حدث مخصص"
+"Lua" = "Lua"
+"No Lua functions or Script Graph Custom Events on the target" = "لا توجد دوال Lua أو أحداث مخصصة لمخطط البرنامج النصي على الهدف"
+"Lua functions and Script Graph Custom Events of the target" = "دوال Lua والأحداث المخصصة لمخططات البرنامج النصي على الهدف"
+"{name} ({kind}, optional: left out while unset)" = "{name} ({kind}، اختياري: يُحذف ما دام غير مضبوط)"

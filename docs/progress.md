@@ -4764,3 +4764,19 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+
+## Round 66 — Script Graph fixes from the node-only platformer (branch r66-node-fixes)
+
+Fixes for the node and visual-scripting bugs the round 65 game agent reports while building a
+2D platformer from Script Graph nodes only. Running list: `docs/pending/r66-node-fixes.md`.
+
+### Batch 1
+- **2D physics events in graphs**: new On Trigger Enter / Stay / Exit 2D and On Collision Enter /
+  Stay / Exit 2D nodes, named like the Lua callbacks. Collisions also give Point, Normal (away
+  from Other) and Relative Velocity. The 3D trigger and collision nodes stay 3D only.
+- **UI calls reach graphs**: Button On Click, On Value Changed, On End Edit and Timeline signals
+  run the target's Custom Event named by the Method (the value is its first argument) as well as
+  Lua functions. The Inspector's ▾ next to Method lists both.
+- **Variadic API functions get pins**: Physics2D.Raycast, Rigidbody2D AddForce / MovePosition,
+  Input.GetButton and the Tilemap cell functions have documented signatures. Optional arguments
+  are optional pins, left out of the call while unset.

@@ -883,11 +883,21 @@ pub fn ports(node: &Node) -> Ports {
             Mode::Get => p.outputs.push(Pin::data("Value", PinType::Any)),
             Mode::Set => p.inputs.push(Pin::data("Value", PinType::Any)),
             Mode::Call => {
+                // `[name]` = optional (left out of the call while it is nil).
                 for arg in names(node.param("args")) {
                     if arg == "..." {
                         continue;
                     }
-                    p.inputs.push(Pin::data(&arg, PinType::Any));
+                    let name = arg.trim_matches(['[', ']']).trim();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let pin = Pin::data(name, PinType::Any);
+                    p.inputs.push(if arg.starts_with('[') {
+                        pin.optional()
+                    } else {
+                        pin
+                    });
                 }
                 p.outputs.push(Pin::data("Result", PinType::Any));
             }

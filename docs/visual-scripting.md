@@ -64,7 +64,7 @@ with the object, graph and node names, and shown as badges while playing.
 
 | Category | Nodes |
 |---|---|
-| Events | On Start, On Update (Delta Time), On Fixed Update, On Late Update, On Enable, On Disable, On Trigger Enter / Exit and On Collision Enter / Exit (Other), On Input Action (performed / held / released, with Value and Vector), Custom Event (named, with arguments), On Timer (Interval, Repeat), On Destroy, Send Custom Event, Broadcast Custom Event |
+| Events | On Start, On Update (Delta Time), On Fixed Update, On Late Update, On Enable, On Disable, On Trigger Enter / Exit and On Collision Enter / Exit (Other; 3D physics), On Trigger Enter / Stay / Exit 2D (Other) and On Collision Enter / Stay / Exit 2D (Other, Point, Normal, Relative Velocity; Rigidbody 2D and Collider 2D), On Input Action (performed / held / released, with Value and Vector), Custom Event (named, with arguments), On Timer (Interval, Repeat), On Destroy, Send Custom Event, Broadcast Custom Event |
 | Flow | Branch, Sequence (n outputs), For Loop (Break input), For Each, While (iteration guard), Do Once (Reset), Gate (Enter / Open / Close / Toggle, start closed), Flip Flop (Is A), Delay |
 | Variables | Get / Set for each Blackboard variable, Get / Set Object Variable (any object, by name), Self |
 | Math | Float: add … modulo, abs, min, max, clamp, lerp, inverse lerp, sin, cos, tan, atan2, sqrt, pow, floor, ceil, round, sign, move towards, ping pong, degrees to radians, pi. Int: add … modulo, min, max, abs, clamp, to float, truncate / round to int. Vector3: make, break, add, subtract, scale, negate, dot, cross, length, normalize, distance, lerp, move towards. Quaternion: euler, to euler, combine, rotate vector, look rotation, slerp, angle axis, inverse |
@@ -93,6 +93,21 @@ value, numbers, strings, booleans, Vector3, GameObjects and lists convert both w
 travel as Euler angles, and other Lua values (a hit table, a component) pass through as opaque
 values you can read with **Get Lua Field**.
 
+Functions whose binding takes a variable argument list get the arguments documented in the
+reference, for example Physics2D: Raycast (origin, direction, [distance], [layerMask]),
+Rigidbody2D: AddForce (force, [mode]), Rigidbody2D: MovePosition (position) and Input: GetButton
+(name). Optional arguments are dimmed pins: while one is unconnected and unset it is left out of
+the call, so the function uses its default.
+
+### 2D physics events
+
+2D contacts have their own event nodes, named like the Lua callbacks (`OnTriggerEnter2D` …):
+**On Trigger Enter / Stay / Exit 2D** and **On Collision Enter / Stay / Exit 2D**. On Trigger
+Enter / Exit and On Collision Enter / Exit only hear 3D physics. Stay runs every physics step
+while the contact lasts. The collision nodes also give the contact **Point**, the **Normal**
+(pointing away from Other, towards this object: up when landing on the ground) and the
+**Relative Velocity**, as Vector3 values with z = 0.
+
 ## Variables
 
 - **Graph** variables are private to one running graph.
@@ -108,6 +123,11 @@ values you can read with **Get Lua Field**.
   the Lua function of that name on the Target's scripts with the arguments. **Broadcast** does it
   for every object. Events are delivered right after the flow that sent them, in the same frame.
 - Lua sends events to graphs with `gameObject:SendCustomEvent(name, ...)`.
+- UI calls set in the Inspector (Button **On Click**, **On Value Changed** of Toggle, Slider,
+  Scrollbar, Input Field and Dropdown, Input Field **On End Edit**) and Timeline signals run the
+  Custom Event named by the Method in the target's graphs, as well as the Lua function of that
+  name. The new value is the Custom Event's first argument. The **▾** next to the Method lists the
+  target's Lua functions and Custom Events.
 
 ## Subgraphs and macros
 
