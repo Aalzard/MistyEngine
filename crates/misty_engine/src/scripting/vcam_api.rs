@@ -83,6 +83,10 @@ impl UserData for LVirtualCamera {
         });
         f.add_field_method_get("dutch", |lua, c| with_vcam(lua, c.0, |v| v.lens.dutch));
         f.add_field_method_set("dutch", |lua, c, d: f32| {
+            // NaN rolled the brain's camera into a NaN view.
+            if !d.is_finite() {
+                return Err(mlua::Error::runtime("dutch must be a finite number"));
+            }
             with_vcam(lua, c.0, |v| v.lens.dutch = d)
         });
         // Shown by a brain (live, or blending to or from it).
@@ -95,6 +99,10 @@ impl UserData for LVirtualCamera {
             with_vcam(lua, c.0, |v| v.orbital.x_axis.value)
         });
         f.add_field_method_set("xAxis", |lua, c, x: f32| {
+            // NaN stayed in the axis for good (written back every frame).
+            if !x.is_finite() {
+                return Err(mlua::Error::runtime("xAxis must be a finite number"));
+            }
             with_vcam(lua, c.0, |v| {
                 v.orbital.x_axis.value = x;
                 v.orbital.x_axis.clamp();
@@ -104,6 +112,9 @@ impl UserData for LVirtualCamera {
             with_vcam(lua, c.0, |v| v.orbital.y_axis.value)
         });
         f.add_field_method_set("yAxis", |lua, c, y: f32| {
+            if !y.is_finite() {
+                return Err(mlua::Error::runtime("yAxis must be a finite number"));
+            }
             with_vcam(lua, c.0, |v| {
                 v.orbital.y_axis.value = y;
                 v.orbital.y_axis.clamp();
@@ -151,6 +162,12 @@ fn generate(lua: &Lua, e: Entity, arg: Value) -> Result<bool> {
         Value::Number(n) => (None, n as f32),
         v => (Some(LVec3::from_lua(v, lua)?.0), 1.0),
     };
+    // A NaN or infinite impulse shook the camera into NaN (and a blend started meanwhile kept it).
+    if !force.is_finite() || velocity.is_some_and(|v| !v.is_finite()) {
+        return Err(mlua::Error::runtime(
+            "GenerateImpulse needs a finite force or velocity",
+        ));
+    }
     with_world(lua, |w| {
         let World { cameras, scene, .. } = w;
         cameras.impulses.generate(scene, e, velocity, force)

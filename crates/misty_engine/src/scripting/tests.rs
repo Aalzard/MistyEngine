@@ -383,6 +383,50 @@ return P
     assert!(logs.iter().any(|(_, t)| t == "fov 50.0"), "{logs:?}");
 }
 
+/// A virtual camera's `dutch`, `xAxis`, `yAxis` and impulse forces of NaN are refused: they
+/// went on into the brain's camera (a NaN view), the axes for good.
+#[test]
+fn nan_virtual_camera_numbers_and_impulses_are_refused() {
+    let probe = r#"
+local P = {}
+function P:Start()
+    local v = self.gameObject:GetComponent("VirtualCamera")
+    for _, f in ipairs({ "dutch", "xAxis", "yAxis" }) do
+        Debug.Log(f .. " " .. tostring(pcall(function() v[f] = 0 / 0 end)))
+    end
+    Debug.Log("force " .. tostring(pcall(function() Impulse.GenerateImpulse(self.gameObject, 0 / 0) end)))
+    Debug.Log("velocity " .. tostring(pcall(function()
+        Impulse.GenerateImpulse(self.gameObject, Vector3.new(0 / 0, 0, 0))
+    end)))
+    Debug.Log("dutch " .. v.dutch)
+end
+return P
+"#;
+    let root = project(&[("P.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Free Look", None);
+    scene.add(e, crate::vcam::VirtualCamera::free_look());
+    scene.add(e, crate::vcam::ImpulseSource::default());
+    attach(&mut scene, e, "P.lua", &[]);
+    let logs = run(&mut scene, root, 1, Input::default());
+    for want in [
+        "dutch false",
+        "xAxis false",
+        "yAxis false",
+        "force false",
+        "velocity false",
+        "dutch 0.0",
+    ] {
+        assert!(logs.iter().any(|(_, t)| t == want), "{want}: {logs:?}");
+    }
+    let v = scene
+        .world
+        .get::<&crate::vcam::VirtualCamera>(e)
+        .unwrap()
+        .clone();
+    assert!(v.orbital.x_axis.value.is_finite() && v.orbital.y_axis.value.is_finite());
+}
+
 /// `AudioSource.volume = 0/0` (an AmbienceZones Blend Distance of 0 did this) is refused:
 /// NaN passed the clamp and reached the mixer.
 #[test]
