@@ -27,6 +27,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "assets_api.rs",
     "attributes.rs",
     "audio_api.rs",
+    "behaviour_tree_api.rs",
     "camera_api.rs",
     "cursor_api.rs",
     "input_actions_api.rs",

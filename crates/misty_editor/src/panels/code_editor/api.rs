@@ -25,6 +25,7 @@ const TABLE: &str = r#"
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
 |Water||Water surface heights (buoyancy, wading)
+|BehaviourTree||Blackboards and control of Behaviour Tree Agents (the Behaviour Trees package)
 |Weather||Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeatherChanged)
 |Accessibility||UI text scale and colour-blind filter (for options menus)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
@@ -207,6 +208,15 @@ Weather|SetWetness|SetWetness(value)|Set surface wetness everywhere (0–1)
 Weather|SetSnowCover|SetSnowCover(value)|Set snow cover everywhere (0–1)
 Weather|IsScripted|IsScripted()|Whether a script is holding the weather (SetState until ClearState)
 Weather|states|states|The state names, for a dropdown
+BehaviourTree|GetValue|GetValue(gameObject, key)|A blackboard key's value (bool, number, string, Vector3 or GameObject); nil when unset or missing
+BehaviourTree|SetValue|SetValue(gameObject, key, value)|Write a blackboard key (shared keys reach every agent of the share group)
+BehaviourTree|HasKey|HasKey(gameObject, key)|Whether the agent's tree declares the key
+BehaviourTree|Start|Start(gameObject)|Start a stopped or finished tree from the Root
+BehaviourTree|Stop|Stop(gameObject)|Stop the tree (running actions stop) until Start or Restart
+BehaviourTree|Restart|Restart(gameObject)|Start the tree over from the Root
+BehaviourTree|IsRunning|IsRunning(gameObject)|Whether the tree is ticking
+BehaviourTree|GetStatus|GetStatus(gameObject)|"Running", "Success", "Failure", "Stopped" or "Idle"
+BehaviourTree|Finish|Finish(gameObject [, success])|End the agent's Run Script Graph node that waits (success defaults to true)
 Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as designed)
 Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
 Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)
