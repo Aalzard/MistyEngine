@@ -304,8 +304,16 @@ pub fn frame(ctx: &egui::Context, s: &mut EditorState) {
     // Wake up for the next check while the editor sits idle.
     if s.autosave.run.is_some() {
         ctx.request_repaint();
-    } else if s.autosave.prefs.enabled {
-        ctx.request_repaint_after(Duration::from_secs(5));
+    } else if s.autosave.prefs.enabled
+        && let Some(t) = &s.autosave.timer
+    {
+        // When the next one is due (then every few seconds while it waits for the user).
+        let left = s
+            .autosave
+            .prefs
+            .interval()
+            .saturating_sub(now.saturating_duration_since(t.last));
+        ctx.request_repaint_after(left.max(Duration::from_secs(2)));
     }
 }
 
