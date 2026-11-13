@@ -1,0 +1,3925 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 3,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "name": "Spawn"
+      }
+    },
+    {
+      "id": 4,
+      "type": "GetVariable",
+      "position": [
+        410.0,
+        95.0
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 5,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "name": "HeartsChanged",
+        "args": "hearts"
+      }
+    },
+    {
+      "id": 6,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        337.5
+      ],
+      "params": {
+        "name": "JumpPressed"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        80.0,
+        432.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 8,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        337.5
+      ],
+      "params": {
+        "name": "Jump Pressed At"
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        -420.0,
+        960.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        1055.0
+      ],
+      "params": {
+        "name": "Next Dash At"
+      }
+    },
+    {
+      "id": 11,
+      "type": "GreaterOrEqual",
+      "position": [
+        -170.0,
+        865.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        1245.0
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 13,
+      "type": "Not",
+      "position": [
+        -170.0,
+        1150.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "And",
+      "position": [
+        80.0,
+        770.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        675.0
+      ],
+      "params": {
+        "name": "DashPressed"
+      }
+    },
+    {
+      "id": 16,
+      "type": "Branch",
+      "position": [
+        330.0,
+        675.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        675.0
+      ],
+      "params": {
+        "name": "Dashing"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        490.0,
+        865.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 19,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        960.0
+      ],
+      "params": {
+        "name": "Dash Time"
+      }
+    },
+    {
+      "id": 20,
+      "type": "AddFloat",
+      "position": [
+        740.0,
+        770.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        675.0
+      ],
+      "params": {
+        "name": "Dash Until"
+      }
+    },
+    {
+      "id": 22,
+      "type": "Api",
+      "position": [
+        820.0,
+        865.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 23,
+      "type": "GetVariable",
+      "position": [
+        820.0,
+        960.0
+      ],
+      "params": {
+        "name": "Dash Cooldown"
+      }
+    },
+    {
+      "id": 24,
+      "type": "AddFloat",
+      "position": [
+        1070.0,
+        770.0
+      ]
+    },
+    {
+      "id": 25,
+      "type": "SetVariable",
+      "position": [
+        1320.0,
+        675.0
+      ],
+      "params": {
+        "name": "Next Dash At"
+      }
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        1400.0,
+        770.0
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 4.0
+        },
+        "g": {
+          "Float": 4.0
+        },
+        "b": {
+          "Float": 4.0
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "Api",
+      "position": [
+        1650.0,
+        675.0
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 28,
+      "type": "Api",
+      "position": [
+        1980.0,
+        675.0
+      ],
+      "params": {
+        "owner": "#ParticleSystem",
+        "member": "Play",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 29,
+      "type": "Api",
+      "position": [
+        2060.0,
+        770.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 30,
+      "type": "Api",
+      "position": [
+        2310.0,
+        675.0
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Beep.wav"
+        },
+        "volume": {
+          "Float": 0.5
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "OnFixedUpdate",
+      "position": [
+        0.0,
+        1500.0
+      ]
+    },
+    {
+      "id": 32,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        1595.0
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 33,
+      "type": "Branch",
+      "position": [
+        330.0,
+        1500.0
+      ]
+    },
+    {
+      "id": 34,
+      "type": "Sequence",
+      "position": [
+        660.0,
+        1500.0
+      ],
+      "params": {
+        "count": "5"
+      }
+    },
+    {
+      "id": 35,
+      "type": "Api",
+      "position": [
+        490.0,
+        1690.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 36,
+      "type": "Vector3",
+      "position": [
+        740.0,
+        1785.0
+      ],
+      "values": {
+        "Value": {
+          "Vector3": [
+            0.0,
+            -1.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "AddVector3",
+      "position": [
+        740.0,
+        1595.0
+      ],
+      "values": {
+        "B": {
+          "Vector3": [
+            -0.3,
+            -0.45,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "Api",
+      "position": [
+        990.0,
+        1500.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call",
+        "args": "origin, direction, distance, mask"
+      },
+      "values": {
+        "distance": {
+          "Float": 0.12
+        },
+        "mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "AddVector3",
+      "position": [
+        1070.0,
+        1595.0
+      ],
+      "values": {
+        "B": {
+          "Vector3": [
+            0.0,
+            -0.45,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "Api",
+      "position": [
+        1320.0,
+        1500.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call",
+        "args": "origin, direction, distance, mask"
+      },
+      "values": {
+        "distance": {
+          "Float": 0.12
+        },
+        "mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "AddVector3",
+      "position": [
+        1400.0,
+        1595.0
+      ],
+      "values": {
+        "B": {
+          "Vector3": [
+            0.3,
+            -0.45,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "Api",
+      "position": [
+        1650.0,
+        1500.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call",
+        "args": "origin, direction, distance, mask"
+      },
+      "values": {
+        "distance": {
+          "Float": 0.12
+        },
+        "mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "NotEqual",
+      "position": [
+        1230.0,
+        1785.0
+      ]
+    },
+    {
+      "id": 44,
+      "type": "NotEqual",
+      "position": [
+        1230.0,
+        1880.0
+      ]
+    },
+    {
+      "id": 45,
+      "type": "Or",
+      "position": [
+        1480.0,
+        1690.0
+      ]
+    },
+    {
+      "id": 46,
+      "type": "NotEqual",
+      "position": [
+        1480.0,
+        1975.0
+      ]
+    },
+    {
+      "id": 47,
+      "type": "Or",
+      "position": [
+        1730.0,
+        1595.0
+      ]
+    },
+    {
+      "id": 48,
+      "type": "Branch",
+      "position": [
+        1980.0,
+        1500.0
+      ]
+    },
+    {
+      "id": 49,
+      "type": "Api",
+      "position": [
+        2060.0,
+        1595.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 50,
+      "type": "SetVariable",
+      "position": [
+        2310.0,
+        1500.0
+      ],
+      "params": {
+        "name": "Grounded At"
+      }
+    },
+    {
+      "id": 51,
+      "type": "GetVariable",
+      "position": [
+        240.0,
+        2422.5
+      ],
+      "params": {
+        "name": "Move"
+      }
+    },
+    {
+      "id": 52,
+      "type": "AbsFloat",
+      "position": [
+        490.0,
+        2327.5
+      ]
+    },
+    {
+      "id": 53,
+      "type": "Greater",
+      "position": [
+        740.0,
+        2232.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.01
+        }
+      }
+    },
+    {
+      "id": 54,
+      "type": "Branch",
+      "position": [
+        990.0,
+        2137.5
+      ]
+    },
+    {
+      "id": 55,
+      "type": "GetVariable",
+      "position": [
+        820.0,
+        2327.5
+      ],
+      "params": {
+        "name": "Move"
+      }
+    },
+    {
+      "id": 56,
+      "type": "Sign",
+      "position": [
+        1070.0,
+        2232.5
+      ]
+    },
+    {
+      "id": 57,
+      "type": "SetVariable",
+      "position": [
+        1320.0,
+        2137.5
+      ],
+      "params": {
+        "name": "Facing"
+      }
+    },
+    {
+      "id": 58,
+      "type": "GetVariable",
+      "position": [
+        1150.0,
+        2327.5
+      ],
+      "params": {
+        "name": "Move"
+      }
+    },
+    {
+      "id": 59,
+      "type": "Less",
+      "position": [
+        1400.0,
+        2232.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 60,
+      "type": "Api",
+      "position": [
+        1650.0,
+        2137.5
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "flipX",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 61,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        2770.0
+      ],
+      "params": {
+        "name": "Dashing"
+      }
+    },
+    {
+      "id": 62,
+      "type": "Api",
+      "position": [
+        240.0,
+        2960.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 63,
+      "type": "GetVariable",
+      "position": [
+        240.0,
+        3055.0
+      ],
+      "params": {
+        "name": "Dash Until"
+      }
+    },
+    {
+      "id": 64,
+      "type": "GreaterOrEqual",
+      "position": [
+        490.0,
+        2865.0
+      ]
+    },
+    {
+      "id": 65,
+      "type": "And",
+      "position": [
+        740.0,
+        2675.0
+      ]
+    },
+    {
+      "id": 66,
+      "type": "Branch",
+      "position": [
+        990.0,
+        2580.0
+      ]
+    },
+    {
+      "id": 67,
+      "type": "SetVariable",
+      "position": [
+        1320.0,
+        2580.0
+      ],
+      "params": {
+        "name": "Dashing"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 68,
+      "type": "Api",
+      "position": [
+        1150.0,
+        2770.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 69,
+      "type": "AddFloat",
+      "position": [
+        1400.0,
+        2675.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.35
+        }
+      }
+    },
+    {
+      "id": 70,
+      "type": "SetVariable",
+      "position": [
+        1650.0,
+        2580.0
+      ],
+      "params": {
+        "name": "Safe Until"
+      }
+    },
+    {
+      "id": 71,
+      "type": "Api",
+      "position": [
+        1730.0,
+        2675.0
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 1.0
+        },
+        "g": {
+          "Float": 1.0
+        },
+        "b": {
+          "Float": 1.0
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 72,
+      "type": "Api",
+      "position": [
+        1980.0,
+        2580.0
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 73,
+      "type": "Api",
+      "position": [
+        2310.0,
+        2580.0
+      ],
+      "params": {
+        "owner": "#ParticleSystem",
+        "member": "Stop",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 74,
+      "type": "Api",
+      "position": [
+        400.0,
+        4965.0
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 75,
+      "type": "BreakVector3",
+      "position": [
+        650.0,
+        4870.0
+      ]
+    },
+    {
+      "id": 76,
+      "type": "GetVariable",
+      "position": [
+        740.0,
+        3312.5
+      ],
+      "params": {
+        "name": "Dashing"
+      }
+    },
+    {
+      "id": 77,
+      "type": "Branch",
+      "position": [
+        990.0,
+        3217.5
+      ]
+    },
+    {
+      "id": 78,
+      "type": "GetVariable",
+      "position": [
+        570.0,
+        3502.5
+      ],
+      "params": {
+        "name": "Facing"
+      }
+    },
+    {
+      "id": 79,
+      "type": "GetVariable",
+      "position": [
+        570.0,
+        3597.5
+      ],
+      "params": {
+        "name": "Dash Speed"
+      }
+    },
+    {
+      "id": 80,
+      "type": "MultiplyFloat",
+      "position": [
+        820.0,
+        3407.5
+      ]
+    },
+    {
+      "id": 81,
+      "type": "MakeVector3",
+      "position": [
+        1070.0,
+        3312.5
+      ],
+      "values": {
+        "Y": {
+          "Float": 0.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 82,
+      "type": "Api",
+      "position": [
+        1320.0,
+        3217.5
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 83,
+      "type": "GetVariable",
+      "position": [
+        320.0,
+        4137.5
+      ],
+      "params": {
+        "name": "Jump Pressed At"
+      }
+    },
+    {
+      "id": 84,
+      "type": "GreaterOrEqual",
+      "position": [
+        570.0,
+        4042.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 85,
+      "type": "Api",
+      "position": [
+        70.0,
+        4422.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 86,
+      "type": "GetVariable",
+      "position": [
+        70.0,
+        4517.5
+      ],
+      "params": {
+        "name": "Jump Pressed At"
+      }
+    },
+    {
+      "id": 87,
+      "type": "SubtractFloat",
+      "position": [
+        320.0,
+        4327.5
+      ]
+    },
+    {
+      "id": 88,
+      "type": "GetVariable",
+      "position": [
+        320.0,
+        4612.5
+      ],
+      "params": {
+        "name": "Jump Buffer"
+      }
+    },
+    {
+      "id": 89,
+      "type": "LessOrEqual",
+      "position": [
+        570.0,
+        4232.5
+      ]
+    },
+    {
+      "id": 90,
+      "type": "And",
+      "position": [
+        820.0,
+        3947.5
+      ]
+    },
+    {
+      "id": 91,
+      "type": "GetVariable",
+      "position": [
+        320.0,
+        4897.5
+      ],
+      "params": {
+        "name": "Grounded At"
+      }
+    },
+    {
+      "id": 92,
+      "type": "GreaterOrEqual",
+      "position": [
+        570.0,
+        4802.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 93,
+      "type": "Api",
+      "position": [
+        70.0,
+        5182.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 94,
+      "type": "GetVariable",
+      "position": [
+        70.0,
+        5277.5
+      ],
+      "params": {
+        "name": "Grounded At"
+      }
+    },
+    {
+      "id": 95,
+      "type": "SubtractFloat",
+      "position": [
+        320.0,
+        5087.5
+      ]
+    },
+    {
+      "id": 96,
+      "type": "GetVariable",
+      "position": [
+        320.0,
+        5372.5
+      ],
+      "params": {
+        "name": "Coyote Time"
+      }
+    },
+    {
+      "id": 97,
+      "type": "LessOrEqual",
+      "position": [
+        570.0,
+        4992.5
+      ]
+    },
+    {
+      "id": 98,
+      "type": "And",
+      "position": [
+        820.0,
+        4707.5
+      ]
+    },
+    {
+      "id": 99,
+      "type": "And",
+      "position": [
+        1070.0,
+        3852.5
+      ]
+    },
+    {
+      "id": 100,
+      "type": "Branch",
+      "position": [
+        1320.0,
+        3757.5
+      ]
+    },
+    {
+      "id": 101,
+      "type": "GetVariable",
+      "position": [
+        2550.0,
+        4042.5
+      ],
+      "params": {
+        "name": "Move"
+      }
+    },
+    {
+      "id": 102,
+      "type": "GetVariable",
+      "position": [
+        2550.0,
+        4137.5
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 103,
+      "type": "MultiplyFloat",
+      "position": [
+        2800.0,
+        3947.5
+      ]
+    },
+    {
+      "id": 104,
+      "type": "GetVariable",
+      "position": [
+        2800.0,
+        4232.5
+      ],
+      "params": {
+        "name": "VY"
+      }
+    },
+    {
+      "id": 105,
+      "type": "MakeVector3",
+      "position": [
+        3050.0,
+        3852.5
+      ],
+      "values": {
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 106,
+      "type": "Api",
+      "position": [
+        3300.0,
+        3757.5
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 107,
+      "type": "GetVariable",
+      "position": [
+        1400.0,
+        3852.5
+      ],
+      "params": {
+        "name": "Jump Speed"
+      }
+    },
+    {
+      "id": 108,
+      "type": "SetVariable",
+      "position": [
+        1650.0,
+        3757.5
+      ],
+      "params": {
+        "name": "VY"
+      }
+    },
+    {
+      "id": 109,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        3757.5
+      ],
+      "params": {
+        "name": "Jump Pressed At"
+      },
+      "values": {
+        "Value": {
+          "Float": -1.0
+        }
+      }
+    },
+    {
+      "id": 110,
+      "type": "SetVariable",
+      "position": [
+        2310.0,
+        3757.5
+      ],
+      "params": {
+        "name": "Grounded At"
+      },
+      "values": {
+        "Value": {
+          "Float": -1.0
+        }
+      }
+    },
+    {
+      "id": 111,
+      "type": "SetVariable",
+      "position": [
+        2640.0,
+        3757.5
+      ],
+      "params": {
+        "name": "Rising"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 112,
+      "type": "Api",
+      "position": [
+        2720.0,
+        3852.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 113,
+      "type": "Api",
+      "position": [
+        2970.0,
+        3757.5
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Blip.wav"
+        },
+        "volume": {
+          "Float": 0.4
+        }
+      }
+    },
+    {
+      "id": 114,
+      "type": "GetVariable",
+      "position": [
+        900.0,
+        4680.0
+      ],
+      "params": {
+        "name": "Rising"
+      }
+    },
+    {
+      "id": 115,
+      "type": "Greater",
+      "position": [
+        900.0,
+        4775.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 116,
+      "type": "And",
+      "position": [
+        1150.0,
+        4585.0
+      ]
+    },
+    {
+      "id": 117,
+      "type": "GetVariable",
+      "position": [
+        900.0,
+        5155.0
+      ],
+      "params": {
+        "name": "Jump Held"
+      }
+    },
+    {
+      "id": 118,
+      "type": "Not",
+      "position": [
+        1150.0,
+        5060.0
+      ]
+    },
+    {
+      "id": 119,
+      "type": "And",
+      "position": [
+        1400.0,
+        4490.0
+      ]
+    },
+    {
+      "id": 120,
+      "type": "Branch",
+      "position": [
+        1650.0,
+        4395.0
+      ]
+    },
+    {
+      "id": 121,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        4585.0
+      ],
+      "params": {
+        "name": "Jump Cut"
+      }
+    },
+    {
+      "id": 122,
+      "type": "MultiplyFloat",
+      "position": [
+        1730.0,
+        4490.0
+      ]
+    },
+    {
+      "id": 123,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        4395.0
+      ],
+      "params": {
+        "name": "VY"
+      }
+    },
+    {
+      "id": 124,
+      "type": "SetVariable",
+      "position": [
+        2310.0,
+        4395.0
+      ],
+      "params": {
+        "name": "Rising"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 125,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        4935.0
+      ],
+      "params": {
+        "name": "VY"
+      }
+    },
+    {
+      "id": 126,
+      "type": "GetVariable",
+      "position": [
+        3130.0,
+        3947.5
+      ],
+      "params": {
+        "name": "VY"
+      }
+    },
+    {
+      "id": 127,
+      "type": "LessOrEqual",
+      "position": [
+        3380.0,
+        3852.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 128,
+      "type": "Branch",
+      "position": [
+        3630.0,
+        3757.5
+      ]
+    },
+    {
+      "id": 129,
+      "type": "SetVariable",
+      "position": [
+        3960.0,
+        3757.5
+      ],
+      "params": {
+        "name": "Rising"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 130,
+      "type": "Api",
+      "position": [
+        240.0,
+        5850.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 131,
+      "type": "BreakVector3",
+      "position": [
+        490.0,
+        5755.0
+      ]
+    },
+    {
+      "id": 132,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        5945.0
+      ],
+      "params": {
+        "name": "Fall Limit"
+      }
+    },
+    {
+      "id": 133,
+      "type": "Less",
+      "position": [
+        740.0,
+        5660.0
+      ]
+    },
+    {
+      "id": 134,
+      "type": "Branch",
+      "position": [
+        990.0,
+        5565.0
+      ]
+    },
+    {
+      "id": 135,
+      "type": "SendCustomEvent",
+      "position": [
+        1320.0,
+        5565.0
+      ],
+      "params": {
+        "name": "Fell"
+      }
+    },
+    {
+      "id": 136,
+      "type": "Api",
+      "position": [
+        -420.0,
+        6480.000000000001
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 137,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        6575.000000000001
+      ],
+      "params": {
+        "name": "Safe Until"
+      }
+    },
+    {
+      "id": 138,
+      "type": "GreaterOrEqual",
+      "position": [
+        -170.0,
+        6385.000000000001
+      ]
+    },
+    {
+      "id": 139,
+      "type": "GetVariable",
+      "position": [
+        -670.0,
+        6860.000000000001
+      ],
+      "params": {
+        "name": "Dashing"
+      }
+    },
+    {
+      "id": 140,
+      "type": "Not",
+      "position": [
+        -420.0,
+        6765.000000000001
+      ]
+    },
+    {
+      "id": 141,
+      "type": "GetVariable",
+      "position": [
+        -670.0,
+        7050.000000000001
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 142,
+      "type": "Not",
+      "position": [
+        -420.0,
+        6955.000000000001
+      ]
+    },
+    {
+      "id": 143,
+      "type": "And",
+      "position": [
+        -170.0,
+        6670.000000000001
+      ]
+    },
+    {
+      "id": 144,
+      "type": "And",
+      "position": [
+        80.0,
+        6290.000000000001
+      ]
+    },
+    {
+      "id": 145,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "Hurt"
+      }
+    },
+    {
+      "id": 146,
+      "type": "Branch",
+      "position": [
+        330.0,
+        6195.000000000001
+      ]
+    },
+    {
+      "id": 147,
+      "type": "Api",
+      "position": [
+        160.0,
+        6385.000000000001
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 148,
+      "type": "AddFloat",
+      "position": [
+        410.0,
+        6290.000000000001
+      ],
+      "values": {
+        "B": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 149,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "Safe Until"
+      }
+    },
+    {
+      "id": 150,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        6385.000000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 151,
+      "type": "SubtractInt",
+      "position": [
+        740.0,
+        6290.000000000001
+      ],
+      "values": {
+        "B": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 152,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 153,
+      "type": "GetVariable",
+      "position": [
+        1070.0,
+        6290.000000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 154,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        1320.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "HeartsChanged",
+        "args": "hearts"
+      }
+    },
+    {
+      "id": 155,
+      "type": "Api",
+      "position": [
+        1400.0,
+        6290.000000000001
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 156,
+      "type": "Api",
+      "position": [
+        1650.0,
+        6195.000000000001
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Buzz.wav"
+        },
+        "volume": {
+          "Float": 0.35
+        }
+      }
+    },
+    {
+      "id": 157,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        6385.000000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 158,
+      "type": "LessOrEqual",
+      "position": [
+        1730.0,
+        6290.000000000001
+      ],
+      "values": {
+        "B": {
+          "Int": 0
+        }
+      }
+    },
+    {
+      "id": 159,
+      "type": "Branch",
+      "position": [
+        1980.0,
+        6195.000000000001
+      ]
+    },
+    {
+      "id": 160,
+      "type": "SetVariable",
+      "position": [
+        2310.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "Dead"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 161,
+      "type": "Api",
+      "position": [
+        2390.0,
+        6290.000000000001
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 0.35
+        },
+        "g": {
+          "Float": 0.35
+        },
+        "b": {
+          "Float": 0.4
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 162,
+      "type": "Api",
+      "position": [
+        2640.0,
+        6195.000000000001
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 163,
+      "type": "MakeVector3",
+      "position": [
+        2720.0,
+        6290.000000000001
+      ],
+      "values": {
+        "X": {
+          "Float": 0.0
+        },
+        "Y": {
+          "Float": 6.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 164,
+      "type": "Api",
+      "position": [
+        2970.0,
+        6195.000000000001
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 165,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        3300.0,
+        6195.000000000001
+      ],
+      "params": {
+        "name": "PlayerDied"
+      }
+    },
+    {
+      "id": 166,
+      "type": "Api",
+      "position": [
+        2060.0,
+        6537.500000000001
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 1.0
+        },
+        "g": {
+          "Float": 0.35
+        },
+        "b": {
+          "Float": 0.35
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 167,
+      "type": "Api",
+      "position": [
+        2310.0,
+        6442.500000000001
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 168,
+      "type": "GetVariable",
+      "position": [
+        1890.0,
+        6727.500000000001
+      ],
+      "params": {
+        "name": "Facing"
+      }
+    },
+    {
+      "id": 169,
+      "type": "MultiplyFloat",
+      "position": [
+        2140.0,
+        6632.500000000001
+      ],
+      "values": {
+        "B": {
+          "Float": -4.0
+        }
+      }
+    },
+    {
+      "id": 170,
+      "type": "MakeVector3",
+      "position": [
+        2390.0,
+        6537.500000000001
+      ],
+      "values": {
+        "Y": {
+          "Float": 9.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 171,
+      "type": "Api",
+      "position": [
+        2640.0,
+        6442.500000000001
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 172,
+      "type": "Delay",
+      "position": [
+        2970.0,
+        6442.500000000001
+      ],
+      "values": {
+        "Duration": {
+          "Float": 0.3
+        }
+      }
+    },
+    {
+      "id": 173,
+      "type": "GetVariable",
+      "position": [
+        3050.0,
+        6537.500000000001
+      ],
+      "params": {
+        "name": "Dashing"
+      }
+    },
+    {
+      "id": 174,
+      "type": "Branch",
+      "position": [
+        3300.0,
+        6442.500000000001
+      ]
+    },
+    {
+      "id": 175,
+      "type": "Api",
+      "position": [
+        3380.0,
+        6537.500000000001
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 1.0
+        },
+        "g": {
+          "Float": 1.0
+        },
+        "b": {
+          "Float": 1.0
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 176,
+      "type": "Api",
+      "position": [
+        3630.0,
+        6442.500000000001
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 177,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "Fell"
+      }
+    },
+    {
+      "id": 178,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        7407.500000000001
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 179,
+      "type": "Branch",
+      "position": [
+        330.0,
+        7312.500000000001
+      ]
+    },
+    {
+      "id": 180,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "Dashing"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 181,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        7502.500000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 182,
+      "type": "SubtractInt",
+      "position": [
+        740.0,
+        7407.500000000001
+      ],
+      "values": {
+        "B": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 183,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 184,
+      "type": "GetVariable",
+      "position": [
+        1070.0,
+        7407.500000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 185,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        1320.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "HeartsChanged",
+        "args": "hearts"
+      }
+    },
+    {
+      "id": 186,
+      "type": "Api",
+      "position": [
+        1400.0,
+        7407.500000000001
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 187,
+      "type": "Api",
+      "position": [
+        1650.0,
+        7312.500000000001
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Buzz.wav"
+        },
+        "volume": {
+          "Float": 0.35
+        }
+      }
+    },
+    {
+      "id": 188,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        7502.500000000001
+      ],
+      "params": {
+        "name": "Hearts"
+      }
+    },
+    {
+      "id": 189,
+      "type": "LessOrEqual",
+      "position": [
+        1730.0,
+        7407.500000000001
+      ],
+      "values": {
+        "B": {
+          "Int": 0
+        }
+      }
+    },
+    {
+      "id": 190,
+      "type": "Branch",
+      "position": [
+        1980.0,
+        7312.500000000001
+      ]
+    },
+    {
+      "id": 191,
+      "type": "SetVariable",
+      "position": [
+        2310.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "Dead"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 192,
+      "type": "Api",
+      "position": [
+        2390.0,
+        7407.500000000001
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 0.35
+        },
+        "g": {
+          "Float": 0.35
+        },
+        "b": {
+          "Float": 0.4
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 193,
+      "type": "Api",
+      "position": [
+        2640.0,
+        7312.500000000001
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 194,
+      "type": "MakeVector3",
+      "position": [
+        2720.0,
+        7407.500000000001
+      ],
+      "values": {
+        "X": {
+          "Float": 0.0
+        },
+        "Y": {
+          "Float": 6.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 195,
+      "type": "Api",
+      "position": [
+        2970.0,
+        7312.500000000001
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 196,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        3300.0,
+        7312.500000000001
+      ],
+      "params": {
+        "name": "PlayerDied"
+      }
+    },
+    {
+      "id": 197,
+      "type": "GetVariable",
+      "position": [
+        2060.0,
+        7655.000000000001
+      ],
+      "params": {
+        "name": "Spawn"
+      }
+    },
+    {
+      "id": 198,
+      "type": "Api",
+      "position": [
+        2310.0,
+        7560.000000000001
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 199,
+      "type": "MakeVector3",
+      "position": [
+        2390.0,
+        7655.000000000001
+      ],
+      "values": {
+        "X": {
+          "Float": 0.0
+        },
+        "Y": {
+          "Float": 0.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 200,
+      "type": "Api",
+      "position": [
+        2640.0,
+        7560.000000000001
+      ],
+      "params": {
+        "owner": "#Rigidbody2D",
+        "member": "velocity",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 201,
+      "type": "Api",
+      "position": [
+        2720.0,
+        7655.000000000001
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 1.0
+        },
+        "g": {
+          "Float": 1.0
+        },
+        "b": {
+          "Float": 1.0
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 202,
+      "type": "Api",
+      "position": [
+        2970.0,
+        7560.000000000001
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 203,
+      "type": "Api",
+      "position": [
+        3300.0,
+        7560.000000000001
+      ],
+      "params": {
+        "owner": "#ParticleSystem",
+        "member": "Stop",
+        "mode": "call"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Value",
+      "to": 5,
+      "input": "hearts"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Value",
+      "to": 8,
+      "input": "Value"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "Value"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 14,
+      "input": "B"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 16,
+      "input": "Condition"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "True",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Value",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Value",
+      "to": 20,
+      "input": "B"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 21,
+      "input": "Value"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 21,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Value",
+      "to": 24,
+      "input": "A"
+    },
+    {
+      "from": 23,
+      "output": "Value",
+      "to": 24,
+      "input": "B"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "Value"
+    },
+    {
+      "from": 21,
+      "output": "Out",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "Result",
+      "to": 27,
+      "input": "Value"
+    },
+    {
+      "from": 25,
+      "output": "Out",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 27,
+      "output": "Out",
+      "to": 28,
+      "input": "In"
+    },
+    {
+      "from": 29,
+      "output": "Value",
+      "to": 30,
+      "input": "position"
+    },
+    {
+      "from": 28,
+      "output": "Out",
+      "to": 30,
+      "input": "In"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 33,
+      "input": "Condition"
+    },
+    {
+      "from": 31,
+      "output": "Out",
+      "to": 33,
+      "input": "In"
+    },
+    {
+      "from": 33,
+      "output": "False",
+      "to": 34,
+      "input": "In"
+    },
+    {
+      "from": 35,
+      "output": "Value",
+      "to": 37,
+      "input": "A"
+    },
+    {
+      "from": 37,
+      "output": "Result",
+      "to": 38,
+      "input": "origin"
+    },
+    {
+      "from": 36,
+      "output": "Value",
+      "to": 38,
+      "input": "direction"
+    },
+    {
+      "from": 35,
+      "output": "Value",
+      "to": 39,
+      "input": "A"
+    },
+    {
+      "from": 39,
+      "output": "Result",
+      "to": 40,
+      "input": "origin"
+    },
+    {
+      "from": 36,
+      "output": "Value",
+      "to": 40,
+      "input": "direction"
+    },
+    {
+      "from": 35,
+      "output": "Value",
+      "to": 41,
+      "input": "A"
+    },
+    {
+      "from": 41,
+      "output": "Result",
+      "to": 42,
+      "input": "origin"
+    },
+    {
+      "from": 36,
+      "output": "Value",
+      "to": 42,
+      "input": "direction"
+    },
+    {
+      "from": 34,
+      "output": "Then 0",
+      "to": 38,
+      "input": "In"
+    },
+    {
+      "from": 38,
+      "output": "Out",
+      "to": 40,
+      "input": "In"
+    },
+    {
+      "from": 40,
+      "output": "Out",
+      "to": 42,
+      "input": "In"
+    },
+    {
+      "from": 38,
+      "output": "Result",
+      "to": 43,
+      "input": "A"
+    },
+    {
+      "from": 40,
+      "output": "Result",
+      "to": 44,
+      "input": "A"
+    },
+    {
+      "from": 43,
+      "output": "Result",
+      "to": 45,
+      "input": "A"
+    },
+    {
+      "from": 44,
+      "output": "Result",
+      "to": 45,
+      "input": "B"
+    },
+    {
+      "from": 42,
+      "output": "Result",
+      "to": 46,
+      "input": "A"
+    },
+    {
+      "from": 45,
+      "output": "Result",
+      "to": 47,
+      "input": "A"
+    },
+    {
+      "from": 46,
+      "output": "Result",
+      "to": 47,
+      "input": "B"
+    },
+    {
+      "from": 47,
+      "output": "Result",
+      "to": 48,
+      "input": "Condition"
+    },
+    {
+      "from": 42,
+      "output": "Out",
+      "to": 48,
+      "input": "In"
+    },
+    {
+      "from": 49,
+      "output": "Value",
+      "to": 50,
+      "input": "Value"
+    },
+    {
+      "from": 48,
+      "output": "True",
+      "to": 50,
+      "input": "In"
+    },
+    {
+      "from": 51,
+      "output": "Value",
+      "to": 52,
+      "input": "Value"
+    },
+    {
+      "from": 52,
+      "output": "Result",
+      "to": 53,
+      "input": "A"
+    },
+    {
+      "from": 53,
+      "output": "Result",
+      "to": 54,
+      "input": "Condition"
+    },
+    {
+      "from": 34,
+      "output": "Then 1",
+      "to": 54,
+      "input": "In"
+    },
+    {
+      "from": 55,
+      "output": "Value",
+      "to": 56,
+      "input": "Value"
+    },
+    {
+      "from": 56,
+      "output": "Result",
+      "to": 57,
+      "input": "Value"
+    },
+    {
+      "from": 54,
+      "output": "True",
+      "to": 57,
+      "input": "In"
+    },
+    {
+      "from": 58,
+      "output": "Value",
+      "to": 59,
+      "input": "A"
+    },
+    {
+      "from": 59,
+      "output": "Result",
+      "to": 60,
+      "input": "Value"
+    },
+    {
+      "from": 57,
+      "output": "Out",
+      "to": 60,
+      "input": "In"
+    },
+    {
+      "from": 62,
+      "output": "Value",
+      "to": 64,
+      "input": "A"
+    },
+    {
+      "from": 63,
+      "output": "Value",
+      "to": 64,
+      "input": "B"
+    },
+    {
+      "from": 61,
+      "output": "Value",
+      "to": 65,
+      "input": "A"
+    },
+    {
+      "from": 64,
+      "output": "Result",
+      "to": 65,
+      "input": "B"
+    },
+    {
+      "from": 65,
+      "output": "Result",
+      "to": 66,
+      "input": "Condition"
+    },
+    {
+      "from": 34,
+      "output": "Then 2",
+      "to": 66,
+      "input": "In"
+    },
+    {
+      "from": 66,
+      "output": "True",
+      "to": 67,
+      "input": "In"
+    },
+    {
+      "from": 68,
+      "output": "Value",
+      "to": 69,
+      "input": "A"
+    },
+    {
+      "from": 69,
+      "output": "Result",
+      "to": 70,
+      "input": "Value"
+    },
+    {
+      "from": 67,
+      "output": "Out",
+      "to": 70,
+      "input": "In"
+    },
+    {
+      "from": 71,
+      "output": "Result",
+      "to": 72,
+      "input": "Value"
+    },
+    {
+      "from": 70,
+      "output": "Out",
+      "to": 72,
+      "input": "In"
+    },
+    {
+      "from": 72,
+      "output": "Out",
+      "to": 73,
+      "input": "In"
+    },
+    {
+      "from": 74,
+      "output": "Value",
+      "to": 75,
+      "input": "Vector"
+    },
+    {
+      "from": 76,
+      "output": "Value",
+      "to": 77,
+      "input": "Condition"
+    },
+    {
+      "from": 34,
+      "output": "Then 3",
+      "to": 77,
+      "input": "In"
+    },
+    {
+      "from": 78,
+      "output": "Value",
+      "to": 80,
+      "input": "A"
+    },
+    {
+      "from": 79,
+      "output": "Value",
+      "to": 80,
+      "input": "B"
+    },
+    {
+      "from": 80,
+      "output": "Result",
+      "to": 81,
+      "input": "X"
+    },
+    {
+      "from": 81,
+      "output": "Vector",
+      "to": 82,
+      "input": "Value"
+    },
+    {
+      "from": 77,
+      "output": "True",
+      "to": 82,
+      "input": "In"
+    },
+    {
+      "from": 83,
+      "output": "Value",
+      "to": 84,
+      "input": "A"
+    },
+    {
+      "from": 85,
+      "output": "Value",
+      "to": 87,
+      "input": "A"
+    },
+    {
+      "from": 86,
+      "output": "Value",
+      "to": 87,
+      "input": "B"
+    },
+    {
+      "from": 87,
+      "output": "Result",
+      "to": 89,
+      "input": "A"
+    },
+    {
+      "from": 88,
+      "output": "Value",
+      "to": 89,
+      "input": "B"
+    },
+    {
+      "from": 84,
+      "output": "Result",
+      "to": 90,
+      "input": "A"
+    },
+    {
+      "from": 89,
+      "output": "Result",
+      "to": 90,
+      "input": "B"
+    },
+    {
+      "from": 91,
+      "output": "Value",
+      "to": 92,
+      "input": "A"
+    },
+    {
+      "from": 93,
+      "output": "Value",
+      "to": 95,
+      "input": "A"
+    },
+    {
+      "from": 94,
+      "output": "Value",
+      "to": 95,
+      "input": "B"
+    },
+    {
+      "from": 95,
+      "output": "Result",
+      "to": 97,
+      "input": "A"
+    },
+    {
+      "from": 96,
+      "output": "Value",
+      "to": 97,
+      "input": "B"
+    },
+    {
+      "from": 92,
+      "output": "Result",
+      "to": 98,
+      "input": "A"
+    },
+    {
+      "from": 97,
+      "output": "Result",
+      "to": 98,
+      "input": "B"
+    },
+    {
+      "from": 90,
+      "output": "Result",
+      "to": 99,
+      "input": "A"
+    },
+    {
+      "from": 98,
+      "output": "Result",
+      "to": 99,
+      "input": "B"
+    },
+    {
+      "from": 99,
+      "output": "Result",
+      "to": 100,
+      "input": "Condition"
+    },
+    {
+      "from": 77,
+      "output": "False",
+      "to": 100,
+      "input": "In"
+    },
+    {
+      "from": 101,
+      "output": "Value",
+      "to": 103,
+      "input": "A"
+    },
+    {
+      "from": 102,
+      "output": "Value",
+      "to": 103,
+      "input": "B"
+    },
+    {
+      "from": 103,
+      "output": "Result",
+      "to": 105,
+      "input": "X"
+    },
+    {
+      "from": 104,
+      "output": "Value",
+      "to": 105,
+      "input": "Y"
+    },
+    {
+      "from": 105,
+      "output": "Vector",
+      "to": 106,
+      "input": "Value"
+    },
+    {
+      "from": 107,
+      "output": "Value",
+      "to": 108,
+      "input": "Value"
+    },
+    {
+      "from": 100,
+      "output": "True",
+      "to": 108,
+      "input": "In"
+    },
+    {
+      "from": 108,
+      "output": "Out",
+      "to": 109,
+      "input": "In"
+    },
+    {
+      "from": 109,
+      "output": "Out",
+      "to": 110,
+      "input": "In"
+    },
+    {
+      "from": 110,
+      "output": "Out",
+      "to": 111,
+      "input": "In"
+    },
+    {
+      "from": 112,
+      "output": "Value",
+      "to": 113,
+      "input": "position"
+    },
+    {
+      "from": 111,
+      "output": "Out",
+      "to": 113,
+      "input": "In"
+    },
+    {
+      "from": 113,
+      "output": "Out",
+      "to": 106,
+      "input": "In"
+    },
+    {
+      "from": 75,
+      "output": "Y",
+      "to": 115,
+      "input": "A"
+    },
+    {
+      "from": 114,
+      "output": "Value",
+      "to": 116,
+      "input": "A"
+    },
+    {
+      "from": 115,
+      "output": "Result",
+      "to": 116,
+      "input": "B"
+    },
+    {
+      "from": 117,
+      "output": "Value",
+      "to": 118,
+      "input": "Value"
+    },
+    {
+      "from": 116,
+      "output": "Result",
+      "to": 119,
+      "input": "A"
+    },
+    {
+      "from": 118,
+      "output": "Result",
+      "to": 119,
+      "input": "B"
+    },
+    {
+      "from": 119,
+      "output": "Result",
+      "to": 120,
+      "input": "Condition"
+    },
+    {
+      "from": 100,
+      "output": "False",
+      "to": 120,
+      "input": "In"
+    },
+    {
+      "from": 75,
+      "output": "Y",
+      "to": 122,
+      "input": "A"
+    },
+    {
+      "from": 121,
+      "output": "Value",
+      "to": 122,
+      "input": "B"
+    },
+    {
+      "from": 122,
+      "output": "Result",
+      "to": 123,
+      "input": "Value"
+    },
+    {
+      "from": 120,
+      "output": "True",
+      "to": 123,
+      "input": "In"
+    },
+    {
+      "from": 123,
+      "output": "Out",
+      "to": 124,
+      "input": "In"
+    },
+    {
+      "from": 124,
+      "output": "Out",
+      "to": 106,
+      "input": "In"
+    },
+    {
+      "from": 75,
+      "output": "Y",
+      "to": 125,
+      "input": "Value"
+    },
+    {
+      "from": 120,
+      "output": "False",
+      "to": 125,
+      "input": "In"
+    },
+    {
+      "from": 125,
+      "output": "Out",
+      "to": 106,
+      "input": "In"
+    },
+    {
+      "from": 126,
+      "output": "Value",
+      "to": 127,
+      "input": "A"
+    },
+    {
+      "from": 127,
+      "output": "Result",
+      "to": 128,
+      "input": "Condition"
+    },
+    {
+      "from": 106,
+      "output": "Out",
+      "to": 128,
+      "input": "In"
+    },
+    {
+      "from": 128,
+      "output": "True",
+      "to": 129,
+      "input": "In"
+    },
+    {
+      "from": 130,
+      "output": "Value",
+      "to": 131,
+      "input": "Vector"
+    },
+    {
+      "from": 131,
+      "output": "Y",
+      "to": 133,
+      "input": "A"
+    },
+    {
+      "from": 132,
+      "output": "Value",
+      "to": 133,
+      "input": "B"
+    },
+    {
+      "from": 133,
+      "output": "Result",
+      "to": 134,
+      "input": "Condition"
+    },
+    {
+      "from": 34,
+      "output": "Then 4",
+      "to": 134,
+      "input": "In"
+    },
+    {
+      "from": 134,
+      "output": "True",
+      "to": 135,
+      "input": "In"
+    },
+    {
+      "from": 136,
+      "output": "Value",
+      "to": 138,
+      "input": "A"
+    },
+    {
+      "from": 137,
+      "output": "Value",
+      "to": 138,
+      "input": "B"
+    },
+    {
+      "from": 139,
+      "output": "Value",
+      "to": 140,
+      "input": "Value"
+    },
+    {
+      "from": 141,
+      "output": "Value",
+      "to": 142,
+      "input": "Value"
+    },
+    {
+      "from": 140,
+      "output": "Result",
+      "to": 143,
+      "input": "A"
+    },
+    {
+      "from": 142,
+      "output": "Result",
+      "to": 143,
+      "input": "B"
+    },
+    {
+      "from": 138,
+      "output": "Result",
+      "to": 144,
+      "input": "A"
+    },
+    {
+      "from": 143,
+      "output": "Result",
+      "to": 144,
+      "input": "B"
+    },
+    {
+      "from": 144,
+      "output": "Result",
+      "to": 146,
+      "input": "Condition"
+    },
+    {
+      "from": 145,
+      "output": "Out",
+      "to": 146,
+      "input": "In"
+    },
+    {
+      "from": 147,
+      "output": "Value",
+      "to": 148,
+      "input": "A"
+    },
+    {
+      "from": 148,
+      "output": "Result",
+      "to": 149,
+      "input": "Value"
+    },
+    {
+      "from": 146,
+      "output": "True",
+      "to": 149,
+      "input": "In"
+    },
+    {
+      "from": 150,
+      "output": "Value",
+      "to": 151,
+      "input": "A"
+    },
+    {
+      "from": 151,
+      "output": "Result",
+      "to": 152,
+      "input": "Value"
+    },
+    {
+      "from": 149,
+      "output": "Out",
+      "to": 152,
+      "input": "In"
+    },
+    {
+      "from": 153,
+      "output": "Value",
+      "to": 154,
+      "input": "hearts"
+    },
+    {
+      "from": 152,
+      "output": "Out",
+      "to": 154,
+      "input": "In"
+    },
+    {
+      "from": 155,
+      "output": "Value",
+      "to": 156,
+      "input": "position"
+    },
+    {
+      "from": 154,
+      "output": "Out",
+      "to": 156,
+      "input": "In"
+    },
+    {
+      "from": 157,
+      "output": "Value",
+      "to": 158,
+      "input": "A"
+    },
+    {
+      "from": 158,
+      "output": "Result",
+      "to": 159,
+      "input": "Condition"
+    },
+    {
+      "from": 156,
+      "output": "Out",
+      "to": 159,
+      "input": "In"
+    },
+    {
+      "from": 159,
+      "output": "True",
+      "to": 160,
+      "input": "In"
+    },
+    {
+      "from": 161,
+      "output": "Result",
+      "to": 162,
+      "input": "Value"
+    },
+    {
+      "from": 160,
+      "output": "Out",
+      "to": 162,
+      "input": "In"
+    },
+    {
+      "from": 163,
+      "output": "Vector",
+      "to": 164,
+      "input": "Value"
+    },
+    {
+      "from": 162,
+      "output": "Out",
+      "to": 164,
+      "input": "In"
+    },
+    {
+      "from": 164,
+      "output": "Out",
+      "to": 165,
+      "input": "In"
+    },
+    {
+      "from": 166,
+      "output": "Result",
+      "to": 167,
+      "input": "Value"
+    },
+    {
+      "from": 159,
+      "output": "False",
+      "to": 167,
+      "input": "In"
+    },
+    {
+      "from": 168,
+      "output": "Value",
+      "to": 169,
+      "input": "A"
+    },
+    {
+      "from": 169,
+      "output": "Result",
+      "to": 170,
+      "input": "X"
+    },
+    {
+      "from": 170,
+      "output": "Vector",
+      "to": 171,
+      "input": "Value"
+    },
+    {
+      "from": 167,
+      "output": "Out",
+      "to": 171,
+      "input": "In"
+    },
+    {
+      "from": 171,
+      "output": "Out",
+      "to": 172,
+      "input": "In"
+    },
+    {
+      "from": 173,
+      "output": "Value",
+      "to": 174,
+      "input": "Condition"
+    },
+    {
+      "from": 172,
+      "output": "Completed",
+      "to": 174,
+      "input": "In"
+    },
+    {
+      "from": 175,
+      "output": "Result",
+      "to": 176,
+      "input": "Value"
+    },
+    {
+      "from": 174,
+      "output": "False",
+      "to": 176,
+      "input": "In"
+    },
+    {
+      "from": 178,
+      "output": "Value",
+      "to": 179,
+      "input": "Condition"
+    },
+    {
+      "from": 177,
+      "output": "Out",
+      "to": 179,
+      "input": "In"
+    },
+    {
+      "from": 179,
+      "output": "False",
+      "to": 180,
+      "input": "In"
+    },
+    {
+      "from": 181,
+      "output": "Value",
+      "to": 182,
+      "input": "A"
+    },
+    {
+      "from": 182,
+      "output": "Result",
+      "to": 183,
+      "input": "Value"
+    },
+    {
+      "from": 180,
+      "output": "Out",
+      "to": 183,
+      "input": "In"
+    },
+    {
+      "from": 184,
+      "output": "Value",
+      "to": 185,
+      "input": "hearts"
+    },
+    {
+      "from": 183,
+      "output": "Out",
+      "to": 185,
+      "input": "In"
+    },
+    {
+      "from": 186,
+      "output": "Value",
+      "to": 187,
+      "input": "position"
+    },
+    {
+      "from": 185,
+      "output": "Out",
+      "to": 187,
+      "input": "In"
+    },
+    {
+      "from": 188,
+      "output": "Value",
+      "to": 189,
+      "input": "A"
+    },
+    {
+      "from": 189,
+      "output": "Result",
+      "to": 190,
+      "input": "Condition"
+    },
+    {
+      "from": 187,
+      "output": "Out",
+      "to": 190,
+      "input": "In"
+    },
+    {
+      "from": 190,
+      "output": "True",
+      "to": 191,
+      "input": "In"
+    },
+    {
+      "from": 192,
+      "output": "Result",
+      "to": 193,
+      "input": "Value"
+    },
+    {
+      "from": 191,
+      "output": "Out",
+      "to": 193,
+      "input": "In"
+    },
+    {
+      "from": 194,
+      "output": "Vector",
+      "to": 195,
+      "input": "Value"
+    },
+    {
+      "from": 193,
+      "output": "Out",
+      "to": 195,
+      "input": "In"
+    },
+    {
+      "from": 195,
+      "output": "Out",
+      "to": 196,
+      "input": "In"
+    },
+    {
+      "from": 197,
+      "output": "Value",
+      "to": 198,
+      "input": "Value"
+    },
+    {
+      "from": 190,
+      "output": "False",
+      "to": 198,
+      "input": "In"
+    },
+    {
+      "from": 199,
+      "output": "Vector",
+      "to": 200,
+      "input": "Value"
+    },
+    {
+      "from": 198,
+      "output": "Out",
+      "to": 200,
+      "input": "In"
+    },
+    {
+      "from": 201,
+      "output": "Result",
+      "to": 202,
+      "input": "Value"
+    },
+    {
+      "from": 200,
+      "output": "Out",
+      "to": 202,
+      "input": "In"
+    },
+    {
+      "from": 202,
+      "output": "Out",
+      "to": 203,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 6.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Speed",
+      "type": "float",
+      "value": {
+        "Float": 14.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Cut",
+      "type": "float",
+      "value": {
+        "Float": 0.5
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Coyote Time",
+      "type": "float",
+      "value": {
+        "Float": 0.1
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Buffer",
+      "type": "float",
+      "value": {
+        "Float": 0.12
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dash Speed",
+      "type": "float",
+      "value": {
+        "Float": 17.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dash Time",
+      "type": "float",
+      "value": {
+        "Float": 0.18
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dash Cooldown",
+      "type": "float",
+      "value": {
+        "Float": 0.45
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Fall Limit",
+      "type": "float",
+      "value": {
+        "Float": -7.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Hearts",
+      "type": "int",
+      "value": {
+        "Int": 3
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Move",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Held",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dashing",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Facing",
+      "type": "float",
+      "value": {
+        "Float": 1.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dead",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Pressed At",
+      "type": "float",
+      "value": {
+        "Float": -1.0
+      }
+    },
+    {
+      "name": "Grounded At",
+      "type": "float",
+      "value": {
+        "Float": -1.0
+      }
+    },
+    {
+      "name": "Rising",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "VY",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Dash Until",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Next Dash At",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Safe Until",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Spawn",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ]
+}

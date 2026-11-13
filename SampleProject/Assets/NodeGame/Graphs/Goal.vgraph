@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 4,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 5,
+      "type": "GetVariable",
+      "position": [
+        -1090.0,
+        1002.5
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        -840.0,
+        907.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 7,
+      "type": "BreakVector3",
+      "position": [
+        -590.0,
+        812.5
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        -840.0,
+        1192.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 9,
+      "type": "BreakVector3",
+      "position": [
+        -590.0,
+        1097.5
+      ]
+    },
+    {
+      "id": 10,
+      "type": "SubtractFloat",
+      "position": [
+        -340.0,
+        717.5
+      ]
+    },
+    {
+      "id": 11,
+      "type": "AbsFloat",
+      "position": [
+        -90.0,
+        622.5
+      ]
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        -90.0,
+        1287.5
+      ],
+      "params": {
+        "name": "Reach"
+      }
+    },
+    {
+      "id": 13,
+      "type": "Less",
+      "position": [
+        160.0,
+        527.5
+      ]
+    },
+    {
+      "id": 14,
+      "type": "SubtractFloat",
+      "position": [
+        -340.0,
+        1572.5
+      ]
+    },
+    {
+      "id": 15,
+      "type": "AbsFloat",
+      "position": [
+        -90.0,
+        1477.5
+      ]
+    },
+    {
+      "id": 16,
+      "type": "GetVariable",
+      "position": [
+        -90.0,
+        1667.5
+      ],
+      "params": {
+        "name": "Height"
+      }
+    },
+    {
+      "id": 17,
+      "type": "Less",
+      "position": [
+        160.0,
+        1382.5
+      ]
+    },
+    {
+      "id": 18,
+      "type": "GetVariable",
+      "position": [
+        -170.0,
+        527.5
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 19,
+      "type": "IsValid",
+      "position": [
+        80.0,
+        432.5
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Branch",
+      "position": [
+        330.0,
+        337.5
+      ]
+    },
+    {
+      "id": 21,
+      "type": "And",
+      "position": [
+        410.0,
+        432.5
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Branch",
+      "position": [
+        660.0,
+        337.5
+      ]
+    },
+    {
+      "id": 23,
+      "type": "DoOnce",
+      "position": [
+        990.0,
+        337.5
+      ]
+    },
+    {
+      "id": 24,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        1320.0,
+        337.5
+      ],
+      "params": {
+        "name": "StageCleared"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 6,
+      "input": "Target"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 7,
+      "input": "Vector"
+    },
+    {
+      "from": 8,
+      "output": "Value",
+      "to": 9,
+      "input": "Vector"
+    },
+    {
+      "from": 7,
+      "output": "X",
+      "to": 10,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "X",
+      "to": 10,
+      "input": "B"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "Value"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 7,
+      "output": "Y",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "Y",
+      "to": 14,
+      "input": "B"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 15,
+      "input": "Value"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 17,
+      "input": "A"
+    },
+    {
+      "from": 16,
+      "output": "Value",
+      "to": 17,
+      "input": "B"
+    },
+    {
+      "from": 18,
+      "output": "Value",
+      "to": 19,
+      "input": "Object"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 21,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Result",
+      "to": 21,
+      "input": "B"
+    },
+    {
+      "from": 21,
+      "output": "Result",
+      "to": 22,
+      "input": "Condition"
+    },
+    {
+      "from": 20,
+      "output": "True",
+      "to": 22,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "True",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 23,
+      "output": "Completed",
+      "to": 24,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Reach",
+      "type": "float",
+      "value": {
+        "Float": 0.8
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Height",
+      "type": "float",
+      "value": {
+        "Float": 3.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Player",
+      "type": "gameobject",
+      "value": "None"
+    }
+  ]
+}

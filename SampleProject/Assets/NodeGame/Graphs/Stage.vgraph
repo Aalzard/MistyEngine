@@ -1,0 +1,566 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "name": "HeartsChanged",
+        "args": "hearts"
+      }
+    },
+    {
+      "id": 2,
+      "type": "Append",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "values": {
+        "A": {
+          "String": "Hearts: "
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        80.0,
+        190.0
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Hearts Text"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "Api",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "owner": "#Text",
+        "member": "text",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 5,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        435.0
+      ],
+      "params": {
+        "name": "StageCleared"
+      }
+    },
+    {
+      "id": 6,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        530.0
+      ],
+      "params": {
+        "name": "Done"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Branch",
+      "position": [
+        330.0,
+        435.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        435.0
+      ],
+      "params": {
+        "name": "Done"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        740.0,
+        530.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        990.0,
+        435.0
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Chime.wav"
+        },
+        "volume": {
+          "Float": 0.6
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "Api",
+      "position": [
+        1070.0,
+        530.0
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Banner Text"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        1320.0,
+        435.0
+      ],
+      "params": {
+        "owner": "#Text",
+        "member": "text",
+        "mode": "set"
+      },
+      "values": {
+        "Value": {
+          "String": "Stage clear!"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Delay",
+      "position": [
+        1650.0,
+        435.0
+      ],
+      "values": {
+        "Duration": {
+          "Float": 1.2
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "GetVariable",
+      "position": [
+        1730.0,
+        530.0
+      ],
+      "params": {
+        "name": "Next Scene"
+      }
+    },
+    {
+      "id": 15,
+      "type": "Api",
+      "position": [
+        1980.0,
+        435.0
+      ],
+      "params": {
+        "owner": "SceneManager",
+        "member": "LoadScene",
+        "mode": "call",
+        "args": "nameOrIndex, mode"
+      }
+    },
+    {
+      "id": 16,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        772.5
+      ],
+      "params": {
+        "name": "PlayerDied"
+      }
+    },
+    {
+      "id": 17,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        867.5
+      ],
+      "params": {
+        "name": "Done"
+      }
+    },
+    {
+      "id": 18,
+      "type": "Branch",
+      "position": [
+        330.0,
+        772.5
+      ]
+    },
+    {
+      "id": 19,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        772.5
+      ],
+      "params": {
+        "name": "Done"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "Api",
+      "position": [
+        740.0,
+        867.5
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Banner Text"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        990.0,
+        772.5
+      ],
+      "params": {
+        "owner": "#Text",
+        "member": "text",
+        "mode": "set"
+      },
+      "values": {
+        "Value": {
+          "String": "Try again"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "Delay",
+      "position": [
+        1320.0,
+        772.5
+      ],
+      "values": {
+        "Duration": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "GetVariable",
+      "position": [
+        1400.0,
+        867.5
+      ],
+      "params": {
+        "name": "This Scene"
+      }
+    },
+    {
+      "id": 24,
+      "type": "Api",
+      "position": [
+        1650.0,
+        772.5
+      ],
+      "params": {
+        "owner": "SceneManager",
+        "member": "LoadScene",
+        "mode": "call",
+        "args": "nameOrIndex, mode"
+      }
+    },
+    {
+      "id": 25,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        1110.0
+      ]
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        80.0,
+        1205.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "escape"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "Branch",
+      "position": [
+        330.0,
+        1110.0
+      ]
+    },
+    {
+      "id": 28,
+      "type": "Api",
+      "position": [
+        660.0,
+        1110.0
+      ],
+      "params": {
+        "owner": "SceneManager",
+        "member": "LoadScene",
+        "mode": "call",
+        "args": "nameOrIndex, mode"
+      },
+      "values": {
+        "nameOrIndex": {
+          "String": "NodeGameMenu"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "hearts",
+      "to": 2,
+      "input": "B"
+    },
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 4,
+      "input": "Value"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "Target"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 7,
+      "input": "Condition"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "False",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 10,
+      "input": "position"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 12,
+      "input": "Target"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 12,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "nameOrIndex"
+    },
+    {
+      "from": 13,
+      "output": "Completed",
+      "to": 15,
+      "input": "In"
+    },
+    {
+      "from": 17,
+      "output": "Value",
+      "to": 18,
+      "input": "Condition"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "False",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 21,
+      "input": "Target"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 21,
+      "input": "In"
+    },
+    {
+      "from": 21,
+      "output": "Out",
+      "to": 22,
+      "input": "In"
+    },
+    {
+      "from": 23,
+      "output": "Value",
+      "to": 24,
+      "input": "nameOrIndex"
+    },
+    {
+      "from": 22,
+      "output": "Completed",
+      "to": 24,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "Result",
+      "to": 27,
+      "input": "Condition"
+    },
+    {
+      "from": 25,
+      "output": "Out",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 27,
+      "output": "True",
+      "to": 28,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "This Scene",
+      "type": "string",
+      "value": {
+        "String": "NodeGameStage1"
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Next Scene",
+      "type": "string",
+      "value": {
+        "String": "NodeGameStage2"
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Done",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    }
+  ]
+}

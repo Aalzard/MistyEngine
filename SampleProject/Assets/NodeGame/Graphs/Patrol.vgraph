@@ -1,0 +1,782 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnFixedUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        -1340.0,
+        855.0
+      ],
+      "params": {
+        "name": "Knock"
+      }
+    },
+    {
+      "id": 3,
+      "type": "AbsFloat",
+      "position": [
+        -1090.0,
+        760.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Greater",
+      "position": [
+        -840.0,
+        665.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.05
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "GetVariable",
+      "position": [
+        -1090.0,
+        1140.0
+      ],
+      "params": {
+        "name": "Direction"
+      }
+    },
+    {
+      "id": 6,
+      "type": "GetVariable",
+      "position": [
+        -1090.0,
+        1235.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 7,
+      "type": "MultiplyFloat",
+      "position": [
+        -840.0,
+        1045.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Select",
+      "position": [
+        -590.0,
+        570.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "GetVariable",
+      "position": [
+        -840.0,
+        950.0
+      ],
+      "params": {
+        "name": "Knock"
+      }
+    },
+    {
+      "id": 10,
+      "type": "Sign",
+      "position": [
+        -340.0,
+        475.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Api",
+      "position": [
+        160.0,
+        190.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 12,
+      "type": "MultiplyFloat",
+      "position": [
+        -90.0,
+        380.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.55
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "MakeVector3",
+      "position": [
+        160.0,
+        285.0
+      ],
+      "values": {
+        "Y": {
+          "Float": 0.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "AddVector3",
+      "position": [
+        410.0,
+        95.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Vector3",
+      "position": [
+        410.0,
+        1330.0
+      ],
+      "values": {
+        "Value": {
+          "Vector3": [
+            0.0,
+            -1.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call",
+        "args": "origin, direction, distance, mask"
+      },
+      "values": {
+        "distance": {
+          "Float": 1.0
+        },
+        "mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "MakeVector3",
+      "position": [
+        740.0,
+        95.0
+      ],
+      "values": {
+        "Y": {
+          "Float": 0.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call",
+        "args": "origin, direction, distance, mask"
+      },
+      "values": {
+        "distance": {
+          "Float": 0.65
+        },
+        "mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 20,
+      "type": "Branch",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "NotEqual",
+      "position": [
+        570.0,
+        285.0
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Not",
+      "position": [
+        820.0,
+        190.0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "NotEqual",
+      "position": [
+        820.0,
+        380.0
+      ]
+    },
+    {
+      "id": 24,
+      "type": "Or",
+      "position": [
+        1070.0,
+        95.0
+      ]
+    },
+    {
+      "id": 25,
+      "type": "Branch",
+      "position": [
+        1320.0,
+        0.0
+      ]
+    },
+    {
+      "id": 26,
+      "type": "Branch",
+      "position": [
+        1650.0,
+        0.0
+      ]
+    },
+    {
+      "id": 27,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        0.0
+      ],
+      "params": {
+        "name": "Knock"
+      },
+      "values": {
+        "Value": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        340.0
+      ],
+      "params": {
+        "name": "Direction"
+      }
+    },
+    {
+      "id": 29,
+      "type": "NegateFloat",
+      "position": [
+        1730.0,
+        245.0
+      ]
+    },
+    {
+      "id": 30,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        150.0
+      ],
+      "params": {
+        "name": "Direction"
+      }
+    },
+    {
+      "id": 31,
+      "type": "GetVariable",
+      "position": [
+        1810.0,
+        340.0
+      ],
+      "params": {
+        "name": "Direction"
+      }
+    },
+    {
+      "id": 32,
+      "type": "Greater",
+      "position": [
+        2060.0,
+        245.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "Api",
+      "position": [
+        2310.0,
+        150.0
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "flipX",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 34,
+      "type": "MultiplyFloat",
+      "position": [
+        1150.0,
+        685.0
+      ]
+    },
+    {
+      "id": 35,
+      "type": "MakeVector3",
+      "position": [
+        1400.0,
+        590.0
+      ],
+      "values": {
+        "Y": {
+          "Float": 0.0
+        },
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 36,
+      "type": "Api",
+      "position": [
+        1650.0,
+        495.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "Translate",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 37,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        685.0
+      ],
+      "params": {
+        "name": "Knock"
+      }
+    },
+    {
+      "id": 38,
+      "type": "MultiplyFloat",
+      "position": [
+        1480.0,
+        780.0
+      ],
+      "values": {
+        "B": {
+          "Float": 14.0
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "MoveTowards",
+      "position": [
+        1730.0,
+        590.0
+      ],
+      "values": {
+        "Target": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        495.0
+      ],
+      "params": {
+        "name": "Knock"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Result",
+      "to": 8,
+      "input": "Condition"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 8,
+      "input": "True"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "False"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 10,
+      "input": "Value"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 12,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "X"
+    },
+    {
+      "from": 11,
+      "output": "Value",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 13,
+      "output": "Vector",
+      "to": 14,
+      "input": "B"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 16,
+      "input": "origin"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 16,
+      "input": "direction"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 17,
+      "input": "X"
+    },
+    {
+      "from": 11,
+      "output": "Value",
+      "to": 18,
+      "input": "origin"
+    },
+    {
+      "from": 17,
+      "output": "Vector",
+      "to": 18,
+      "input": "direction"
+    },
+    {
+      "from": 19,
+      "output": "Value",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 20,
+      "output": "False",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 21,
+      "input": "A"
+    },
+    {
+      "from": 21,
+      "output": "Result",
+      "to": 22,
+      "input": "Value"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 23,
+      "input": "A"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 24,
+      "input": "A"
+    },
+    {
+      "from": 23,
+      "output": "Result",
+      "to": 24,
+      "input": "B"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "Condition"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Result",
+      "to": 26,
+      "input": "Condition"
+    },
+    {
+      "from": 25,
+      "output": "True",
+      "to": 26,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "True",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 28,
+      "output": "Value",
+      "to": 29,
+      "input": "Value"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 30,
+      "input": "Value"
+    },
+    {
+      "from": 26,
+      "output": "False",
+      "to": 30,
+      "input": "In"
+    },
+    {
+      "from": 31,
+      "output": "Value",
+      "to": 32,
+      "input": "A"
+    },
+    {
+      "from": 32,
+      "output": "Result",
+      "to": 33,
+      "input": "Value"
+    },
+    {
+      "from": 30,
+      "output": "Out",
+      "to": 33,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 34,
+      "input": "A"
+    },
+    {
+      "from": 1,
+      "output": "Delta Time",
+      "to": 34,
+      "input": "B"
+    },
+    {
+      "from": 34,
+      "output": "Result",
+      "to": 35,
+      "input": "X"
+    },
+    {
+      "from": 35,
+      "output": "Vector",
+      "to": 36,
+      "input": "Translation"
+    },
+    {
+      "from": 25,
+      "output": "False",
+      "to": 36,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Delta Time",
+      "to": 38,
+      "input": "A"
+    },
+    {
+      "from": 37,
+      "output": "Value",
+      "to": 39,
+      "input": "Current"
+    },
+    {
+      "from": 38,
+      "output": "Result",
+      "to": 39,
+      "input": "Max Delta"
+    },
+    {
+      "from": 39,
+      "output": "Result",
+      "to": 40,
+      "input": "Value"
+    },
+    {
+      "from": 36,
+      "output": "Out",
+      "to": 40,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 1.5
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Direction",
+      "type": "float",
+      "value": {
+        "Float": -1.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Knock",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dead",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    }
+  ]
+}
