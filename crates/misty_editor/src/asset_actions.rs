@@ -176,6 +176,13 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .save(&path)
                 .map(|_| path)
         }
+        AssetKind::BehaviourTree => {
+            let ext = misty_engine::behaviour_tree::EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Behaviour Tree", ext);
+            crate::panels::behaviour_tree::new_tree()
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::EffectGraph => {
             let ext = misty_engine::vfx::EXTENSION;
             let path = asset_ops::unique_path(&dir, "New Effect Graph", ext);

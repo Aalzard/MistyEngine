@@ -304,6 +304,8 @@ pub struct EditorState {
     pub asset_groups: crate::panels::asset_groups::AssetGroupsWindow,
     /// Package Manager window: packages, manifest, lock, registry.
     pub packages: crate::packages::PackagesWindow,
+    /// Optional built-in packages the project installed (Behaviour Trees, ...).
+    pub optional_packages: crate::packages::optional::Installed,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
     pub probes: crate::probe_tools::ProbeTools,
     /// Lightmap bakes (Lighting window ▸ Generate Lighting).
@@ -344,6 +346,8 @@ pub struct EditorState {
     pub effect_graph: crate::panels::effect_graph::EffectGraphWindow,
     /// The Script Graph window (visual scripting).
     pub script_graph: crate::panels::script_graph::ScriptGraphWindow,
+    /// The Behaviour Tree window (the optional Behaviour Trees package).
+    pub behaviour_tree: crate::panels::behaviour_tree::BehaviourTreeWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
     /// Input Actions window: the asset being edited.
@@ -458,6 +462,7 @@ impl EditorState {
             occlusion: Default::default(),
             asset_groups: Default::default(),
             packages: Default::default(),
+            optional_packages: crate::packages::optional::Installed::load(&root),
             probes: Default::default(),
             lightmapper: Default::default(),
             light_probes: Default::default(),
@@ -480,6 +485,7 @@ impl EditorState {
             shader_graph: Default::default(),
             effect_graph: Default::default(),
             script_graph: Default::default(),
+            behaviour_tree: Default::default(),
             audio_mixer: Default::default(),
             input_actions: Default::default(),
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),

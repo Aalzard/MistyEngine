@@ -178,6 +178,8 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     flush_logs(s);
     // A flow that reached a breakpoint pauses Play.
     crate::panels::script_graph::read_debugger(s);
+    // The Behaviour Tree window's live node states and blackboard.
+    crate::panels::behaviour_tree::read_debugger(s);
     handle_requests(s);
 }
 

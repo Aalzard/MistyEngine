@@ -11,7 +11,8 @@ use crate::packages::manifest::{PackageJson, Source};
 use crate::packages::registry::RegistryPackage;
 use crate::packages::resolve::Origin;
 use crate::packages::semver::{Range, Version};
-use crate::packages::{Filter, PackagesWindow, RegistryState, builtin, install};
+use crate::packages::{Filter, PackagesWindow, RegistryState, builtin, install, optional};
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field};
@@ -154,6 +155,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             });
     });
     if refresh_project {
+        // Optional packages bring their windows and menu items, or take them away.
+        state.optional_packages = optional::Installed::load(&project);
         state.project.refresh();
         if let Some((false, m)) = &state.packages.status {
             state.console.info(m.clone());
@@ -223,6 +226,17 @@ fn rows(w: &PackagesWindow) -> Vec<Row> {
                     note: update,
                 });
             }
+            // Optional built-ins the project installed.
+            for p in optional::all() {
+                if w.manifest.dependencies.contains_key(&p.name) {
+                    out.push(Row {
+                        name: p.name.clone(),
+                        title: p.title().to_owned(),
+                        version: p.version.clone(),
+                        note: None,
+                    });
+                }
+            }
         }
         Filter::BuiltIn => {
             for p in builtin::all() {
@@ -231,6 +245,20 @@ fn rows(w: &PackagesWindow) -> Vec<Row> {
                     title: p.title().to_owned(),
                     version: p.version.clone(),
                     note: None,
+                });
+            }
+            // Optional built-ins: listed here, installed on demand.
+            for p in optional::all() {
+                let installed = w.manifest.dependencies.contains_key(&p.name);
+                out.push(Row {
+                    name: p.name.clone(),
+                    title: p.title().to_owned(),
+                    version: p.version.clone(),
+                    note: Some(if installed {
+                        "✔".to_owned()
+                    } else {
+                        tr!("Optional")
+                    }),
                 });
             }
         }
@@ -268,8 +296,10 @@ fn details(ui: &mut Ui, w: &mut PackagesWindow, project: &Path) -> bool {
     };
     let installed = w.installed.iter().find(|p| p.info.name == name).cloned();
     let builtin = builtin::all().into_iter().find(|p| p.name == name);
+    let opt = optional::all().into_iter().find(|p| p.name == name);
+    let opt_installed = opt.is_some() && w.manifest.dependencies.contains_key(&name);
     let reg = registry_package(w, &name).cloned();
-    let info: PackageJson = match (&installed, &builtin, &reg) {
+    let info: PackageJson = match (&installed, builtin.as_ref().or(opt.as_ref()), &reg) {
         (Some(p), _, _) => p.info.clone(),
         (None, Some(b), _) => b.clone(),
         (None, None, Some(r)) => PackageJson {
@@ -300,6 +330,12 @@ fn details(ui: &mut Ui, w: &mut PackagesWindow, project: &Path) -> bool {
         ui.label(RichText::new(format!("Version {}", info.version)).strong());
         let source = if builtin.is_some() {
             "Built-in".to_owned()
+        } else if opt.is_some() {
+            if opt_installed {
+                tr!("Built-in (optional, installed)")
+            } else {
+                tr!("Built-in (optional, not installed)")
+            }
         } else if installed.is_some() {
             match w.manifest.source(&name) {
                 Some(Source::Git(url, _)) => format!("Git: {url}"),
@@ -378,6 +414,17 @@ fn details(ui: &mut Ui, w: &mut PackagesWindow, project: &Path) -> bool {
         if builtin.is_some() {
             ui.add_enabled(false, egui::Button::new("Remove"))
                 .on_disabled_hover_text("Built-in packages can't be removed");
+            return;
+        }
+        if opt.is_some() {
+            if !opt_installed && ui.button(tr!("Install")).clicked() {
+                w.install_optional(project, &name);
+                changed = true;
+            }
+            if opt_installed && ui.button(tr!("Remove")).clicked() {
+                w.remove(project, &name);
+                changed = true;
+            }
             return;
         }
         if let Some(r) = &reg {

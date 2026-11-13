@@ -262,6 +262,9 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::visual_script::is_graph_path(&path.to_string_lossy()) {
         let rel = state.assets.relative(&path);
         crate::panels::script_graph::open(state, &rel);
+    } else if misty_engine::behaviour_tree::is_tree_path(&path.to_string_lossy()) {
+        let rel = state.assets.relative(&path);
+        crate::panels::behaviour_tree::open(state, &rel);
     } else if misty_engine::shader_graph::is_graph_path(&path.to_string_lossy())
         || misty_engine::shader_graph::is_sub_graph_path(&path.to_string_lossy())
     {

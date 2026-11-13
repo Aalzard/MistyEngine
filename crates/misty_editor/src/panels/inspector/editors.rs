@@ -40,6 +40,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::audio_editors::icon(other))
             .or_else(|| super::terrain::icon(other))
             .or_else(|| super::nav_editors::icon(other))
+            .or_else(|| super::bt_editors::icon(other))
             .or_else(|| super::sprite_editors::icon(other))
             .or_else(|| super::tilemap_editors::icon(other))
             .or_else(|| super::probe_editor::icon(other))
@@ -81,6 +82,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::enabled_flag(state, e, name);
+    }
+    if super::bt_editors::NAMES.contains(&name) {
+        return super::bt_editors::enabled_flag(state, e, name);
     }
     if super::spline_editors::NAMES.contains(&name) {
         return super::spline_editors::enabled_flag(state, e, name);
@@ -175,6 +179,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::set_enabled(state, e, name, on);
+    }
+    if super::bt_editors::NAMES.contains(&name) {
+        return super::bt_editors::set_enabled(state, e, name, on);
     }
     if super::spline_editors::NAMES.contains(&name) {
         return super::spline_editors::set_enabled(state, e, name, on);
@@ -325,6 +332,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         nav if super::nav_editors::NAMES.contains(&nav) => {
             super::nav_editors::edit(ui, state, e, nav)
         }
+        bt if super::bt_editors::NAMES.contains(&bt) => super::bt_editors::edit(ui, state, e, bt),
         two_d if super::sprite_editors::NAMES.contains(&two_d) => {
             super::sprite_editors::edit(ui, state, e, two_d)
         }
@@ -1158,6 +1166,7 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                         for info in registry::components()
                             .iter()
                             .filter(|c| !c.category.is_empty())
+                            .filter(|c| super::bt_editors::offered(c.name))
                         {
                             // Matches the English name or its translation.
                             let translated = crate::i18n::lookup(info.name)

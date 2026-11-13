@@ -40,6 +40,8 @@ pub enum Tab {
     EffectGraph,
     /// Window ▸ Visual Scripting ▸ Script Graph (or double-click a `.vgraph`).
     ScriptGraph,
+    /// Window ▸ AI ▸ Behaviour Tree (or double-click a `.btree`); the Behaviour Trees package.
+    BehaviourTree,
     /// Window ▸ Rendering ▸ Occlusion Culling.
     OcclusionCulling,
     /// Window ▸ Analysis ▸ Frame Debugger.
@@ -74,7 +76,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 21] = [
+    pub const ON_DEMAND: [Tab; 22] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -88,6 +90,7 @@ impl Tab {
         Tab::ShaderGraph,
         Tab::EffectGraph,
         Tab::ScriptGraph,
+        Tab::BehaviourTree,
         Tab::OcclusionCulling,
         Tab::FrameDebugger,
         Tab::MemoryProfiler,
@@ -116,9 +119,11 @@ impl Tab {
             // A list window, like the Hierarchy.
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
-            Tab::Animator | Tab::ShaderGraph | Tab::EffectGraph | Tab::ScriptGraph => {
-                Some(Tab::Scene)
-            }
+            Tab::Animator
+            | Tab::ShaderGraph
+            | Tab::EffectGraph
+            | Tab::ScriptGraph
+            | Tab::BehaviourTree => Some(Tab::Scene),
             // A wide time strip, like the Animation window it sits beside.
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -163,6 +168,7 @@ impl Tab {
             Tab::ShaderGraph => "Shader Graph",
             Tab::EffectGraph => "Effect Graph",
             Tab::ScriptGraph => "Script Graph",
+            Tab::BehaviourTree => "Behaviour Tree",
             Tab::OcclusionCulling => "Occlusion Culling",
             Tab::FrameDebugger => "Frame Debugger",
             Tab::MemoryProfiler => "Memory Profiler",
@@ -225,6 +231,7 @@ impl Tab {
             Tab::ShaderGraph => "shader_graph",
             Tab::EffectGraph => "effect_graph",
             Tab::ScriptGraph => "script_graph",
+            Tab::BehaviourTree => "behaviour_tree",
             Tab::OcclusionCulling => "occlusion_culling",
             Tab::FrameDebugger => "frame_debugger",
             Tab::MemoryProfiler => "memory_profiler",
@@ -265,6 +272,7 @@ impl Tab {
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
             Tab::EffectGraph => crate::panels::effect_graph::ICON,
             Tab::ScriptGraph => crate::panels::script_graph::ICON,
+            Tab::BehaviourTree => crate::panels::behaviour_tree::ICON,
             Tab::OcclusionCulling => "◩",
             Tab::FrameDebugger => crate::panels::frame_debugger::ICON,
             Tab::MemoryProfiler => crate::panels::memory_profiler::ICON,
@@ -301,6 +309,7 @@ impl Tab {
             | Tab::ShaderGraph
             | Tab::EffectGraph
             | Tab::ScriptGraph
+            | Tab::BehaviourTree
             | Tab::OcclusionCulling
             | Tab::FrameDebugger
             | Tab::MemoryProfiler

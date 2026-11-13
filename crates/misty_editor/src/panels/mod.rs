@@ -37,6 +37,7 @@ pub(crate) mod project_menus;
 mod project_tree;
 pub(crate) mod scene;
 pub mod script_graph;
+pub mod behaviour_tree;
 pub mod shader_graph;
 pub mod test_runner;
 pub mod tile_palette;
@@ -129,6 +130,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::ShaderGraph => shader_graph::show(ui, self.state),
             Tab::EffectGraph => effect_graph::show(ui, self.state),
             Tab::ScriptGraph => script_graph::show(ui, self.state),
+            Tab::BehaviourTree => behaviour_tree::show(ui, self.state),
             Tab::OcclusionCulling => occlusion::show(ui, self.state),
             Tab::FrameDebugger => frame_debugger::show(ui, self.state),
             Tab::MemoryProfiler => memory_profiler::show(ui, self.state, self.gpu.as_deref()),
