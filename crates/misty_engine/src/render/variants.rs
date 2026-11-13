@@ -172,11 +172,22 @@ impl Pipelines {
     /// Build the main-pass pipeline for `key` if it doesn't exist yet (queue it while the
     /// background loads are on).
     pub fn ensure_mesh(&mut self, device: &wgpu::Device, key: PipelineKey) {
+        let background = self.variants.background;
+        self.ensure_mesh_with(device, key, background);
+    }
+
+    /// [`Self::ensure_mesh`] always on the shader queue (the glowless variants: nothing waits
+    /// for them, render/glowless.rs).
+    pub(super) fn ensure_mesh_queued(&mut self, device: &wgpu::Device, key: PipelineKey) {
+        self.ensure_mesh_with(device, key, true);
+    }
+
+    fn ensure_mesh_with(&mut self, device: &wgpu::Device, key: PipelineKey, background: bool) {
         if self.variants.mesh.contains_key(&key) {
             return;
         }
         let samples = super::sample_count();
-        if self.variants.background {
+        if background {
             let layouts = [
                 self.view_layout.clone(),
                 self.mesh_layout.clone(),

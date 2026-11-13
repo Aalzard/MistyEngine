@@ -10,8 +10,8 @@
 //! left at the far plane), which is what the resolve averaged before. Same bloom input,
 //! without the image and its per-sample writes.
 //!
-//! The glowless pipelines are built the first time a scene goes quiet (on a worker while the
-//! background loads are on; the frames keep the glow target meanwhile) and kept: the
+//! The glowless pipelines are built the first time a scene goes quiet, on worker threads (the
+//! frames keep the glow target meanwhile, so no frame waits for a compile), and kept: the
 //! renderer's pipeline owners hold one set and this keeps the other, and switching swaps them,
 //! so emission coming back (an emissive material, particles, water, a custom shader...) costs
 //! nothing but the image's reallocation.
@@ -102,31 +102,22 @@ pub(super) struct Glowless {
     sky: Option<SkyGlow>,
     /// (Behind a lock only so the renderer stays `Sync`.)
     jobs: Mutex<Vec<Receiver<Built>>>,
+    /// Never glowless (tests that count pipeline builds).
+    disabled: bool,
     building: [bool; 4],
 }
 
 impl Glowless {
-    /// Start `job` (on a worker with `background`, else now), once per slot at a time.
-    fn start(
-        &mut self,
-        slot: usize,
-        background: bool,
-        job: impl FnOnce() -> Built + Send + 'static,
-    ) {
-        if self.building[slot] {
-            return;
-        }
-        if !background {
-            self.store(job());
+    /// Start `job` on a worker thread, once per slot at a time.
+    fn start(&mut self, slot: usize, job: impl FnOnce() -> Built + Send + 'static) {
+        if self.building[slot] || self.disabled {
             return;
         }
         let (tx, rx) = std::sync::mpsc::channel();
-        let spawned = std::thread::Builder::new()
-            .name("misty glowless pipelines".to_owned())
-            .spawn(move || {
-                let _ = tx.send(job());
-            });
-        if spawned.is_ok() {
+        let spawned = super::prebuilt::spawn_worker("misty glowless pipelines", move || {
+            let _ = tx.send(job());
+        });
+        if spawned {
             self.building[slot] = true;
             let jobs = self.jobs.get_mut().unwrap_or_else(|e| e.into_inner());
             jobs.push(rx);
@@ -173,6 +164,12 @@ impl Glowless {
 }
 
 impl Renderer {
+    /// Keep the glow target in every frame (tests that count the pipelines a run builds).
+    #[cfg(test)]
+    pub(crate) fn keep_glow_target(&mut self) {
+        self.glowless.disabled = true;
+    }
+
     /// Something in this frame writes the glow target, or needs pipelines that only exist
     /// with it.
     fn frame_glows(&self, frame: &Frame) -> bool {
@@ -207,22 +204,21 @@ impl Renderer {
         let glows = self.frame_glows(frame);
         let g = &mut self.glowless;
         g.quiet = if glows { 0 } else { g.quiet.saturating_add(1) };
-        let want = g.quiet >= QUIET_FRAMES && fast_paths::glowless();
-        let background = self.background_loads;
+        let want = g.quiet >= QUIET_FRAMES && fast_paths::glowless() && !g.disabled;
         let mut ready = want;
         if want {
             let samples = super::sample_count();
             if !self.glowless.active && self.glowless.main.is_none() {
                 ready = false;
                 let (device, layouts) = (device.clone(), self.pipelines.main_layouts());
-                self.glowless.start(MAIN, background, move || {
+                self.glowless.start(MAIN, move || {
                     Built::Main(MainSet::new(&device, &layouts, samples, true))
                 });
             }
             if self.glowless.sky.is_none() {
                 ready = false;
                 let (device, view) = (device.clone(), self.pipelines.view_layout.clone());
-                self.glowless.start(SKY, background, move || {
+                self.glowless.start(SKY, move || {
                     Built::Sky(SkyGlow::new(&device, &view, samples))
                 });
             }
@@ -244,7 +240,7 @@ impl Renderer {
                 }
             }
             for key in keys {
-                self.pipelines.ensure_mesh(device, key);
+                self.pipelines.ensure_mesh_queued(device, key);
                 ready &= self.pipelines.has_mesh_variant(key);
             }
             // Trees and the grass visibility buffer's pipelines made later in this frame
@@ -259,7 +255,7 @@ impl Renderer {
                     ready = false;
                     if let Some(job) = self.trees.other_main_job(device, &self.pipelines) {
                         self.glowless
-                            .start(TREES, background, move || Built::Trees(job(), true));
+                            .start(TREES, move || Built::Trees(job(), true));
                     }
                 }
                 _ => {}
@@ -272,7 +268,7 @@ impl Renderer {
                     ready = false;
                     let job = v.other_composite_job(device, &self.pipelines);
                     self.glowless
-                        .start(GRASS, background, move || Built::Grass(job(), true));
+                        .start(GRASS, move || Built::Grass(job(), true));
                 }
                 _ => {}
             }
@@ -450,20 +446,39 @@ mod tests {
             lights: &lights,
             water: &[],
         };
-        let run = |glowless: bool| {
+        // The glowless pipelines build on workers; until they are in, frames keep the glow
+        // target. The quiet renderer runs until it went glowless (and 8 frames more), the
+        // other one, kept on the glow target, the same number of frames.
+        let render_frames = |frames: Option<usize>| {
             let mut r = Renderer::with_queue(&device, &queue);
             let target = r.create_target(&device, 256, 160);
-            for _ in 0..QUIET_FRAMES + 8 {
-                if !glowless {
+            let mut n = 0;
+            let mut since = 0;
+            loop {
+                match frames {
+                    Some(total) if n >= total => break,
+                    None if since >= 8 => break,
+                    _ => {}
+                }
+                if frames.is_some() {
                     r.glowless.quiet = 0;
                 }
                 r.render(&device, &queue, &target, &frame);
+                n += 1;
+                if r.glowless.active {
+                    since += 1;
+                } else if frames.is_none() {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                assert!(n < 2000, "the glowless pipelines never arrived");
             }
-            assert_eq!(r.glowless.active, glowless);
-            assert_eq!(target.glow_msaa_view().is_none(), glowless);
-            read_back(&device, &queue, &target)
+            assert_eq!(target.glow_msaa_view().is_none(), r.glowless.active);
+            (n, r.glowless.active, read_back(&device, &queue, &target))
         };
-        let (with, without) = (run(false), run(true));
+        let (n, quiet, without) = render_frames(None);
+        assert!(quiet);
+        let (_, glowing, with) = render_frames(Some(n));
+        assert!(!glowing);
         let worst = with
             .iter()
             .zip(&without)
