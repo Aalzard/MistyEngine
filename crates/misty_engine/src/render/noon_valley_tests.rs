@@ -182,6 +182,9 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
                 "billboards" => d.trees.billboard_start = v,
                 "treelod" => d.trees.lod_distance = v,
                 "shadowdetail" => d.trees.shadow_detail = v,
+                "farfield" => d.details.far_field = v,
+                "farbright" => d.details.far_field_brightness = v,
+                "tint" => d.details.ground_tint = v,
                 "treefade" => d.trees.lod_fade = v,
                 "treekeep" | "treefrom" => {}
                 _ => eprintln!("(MISTY_NOON_GRASS: {k} unknown)"),

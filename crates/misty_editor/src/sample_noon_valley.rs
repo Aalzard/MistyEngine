@@ -312,6 +312,9 @@ fn grass() -> details::DetailSettings {
         gust_scale: 22.0,
         turbulence: 0.3,
         depth_shading: 0.65,
+        // Past the blades the ground keeps the grass's look: no line where they end.
+        far_field: 1.0,
+        far_field_brightness: 0.46,
     }
 }
 
@@ -565,31 +568,77 @@ fn limestone() -> [RgbaImage; 3] {
     maps(n, &color, &height, 6.0)
 }
 
-/// Dense turf seen from above, the ground of the meadow: dark green tufts and their shade,
-/// a few straw-coloured dead blades, darker hollows (3 m tile). Albedo (sRGB), height, normal.
+/// Dense turf seen from above, the ground of the meadow (3 m tile, 2048²): tens of thousands
+/// of short blades in every direction, lighter towards their tips, over the dark shade
+/// between them; clumps a few decimetres across, some yellower, some deeper green, and a few
+/// straw-coloured dead blades. The blades stand up in the height map, so the normal map
+/// catches the sun as the grass does. Albedo (sRGB), height, normal.
 fn meadow_turf() -> [RgbaImage; 3] {
-    let n = TEX / 2;
+    let n = TEX;
+    let ni = n as i32;
     let mut color = vec![[0.0f32; 3]; n * n];
     let mut height = vec![0.0f32; n * n];
+    // The shade deep in the turf between the blades.
     for y in 0..n {
         for x in 0..n {
             let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
-            let tufts = tile_fbm(u, v, 24, 3, 201);
-            let blades = tile_noise(u, v * 0.35, 260, 202);
-            let hollows = smooth(0.38, 0.2, tile_fbm(u, v, 6, 3, 203));
-            let straw = smooth(0.7, 0.85, tile_fbm(u, v, 40, 2, 204)) * 0.5;
-            let lit = (0.55 + 0.6 * tufts) * (0.85 + 0.3 * blades) * (1.0 - 0.45 * hollows);
-            let green = [0.045, 0.062, 0.022];
-            let dead = [0.11, 0.1, 0.055];
-            let mut c = [0.0; 3];
-            for i in 0..3 {
-                c[i] = (green[i] + (dead[i] - green[i]) * straw) * lit;
-            }
-            color[y * n + x] = c;
-            height[y * n + x] = (0.3 + 0.5 * tufts + 0.15 * blades - 0.3 * hollows).clamp(0.0, 1.0);
+            let k = 0.7 + 0.5 * tile_fbm(u, v, 16, 3, 201);
+            color[y * n + x] = [0.016 * k, 0.024 * k, 0.008 * k];
+            height[y * n + x] = 0.1 * k;
         }
     }
-    maps(n, &color, &height, 4.0)
+    let green = [0.05, 0.072, 0.024];
+    let yellow = [0.085, 0.09, 0.032];
+    let deep = [0.03, 0.05, 0.016];
+    let dead = [0.12, 0.105, 0.058];
+    let blades = 110_000;
+    for b in 0..blades {
+        let r = |salt: i32| noise::hash(b, salt, 0x7a11);
+        let (x0, y0) = (r(1) * n as f32, r(2) * n as f32);
+        let (u, v) = (x0 / n as f32, y0 / n as f32);
+        // Clumps: yellower or deeper green, a few decimetres across (within the tile; the
+        // terrain's own patches vary the field over metres).
+        let clump = tile_fbm(u, v, 6, 3, 205);
+        let tone = tile_fbm(u, v, 10, 2, 206);
+        let mut c = [0.0f32; 3];
+        let yell = smooth(0.45, 0.75, tone);
+        let dark = smooth(0.45, 0.2, tone);
+        for i in 0..3 {
+            c[i] = green[i] + (yellow[i] - green[i]) * yell + (deep[i] - green[i]) * dark;
+        }
+        if r(3) < 0.04 + 0.08 * smooth(0.6, 0.8, clump) {
+            c = dead;
+        }
+        let bright = (0.75 + 0.5 * r(4)) * (0.8 + 0.4 * clump);
+        let angle = r(5) * std::f32::consts::TAU;
+        let len = 10.0 + 22.0 * r(6);
+        let top = 0.45 + 0.55 * r(7) * (0.6 + 0.4 * clump);
+        let (dx, dy) = (angle.cos(), angle.sin());
+        let wide = r(8) < 0.5;
+        let steps = len as i32;
+        for k in 0..=steps {
+            let t = k as f32 / len;
+            // The blade rises from its root and is lit more towards its tip.
+            let h = top * (0.35 + 0.65 * t);
+            let lit = bright * (0.6 + 0.55 * t);
+            let (px, py) = (
+                (x0 + dx * k as f32).round() as i32,
+                (y0 + dy * k as f32).round() as i32,
+            );
+            let mut put = |px: i32, py: i32| {
+                let at = py.rem_euclid(ni) as usize * n + px.rem_euclid(ni) as usize;
+                if h > height[at] {
+                    height[at] = h;
+                    color[at] = c.map(|v| v * lit);
+                }
+            };
+            put(px, py);
+            if wide && t < 0.7 {
+                put(px + dy.round() as i32, py - dx.round() as i32);
+            }
+        }
+    }
+    maps(n, &color, &height, 3.0)
 }
 
 fn tree_path(name: &str) -> String {

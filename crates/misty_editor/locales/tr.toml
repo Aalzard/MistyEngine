@@ -857,6 +857,10 @@
 "Code Editor Shortcuts" = "Kod Düzenleyici Kısayolları"
 
 [terrain]
+"Far Field" = "Uzak Alan"
+"Far Field Brightness" = "Uzak Alan Parlaklığı"
+"Past the blades the ground keeps the grass's colour, blade detail and shade, fading in as the blades fade out (0 = off)." = "Otların ötesinde zemin, otların rengini, yaprak ayrıntısını ve gölgesini korur; otlar kayboldukça belirir (0 = kapalı)."
+"Brightness of the far field against the lit blades: match it where the grass fades out." = "Uzak alanın aydınlatılmış otlara göre parlaklığı: otların kaybolduğu yerde eşleştirin."
 "Reset to default" = "Varsayılana sıfırla"
 "Edit ▸ Undo takes it back." = "Düzen ▸ Geri Al bunu geri alır."
 "Sets the brush falloff to {f}" = "Fırça yumuşaklığını {f} yapar"

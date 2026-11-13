@@ -90,10 +90,25 @@ pub struct DetailSettings {
     /// shade). Left out of the file at 0.
     #[serde(skip_serializing_if = "is_zero")]
     pub depth_shading: f32,
+    /// 0..1: grass far field: where grass grows, the ground keeps the look of the grass past
+    /// the blades (their colour and patches, blade-scale detail from the ground texture, a
+    /// tufted normal that catches the sun, their self-shade), fading in as the blades thin
+    /// out, so the field has no line where the blades end. 0 = off (the plain ground tint).
+    /// Left out of the file at 0.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub far_field: f32,
+    /// 0.2..2: brightness of the far field against the lit blades (1 = the grass colours as
+    /// the blades are lit on average). Left out of the file at 1.
+    #[serde(skip_serializing_if = "is_one")]
+    pub far_field_brightness: f32,
 }
 
 fn is_zero(v: &f32) -> bool {
     *v == 0.0
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
 }
 
 impl Default for DetailSettings {
@@ -138,6 +153,8 @@ impl Default for DetailSettings {
             gust_scale: 30.0,
             turbulence: 0.5,
             depth_shading: 0.0,
+            far_field: 0.0,
+            far_field_brightness: 1.0,
         }
     }
 }

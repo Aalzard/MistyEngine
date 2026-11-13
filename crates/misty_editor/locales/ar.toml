@@ -855,6 +855,10 @@
 "Code Editor Shortcuts" = "اختصارات محرر الشيفرة"
 
 [terrain]
+"Far Field" = "الحقل البعيد"
+"Far Field Brightness" = "سطوع الحقل البعيد"
+"Past the blades the ground keeps the grass's colour, blade detail and shade, fading in as the blades fade out (0 = off)." = "بعد انتهاء الأعشاب تحتفظ الأرض بلون العشب وتفاصيل أوراقه وظله، وتظهر تدريجيًا مع تلاشي الأعشاب (0 = إيقاف)."
+"Brightness of the far field against the lit blades: match it where the grass fades out." = "سطوع الحقل البعيد مقارنة بالأعشاب المضاءة: طابقه حيث يتلاشى العشب."
 "Reset to default" = "إعادة التعيين إلى الافتراضي"
 "Edit ▸ Undo takes it back." = "يمكن التراجع عنه من تحرير ▸ تراجع."
 "Sets the brush falloff to {f}" = "يضبط تلاشي الفرشاة على {f}"

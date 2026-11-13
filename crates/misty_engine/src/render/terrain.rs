@@ -952,7 +952,7 @@ impl TerrainCache {
             }
             let gpu = &self.entries[&t.key];
             let mut params = params(t, &layers.means, gpu.coverage, light, self.ground_cover);
-            params.chunks = [gpu.per_side() as f32, 0.0, 0.0, 0.0];
+            params.chunks[0] = gpu.per_side() as f32;
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("misty terrain params"),
                 contents: bytemuck::bytes_of(&params),
@@ -1921,6 +1921,8 @@ fn params(
         let ([hr, hg, hb], [dr, dg, db], [lr, lg, lb]) =
             (lin(g.healthy_color), lin(g.dry_color), lin(g.lush_color));
         p.grass_healthy = [hr, hg, hb, g.ground_tint.clamp(0.0, 1.0)];
+        p.chunks[1] = g.far_field.clamp(0.0, 1.0);
+        p.chunks[2] = g.far_field_brightness.clamp(0.2, 2.0);
         p.grass_dry = [dr, dg, db, g.patch_scale.max(0.5)];
         p.grass_lush = [lr, lg, lb, g.draw_distance.max(1.0)];
         p.grass_amounts = [
