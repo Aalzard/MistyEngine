@@ -127,6 +127,19 @@ than the photo; inside GPU ~0.7 ms over 12.7.
 - Eye level sRGB far / past crest / grass: 67/76/45, 66/73/33, 64/74/26. Timings: hero 11.84
   GPU (parts 11.88), inside 10.70 (10.73).
 
+## Round 6: tan strata, exposure, far meadow, litter
+
+- Outcrop retouch: × (1.0, 0.86, 0.66) × 0.82, partings `smooth(0.8, 0.95, fract(h × 9 +
+  wobble))`, foot band 50 % and darker (0.65 to soil), material normal scale 2.0.
+- Eye adaptation `histogram_high` 70 → 85, compensation −0.3 → 0 (88 / −0.3 made everything
+  too dark: meadow near 50/67/19, inside median 0.011).
+- `FAR_SHADE` 0.04, `far_field_brightness` 0.3.
+- `ForestFloorToned.png` written by `forest_floor_toned`: saturation × 1.7 then × (0.55, 0.44,
+  0.3) linear. The sun flecks barely moved (p95 0.69): eye adaptation and the tone curve's
+  shoulder take most of an albedo change back; what changed is their hue (warmer).
+- First view sRGB vs photo: sky top 73/88/120 (76/90/112), meadow mid 78/93/36 (76/87/43),
+  near 62/81/25 (59/76/18). Eye level far / past crest / grass: 84/94/55, 81/89/41, 77/88/33.
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at

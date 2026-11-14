@@ -5135,3 +5135,8 @@ private memory up about 1 MB a cycle (left open).
 - **Forest floor**: the litter is a toned copy (`ForestFloorToned.png`: darker, warmer, more
   saturated). The sun flecks in `inside` read warmer but still bright (lower-half p95 0.69,
   photo 0.76; the sunlit share is larger than the photo's, 30 % vs 20 %).
+- Timings (High 1920×1080): hero 11.76 ms GPU (parts 11.77), inside 10.86 ms (parts 10.65)
+  on a quiet GPU (r16); later runs with another program busy on the GPU (82 % with nothing of
+  ours running) read 12.6 / 12.4 ms in total with the same parts (11.77 / 10.72).
+- Checks: fmt clean, clippy 0 warnings, tests 1009 editor + 1655 engine + the rest passed,
+  golden 20 / 20 (with this round's engine change).
