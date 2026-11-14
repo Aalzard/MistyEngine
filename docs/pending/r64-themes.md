@@ -87,7 +87,7 @@ from the installed fonts with a size scale and a silent fallback, everything liv
 
 ## Screenshots (not committed)
 
-`E:\MistyTargets	mp64\shots\`: `light.png`, `light_prefs.png`, `light_theme_editor.png`,
+`E:\MistyTargets\tmp\r64\shots\`: `light.png`, `light_prefs.png`, `light_theme_editor.png`,
 `light_inspector.png`, `custom_rose.png` (a custom theme from a `.mistytheme` with the Theme
 editor open), `dark.png`, `high_contrast.png`, `warm_dark.png`, `midnight.png`. Captured with
 `MISTY_THEME=<id>`, `MISTY_THEME_EDITOR=1`, `MISTY_PREFERENCES=1` and a temp `MISTY_HUB_CONFIG`.
