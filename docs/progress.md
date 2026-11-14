@@ -5179,3 +5179,43 @@ is flat from the fifth cycle.
 - Timings: hero 12.0 ms GPU (parts 11.8), inside 11.1 ms (parts 10.8). Checks: fmt clean,
   clippy 0 warnings, editor tests 1009 passed (with `noon_valley_matches_its_generator`),
   workspace tests passed on the round's first state; no engine change since round 6's golden.
+
+## Round 70 — Bug hunt 9: autosave and recovery, the project lock, optional packages, Behaviour Trees, themes (branch r70-qa9)
+- **Autosave after a save**: a document whose unsaved contents matched an earlier backup, but
+  whose file was saved after that backup, was skipped as "unchanged". After a crash its only
+  backup was older than the file, counted as stale and deleted: the unsaved work was lost. It
+  is backed up again now.
+- **Behaviour Trees are autosaved**: unsaved edits in the Behaviour Tree window were neither in
+  the autosave nor in the emergency backup of a crash. They are a document of their own now,
+  restored like the graphs (opened with the changes, file untouched).
+- **Restoring two graphs**: the Script, Shader and Effect Graph windows hold one graph each;
+  restoring the backups of two graphs of a kind opened the second over the first, whose
+  recovered changes vanished (and its backup was deleted at the next clean exit). The second
+  now stays in the Recover Unsaved Work list with a note until the first is saved.
+- **Save prompts for the Script Graph, Effect Graph and Behaviour Tree windows**: opening
+  another asset in them, or quitting the editor, dropped their unsaved changes without a word
+  (and the clean exit deleted the autosave backup too). They ask Save / Don't Save / Cancel
+  now, like the Shader Graph window.
+- **Read-only projects**: the asset saves that wrote with `std::fs::write` (Animator
+  controllers, which save after every edit, Script / Shader / Effect Graphs, Behaviour Trees,
+  clips, masks, avatars, mixers, physics materials, localization tables, input actions,
+  presets, build settings and profiles, Addressables settings, baked data, the Code Editor)
+  went past the project lock's read-only check, so a second editor overwrote the first one's
+  files. They go through `asset_db::write_asset` now, which refuses like `write_atomic`.
+- **Damaged `packages-lock.json`**: every Install and Remove failed with the JSON error and
+  the lock was never repaired, so an optional package could not be added or removed. The lock
+  is rebuilt from the manifest.
+- **Light theme in the graph windows**: only their empty state was checked. With a document
+  open, Behaviour Tree action headers were white on pale green (1.4:1) and Shader Graph sticky
+  notes dark brown on the dark note colour the Light theme makes. Header and note text now
+  picks white or near-black by contrast (`theme::text_on`; white is kept wherever it reads,
+  so Dark looks the same). A test draws the Behaviour Tree, Script Graph and Shader Graph
+  windows with a document under Light and High Contrast.
+
+### Checked
+Each new test fails without its fix. Read through and found sound: the session marker and
+crash path, recovery scan, project lock take-over after a crash, Behaviour Tree runtime sync
+across Play / Stop and scene loads (agents follow entity ids; prefab instances remap blackboard
+Object overrides), optional package remove / reinstall (assets and Behaviour Tree Agent
+components stay; agents still run), custom themes with a missing font (default font and a
+note), the node game's headless tests.
