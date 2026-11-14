@@ -384,41 +384,6 @@ fn tall_grass(d: &TerrainData) -> DetailLayer {
     }
 }
 
-/// Low dark herbs over the litter of the woods near the meadow (between the ferns and the
-/// broad-leaved plants): the floor reads green and shaded, not bare, for the cost of grass.
-fn forest_herbs(d: &TerrainData) -> DetailLayer {
-    let n = d.alphamap_resolution;
-    let texel = d.size.x / n as f32;
-    let map = (0..n * n)
-        .map(|t| {
-            let (x, z) = (
-                (t % n) as f32 * texel + texel * 0.5,
-                (t / n) as f32 * texel + texel * 0.5,
-            );
-            let near = smooth(900.0, 700.0, rel(x, z).length());
-            if near <= 0.0 {
-                return 0;
-            }
-            let litter = d.layer_weight(t, 3) as f32 / 255.0;
-            let patch = 0.55 + 0.45 * smooth(-0.2, 0.25, noise::fbm(x, z, 17.0, 2, 79));
-            (near * litter * patch * 255.0).round() as u8
-        })
-        .collect();
-    DetailLayer {
-        name: "Forest Herbs".into(),
-        // (Broad, low leaves rather than tufts: wide short blades, fewer of them.)
-        density: 20.0,
-        height: [0.06, 0.14],
-        width: 0.45,
-        bend: 1.5,
-        dryness: 0.0,
-        tint: -0.85,
-        seed_heads: 0.0,
-        map,
-        ..DetailLayer::grass("Forest Herbs")
-    }
-}
-
 /// Tileable value noise 0..1 with `cells` lattice cells across the tile.
 fn tile_noise(u: f32, v: f32, cells: u32, seed: u32) -> f32 {
     let (x, y) = (u * cells as f32, v * cells as f32);
@@ -873,7 +838,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 10,
                 leaf_density: 1.05,
                 leaf_size: 1.1,
-                leaf_color: [0.52, 0.57, 0.38],
+                leaf_color: [0.44, 0.49, 0.31],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.5,
@@ -891,7 +856,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leader: 0.7,
                 leaf_density: 1.0,
                 leaf_size: 1.0,
-                leaf_color: [0.54, 0.58, 0.39],
+                leaf_color: [0.46, 0.5, 0.32],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.45,
@@ -913,7 +878,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 5,
                 leaf_density: 0.9,
                 leaf_size: 0.8,
-                leaf_color: [0.55, 0.6, 0.4],
+                leaf_color: [0.47, 0.52, 0.33],
                 leaf_variation: 0.5,
                 crown_shading: 0.4,
                 clumping: 0.3,
@@ -1313,7 +1278,9 @@ fn terrain_data() -> TerrainData {
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         d.set_layer_weights(t, &out);
     }
-    d.detail_layers = vec![tall_grass(&d), forest_herbs(&d)];
+    // (No herb layer since round 59: from the floor its blades read as pale sprouts, and the
+    // carpets of broad-leaved plants cover the wood's floor at a third of its cost.)
+    d.detail_layers = vec![tall_grass(&d)];
     details::generate(&mut d);
     d.trees.prototypes = tree_assets()
         .into_iter()
@@ -1383,6 +1350,10 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
         (250.0, 320.0, 80.0, 7, &[OUTCROP], [10.0, 16.0]),
         (190.0, 540.0, 90.0, 7, &[OUTCROP], [12.0, 18.0]),
         (340.0, 700.0, 90.0, 6, &[OUTCROP], [12.0, 18.0]),
+        // The farther sites up the slope: rock faces rather than bare beige patches.
+        (150.0, 800.0, 110.0, 7, &[OUTCROP], [14.0, 22.0]),
+        (280.0, 980.0, 120.0, 6, &[OUTCROP], [16.0, 24.0]),
+        (40.0, 1020.0, 100.0, 5, &[OUTCROP], [14.0, 22.0]),
     ];
     let mut n = 0u32;
     for &(right, ahead, spread, count, kinds, scale) in groups {
@@ -1408,13 +1379,17 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
                 continue;
             }
             let normal = crate::sample_rocks::terrain_normal(d, p.x, p.y);
-            let up = Vec3::Y.lerp(normal, 0.6).normalize();
+            // (Big slabs follow the slope closely and sink deeper: no floating edges.)
+            let big = s > 6.0;
+            let up = Vec3::Y
+                .lerp(normal, if big { 0.85 } else { 0.6 })
+                .normalize();
             let rotation = Quat::from_rotation_arc(Vec3::Y, up)
                 * Quat::from_rotation_y(r(4) * std::f32::consts::TAU);
             // Sunk into the slope so no edge floats.
             let h = d.sample_height(p.x, p.y);
             let slope = Vec2::new(normal.x, normal.z).length() / normal.y.max(0.2);
-            let sink = slope * fp * 0.8 + 0.1 * fp;
+            let sink = slope * fp * 0.8 + if big { 0.25 } else { 0.1 } * fp;
             out.push(Placed {
                 rock: kind,
                 position: CORNER + Vec3::new(p.x, h - sink, p.y),
