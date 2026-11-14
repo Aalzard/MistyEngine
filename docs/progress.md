@@ -4764,3 +4764,29 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+
+## Round 64 — Light mode, custom colour themes, custom fonts (branch r64-themes)
+
+Notes: `docs/pending/r64-themes.md`. User Guide: chapter 9, "Themes and fonts" (English and
+Arabic).
+
+- **Presets**: Dark (the original look, value for value), Light, High Contrast, Warm Dark and
+  Midnight, in **Edit ▸ Preferences ▸ Appearance**; live, saved per user in `hub.json`
+  (`MISTY_THEME=<id or custom name>` overrides it). The Hub's Dark / Light follows the editor's
+  theme and sets it.
+- **Tokens**: one `theme::Palette` of 41 colours (panels, text, accents, status, graphs, code);
+  the old `theme::TEXT`-style constants are token functions now. Fixed panel colours go through
+  `theme::shade`, which maps a Dark-theme colour onto the active palette and is the identity
+  under Dark; graph canvases and the Code Editor use their own tokens.
+- **Theme Editor**: every token with a colour button and hex field, live; editing a preset
+  copies it to a custom theme; Duplicate, Rename, Delete, Reset to Preset, Import / Export
+  `.mistytheme` (JSON, missing tokens from the base preset); low-contrast warnings (WCAG
+  ratios) and a small preview.
+- **Fonts**: UI font and Code Editor / Console font from the installed fonts (Windows system
+  and per-user folders, Linux font folders, macOS), searchable with a preview line, text size
+  80–150 %. Fonts are read with `skrifa` and checked the way egui loads them; a missing font
+  falls back to the default with a one-time note. The built-in Arabic font stays first and
+  every glyph a chosen font lacks falls back to the built-in fonts.
+- Tests: tokens per preset, Dark identity, file round-trip, import / export, contrast warning,
+  editor actions, missing font fallback, font enumeration on a fake folder, and every panel
+  drawn under each preset with a check for unreadable text.
