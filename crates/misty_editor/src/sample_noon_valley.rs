@@ -1558,7 +1558,8 @@ fn volume() -> PostProcessVolume {
     let f = &mut v.fog;
     f.active = true;
     f.max_fog_distance = 6000.0;
-    f.attenuation_distance = 1900.0;
+    // (Thicker since round 59: the photo's far hills and horizon are pale blue-grey.)
+    f.attenuation_distance = 1300.0;
     f.base_height = 60.0;
     f.maximum_height = 260.0;
     // (Grey-blue: the photo's far hills and sky are greyer than a clear blue.)
