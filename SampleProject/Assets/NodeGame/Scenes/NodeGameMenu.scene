@@ -1296,7 +1296,7 @@
         "Event System": {
           "drag_threshold": 10.0,
           "enabled": true,
-          "first_selected": 14,
+          "first_selected": null,
           "send_navigation_events": true
         },
         "GameObject": {

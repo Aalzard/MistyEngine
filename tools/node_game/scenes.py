@@ -3,6 +3,7 @@ stages drawn as text maps, and a win screen. Objects only carry components and S
 
 import json
 
+import graphs
 from graphs import GRAPHS, PREFABS, SCENES
 
 PLAYER_PNG = "Assets/Sprites/Player.png"
@@ -529,7 +530,9 @@ def screen(title, graph, fields, hint, buttons=()):
             "Event System": {
                 "drag_threshold": 10.0,
                 "enabled": True,
-                "first_selected": first,
+                # Enter submits the selected button; its On Click reaches graphs only with
+                # the round 66 fix (graphs.TRIGGERS), until then the Menu graph reads Enter.
+                "first_selected": first if graphs.TRIGGERS else None,
                 "send_navigation_events": True,
             }
         },

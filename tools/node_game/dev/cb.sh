@@ -12,7 +12,7 @@ while [ -z "$MINE" ]; do
   [ -z "$MINE" ] && sleep 3
 done
 echo "slot taken $(date)" > "$log"
-cargo "$@" -j 4 >> "$log" 2>&1; code=$?
+cargo "$1" -j ${JOBS:-4} "${@:2}" >> "$log" 2>&1; code=$?
 echo "exit $code $(date)" >> "$log"
 if grep -q "^r65 " "$MINE/owner" 2>/dev/null; then rm -rf "$MINE"; fi
 tail -25 "$log"
