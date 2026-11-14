@@ -402,7 +402,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
             // the blades end, and the far meadow keeps the grass mass's depth).
             // (A touch less red than the blades' far tint: seen edge-on the blades show their
             // green sides more than their dry tips.)
-            let past = smoothstep(0.55, 1.6, dist / terrain.grass_lush.w);
+            // (Strongest just past the blades, easing off far away, where the photo's meadow
+            // turns a lighter olive through the haze.)
+            let rel_d = dist / terrain.grass_lush.w;
+            let past = smoothstep(0.55, 1.6, rel_d) * (1.0 - 0.6 * smoothstep(1.8, 4.5, rel_d));
             let field = grass * vec3<f32>(0.92, 1.0, 1.0) * terrain.chunks.z * tufts * detail
                 * (1.0 - terrain.chunks.w * past);
             // (A little more saturated than the blades' mean: the haze greys it at a distance

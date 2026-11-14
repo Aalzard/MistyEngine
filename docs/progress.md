@@ -5041,3 +5041,22 @@ merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
 - **Sample**: `BehaviourTreeDemo` scene: a guard that patrols, chases the player when it sees
   them, attacks in range, searches and returns to patrol. User Guide chapter 12 (English and
   Arabic); Turkish and Arabic UI strings.
+### Round 59.4 — lighter far meadow, no herbs, darker wood crowns, outcrops up the slope
+
+- **Far meadow**: the far field's extra shade is strongest just past the blades and eases off
+  far away; `FAR_SHADE` 0.35 → 0.15. Eye level sRGB (far meadow / just past the crest / grass
+  mass): round 3 58/65/43 / 65/71/32 / 64/74/25, now 65/73/44 / 66/73/33 / 64/74/25: lighter
+  olive far away and the crest band matches the grass.
+- **Herbs cut**: the Forest Herbs layer is gone (its blades read as pale sprouts in the sun;
+  the broad-leaved carpets and ferns stay). Inside view GPU 13.4 → 10.8 ms (parts 12.3 →
+  10.6), hero 12.7 ms (parts 12.3).
+- **`inside2`** crowns darker olive: lower-half luminance median 0.038 → 0.024 (photo 0.028).
+- **Cliffs**: outcrops (14–24 m) in the three farther sites up the slope, so the bare patch on
+  the left of the first view shows rock faces; big slabs follow the slope (0.85) and sink a
+  quarter of their footprint into it. `cliffs_outcrops_r4.jpg`.
+- Final timings (High 1920×1080): hero 12.65 ms GPU (parts 12.24), inside 10.78 ms (parts
+  10.60), CPU 2.9 / 2.4 ms. Checks: fmt clean, clippy 0 warnings, tests 980 editor + 1627
+  engine + the rest passed, golden 20 / 20.
+- Still differs: no moss or staining at the outcrops' feet (they use the shared sample rock
+  materials; a NoonValley variant would be needed); the far meadow is still a darker olive
+  than the photo's; the forest floor between the carpets is bare litter.
