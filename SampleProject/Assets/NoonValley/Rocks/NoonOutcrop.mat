@@ -17,7 +17,7 @@
   "emission_intensity": 1.0,
   "albedo_map": "Assets/NoonValley/Rocks/NoonOutcrop_Albedo.jpg",
   "normal_map": "Assets/Rocks/Textures/Outcrop Layered_Normal.png",
-  "normal_scale": 1.0,
+  "normal_scale": 2.0,
   "tiling": [
     1.0,
     1.0
