@@ -430,6 +430,9 @@ pub struct EditorState {
     pub ui_scale: crate::a11y::UiScale,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
+    /// Autosave, the session marker and the Recover Unsaved Work dialog (off until the editor
+    /// app starts it for the open project).
+    pub autosave: crate::autosave::Autosave,
 }
 
 impl EditorState {
@@ -558,6 +561,7 @@ impl EditorState {
             vcs: Default::default(),
             ui_scale: Default::default(),
             actions: Vec::new(),
+            autosave: Default::default(),
         };
         crate::project_settings::load(&mut s);
         crate::build_settings::load(&mut s);

@@ -4852,3 +4852,35 @@ Fixes for the node and visual-scripting bugs the round 65 game agent reports whi
 - **2D physics**: native typed nodes for Physics2D queries and Rigidbody 2D; friction combines
   as the geometric mean (a frictionless player slides along walls), bounciness as the maximum.
 - **MCP**: `graph.*` tools create and edit Script Graphs; `scene.add_component` attaches them.
+## Round 62 — Autosave and crash recovery (branch r62-autosave)
+
+The PC lost power and hit memory bugchecks several times: unsaved scene work must survive that.
+
+### Autosave
+- Every 5 minutes by default (Edit ▸ Preferences ▸ Autosave: on/off, 1 to 60 minutes, per user)
+  the editor backs up each open document with unsaved changes: open scenes (also never-saved
+  ones), Prefab Mode's prefab and what it was opened from, the scenes from before Play while
+  playing, the open Script / Shader / Effect Graph and Code Editor scripts. Animator
+  controllers, Timelines, clips and terrain are already written after each edit.
+- Backups go to `Library/Autosave/<session>/<document>/`, the last 3 per document, through the
+  background saver (temp file, flush, rename); the real files are never written. Each backup is
+  a JSON header line plus the document as its file would hold it.
+- Main-thread cost: a scene is copied and its JSON written on a worker. NoonValley: 4.3 ms of
+  main-thread time per autosave (the JSON, 9.7 ms, is off the main thread); StressDemo (5.3 MB):
+  20 ms, so its autosave waits for a 2 s pause in the work. Autosaves also wait while a mouse
+  button is down or a text field has focus. The status bar says "Autosaved 14:32".
+
+### Crash recovery
+- `Library/session.lock` records the editor process and whether it closed cleanly. A clean exit
+  deletes its backups; what is left belongs to a crash, a power cut or "Decide Later".
+- **Recover Unsaved Work** on the next open lists each document whose backup is newer than its
+  file (backup time, file time): Restore All / Restore Selected / Discard / Decide Later.
+  Restoring opens the backup as a changed document (`*`); the user saves it.
+- A panic of the UI thread writes `Library/Logs/crash-<time>.txt` (message, backtrace, version,
+  GPU, recent Console lines) and an emergency backup, then exits; the next open offers the
+  backups and "Open crash log folder". Nothing is sent anywhere.
+- A read-only editor (round 60's project lock held by another editor) neither backs up nor
+  offers recovery. `MISTY_CRASH_TEST=<seconds>` tries the crash path on a test project.
+- Tried end to end on a First Person project copy: crash → backup + log → dialog → restore →
+  Save → clean exit with no backups left.
+- User Guide chapter 9 (English, Arabic); Turkish and Arabic UI strings. 14 new tests.

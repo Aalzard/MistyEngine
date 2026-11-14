@@ -106,6 +106,11 @@ impl EditorApp {
             );
             crate::capture::apply_env(&mut state, &mut dock);
         }
+        // Autosave, the session marker and backups left by a session that crashed (not in
+        // screenshot runs, which never save).
+        if capture.is_none() {
+            crate::autosave::start(&mut state);
+        }
         crate::tutorials::from_env(&mut state);
         state.ui_scale = crate::a11y::UiScale::load();
         state
@@ -127,6 +132,7 @@ impl EditorApp {
         let adapter = gpu_start.as_ref().map(|g| g.adapter_info());
         match adapter {
             Some(info) => {
+                crate::autosave::crash::set_gpu(format!("{} ({:?})", info.name, info.backend));
                 if capture.is_some() {
                     eprintln!("renderer: {} ({:?})", info.name, info.backend);
                 }
@@ -899,6 +905,17 @@ impl EditorApp {
         }
     }
 
+    /// The editor frame panicked (`launcher` caught it): back up unsaved work and finish the
+    /// crash log before the process exits.
+    pub fn crashed(&mut self, payload: &(dyn std::any::Any + Send)) {
+        let out = crate::autosave::crash::after_panic(&mut self.state, payload);
+        eprintln!(
+            "editor crashed: {} emergency backups, log {:?}",
+            out.backups.len(),
+            out.log
+        );
+    }
+
     /// The user is mid-interaction: a mouse button is down or a text field has focus.
     fn interacting(ctx: &egui::Context) -> bool {
         ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input()
@@ -933,6 +950,8 @@ impl eframe::App for EditorApp {
         }
         // Last: the steps above (editor scripts' exit hooks, the MCP session) may still save.
         misty_engine::asset_db::saver::flush();
+        // A normal exit: this session's backups go, the session marker says "clean".
+        crate::autosave::clean_exit(&mut self.state);
         crate::project_lock::close(&mut self.state.project_lock);
     }
 
@@ -1175,6 +1194,13 @@ impl eframe::App for EditorApp {
                 Some(misty_engine::profiler::Category::Others),
             );
             self.scene_file_frame(&ctx);
+        }
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Autosave",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            crate::autosave::frame(&ctx, &mut self.state);
         }
         if std::mem::take(&mut self.state.live.restart_now) {
             self.restart(&ctx);
