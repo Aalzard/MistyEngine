@@ -79,7 +79,11 @@ fn sample_state() -> crate::state::EditorState {
 /// Draw one panel (or the Preferences and Theme Editor windows) under a preset; returns the
 /// unreadable text found.
 fn draw(tab: Option<Tab>, preset: Preset) -> Vec<String> {
-    let mut s = sample_state();
+    draw_with(sample_state(), tab, preset)
+}
+
+/// [`draw`] with a state of the caller's.
+fn draw_with(mut s: crate::state::EditorState, tab: Option<Tab>, preset: Preset) -> Vec<String> {
     if tab.is_none() {
         s.code_editor.ui.prefs_open = true;
         s.appearance.editor_open = true;
@@ -163,5 +167,54 @@ fn every_panel_draws_under_every_preset() {
         problems.is_empty(),
         "unreadable text:\n{}",
         problems.join("\n")
+    );
+}
+
+/// Round 70: the graph windows were only drawn empty (their hint text) above. With a document
+/// open, their nodes, pins, headers and the Behaviour Tree's (an optional package) canvas stay
+/// readable under Light too.
+#[test]
+fn graph_windows_with_a_document_draw_readably_under_light() {
+    let sample = crate::test_sample::shared_copy();
+    let root = std::env::temp_dir().join(format!("misty_theme_graphs_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("Assets/AI")).unwrap();
+    for rel in [
+        "Assets/AI/Guard.btree",
+        "Assets/Guides/Door/Door.vgraph",
+        "Assets/Examples/Shader Graph/Dissolve Glow.shadergraph",
+    ] {
+        let to = root.join(rel);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(sample.join(rel), to).unwrap();
+    }
+    crate::packages::optional::install(&root, crate::packages::optional::BEHAVIOUR_TREES).unwrap();
+    let state = || {
+        let mut s =
+            crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+        crate::panels::behaviour_tree::note_package(&s);
+        crate::panels::behaviour_tree::open(&mut s, "Assets/AI/Guard.btree");
+        crate::panels::script_graph::open(&mut s, "Assets/Guides/Door/Door.vgraph");
+        crate::panels::shader_graph::open(
+            &mut s,
+            "Assets/Examples/Shader Graph/Dissolve Glow.shadergraph",
+        );
+        s
+    };
+    let mut problems = Vec::new();
+    for tab in [Tab::BehaviourTree, Tab::ScriptGraph, Tab::ShaderGraph] {
+        for preset in [Preset::Light, Preset::HighContrast] {
+            for issue in draw_with(state(), Some(tab), preset) {
+                problems.push(format!("{preset:?} {tab:?}: {issue}"));
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        problems.is_empty(),
+        "unreadable text:
+{}",
+        problems.join("
+")
     );
 }

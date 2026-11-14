@@ -231,6 +231,24 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             ));
             Ok(())
         }
+        DocKind::BehaviourTree => {
+            let rel = header.path.as_deref().ok_or("no path")?;
+            busy_window(
+                s.behaviour_tree.dirty(),
+                s.behaviour_tree.path.as_deref(),
+                rel,
+                "Behaviour Tree",
+            )?;
+            let tree = misty_engine::behaviour_tree::BehaviourTree::from_json(body)?;
+            let file = s.assets.absolute(rel);
+            let w = &mut s.behaviour_tree;
+            w.open(&file, rel);
+            w.edit("Restore Autosave", false, |t| *t = tree);
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::BehaviourTree,
+            ));
+            Ok(())
+        }
         DocKind::Script => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let ce = &mut s.code_editor;

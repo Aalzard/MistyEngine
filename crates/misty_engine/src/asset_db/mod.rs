@@ -132,7 +132,8 @@ pub fn check_writable(path: &Path) -> std::io::Result<()> {
 /// Save an asset or setting of a project: refused (like [`write_atomic`]) when the project is
 /// open read-only, else written in place. Asset `save` functions use it so a second editor on
 /// a project (see the editor's `project_lock`) can't write over the first one's files.
-pub fn write_asset(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+pub fn write_asset(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let path = path.as_ref();
     check_writable(path)?;
     std::fs::write(path, bytes)
 }

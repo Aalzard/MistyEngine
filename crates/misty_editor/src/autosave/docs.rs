@@ -23,6 +23,7 @@ pub enum DocKind {
     ShaderGraph,
     EffectGraph,
     Script,
+    BehaviourTree,
 }
 
 impl DocKind {
@@ -35,6 +36,7 @@ impl DocKind {
             DocKind::ShaderGraph => "shader_graph",
             DocKind::EffectGraph => "effect_graph",
             DocKind::Script => "script",
+            DocKind::BehaviourTree => "behaviour_tree",
         }
     }
 
@@ -47,6 +49,7 @@ impl DocKind {
             DocKind::ShaderGraph => "Shader Graph",
             DocKind::EffectGraph => "Effect Graph",
             DocKind::Script => "Script",
+            DocKind::BehaviourTree => "Behaviour Tree",
         }
     }
 
@@ -54,7 +57,10 @@ impl DocKind {
     pub fn order(self) -> u8 {
         match self {
             DocKind::Scene => 0,
-            DocKind::ScriptGraph | DocKind::ShaderGraph | DocKind::EffectGraph => 1,
+            DocKind::ScriptGraph
+            | DocKind::ShaderGraph
+            | DocKind::EffectGraph
+            | DocKind::BehaviourTree => 1,
             DocKind::Script => 2,
             DocKind::Prefab => 3,
         }
@@ -96,6 +102,8 @@ pub enum DocRef {
     ScriptGraph,
     ShaderGraph,
     EffectGraph,
+    /// The tree open in the Behaviour Tree window.
+    BehaviourTree,
     /// A script open in the Code Editor (project-relative path).
     Script(String),
 }
@@ -267,6 +275,9 @@ pub fn dirty_docs(s: &EditorState) -> Vec<DocRef> {
     if s.effect_graph.dirty() {
         out.push(DocRef::EffectGraph);
     }
+    if s.behaviour_tree.dirty() {
+        out.push(DocRef::BehaviourTree);
+    }
     for d in &s.code_editor.docs {
         if d.dirty() {
             out.push(DocRef::Script(d.path.clone()));
@@ -371,6 +382,16 @@ pub fn snapshot(s: &mut EditorState, doc: &DocRef) -> Option<DocSnapshot> {
                 Some(path.clone()),
                 file_name(&path),
                 w.graph.to_json(),
+            ))
+        }
+        DocRef::BehaviourTree => {
+            let w = &s.behaviour_tree;
+            let path = w.path.clone()?;
+            Some(DocSnapshot::new(
+                DocKind::BehaviourTree,
+                Some(path.clone()),
+                file_name(&path),
+                w.tree.to_json(),
             ))
         }
         DocRef::Script(path) => {

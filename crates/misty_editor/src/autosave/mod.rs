@@ -3,8 +3,9 @@
 //! **Autosave.** Every few minutes (Edit ▸ Preferences ▸ Autosave: on by default, every 5
 //! minutes) the editor writes a backup of each open document with unsaved changes: the open
 //! scenes, the prefab open in Prefab Mode (and the scenes or prefabs it was opened from), the
-//! Script, Shader and Effect Graphs and the scripts open in the Code Editor. Backups go to
-//! `Library/Autosave/<session>/<document>/<slot>.autosave`, never over the real files. The main
+//! Script, Shader and Effect Graphs, the Behaviour Tree and the scripts open in the Code
+//! Editor. Backups go to `Library/Autosave/<session>/<document>/<slot>.autosave`, never over
+//! the real files. The main
 //! thread only takes the snapshot (a copy of a scene, whose JSON is written on a worker thread;
 //! small documents are serialised at once, see [`docs`]); the writes go
 //! through the background saver (`asset_db::saver`), each one atomic (temp file, flush to the

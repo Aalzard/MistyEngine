@@ -925,3 +925,50 @@ fn left_path(_root: &Path, open: &str) -> Option<&'static str> {
         Some("Assets/Graphs/A.vgraph")
     }
 }
+
+/// Round 70: unsaved Behaviour Tree edits were neither autosaved nor in the emergency backup
+/// (the tree window was not one of the documents), so a crash lost them.
+#[test]
+fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
+    use misty_engine::behaviour_tree::BehaviourTree;
+    use misty_engine::behaviour_tree::asset::NodeKind;
+    let root = project("btree");
+    let rel = "Assets/AI/Guard.btree";
+    BehaviourTree::new_default()
+        .save(&root.join(rel))
+        .unwrap();
+    let mut a = state(&root);
+    begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
+    crate::panels::behaviour_tree::open(&mut a, rel);
+    let wait = a.behaviour_tree.add_node(
+        NodeKind::Wait {
+            seconds: 2.5,
+            random: 0.0,
+        },
+        [300.0, 80.0],
+        Some(2),
+    );
+    assert_eq!(docs::dirty_docs(&a), [docs::DocRef::BehaviourTree]);
+    autosave_now(&mut a);
+    misty_engine::asset_db::saver::flush();
+    let edited = a.behaviour_tree.tree.clone();
+    drop(a); // the editor crashes
+
+    let mut b = state(&root);
+    begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
+    let d = b.autosave.recovery.as_ref().expect("the tree is offered back");
+    assert_eq!(d.items.len(), 1);
+    assert_eq!(d.items[0].header.kind, DocKind::BehaviourTree);
+    recovery::restore_items(&mut b, true);
+    assert!(b.autosave.recovery.is_none(), "{:?}", b.console.last());
+    assert_eq!(b.behaviour_tree.path.as_deref(), Some(rel));
+    assert!(b.behaviour_tree.dirty(), "restored as unsaved");
+    assert_eq!(b.behaviour_tree.tree, edited);
+    assert!(b.behaviour_tree.tree.node(wait).is_some());
+    assert_eq!(
+        BehaviourTree::load(&root.join(rel)).unwrap(),
+        BehaviourTree::new_default(),
+        "the file is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
