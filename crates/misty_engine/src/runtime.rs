@@ -108,6 +108,8 @@ impl Runtime {
         settings: &ProjectSettings,
         audio: Audio,
     ) -> Self {
+        // Tiles, sprites and models the game loads come from its own project.
+        let _root = crate::assets::scoped_root(&project_root);
         // Edit-mode particle previews don't carry into the game.
         crate::particles::clear_all(scene);
         crate::vfx::clear_all(scene);
@@ -225,6 +227,7 @@ impl Runtime {
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         crate::profile_scope!("PlayerLoop", Category::Others);
+        let _root = crate::assets::scoped_root(&self.root);
         // Shaders, waves and buoyancy follow the game clock.
         crate::clock::set_play_time(time.time);
         // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.
@@ -321,6 +324,7 @@ impl Runtime {
         rel: &str,
         text: &str,
     ) -> Result<SceneId, String> {
+        let _root = crate::assets::scoped_root(&self.root);
         let (id, roots, report) = scene.load_additive(rel, text)?;
         let warnings = report.warnings.into_iter().map(|w| format!("{rel}: {w}"));
         self.pending.extend(warnings);
@@ -380,6 +384,7 @@ impl Runtime {
         other: &mlua::Lua,
         f: impl FnOnce() -> R,
     ) -> R {
+        let _root = crate::assets::scoped_root(&self.root);
         self.host.lend_world(scene, other, f)
     }
 
@@ -531,6 +536,7 @@ impl Runtime {
 
     /// Step (`step`) or continue the Script Graph flow paused at a breakpoint.
     pub fn graph_continue(&mut self, scene: &mut Scene, step: bool) {
+        let _root = crate::assets::scoped_root(&self.root);
         self.host.graph_continue(scene, step);
     }
 

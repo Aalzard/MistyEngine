@@ -817,9 +817,9 @@ fn demo_effects_compile_with_their_features() {
 /// The portal script drives the effect through the Lua API while playing.
 #[test]
 fn portal_script_sets_properties() {
-    // A copy: the global project root never names the repo's sample (see test_sample).
+    // A copy of the sample as this thread's project root (other tests move the global one).
     let root = crate::test_sample::shared_copy();
-    misty_engine::assets::set_project_root(&root);
+    let _root = misty_engine::assets::scoped_root(&root);
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     let settings = misty_engine::settings::ProjectSettings::default();
     let (audio, _log) = misty_engine::audio::Audio::null(root.clone());
@@ -859,9 +859,9 @@ fn vfx_demo_renders() {
         eprintln!("no GPU adapter: skipped");
         return;
     };
-    // A copy: the global project root never names the repo's sample (see test_sample).
+    // A copy of the sample as this thread's project root (other tests move the global one).
     let root = crate::test_sample::shared_copy();
-    misty_engine::assets::set_project_root(&root);
+    let _root = misty_engine::assets::scoped_root(&root);
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     // Absolute effect paths: independent of the process-wide project root other tests change.
     let list: Vec<_> = scene

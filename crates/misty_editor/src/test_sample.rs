@@ -62,6 +62,64 @@ fn remove_stale_copies(temp: &Path) {
 
 #[cfg(test)]
 mod tests {
+    /// Rust source files of the editor crate.
+    fn sources() -> Vec<std::path::PathBuf> {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        let mut stack = vec![src];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    files.push(p);
+                }
+            }
+        }
+        files
+    }
+
+    /// No test that runs in the full suite sets the process-wide project root: tests run in
+    /// parallel, and one that sets it moves it under every other test reading assets through
+    /// it. Lumo's Leap's play test lost its ground's tile collider that way ("the player stands
+    /// on the ground: [1.5, -3.2, 0]"). Tests take `assets::scoped_root` (this thread only,
+    /// handed on to the background jobs it queues); game sessions scope their own root. Only
+    /// the editor's project opening (`AssetDatabase::open`), the race tests next to it and the
+    /// ignored generators set it.
+    #[test]
+    fn tests_never_move_the_global_project_root() {
+        let mut bad = Vec::new();
+        for f in sources() {
+            if f.ends_with("test_sample.rs") || f.ends_with("assets.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&f).unwrap();
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if !l.contains("set_project_root(") || l.trim_start().starts_with("//") {
+                    continue;
+                }
+                let start = (0..=i).rev().find(|&j| {
+                    let t = lines[j].trim_start();
+                    t.starts_with("fn ") || t.starts_with("pub fn ") || t.contains(" fn ")
+                });
+                let ignored = start.is_some_and(|j| {
+                    lines[j.saturating_sub(3)..j]
+                        .iter()
+                        .any(|a| a.contains("#[ignore"))
+                });
+                let note = lines[i.saturating_sub(2)..i]
+                    .iter()
+                    .any(|a| a.contains("ignored") || a.contains("Alone on purpose"));
+                if !ignored && !note {
+                    bad.push(format!("{}:{}", f.display(), i + 1));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "tests set the global project root: {bad:?}");
+    }
+
     /// No test opens the repo's sample in the editor (`EditorState::new`, `AssetDatabase::open`)
     /// or makes it the global project root, except the ignored generators that write it on
     /// purpose: that imports the sample (extracting `Crate.fbx`'s materials next to it) and

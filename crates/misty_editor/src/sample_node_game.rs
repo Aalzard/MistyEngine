@@ -147,9 +147,9 @@ struct Session {
 
 impl Session {
     fn start(name: &str) -> Self {
+        // Tile assets (the ground's collider) load from the session's own project root (the
+        // runtime scopes it), not the global one other tests move.
         let root = project();
-        // Tile assets (the ground's collider) load from the project root.
-        misty_engine::assets::set_project_root(&root);
         let settings = ProjectSettings::load(&root).unwrap();
         let rel = scene_path(name);
         let (mut scene, _) = Scene::load(&root.join(&rel)).unwrap();

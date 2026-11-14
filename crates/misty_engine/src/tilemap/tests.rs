@@ -804,3 +804,76 @@ fn sprite_colliders_follow_the_tile_rotation() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A game session loads its tiles from its own project whatever the global project root says.
+/// Lumo's Leap's play test failed in full test runs ("the player stands on the ground: [1.5,
+/// -3.2, 0]"): its ground's tile collider was read through the global root, which other tests
+/// running alongside had moved to their own projects, so the ground had no collider and the
+/// player fell through. Two projects here hold different tiles under the same path; each
+/// session sees its own while the root outside the session names neither.
+#[test]
+fn game_sessions_load_tiles_from_their_own_project_whatever_the_global_root() {
+    use crate::audio::Audio;
+    use crate::runtime::{Runtime, Time};
+    use crate::scene::{BoxCollider2D, Rigidbody2D};
+    use crate::scripting::Input;
+    use crate::settings::ProjectSettings;
+    let base = std::env::temp_dir().join(format!("misty_tile_roots_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let rel = "Assets/Tiles/Ground.tile";
+    let (solid, hollow, elsewhere) = (base.join("Solid"), base.join("Hollow"), base.join("Other"));
+    for (root, collider) in [(&solid, ColliderType::Grid), (&hollow, ColliderType::None)] {
+        std::fs::create_dir_all(root.join("Assets/Tiles")).unwrap();
+        let mut asset = TileAsset::sprite(SQUARE);
+        asset.collider = collider;
+        asset.save(&root.join(rel)).unwrap();
+    }
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    // The box's height after two seconds of play in a session on `root`.
+    let play = |root: &std::path::Path| {
+        let mut s = Scene::new("Fall");
+        let grid = s.spawn("Grid", None);
+        s.add(grid, Grid::default());
+        let tm = s.spawn("Ground", Some(grid));
+        let mut map = Tilemap::default();
+        edit::box_fill(
+            &mut map,
+            at(-5, -2),
+            at(5, -1),
+            &Brush::single(rel, Default::default()),
+        );
+        s.add(tm, map);
+        s.add(tm, TilemapCollider2D::default());
+        let ball = s.spawn("Box", None);
+        s.set_transform(ball, Transform::from_position(Vec3::new(0.5, 3.0, 0.0)));
+        s.add(ball, Rigidbody2D::default());
+        s.add(
+            ball,
+            BoxCollider2D {
+                size: Vec2::ONE,
+                ..Default::default()
+            },
+        );
+        // Another project is the root this thread resolves against outside the session (the
+        // global root other tests move stands in for it; it is not set here, as the GPU tests
+        // in this process read the sample through it).
+        let _ambient = crate::assets::scoped_root(&elsewhere);
+        let settings = ProjectSettings::default();
+        let (audio, _) = Audio::null(root.to_path_buf());
+        let mut rt = Runtime::start_with_audio(&mut s, root.to_path_buf(), &settings, audio);
+        let mut time = Time::new(&settings.time);
+        for _ in 0..120 {
+            time.advance(1.0 / 60.0);
+            rt.update(&mut s, &time, Input::default());
+        }
+        s.world_position(ball).y
+    };
+    let y = play(&solid);
+    assert!((y - 0.5).abs() < 0.05, "rests on its project's tiles: {y}");
+    let y = play(&hollow);
+    assert!(
+        y < -1.0,
+        "falls through its project's colliderless tiles: {y}"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

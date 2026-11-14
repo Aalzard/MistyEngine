@@ -458,22 +458,29 @@ pub fn version(rel: &str) -> u64 {
 
 fn lookup(rel: &str) -> (Option<Arc<TileAsset>>, u64) {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    // Registered assets are keyed by the path they were registered under.
+    if let Some(e) = cache.get(rel).filter(|e| e.pinned) {
+        return (e.asset.clone(), e.version);
+    }
+    // Files by their absolute path: the same "Assets/…" path in two projects (two game
+    // sessions on different project roots, see `assets::scoped_root`) are two assets.
+    let abs = crate::assets::absolute(rel);
+    let key = abs.to_string_lossy().into_owned();
     let now = Instant::now();
-    if let Some(e) = cache.get_mut(rel) {
-        if e.pinned || now.duration_since(e.checked).as_secs_f32() < 0.5 {
+    if let Some(e) = cache.get_mut(&key) {
+        if now.duration_since(e.checked).as_secs_f32() < 0.5 {
             return (e.asset.clone(), e.version);
         }
         e.checked = now;
-        let stamp = crate::vfs::modified(&crate::assets::absolute(rel));
+        let stamp = crate::vfs::modified(&abs);
         if stamp == e.stamp {
             return (e.asset.clone(), e.version);
         }
     }
-    let abs = crate::assets::absolute(rel);
     let asset = TileAsset::load(&abs).ok().map(Arc::new);
     let version = GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
     cache.insert(
-        rel.to_owned(),
+        key,
         Entry {
             checked: now,
             stamp: crate::vfs::modified(&abs),
@@ -503,6 +510,10 @@ pub fn register(rel: &str, asset: TileAsset) {
 
 /// Forget a cached asset (the editor saved a new version).
 pub fn invalidate(rel: &str) {
-    CACHE.lock().unwrap_or_else(|e| e.into_inner()).remove(rel);
+    let abs = crate::assets::absolute(rel).to_string_lossy().into_owned();
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cache.remove(rel);
+    cache.remove(&abs);
+    drop(cache);
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }

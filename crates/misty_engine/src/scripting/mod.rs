@@ -456,6 +456,8 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
+        // Tile colliders and other assets come from the game's own project.
+        let _root = crate::assets::scoped_root(&project_root);
         let physics2d = Physics2D::build(scene, &settings.physics2d, physics.settings());
         Self::start_with_physics(scene, physics, physics2d, project_root, audio, settings)
     }
@@ -469,6 +471,8 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
+        // Assets the scripts load come from the game's own project, not the global root.
+        let _root = crate::assets::scoped_root(&project_root);
         let lua = {
             crate::profile_scope!("Scripts.Start.Lua");
             game_lua()
@@ -1101,6 +1105,8 @@ impl ScriptHost {
 
     /// One game frame: Start (first frame), FixedUpdate + physics steps, Update, LateUpdate, Destroy.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        let root = self.root.clone();
+        let _root = crate::assets::scoped_root(&root);
         arm_deadline(&self.lua, true);
         self.update_frame(scene, time, input);
         arm_deadline(&self.lua, false);

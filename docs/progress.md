@@ -5140,3 +5140,26 @@ private memory up about 1 MB a cycle (left open).
   ours running) read 12.6 / 12.4 ms in total with the same parts (11.77 / 10.72).
 - Checks: fmt clean, clippy 0 warnings, tests 1009 editor + 1655 engine + the rest passed,
   golden 20 / 20 (with this round's engine change).
+## Round 68 — Bug hunt 8: the shared project root in tests and games, the memory soak (branch r68-qa8)
+
+One commit per bug, each with a regression test; the running list is `docs/pending/r68-qa8.md`.
+
+### Fixes
+- **Game sessions use their own project**: a playing game (the editor's Play mode, the player,
+  tests) now reads its tiles, sprites, models and other assets from its own project folder
+  instead of the editor's shared "current project", which other work can move meanwhile. This
+  was the flaky Lumo's Leap play test: in full test runs its ground's tile collider came from
+  another test's project, so the player fell through the floor. Background loads started by
+  the game read from the game's project too, and two projects with a tile at the same path no
+  longer share one cached tile.
+- **Tests no longer move the shared project**: the test runner's command line and the editor's
+  sample tests used to set the shared current project while other tests read through it; they
+  now keep their project to themselves, and a test scans the sources so a new one can't.
+
+### Long session
+A 32-minute soak with allocation tracking (171 cycles: Lumo's Leap stages, the Behaviour Tree
+demo, a GIF every other cycle, autosave every minute) answered round 67's open question: no
+leak. The program's own memory stayed at 82-88 MB with no call site growing; private memory
+rose in a few 25-56 MB steps over the first 20 cycles (GPU staging memory kept in blocks by the
+Vulkan memory allocator) and was then flat (+10 MB over the last 150 cycles). Play / Stop alone
+is flat from the fifth cycle.

@@ -19,41 +19,89 @@ static PROJECT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// The renderer, model importer and physics read textures and models through it.
 pub fn set_project_root(root: &Path) {
     *PROJECT_ROOT.write().unwrap_or_else(|e| e.into_inner()) = Some(root.to_path_buf());
-    ROOT_SETS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// How many times the project root was set: tests that read assets by project path compare
-/// it before and after, to tell a root moved by a test running alongside from a real failure.
-static ROOT_SETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// [`set_project_root`] unless a root is set already (a tool run inside a process that has
+/// its project open, such as the test runner inside the engine's own test suite).
+pub fn set_project_root_if_unset(root: &Path) {
+    let mut global = PROJECT_ROOT.write().unwrap_or_else(|e| e.into_inner());
+    if global.is_none() {
+        *global = Some(root.to_path_buf());
+    }
+}
 
-pub fn root_generation() -> u64 {
-    ROOT_SETS.load(std::sync::atomic::Ordering::SeqCst)
+thread_local! {
+    /// The project root of the game session running on this thread ([`scoped_root`]).
+    static SCOPED_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Restores the thread's previous scoped root when dropped (see [`scoped_root`]).
+pub struct RootScope {
+    previous: Option<PathBuf>,
+}
+
+impl Drop for RootScope {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        SCOPED_ROOT.with(|r| *r.borrow_mut() = previous);
+    }
+}
+
+/// Resolve project paths on this thread against `root` until the guard is dropped, whatever
+/// the global root ([`set_project_root`]) says meanwhile. A game session ([`crate::runtime::Runtime`])
+/// holds one around its frames, so the tiles, sprites, materials and models it loads come from
+/// its own project: the global root is the editor's open project, and several sessions of
+/// different projects (the editor's tests, tools) can run side by side.
+pub fn scoped_root(root: &Path) -> RootScope {
+    let previous = SCOPED_ROOT.with(|r| r.borrow_mut().replace(root.to_path_buf()));
+    RootScope { previous }
+}
+
+/// This thread's scoped root, if any ([`scoped_root`]): background jobs queued from it take
+/// it along.
+pub fn scoped() -> Option<PathBuf> {
+    SCOPED_ROOT.with(|r| r.borrow().clone())
+}
+
+/// Run `f` with the root project paths resolve against on this thread: the scoped root, else
+/// the global one.
+fn with_root<R>(f: impl FnOnce(Option<&Path>) -> R) -> R {
+    let mut f = Some(f);
+    let scoped = SCOPED_ROOT.with(|r| {
+        let r = r.borrow();
+        r.as_deref()
+            .map(|root| (f.take().expect("called once"))(Some(root)))
+    });
+    match scoped {
+        Some(out) => out,
+        None => {
+            let global = PROJECT_ROOT.read().unwrap_or_else(|e| e.into_inner());
+            (f.take().expect("called once"))(global.as_deref())
+        }
+    }
 }
 
 /// Absolute path of a project-relative asset path (unchanged when already absolute or no root is set).
 pub fn absolute(rel: &str) -> PathBuf {
-    match &*PROJECT_ROOT.read().unwrap_or_else(|e| e.into_inner()) {
+    with_root(|root| match root {
         Some(root) => root.join(rel),
         None => PathBuf::from(rel),
-    }
+    })
 }
 
-/// The project folder, when one is set ([`set_project_root`]).
+/// The project folder, when one is set ([`set_project_root`], or [`scoped_root`] on this thread).
 pub fn project_root() -> Option<PathBuf> {
-    PROJECT_ROOT
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    with_root(|root| root.map(Path::to_path_buf))
 }
 
 /// "Assets/…" path with forward slashes for a file inside the project (else the full path).
 pub fn relative(path: &Path) -> String {
-    let root = PROJECT_ROOT.read().unwrap_or_else(|e| e.into_inner());
-    root.as_deref()
-        .and_then(|r| path.strip_prefix(r).ok())
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    with_root(|root| {
+        root.and_then(|r| path.strip_prefix(r).ok())
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/")
+    })
 }
 
 /// Display name of a material path ("Red"), or "Default-Material" for none.
@@ -369,6 +417,27 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    /// A scoped root wins over the global one on its thread only, and nested scopes restore
+    /// the outer one when they end.
+    #[test]
+    fn scoped_roots_override_the_global_root_on_their_thread() {
+        let (a, b) = (PathBuf::from("ScopeA"), PathBuf::from("ScopeB"));
+        let outer = scoped_root(&a);
+        assert_eq!(absolute("Assets/X.png"), a.join("Assets/X.png"));
+        {
+            let _inner = scoped_root(&b);
+            assert_eq!(project_root(), Some(b.clone()));
+            assert_eq!(relative(&b.join("Assets/Y.mat")), "Assets/Y.mat");
+            // Another thread still uses the global root.
+            let other = std::thread::spawn(project_root).join().unwrap();
+            assert_ne!(other, Some(b.clone()));
+        }
+        assert_eq!(project_root(), Some(a.clone()));
+        drop(outer);
+        // Back to the global root (whatever another test set it to).
+        assert_ne!(project_root(), Some(a));
+    }
 
     #[test]
     fn material_round_trips_and_fills_missing_fields() {

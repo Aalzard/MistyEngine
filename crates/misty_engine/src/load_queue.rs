@@ -153,6 +153,15 @@ impl Queue {
     }
 
     fn enqueue(&self, label: String, job: Job, failed: Option<Failed>) {
+        // A job queued under a scoped project root (a game session, see
+        // `assets::scoped_root`) reads its files from that project on the worker too.
+        let job: Job = match crate::assets::scoped() {
+            Some(root) => Box::new(move |ticket: &Ticket| {
+                let _root = crate::assets::scoped_root(&root);
+                job(ticket)
+            }),
+            None => job,
+        };
         let mut state = self.shared.lock();
         if state.done >= state.total {
             // Idle: a new batch of work (the status bar counts from zero again).
@@ -317,6 +326,29 @@ mod tests {
     use std::sync::mpsc;
 
     const WAIT: Duration = Duration::from_secs(30);
+
+    /// A job queued by a thread with a scoped project root (a game session) resolves project
+    /// paths against it on the worker; one queued without resolves against the global root.
+    #[test]
+    fn jobs_take_their_threads_scoped_root_along() {
+        let q = Queue::new("test-root", 1);
+        let (tx, rx) = mpsc::channel();
+        let root = std::path::PathBuf::from("ScopedForJob");
+        {
+            let _scope = crate::assets::scoped_root(&root);
+            let tx = tx.clone();
+            q.push("scoped", move |_| {
+                tx.send(crate::assets::absolute("Assets/A.tile")).unwrap();
+                Ok(())
+            });
+        }
+        q.push("unscoped", move |_| {
+            tx.send(crate::assets::absolute("Assets/A.tile")).unwrap();
+            Ok(())
+        });
+        assert_eq!(rx.recv_timeout(WAIT).unwrap(), root.join("Assets/A.tile"));
+        assert_ne!(rx.recv_timeout(WAIT).unwrap(), root.join("Assets/A.tile"));
+    }
 
     /// A job that panics before publishing runs its `failed` instead (the texture and shader
     /// caches clear their pending key with it), with the panic's message; a cancelled one

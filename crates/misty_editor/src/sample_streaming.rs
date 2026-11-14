@@ -449,6 +449,7 @@ fn write_meta(path: &Path, rel: &str) {
 }
 
 fn write_all(root: &Path) {
+    // (Only the ignored generator calls this: it writes the repo's sample on purpose.)
     misty_engine::assets::set_project_root(root);
     let base = root.join(FOLDER);
     for dir in ["", "/Cells", "/Terrain", "/HLOD"] {

@@ -76,7 +76,10 @@ fn run_options(o: &Options, out: &mut impl Write) -> Result<i32, String> {
             root.display()
         ));
     }
-    crate::assets::set_project_root(root);
+    // The tests read this project's files on this thread whatever the global root says (other
+    // tests of the engine's own suite move it); a command-line run has none set yet.
+    let _root = crate::assets::scoped_root(root);
+    crate::assets::set_project_root_if_unset(root);
     let cx = RunContext::load(root)?;
     let files = discover(root);
     let filter = o.filter.clone().unwrap_or_default();
