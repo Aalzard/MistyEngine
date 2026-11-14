@@ -348,6 +348,8 @@ pub struct EditorState {
     pub effect_graph: crate::panels::effect_graph::EffectGraphWindow,
     /// The Script Graph window (visual scripting).
     pub script_graph: crate::panels::script_graph::ScriptGraphWindow,
+    /// The Behaviour Tree window (the optional Behaviour Trees package).
+    pub behaviour_tree: crate::panels::behaviour_tree::BehaviourTreeWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
     /// Input Actions window: the asset being edited.
@@ -494,6 +496,7 @@ impl EditorState {
             shader_graph: Default::default(),
             effect_graph: Default::default(),
             script_graph: Default::default(),
+            behaviour_tree: Default::default(),
             audio_mixer: Default::default(),
             input_actions: Default::default(),
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),

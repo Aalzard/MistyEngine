@@ -84,6 +84,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Playable Director", "references", "object"),
     ("Skinned Mesh Renderer", "", "root_bone"),
     ("Skinned Mesh Renderer", "", "bones"),
+    ("Behaviour Tree Agent", "overrides", "object"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).

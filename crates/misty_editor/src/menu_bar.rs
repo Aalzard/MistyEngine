@@ -572,6 +572,7 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
             let entries: Vec<_> = registry::components()
                 .iter()
                 .filter(|c| c.category == cat)
+                .filter(|c| crate::panels::inspector::component_offered(c.name))
                 .collect();
             if entries.is_empty() {
                 ui.weak(tr!("(coming soon)"));
@@ -645,6 +646,13 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     sub(ui, "AI", |ui| {
         let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        // The optional Behaviour Trees package.
+        if s.optional_packages
+            .has(crate::packages::optional::BEHAVIOUR_TREES)
+        {
+            let tab = Tab::BehaviourTree;
+            item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        }
     });
     sub(ui, "2D", |ui| {
         let tab = Tab::TilePalette;

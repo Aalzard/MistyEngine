@@ -12,6 +12,7 @@ pub mod asset_groups;
 pub mod assets;
 pub mod audio;
 pub mod background;
+pub mod behaviour_tree;
 pub mod build;
 pub mod build_profile;
 pub mod build_report;

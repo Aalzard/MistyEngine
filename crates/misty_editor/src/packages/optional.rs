@@ -16,13 +16,25 @@ use super::manifest::{Manifest, PackageJson};
 /// The Recorder: video, GIF and image sequences from the game or a camera.
 pub const RECORDER: &str = "com.misty.recorder";
 
+/// Behaviour Trees: visual AI for enemies and NPCs (`.btree` assets, the Behaviour Tree window,
+/// the Behaviour Tree Agent component).
+pub const BEHAVIOUR_TREES: &str = "com.misty.behaviour-trees";
+
 /// (name, display name, description).
-const PACKAGES: [(&str, &str, &str); 1] = [(
-    RECORDER,
-    "Recorder",
-    "Record the Scene Viewer, a camera or the Editor Scene to MP4, GIF, or PNG / JPG \
-     sequences at a fixed frame rate, by hand or from a Timeline.",
-)];
+const PACKAGES: [(&str, &str, &str); 2] = [
+    (
+        RECORDER,
+        "Recorder",
+        "Record the Scene Viewer, a camera or the Editor Scene to MP4, GIF, or PNG / JPG \
+         sequences at a fixed frame rate, by hand or from a Timeline.",
+    ),
+    (
+        BEHAVIOUR_TREES,
+        "Behaviour Trees",
+        "Visual AI for enemies and NPCs: Behaviour Tree assets and their editor, blackboards, \
+         the Behaviour Tree Agent component and live debugging in Play mode.",
+    ),
+];
 
 /// What the manifest asks for when an optional package is installed (any engine version).
 pub const REQUIREMENT: &str = "*";

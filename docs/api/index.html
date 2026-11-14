@@ -52,6 +52,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#assets">Assets</a></li>
 <li><a href="#audiomixer">AudioMixer</a></li>
 <li><a href="#audiosource">AudioSource</a></li>
+<li><a href="#behaviourtree">BehaviourTree</a></li>
 <li><a href="#color">Color</a></li>
 <li><a href="#debug">Debug</a></li>
 <li><a href="#forcemode">ForceMode</a></li>
@@ -310,6 +311,80 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">AudioSource.PlayClipAtPoint(clipPath, position [, volume [, pitch]])</div>
 <div class="meta">function · source: <code>audio_api.rs</code></div>
 <p>A 3D one-shot at a fixed point (pitch: playback speed, 1 = normal)</p>
+</div>
+</section>
+<section id="behaviourtree">
+<h2>BehaviourTree</h2>
+<p>Blackboards and control of Behaviour Tree Agents (the Behaviour Trees package)</p>
+<div class="entry" data-key="behaviourtree.finish(gameobject [, success]) end the agent's run script graph node that waits (success defaults to true)">
+<div class="sig">BehaviourTree.Finish(gameObject [, success])</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>End the agent's Run Script Graph node that waits (success defaults to true)</p>
+<p class="notes">Finish(gameObject, success): end the agent's Run Script Graph node that waits.</p>
+</div>
+<div class="entry" data-key="behaviourtree.getstatus(gameobject) &quot;running&quot;, &quot;success&quot;, &quot;failure&quot;, &quot;stopped&quot; or &quot;idle&quot;">
+<div class="sig">BehaviourTree.GetStatus(gameObject)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>&quot;Running&quot;, &quot;Success&quot;, &quot;Failure&quot;, &quot;Stopped&quot; or &quot;Idle&quot;</p>
+<p class="notes">GetStatus(gameObject): &quot;Running&quot;, &quot;Success&quot;, &quot;Failure&quot;, &quot;Stopped&quot; or &quot;Idle&quot;.</p>
+</div>
+<div class="entry" data-key="behaviourtree.getvalue(gameobject, key) a blackboard key's value (bool, number, string, vector3 or gameobject); nil when unset or missing">
+<div class="sig">BehaviourTree.GetValue(gameObject, key)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>A blackboard key's value (bool, number, string, Vector3 or GameObject); nil when unset or missing</p>
+<p class="notes">GetValue(gameObject, key): the value of a blackboard key (nil when unset or missing).</p>
+</div>
+<div class="entry" data-key="behaviourtree.haskey(gameobject, key) whether the agent's tree declares the key">
+<div class="sig">BehaviourTree.HasKey(gameObject, key)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Whether the agent's tree declares the key</p>
+<p class="notes">HasKey(gameObject, key): whether the agent's tree declares the key.</p>
+</div>
+<div class="entry" data-key="behaviourtree.isrunning(gameobject) whether the tree is ticking">
+<div class="sig">BehaviourTree.IsRunning(gameObject)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Whether the tree is ticking</p>
+<p class="notes">IsRunning(gameObject): the tree is ticking (not stopped or finished).</p>
+</div>
+<div class="entry" data-key="behaviourtree.restart(gameobject) start the tree over from the root">
+<div class="sig">BehaviourTree.Restart(gameObject)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Start the tree over from the Root</p>
+<p class="notes">Restart(gameObject): start the tree over from the Root.</p>
+</div>
+<div class="entry" data-key="behaviourtree.setvalue(gameobject, key, value) write a blackboard key (shared keys reach every agent of the share group)">
+<div class="sig">BehaviourTree.SetValue(gameObject, key, value)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Write a blackboard key (shared keys reach every agent of the share group)</p>
+<p class="notes">SetValue(gameObject, key, value): write a blackboard key (numbers convert between Int and Float; aborts watching the key react on the next tick).</p>
+</div>
+<div class="entry" data-key="behaviourtree.start(gameobject) start a stopped or finished tree from the root">
+<div class="sig">BehaviourTree.Start(gameObject)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Start a stopped or finished tree from the Root</p>
+<p class="notes">Start(gameObject): start a stopped or finished tree (from the Root) on the next tick.</p>
+</div>
+<div class="entry" data-key="behaviourtree.stop(gameobject) stop the tree (running actions stop) until start or restart">
+<div class="sig">BehaviourTree.Stop(gameObject)</div>
+<div class="meta">function · source: <code>behaviour_tree_api.rs</code></div>
+<p>Stop the tree (running actions stop) until Start or Restart</p>
+<p class="notes">Stop(gameObject): stop the tree (running actions stop) until Start or Restart.</p>
+</div>
+<div class="entry" data-key="behaviourtree.gameobject ">
+<div class="sig">BehaviourTree.gameObject</div>
+<div class="meta">property · source: <code>behaviour_tree_api.rs</code></div>
+</div>
+<div class="entry" data-key="behaviourtree.node ">
+<div class="sig">BehaviourTree.node</div>
+<div class="meta">property · source: <code>behaviour_tree_api.rs</code></div>
+</div>
+<div class="entry" data-key="behaviourtree.params ">
+<div class="sig">BehaviourTree.params</div>
+<div class="meta">property · source: <code>behaviour_tree_api.rs</code></div>
+</div>
+<div class="entry" data-key="behaviourtree.transform ">
+<div class="sig">BehaviourTree.transform</div>
+<div class="meta">property · source: <code>behaviour_tree_api.rs</code></div>
 </div>
 </section>
 <section id="color">

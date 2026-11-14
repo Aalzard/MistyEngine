@@ -36,6 +36,13 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
         if kind == AssetKind::Material {
             create_shader_items(ui, actions);
         }
+        if kind == AssetKind::ScriptGraph && crate::panels::behaviour_tree::package_installed() {
+            let bt = AssetKind::BehaviourTree;
+            if ui.button(tr(bt.label())).clicked() {
+                actions.push(Action::CreateAsset(bt));
+                ui.close();
+            }
+        }
     }
     ui.menu_button("2D", |ui| {
         for k in crate::tile_palette::TileCreate::ALL {

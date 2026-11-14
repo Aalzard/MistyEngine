@@ -26,6 +26,7 @@ pub mod app_api;
 pub mod assets_api;
 pub mod attributes;
 pub mod audio_api;
+pub mod behaviour_tree_api;
 pub mod camera_api;
 pub mod cursor_api;
 pub mod input_actions_api;
@@ -281,6 +282,8 @@ pub struct World {
     pub graph_vars: crate::visual_script::ObjectVariables,
     /// Custom events sent this frame, delivered after the callback or flow that sent them.
     pub graph_events: Vec<crate::visual_script::runtime::CustomEvent>,
+    /// Behaviour Tree Agents, their blackboards and the shared ones.
+    pub behaviour: crate::behaviour_tree::BtRuntime,
 }
 
 impl World {
@@ -298,6 +301,7 @@ impl World {
         let project_root_for_video = project_root.clone();
         let project_root_for_input = project_root.clone();
         let project_root_for_cameras = project_root.clone();
+        let project_root_for_bt = project_root.clone();
         let save = crate::save::SaveRuntime::begin(&scene);
         let (localization, table_warnings) =
             crate::localization::Localizer::load(&project_root, &settings.localization);
@@ -344,6 +348,7 @@ impl World {
             streaming: Default::default(),
             graph_vars: Default::default(),
             graph_events: Vec::new(),
+            behaviour: crate::behaviour_tree::BtRuntime::new(&project_root_for_bt),
         }
     }
 }
@@ -522,6 +527,9 @@ impl ScriptHost {
             }
         }
         drop(instantiate_scope);
+        // Behaviour Tree Agents get their blackboards (and Script Graphs) before Awake, so
+        // scripts can set blackboard values there.
+        host.sync_behaviour_trees();
         // Player Inputs enable their default map before any Awake.
         host.input_sync();
         crate::profile_scope!("Scripts.Start.Awake");
@@ -1221,6 +1229,12 @@ impl ScriptHost {
             self.flush_spawned();
         }
         {
+            // After the scripts and graphs (they set blackboard values), before navigation (a
+            // Move To started now moves this frame).
+            profile_scope!("BehaviourTrees.Update", Category::Scripts);
+            self.update_behaviour_trees(time.delta);
+        }
+        {
             profile_scope!("Navigation.Update", Category::Navigation);
             self.with_world(|w| {
                 w.navigation.update(&mut w.scene, time.delta);
@@ -1533,6 +1547,7 @@ impl ScriptHost {
                     w.physics2d.remove(*x);
                 }
                 w.scene.despawn(e);
+                w.behaviour.forget(&all);
                 all
             });
             self.instances.retain(|i| !doomed.contains(&i.entity));
@@ -1942,6 +1957,8 @@ return {class_name}
 
 #[cfg(test)]
 mod assets_tests;
+#[cfg(test)]
+mod behaviour_tree_tests;
 #[cfg(test)]
 mod input_tests;
 #[cfg(test)]
