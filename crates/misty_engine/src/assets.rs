@@ -430,7 +430,7 @@ mod tests {
             assert_eq!(project_root(), Some(b.clone()));
             assert_eq!(relative(&b.join("Assets/Y.mat")), "Assets/Y.mat");
             // Another thread still uses the global root.
-            let other = std::thread::spawn(|| project_root()).join().unwrap();
+            let other = std::thread::spawn(project_root).join().unwrap();
             assert_ne!(other, Some(b.clone()));
         }
         assert_eq!(project_root(), Some(a.clone()));
