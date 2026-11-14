@@ -5060,3 +5060,18 @@ merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
 - Still differs: no moss or staining at the outcrops' feet (they use the shared sample rock
   materials; a NoonValley variant would be needed); the far meadow is still a darker olive
   than the photo's; the forest floor between the carpets is bare litter.
+
+### Round 59.5 — outcrop feet, lighter far meadow, mossy forest floor, hero cost
+
+- **Outcrops**: NoonValley's own outcrop (`Assets/NoonValley/Rocks/NoonOutcrop.*`): the
+  sample's baked albedo retouched texel by texel from the mesh (`sample_rocks::bake::
+  texel_points`): damp moss and darker soil up its foot, moss on its ledges, water stains down
+  its faces; its own material and prefab over the sample's meshes (MeadowDemo's rocks are
+  untouched). The terrain round each slab's foot gets a dark apron of litter and mossy turf.
+  `cliffs_outcrops_r4_r5.jpg`.
+- **Far meadow**: `FAR_SHADE` 0.15 → 0.08: far 65/73/44 → 67/76/45 sRGB at eye level, the
+  crest band still matching the grass (66/73/33 against 64/74/26).
+- **Forest floor**: patches of moss (the dark turf) over the litter, strong enough to win the
+  height blend (the litter's height map hid an even mix). `forest_floor_r4_r5.jpg`.
+- **Hero cost**: grass 360 → 330 blades/m²: hero 11.8 ms GPU (parts 11.9), inside 10.7 ms
+  (parts 10.7).
