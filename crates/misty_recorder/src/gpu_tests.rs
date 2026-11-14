@@ -15,8 +15,11 @@ fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
+    // The features and limits the editor asks for (the renderer's pipelines need them).
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("recorder test device"),
+        required_features: misty_engine::render::timestamp_features(&adapter),
+        required_limits: misty_engine::render::device_limits(&adapter, wgpu::Limits::default()),
         ..Default::default()
     }))
     .ok()
