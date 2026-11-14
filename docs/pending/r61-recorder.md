@@ -112,10 +112,11 @@ Release build, target `E:/MistyTargets/r61-recorder`, commit 755ba415 (+ the GPU
 - Recorder tests: exact N frames for frame and time ranges (crate and editor, the editor one in
   capture time with a 0.5 s "real" frame), PNG and JPG sequences decoded back, GIF frame count,
   size and timing, MP4 decoded back with OpenH264 (40/40 frames, mean error under 12/255),
-  WebM parsed back (12 blocks, key frame first, timestamps, duration), install / remove,
+  WebM parsed back (12 blocks, key frame first, timestamps, duration), the readback ring on
+  the GPU (9 frames through 4 buffers, in order, equal to blocking reads), install / remove,
   window and menu follow the package, Lua start / stop only with the package.
 - No render code changed (the recorder renders through the existing renderer into its own
   target), so no golden shots.
 - Note: the engine's GPU tests in the workspace run overlapped with r59 holding
   `gpu-timing.lock` (the lock was taken by r59 after my run had started; stopping my own test
-  process was not permitted). The recorder GPU test ran under the lock.
+  process was not permitted). The recorder GPU test ran under the lock and passed.
