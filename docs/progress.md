@@ -5075,3 +5075,10 @@ merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
   height blend (the litter's height map hid an even mix). `forest_floor_r4_r5.jpg`.
 - **Hero cost**: grass 360 → 330 blades/m²: hero 11.8 ms GPU (parts 11.9), inside 10.7 ms
   (parts 10.7).
+- Checks: fmt clean, clippy 0 warnings, tests 1004 editor (with
+  `noon_valley_matches_its_generator`, now also checking the outcrop material) + 1649 engine +
+  the rest passed, golden 20 / 20 (on this round's engine; later builds changed only the
+  generator).
+- Still differs: the outcrops' feet read mostly through the darker apron from the meadow (the
+  retouched foot is small at that distance and half sunk); the far meadow is still darker than
+  the photo's; the slabs are paler and smoother than the photo's tan limestone.
