@@ -324,7 +324,7 @@ fn grass() -> details::DetailSettings {
         depth_shading: 0.65,
         // Past the blades the ground keeps the grass's look: no line where they end.
         far_field: 1.0,
-        far_field_brightness: 0.28,
+        far_field_brightness: 0.3,
     }
 }
 
@@ -1805,7 +1805,7 @@ fn forest_floor_toned(root: &std::path::Path) -> image::RgbImage {
             ((c + 0.055) / 1.055).powf(2.4)
         }
     };
-    let k = [0.62, 0.55, 0.45];
+    let k = [0.5, 0.43, 0.34];
     for px in img.pixels_mut() {
         for i in 0..3 {
             px[i] = srgb(lin(px[i]) * k[i]);
