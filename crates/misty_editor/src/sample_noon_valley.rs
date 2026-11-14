@@ -1469,9 +1469,9 @@ fn volume() -> PostProcessVolume {
     ae.active = true;
     ae.limit_min = -3.0;
     ae.limit_max = 0.0;
-    // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
-    // brighter: the shaded forest floor reads mid-brown, not black.
-    ae.histogram_high = 70.0;
+    // Metered without the brightest tenth (sky through the canopy) but with the sun flecks:
+    // metering only the shade blew the sun patches on the forest floor out to white.
+    ae.histogram_high = 88.0;
     // (A touch under: the darker sky would otherwise lift the meadow above the photo's.)
     ae.compensation = -0.3;
     ae.speed_dark_to_light = 1.5;
