@@ -128,6 +128,9 @@ pub struct RecorderState {
     pub status: Option<(bool, String, Option<PathBuf>)>,
     /// "Not installed" was said once for scripts.
     warned_missing: bool,
+    /// The editor's renderer is still being made (the first seconds of a project). Recordings
+    /// wait for it, and so does the game: frames captured without it came out black.
+    pub gpu_starting: bool,
 }
 
 impl RecorderState {
@@ -169,6 +172,12 @@ pub fn package_changed(s: &mut EditorState) {
             crate::layout::Tab::Recorder,
         ));
     }
+}
+
+/// A recording is waiting for the editor's renderer: Play mode holds the game meanwhile, so no
+/// frame goes by uncaptured (or captured black).
+pub fn holds_game(s: &EditorState) -> bool {
+    s.recorder.gpu_starting && !s.recorder.active.is_empty()
 }
 
 /// Seconds the next Play-mode frame advances: one frame of the fastest recording while any
@@ -573,6 +582,11 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
     } else if play_needed && (s.recorder.play_seen || !s.recorder.started_play) {
         s.recorder.started_play = false;
         stop_all(s, gpu.as_deref());
+        return true;
+    }
+    if gpu.is_none() && s.recorder.gpu_starting {
+        // The renderer isn't there yet: nothing advanced (see `holds_game`), nothing to capture.
+        s.recorder.ticked = false;
         return true;
     }
     let ticked = std::mem::take(&mut s.recorder.ticked) || (!play_needed && !s.play.in_play_mode());

@@ -1095,6 +1095,7 @@ impl eframe::App for EditorApp {
                 || "Editor.Recorder",
                 Some(misty_engine::profiler::Category::Others),
             );
+            self.state.recorder.gpu_starting = self.gpu.is_none() && self.gpu_start.is_some();
             if crate::recorder::gpu_frame(self.gpu.as_mut(), &mut self.state) {
                 ctx.request_repaint();
             }

@@ -320,3 +320,48 @@ fn removing_the_package_mid_recording_ends_it_for_scripts_too() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// While the editor's renderer is still being made (the first seconds of a project), a
+/// recording waits and so does the game: the first frames of recordings started then came out
+/// black (a solid frame stood in for each one captured without the renderer).
+#[test]
+fn recordings_and_the_game_wait_for_the_renderer() {
+    let _turn = serial();
+    let root = project("gpu_starting");
+    let mut s = state(&root);
+    install(&mut s);
+    *s.recorder.list(&root) = RecorderList {
+        recorders: vec![RecorderSettings {
+            name: "Shots".into(),
+            format: OutputFormat::PngSequence,
+            range: RangeMode::FrameRange,
+            start_frame: 0,
+            end_frame: 4,
+            match_game: false,
+            width: 8,
+            height: 8,
+            ..Default::default()
+        }],
+    };
+    s.recorder.gpu_starting = true;
+    request_start(&mut s, None);
+    run_frames(&mut s, 2);
+    assert!(s.play.in_play_mode());
+    let game_time = s.time.time;
+    run_frames(&mut s, 10);
+    assert!(s.recorder.recording(), "still waiting");
+    assert_eq!(
+        s.recorder.active[0].recording.elapsed(),
+        0,
+        "nothing captured"
+    );
+    assert_eq!(s.time.time, game_time, "the game waited too");
+    s.recorder.gpu_starting = false;
+    run_frames(&mut s, 50);
+    wait_all(&mut s, None);
+    assert_eq!(
+        std::fs::read_dir(root.join("Recordings")).unwrap().count(),
+        5
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
