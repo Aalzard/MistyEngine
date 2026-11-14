@@ -345,3 +345,40 @@ fn gifs_and_record_audio_off_have_no_sound() {
     assert!(mp4::read_audio(&files[0]).unwrap().is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `MISTY_PROBE=<file.mp4|file.webm> cargo test -p misty_recorder --release -- --ignored probe`:
+/// what the Recorder's own readers find in a recording (tracks, length, sound level).
+#[test]
+#[ignore = "reads the file named by MISTY_PROBE"]
+fn probe_a_recording() {
+    let path = PathBuf::from(std::env::var("MISTY_PROBE").expect("MISTY_PROBE=<file>"));
+    let (frames, packets, pre_skip, plays) = if path.extension().is_some_and(|e| e == "webm") {
+        let info = webm::read_blocks(&path).unwrap();
+        println!("video {} {}x{}", info.codec, info.width, info.height);
+        let skip = (info.codec_delay_ns * RATE as u64).div_ceil(1_000_000_000);
+        let packets: Vec<Vec<u8>> = info.audio_blocks.into_iter().map(|b| b.1).collect();
+        println!("audio {} {} ch", info.audio_codec, info.channels);
+        (
+            info.blocks.len(),
+            packets,
+            skip as usize,
+            info.duration_ms / 1000.0,
+        )
+    } else {
+        let v = mp4::read_samples(&path).unwrap();
+        println!("video avc1 {}x{}", v.width, v.height);
+        let a = mp4::read_audio(&path).unwrap().expect("no audio track");
+        println!("audio {} {} ch {} Hz", a.codec, a.channels, a.sample_rate);
+        let plays = a.samples as f64 / a.sample_rate as f64;
+        (v.samples.len(), a.packets, a.pre_skip as usize, plays)
+    };
+    let pcm = decode_opus(&packets, pre_skip).unwrap();
+    let rms = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len().max(1) as f32).sqrt();
+    let peak = pcm.iter().fold(0f32, |m, s| m.max(s.abs()));
+    println!(
+        "{frames} frames, {} packets, sound {plays:.3} s, decoded {:.3} s, rms {rms:.4}, peak {peak:.3}",
+        packets.len(),
+        pcm.len() as f64 / 2.0 / RATE as f64
+    );
+    assert!(!packets.is_empty());
+}

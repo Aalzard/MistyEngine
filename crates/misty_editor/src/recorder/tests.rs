@@ -287,8 +287,9 @@ fn scripts_can_start_and_stop_but_only_with_the_package() {
     gpu_frame(None, &mut s);
     assert!(!s.recorder.recording());
     wait_all(&mut s, None);
+    // Three pictures and the WAV of their sound.
     let n = std::fs::read_dir(root.join("Recordings")).unwrap().count();
-    assert_eq!(n, 3);
+    assert_eq!(n, 4);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -316,9 +317,10 @@ fn removing_the_package_mid_recording_ends_it_for_scripts_too() {
     assert!(!s.recorder.recording());
     assert!(!misty_engine::recorder::is_recording());
     wait_all(&mut s, None);
+    // Two pictures and the WAV of their sound.
     assert_eq!(
         std::fs::read_dir(root.join("Recordings")).unwrap().count(),
-        2
+        3
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -361,9 +363,10 @@ fn recordings_and_the_game_wait_for_the_renderer() {
     s.recorder.gpu_starting = false;
     run_frames(&mut s, 50);
     wait_all(&mut s, None);
+    // Five pictures and the WAV of their sound.
     assert_eq!(
         std::fs::read_dir(root.join("Recordings")).unwrap().count(),
-        5
+        6
     );
     let _ = std::fs::remove_dir_all(&root);
 }
