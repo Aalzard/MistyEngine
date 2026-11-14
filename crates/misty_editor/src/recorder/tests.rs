@@ -428,3 +428,52 @@ fn a_video_keeps_the_games_sound_in_capture_time() {
     assert_eq!(audio.samples, 72_000);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A recording keeping sound ends while one that doesn't keeps going: the game's mix goes back
+/// to real time. It stayed in capture time with its clock frozen (nothing advanced it once no
+/// recording wanted sound), so the game played silence until the last recording ended.
+#[test]
+fn the_mix_goes_back_to_real_time_when_the_last_recording_keeping_sound_ends() {
+    let _turn = serial();
+    let root = project("sound_mixed");
+    let mut s = state(&root);
+    install(&mut s);
+    let settings = |audio: bool, end: u32| RecorderSettings {
+        name: if audio { "Loud" } else { "Mute" }.into(),
+        format: OutputFormat::Mp4,
+        range: RangeMode::FrameRange,
+        start_frame: 0,
+        end_frame: end,
+        fps: 30,
+        match_game: false,
+        width: 16,
+        height: 16,
+        record_audio: audio,
+        pattern: "<Recorder>".into(),
+        ..Default::default()
+    };
+    *s.recorder.list(&root) = RecorderList {
+        recorders: vec![settings(true, 4), settings(false, 60)],
+    };
+    request_start(&mut s, None);
+    run_frames(&mut s, 3);
+    assert_eq!(mix_captures(&s), Some(true));
+    // The short one with sound is done; the long silent one still records.
+    for _ in 0..20 {
+        run_frames(&mut s, 1);
+        if s.recorder.active.len() == 1 {
+            break;
+        }
+    }
+    assert_eq!(s.recorder.active.len(), 1, "only the silent recording is left");
+    run_frames(&mut s, 2);
+    assert!(s.recorder.recording() && s.play.in_play_mode());
+    assert_eq!(
+        mix_captures(&s),
+        Some(false),
+        "no recording keeps sound any more: the game is heard in real time"
+    );
+    run_frames(&mut s, 300);
+    wait_all(&mut s, None);
+    let _ = std::fs::remove_dir_all(&root);
+}

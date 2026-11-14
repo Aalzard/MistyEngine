@@ -477,3 +477,79 @@ fn read_only_projects_refuse_saves_of_every_asset_kind() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Round 71: saves Round 70 missed still wrote with `std::fs::write` past the read-only check:
+/// `ProjectSettings/ProjectSettings.json` (Edit ▸ Project Settings), Timelines, tiles and tile
+/// palettes (painting a palette saves it), trees, biomes and camera blend lists. A second
+/// editor on a project overwrote the first one's files with them.
+#[test]
+fn read_only_projects_refuse_the_saves_round_70_missed() {
+    let root = temp("read_only_kinds_r71");
+    let path = |name: &str| root.join("Assets").join(name);
+    type Save = Box<dyn Fn(&Path) -> Result<(), String>>;
+    let saves: Vec<(&str, Save)> = vec![
+        (
+            "A.timeline",
+            Box::new(|p| crate::timeline::asset::TimelineAsset::default().save(p)),
+        ),
+        (
+            "A.tile",
+            Box::new(|p| crate::tilemap::tile::TileAsset::default().save(p)),
+        ),
+        (
+            "A.palette",
+            Box::new(|p| crate::tilemap::palette::TilePalette::default().save(p)),
+        ),
+        (
+            "A.tree",
+            Box::new(|p| crate::trees::TreeAsset::oak().save(p)),
+        ),
+        (
+            "A.biome",
+            Box::new(|p| crate::world_gen::biome::Biome::default().save(p)),
+        ),
+        (
+            "A.blends",
+            Box::new(|p| crate::vcam::BlendList::default().save(p)),
+        ),
+    ];
+    for (name, _) in &saves {
+        std::fs::write(path(name), "before").unwrap();
+    }
+    let settings = crate::settings::ProjectSettings::path(&root);
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(&settings, "before").unwrap();
+    set_read_only(&root, true);
+    for (name, save) in &saves {
+        assert!(
+            save(&path(name)).is_err(),
+            "{name} saved in a read-only project"
+        );
+        assert_eq!(
+            std::fs::read_to_string(path(name)).unwrap(),
+            "before",
+            "{name}"
+        );
+    }
+    assert!(
+        crate::settings::ProjectSettings::default()
+            .save(&root)
+            .is_err(),
+        "Project Settings saved in a read-only project"
+    );
+    assert_eq!(std::fs::read_to_string(&settings).unwrap(), "before");
+    set_read_only(&root, false);
+    for (name, save) in &saves {
+        save(&path(name)).unwrap();
+        assert_ne!(
+            std::fs::read_to_string(path(name)).unwrap(),
+            "before",
+            "{name}"
+        );
+    }
+    crate::settings::ProjectSettings::default()
+        .save(&root)
+        .unwrap();
+    assert_ne!(std::fs::read_to_string(&settings).unwrap(), "before");
+    let _ = std::fs::remove_dir_all(&root);
+}

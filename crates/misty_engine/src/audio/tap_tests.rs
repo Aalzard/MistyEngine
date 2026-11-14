@@ -229,3 +229,54 @@ fn leaving_capture_time_returns_to_real_time() {
         "real time again: the mix renders on demand"
     );
 }
+
+/// Round 71: the sound device changed rate mid-recording (another default device: 48 kHz to
+/// 44.1 kHz). The capture clock counted 48 kHz samples but the targets were worked out at
+/// 44.1 kHz, so the mix stopped for seconds (or rendered a burst the other way), and the tap
+/// went on labelled 48 kHz with 44.1 kHz samples in it: the sound drifted off the picture.
+/// Now the clock keeps its place in seconds and taps of the old rate close (the Recorder takes
+/// a new one, whose start and rate are right).
+#[test]
+fn a_device_rate_change_keeps_capture_time_and_closes_the_old_taps() {
+    let status = Arc::new(Mutex::new(Status::default()));
+    let mut engine = Engine::new(SR, None, status);
+    engine.apply(Command::Clock(Some(ClockStart::new(0.0, SR))));
+    let (w, mut old) = tap(4 * 48000);
+    engine.apply(Command::AddTap(w));
+    engine.apply(Command::Advance(1.0));
+    assert_eq!(drain(&mut old).len(), 48000);
+    // The device now runs at 44.1 kHz (kira hands the new rate to the next block).
+    engine.sample_rate = 44100.0;
+    engine.apply(Command::Advance(2.0));
+    let late = drain(&mut old);
+    assert!(
+        old.closed(),
+        "a tap labelled 48 kHz must not get 44.1 kHz samples ({} came)",
+        late.len()
+    );
+    let (w, mut new) = tap(4 * 48000);
+    engine.apply(Command::AddTap(w));
+    engine.apply(Command::Advance(3.0));
+    assert_eq!(new.sample_rate(), Some(44100.0));
+    assert_eq!(new.start(), Some(88200), "second 2 at 44.1 kHz");
+    assert_eq!(drain(&mut new).len(), 44100, "one second of capture time");
+}
+
+/// Round 71: with no sound device (a headless machine, a missing driver) a recording's tap
+/// waited for the device forever: the failed open kept it, so the Recorder sat out its finish
+/// timeout on every recording, and the tap's buffer was never freed.
+#[test]
+fn a_missing_device_closes_the_waiting_taps() {
+    let root = project("no_device");
+    let mut audio = Audio::new(root, None);
+    audio.factory = Some(|| Err("no device here".into()));
+    audio.start_capture(0.0);
+    let tap = audio.capture_tap();
+    assert!(!tap.closed(), "waiting for the device to open");
+    // The game's first sound tries the device, which isn't there.
+    assert!(!audio.play_clip("Assets/Audio/Tone.wav", 1.0));
+    assert!(tap.closed(), "no device: nothing will ever feed it");
+    assert!(audio.capturing(), "capture time itself goes on");
+    let late = audio.capture_tap();
+    assert!(late.closed());
+}

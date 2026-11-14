@@ -629,4 +629,36 @@ mod tests {
         );
         std::fs::remove_dir_all(root).ok();
     }
+
+    /// Round 71: a project open read-only (another editor holds its lock) still let the
+    /// Project window rename, move, duplicate and delete its assets, and a rename rewrote the
+    /// paths in other scenes and prefabs with `std::fs::write`, under the first editor's feet.
+    #[test]
+    fn read_only_projects_refuse_file_operations() {
+        let root = temp("read_only");
+        let a = root.join("Assets");
+        let red = a.join("Red.mat");
+        std::fs::write(&red, "{}").unwrap();
+        std::fs::create_dir_all(a.join("Props")).unwrap();
+        let scene = r#"{"m":"Assets/Red.mat"}"#;
+        std::fs::write(a.join("Old.scene"), scene).unwrap();
+        misty_engine::asset_db::set_read_only(&root, true);
+        assert!(rename(&red, "Crimson").is_err());
+        assert!(move_into(&red, &a.join("Props")).is_err());
+        assert!(duplicate(&red).is_err());
+        assert!(delete_to_trash(std::slice::from_ref(&red)).is_err());
+        assert!(rewrite_references(&root, "Assets/Red.mat", "Assets/Crimson.mat").is_err());
+        assert!(red.exists(), "the file stays where it is");
+        assert!(!a.join("Crimson.mat").exists() && !a.join("Props/Red.mat").exists());
+        assert!(!a.join("Red 1.mat").exists());
+        assert_eq!(std::fs::read_to_string(a.join("Old.scene")).unwrap(), scene);
+        misty_engine::asset_db::set_read_only(&root, false);
+        let to = rename(&red, "Crimson").unwrap();
+        assert_eq!(
+            rewrite_references(&root, "Assets/Red.mat", "Assets/Crimson.mat").unwrap(),
+            ["Assets/Old.scene"]
+        );
+        assert!(to.exists());
+        std::fs::remove_dir_all(root).ok();
+    }
 }
