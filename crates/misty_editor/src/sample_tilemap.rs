@@ -299,9 +299,9 @@ fn tilemap_demo_plays() {
     use misty_engine::scripting::{Input, LogKind};
     use misty_engine::settings::ProjectSettings;
 
-    // A copy: the global project root never names the repo's sample (see test_sample).
+    // A copy of the sample as this thread's project root (other tests move the global one).
     let root = crate::test_sample::shared_copy();
-    misty_engine::assets::set_project_root(&root);
+    let _root = misty_engine::assets::scoped_root(&root);
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     let lights = misty_engine::light2d::collect(&scene);
     assert_eq!(lights.items.len(), 6, "global + 5 torches");

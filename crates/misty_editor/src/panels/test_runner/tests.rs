@@ -240,7 +240,7 @@ fn create_menu_makes_test_files_in_the_tests_folder() {
 #[test]
 fn sample_project_tests_pass() {
     let root = crate::test_sample::shared_copy();
-    misty_engine::assets::set_project_root(&root);
+    let _root = misty_engine::assets::scoped_root(&root);
     let files = misty_engine::testing::discover(&root);
     let names: Vec<&str> = files.iter().map(|f| f.rel.as_str()).collect();
     assert_eq!(

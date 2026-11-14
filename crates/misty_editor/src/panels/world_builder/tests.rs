@@ -14,7 +14,6 @@ fn state(name: &str) -> EditorState {
     let root = std::env::temp_dir().join(name);
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
-    misty_engine::assets::set_project_root(&root);
     EditorState::new(ProjectBrowser::open(root))
 }
 

@@ -691,9 +691,9 @@ fn ui_showcase_renders_every_canvas_mode() {
             Default::default()
         }
     }
-    // A copy: the global project root never names the repo's sample (see test_sample).
+    // A copy of the sample as this thread's project root (other tests move the global one).
     let root = crate::test_sample::shared_copy();
-    misty_engine::assets::set_project_root(&root);
+    let _root = misty_engine::assets::scoped_root(&root);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
     let (scene, _) = Scene::from_json("UIShowcase", &text).unwrap();
     let Some(gpu) = crate::sample_render::headless() else {
