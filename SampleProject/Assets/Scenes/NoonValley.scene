@@ -322,7 +322,7 @@
             ],
             "ambient_dimmer": 1.0,
             "anisotropy": 0.2,
-            "attenuation_distance": 1900.0,
+            "attenuation_distance": 1300.0,
             "base_height": 60.0,
             "denoising": true,
             "enabled": true,
