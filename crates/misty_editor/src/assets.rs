@@ -162,6 +162,8 @@ impl AssetDatabase {
         self.models.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
         let mut model_files = Vec::new();
+        // Scripts new or changed since the last refresh (all of them when the project opens).
+        let mut to_inspect: Vec<(PathBuf, String)> = Vec::new();
         let mut stack = vec![self.root.join("Assets")];
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -187,22 +189,24 @@ impl AssetDatabase {
                 {
                     // Script Graphs attach like scripts; their fields are the Object variables.
                     let rel = self.relative(&path);
-                    let meta = match old_scripts.get(&rel) {
-                        Some(m) if m.modified == mtime(&path) => m.clone(),
-                        _ => inspect(&path, &rel),
-                    };
-                    self.scripts.insert(rel, meta);
+                    match old_scripts.get(&rel) {
+                        Some(m) if m.modified == mtime(&path) => {
+                            self.scripts.insert(rel, m.clone());
+                        }
+                        _ => to_inspect.push((path, rel)),
+                    }
                 } else if path.extension().is_some_and(|e| e == "lua") {
                     let rel = self.relative(&path);
                     // Editor scripts are not components (see `editor_scripts`).
                     if misty_engine::asset_deps::is_editor_only(&rel) {
                         continue;
                     }
-                    let meta = match old_scripts.get(&rel) {
-                        Some(m) if m.modified == mtime(&path) => m.clone(),
-                        _ => inspect(&path, &rel),
-                    };
-                    self.scripts.insert(rel, meta);
+                    match old_scripts.get(&rel) {
+                        Some(m) if m.modified == mtime(&path) => {
+                            self.scripts.insert(rel, m.clone());
+                        }
+                        _ => to_inspect.push((path, rel)),
+                    }
                 } else if misty_engine::animation::is_clip(&path.to_string_lossy()) {
                     self.anims.insert(self.relative(&path));
                 } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
@@ -247,6 +251,12 @@ impl AssetDatabase {
         self.shaders.sort();
         self.hdris.sort();
         drop(walk);
+        {
+            misty_engine::profile_scope!("Assets.Refresh.Scripts");
+            for (rel, meta) in inspect_all(to_inspect) {
+                self.scripts.insert(rel, meta);
+            }
+        }
         misty_engine::profile_scope!("Assets.Refresh.Models");
         let messages = &mut self.messages;
         for rel in model_files {
@@ -572,6 +582,58 @@ pub fn open_external(path: &Path) -> std::io::Result<()> {
 
 fn mtime(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// [`inspect`] every script in `list`, on a few threads when there are many: each script runs
+/// its top level in a Lua state of its own (with the whole scripting API registered), a
+/// millisecond or more each, which the main thread spent one after another when a project
+/// opened.
+fn inspect_all(list: Vec<(PathBuf, String)>) -> Vec<(String, ScriptMeta)> {
+    const PER_THREAD: usize = 8;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get() / 2)
+        .clamp(1, 8)
+        .min(list.len().div_ceil(PER_THREAD));
+    if threads <= 1 {
+        return list
+            .into_iter()
+            .map(|(path, rel)| {
+                let meta = inspect(&path, &rel);
+                (rel, meta)
+            })
+            .collect();
+    }
+    let chunk = list.len().div_ceil(threads);
+    // A game session's own project root on this thread goes with the work.
+    let scoped = misty_engine::assets::scoped();
+    let scoped = &scoped;
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = list
+            .chunks(chunk)
+            .map(|part| {
+                std::thread::Builder::new()
+                    .name("misty script inspect".into())
+                    .spawn_scoped(scope, move || {
+                        let _root = scoped.as_deref().map(misty_engine::assets::scoped_root);
+                        part.iter()
+                            .map(|(path, rel)| (rel.clone(), inspect(path, rel)))
+                            .collect::<Vec<_>>()
+                    })
+            })
+            .collect();
+        let mut out = Vec::with_capacity(list.len());
+        for (worker, part) in workers.into_iter().zip(list.chunks(chunk)) {
+            match worker.map_err(|_| ()).and_then(|w| w.join().map_err(|_| ())) {
+                Ok(done) => out.extend(done),
+                // No thread, or it panicked: this part here, as before.
+                Err(()) => out.extend(
+                    part.iter()
+                        .map(|(path, rel)| (rel.clone(), inspect(path, rel))),
+                ),
+            }
+        }
+        out
+    })
 }
 
 fn inspect(path: &Path, rel: &str) -> ScriptMeta {

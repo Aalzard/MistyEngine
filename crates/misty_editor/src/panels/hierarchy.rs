@@ -13,7 +13,7 @@ use crate::theme;
 use crate::tree_lines::{self, Guide};
 use crate::widgets::{panel_toolbar, search_field};
 
-const ROW_H: f32 = 20.0;
+pub(crate) const ROW_H: f32 = 20.0;
 const INDENT: f32 = 16.0;
 
 /// Where a dragged row would land.

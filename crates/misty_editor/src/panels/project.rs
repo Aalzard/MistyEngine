@@ -355,9 +355,22 @@ fn list_view(
     open: &mut Option<PathBuf>,
     req: &mut Requests,
 ) {
+    // While something is dragged every row stays a widget (the dragged one keeps its drag).
+    let dragging = ui.ctx().dragged_id().is_some();
     for e in entries {
-        let is_sel = browser.selected.as_ref() == Some(&e.path);
         let renaming = is_renaming(browser, e);
+        // Rows scrolled out of view only take their place (like the grid's tiles).
+        if !dragging && !renaming {
+            let row = egui::Rect::from_min_size(
+                ui.cursor().min,
+                egui::vec2(ui.available_width(), super::hierarchy::ROW_H),
+            );
+            if !ui.is_rect_visible(row) {
+                ui.allocate_space(row.size());
+                continue;
+            }
+        }
+        let is_sel = browser.selected.as_ref() == Some(&e.path);
         let folder = e.is_dir.then_some(Icon::Folder);
         let label = match (renaming, folder) {
             (true, Some(_)) => String::new(),
