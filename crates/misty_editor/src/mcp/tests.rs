@@ -145,7 +145,10 @@ fn tools_list_has_a_schema_for_every_tool() {
         let name = t["name"].as_str().unwrap();
         assert!(seen.insert(name), "{name} listed twice");
         let prefix = name.split('.').next().unwrap();
-        assert!(["scene", "asset", "editor"].contains(&prefix), "{name}");
+        assert!(
+            ["scene", "asset", "graph", "editor"].contains(&prefix),
+            "{name}"
+        );
         assert!(
             name.len() <= 64
                 && name
