@@ -54,6 +54,8 @@ const NOON_OUTCROP_MATERIAL: &str = "Assets/NoonValley/Rocks/NoonOutcrop.mat";
 const NOON_OUTCROP_PREFAB: &str = "Assets/NoonValley/Rocks/NoonOutcrop.prefab";
 /// Outcrops bigger than this (scale) are the cliff sites' slabs (NoonValley's variant).
 const CLIFF_SLAB: f32 = 6.0;
+/// Tree prototype of the shrubs round the slabs' feet (the last in `tree_assets`).
+const FOOT_SHRUB: u16 = 12;
 
 fn nv_texture(name: &str) -> String {
     format!("{DIR}/Textures/{name}.png")
@@ -838,7 +840,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 seed: 41,
                 height: 26.0,
                 crown_shape: CrownShape::Round,
-                crown_width: 0.44,
+                // (Wider, denser crowns since round 59: fewer, smaller sun gaps on the floor.)
+                crown_width: 0.5,
                 crown_base: 0.55,
                 trunk_radius: 0.42,
                 leader: 0.45,
@@ -846,7 +849,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 branches: 10,
                 branch_angle: 50.0,
                 twigs: 10,
-                leaf_density: 1.05,
+                leaf_density: 1.35,
                 leaf_size: 1.1,
                 leaf_color: [0.44, 0.49, 0.31],
                 leaf_variation: 0.5,
@@ -860,11 +863,11 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
             TreeAsset {
                 seed: 43,
                 height: 24.0,
-                crown_width: 0.42,
+                crown_width: 0.48,
                 crown_base: 0.5,
                 trunk_radius: 0.27,
                 leader: 0.7,
-                leaf_density: 1.0,
+                leaf_density: 1.3,
                 leaf_size: 1.0,
                 leaf_color: [0.46, 0.5, 0.32],
                 leaf_variation: 0.5,
@@ -893,6 +896,29 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 crown_shading: 0.4,
                 clumping: 0.3,
                 ..TreeAsset::linden()
+            },
+        ),
+        // Dark shrubs round the feet of the cliff sites' slabs (index `FOOT_SHRUB`; the rocks
+        // are placed without regard to them).
+        (
+            tree_path("Foot Shrub"),
+            TreeAsset {
+                seed: 47,
+                height: 4.0,
+                crown_shape: CrownShape::Round,
+                crown_width: 1.3,
+                crown_base: 0.05,
+                trunk_radius: 0.08,
+                leader: 0.2,
+                branches: 9,
+                branch_angle: 68.0,
+                twigs: 8,
+                leaf_density: 2.0,
+                leaf_size: 0.9,
+                leaf_color: [0.5, 0.56, 0.4],
+                crown_shading: 0.9,
+                clumping: 0.6,
+                ..TreeAsset::oak()
             },
         ),
     ];
@@ -971,7 +997,7 @@ fn wood_cell(
             color: q(6),
         });
     };
-    let gap = open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.62;
+    let gap = open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.7;
     let carpet = 0.45 + 0.55 * smooth(-0.3, 0.1, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
@@ -1328,10 +1354,32 @@ fn terrain_data() -> TerrainData {
     // Dark litter and mossy turf round the feet of the cliff sites' slabs (the rock meets a
     // dark, green apron, not bare limestone).
     let texel = SIZE.x / n as f32;
-    for p in rocks(&d)
+    let mut shrubs = Vec::new();
+    for (k, p) in rocks(&d)
         .iter()
         .filter(|p| p.rock == crate::sample_rocks::OUTCROP && p.scale > CLIFF_SLAB)
+        .enumerate()
     {
+        // A few dark shrubs hugging the slab's foot, so it sits in the hillside's green.
+        for j in 0..7 {
+            let r = |salt: i32| noise::hash(k as i32 * 13 + j, salt, 0x5e1b);
+            let a = r(1) * std::f32::consts::TAU;
+            let dist = p.scale * (0.9 + 0.6 * r(2));
+            let q = Vec2::new(p.position.x - CORNER.x, p.position.z - CORNER.z)
+                + Vec2::new(a.cos(), a.sin()) * dist;
+            if q.cmplt(Vec2::splat(12.0)).any() || q.cmpgt(Vec2::new(SIZE.x, SIZE.z) - 12.0).any() {
+                continue;
+            }
+            let h = 0.8 + 0.6 * r(3);
+            shrubs.push(TreeInstance {
+                position: q / Vec2::new(SIZE.x, SIZE.z),
+                prototype: FOOT_SHRUB,
+                rotation: r(4) * std::f32::consts::TAU,
+                height_scale: h,
+                width_scale: h * (0.9 + 0.4 * r(5)),
+                color: r(6),
+            });
+        }
         let c = Vec2::new(p.position.x - CORNER.x, p.position.z - CORNER.z);
         let r = 2.2 * p.scale;
         let reach = (r / texel).ceil() as i32 + 1;
@@ -1355,6 +1403,7 @@ fn terrain_data() -> TerrainData {
             }
         }
     }
+    d.trees.instances.extend(shrubs);
     d
 }
 
@@ -1373,6 +1422,8 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
         .trees
         .instances
         .iter()
+        // (The shrubs at the slabs' feet are placed round the rocks, after them.)
+        .filter(|t| t.prototype != FOOT_SHRUB)
         .map(|t| t.position * Vec2::new(SIZE.x, SIZE.z))
         .collect();
     let mut out = Vec::new();
@@ -1555,7 +1606,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
     let rs = &mut s.render_settings;
     rs.skybox.sun_disk = SunDisk::HighQuality;
     rs.skybox.sun_size = 0.04;
-    rs.skybox.atmosphere_thickness = 1.0;
+    // (A little hazier: the photo's horizon is pale and grey, not saturated blue.)
+    rs.skybox.atmosphere_thickness = 1.5;
     // A deep blue overhead, paler and hazier towards the horizon.
     rs.skybox.sky_tint = [0.18, 0.24, 0.32];
     // (Darker overhead, as in the photo; the meadow keeps its own exposure.)
