@@ -41,7 +41,8 @@ fn window(s: EditorState) -> Harness<'static, EditorState> {
     let mut h = Harness::builder()
         .with_size([1400.0, 900.0])
         .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
-    h.run();
+    // Live views keep repainting: a few frames instead of running until idle.
+    h.run_steps(4);
     h
 }
 
