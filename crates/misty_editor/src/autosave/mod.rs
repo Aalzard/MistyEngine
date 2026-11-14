@@ -224,8 +224,8 @@ pub struct Autosave {
     pub big: bool,
     run: Option<Run>,
     /// Hash of what each document's last backup holds (unchanged documents aren't written
-    /// again) and the slot it went to.
-    backed_up: HashMap<String, (u64, usize)>,
+    /// again), the slot it went to and when it was taken (Unix ms).
+    backed_up: HashMap<String, (u64, usize, u64)>,
     /// Document folders made this session.
     made_dirs: HashSet<PathBuf>,
     /// The Recover Unsaved Work dialog (or the crash notice) waiting to be answered.
@@ -446,12 +446,21 @@ pub fn write_backup(
     snap: &DocSnapshot,
     direct: bool,
 ) -> Option<(usize, PathBuf)> {
+    let root = s.project.root.clone();
     let a = &mut s.autosave;
     let dir = a.session.as_ref()?.dir.join(snap.folder_name());
     let hash = snap.content_hash();
+    // The document's file was saved after its last backup: that backup counts as stale at
+    // recovery, so the same contents are written again (else they would be lost in a crash).
+    let saved_since = |taken: u64| {
+        snap.path
+            .as_deref()
+            .and_then(|p| session::mtime_ms(&root.join(p)))
+            .is_some_and(|file| file >= taken)
+    };
     let slot = match a.backed_up.get(&snap.key) {
-        Some((h, _)) if *h == hash && !direct => return None,
-        Some((_, slot)) => (slot + 1) % KEEP,
+        Some((h, _, taken)) if *h == hash && !direct && !saved_since(*taken) => return None,
+        Some((_, slot, _)) => (slot + 1) % KEEP,
         None => 0,
     };
     if !a.made_dirs.contains(&dir) {
@@ -463,7 +472,8 @@ pub fn write_backup(
         a.made_dirs.insert(dir.clone());
     }
     let path = dir.join(format!("{slot}.{BACKUP_EXT}"));
-    let bytes = snap.file_bytes(session::now_ms());
+    let taken = session::now_ms();
+    let bytes = snap.file_bytes(taken);
     let len = bytes.len();
     let result = if direct {
         misty_engine::asset_db::write_atomic(&path, bytes)
@@ -472,7 +482,7 @@ pub fn write_backup(
     };
     match result {
         Ok(()) => {
-            a.backed_up.insert(snap.key.clone(), (hash, slot));
+            a.backed_up.insert(snap.key.clone(), (hash, slot, taken));
             Some((len, path))
         }
         Err(e) => {

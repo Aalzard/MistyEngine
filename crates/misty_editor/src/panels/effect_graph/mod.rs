@@ -329,6 +329,9 @@ impl EffectGraphWindow {
 
 /// Open a graph in the window and bring the tab forward.
 pub fn open(s: &mut EditorState, rel: &str) {
+    if crate::graph_prompt::ask_before_open(s, crate::graph_prompt::Kind::EffectGraph, rel) {
+        return;
+    }
     if s.effect_graph.path.as_deref() != Some(rel) {
         let file = s.assets.absolute(rel);
         s.effect_graph.open(&file, rel);
@@ -336,7 +339,8 @@ pub fn open(s: &mut EditorState, rel: &str) {
     s.push(crate::actions::Action::FocusTab(Tab::EffectGraph));
 }
 
-fn save(s: &mut EditorState) {
+/// Save Asset; false when it failed (the Console says why).
+pub(crate) fn save(s: &mut EditorState) -> bool {
     let file = s
         .assets
         .absolute(s.effect_graph.path.as_deref().unwrap_or_default());
@@ -345,10 +349,13 @@ fn save(s: &mut EditorState) {
             let rel = s.effect_graph.path.clone().unwrap_or_default();
             s.console.info(format!("Saved {rel}"));
             s.refresh_assets();
+            true
         }
-        Err(e) => s
-            .console
-            .warn(format!("Could not save the Effect Graph: {e}")),
+        Err(e) => {
+            s.console
+                .warn(format!("Could not save the Effect Graph: {e}"));
+            false
+        }
     }
 }
 

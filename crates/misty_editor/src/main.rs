@@ -36,6 +36,7 @@ mod first_open_tests;
 mod fps_player;
 mod game_input;
 mod gizmos;
+mod graph_prompt;
 mod handles;
 mod hold_rename;
 mod hub;

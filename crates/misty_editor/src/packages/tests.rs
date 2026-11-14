@@ -353,3 +353,41 @@ fn a_read_only_project_keeps_its_manifest_and_recorder_settings() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Round 70: a damaged `packages-lock.json` (cut short by a crash, a bad merge) is rebuilt from
+/// the manifest instead of failing every resolve: Install and Remove kept failing with the JSON
+/// error and the lock was never repaired, so an optional package could not be added or removed
+/// from the Package Manager.
+#[test]
+fn a_corrupt_lock_file_is_rebuilt() {
+    let project = temp("corrupt_lock");
+    let lock_file = project.join(manifest::LOCK_FILE);
+    std::fs::create_dir_all(lock_file.parent().unwrap()).unwrap();
+    std::fs::write(&lock_file, "{ \"dependencies\": { \"com.misty.rec").unwrap();
+    // Install an optional package with the broken lock in place.
+    let mut w = PackagesWindow::default();
+    w.install_optional(&project, optional::BEHAVIOUR_TREES);
+    assert!(
+        w.status.as_ref().is_some_and(|(err, _)| !err),
+        "{:?}",
+        w.status
+    );
+    let lock = Lock::load(&project).expect("the lock file is valid again");
+    assert_eq!(
+        lock.dependencies
+            .get(optional::BEHAVIOUR_TREES)
+            .map(|l| l.source.as_str()),
+        Some("builtin")
+    );
+    // And remove it again.
+    std::fs::write(&lock_file, "not json").unwrap();
+    w.remove(&project, optional::BEHAVIOUR_TREES);
+    assert!(
+        w.status.as_ref().is_some_and(|(err, _)| !err),
+        "{:?}",
+        w.status
+    );
+    let lock = Lock::load(&project).expect("rebuilt again");
+    assert!(!lock.dependencies.contains_key(optional::BEHAVIOUR_TREES));
+    let _ = std::fs::remove_dir_all(&project);
+}

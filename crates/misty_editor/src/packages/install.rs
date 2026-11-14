@@ -382,7 +382,15 @@ fn requirement(value: &str) -> String {
 /// and write the lock file. Returns the resolution (conflicts included).
 pub fn sync(project: &Path, index: Option<&RegistryIndex>) -> Result<Resolution, String> {
     let manifest = Manifest::load(project)?;
-    let old_lock = Lock::load(project)?;
+    // The lock file is written from the manifest: a damaged one (cut short, a bad merge) is
+    // rebuilt rather than failing every Install and Remove until someone deletes it by hand.
+    let (old_lock, lock_broken) = match Lock::load(project) {
+        Ok(l) => (l, false),
+        Err(e) => {
+            eprintln!("packages lock rebuilt: {e}");
+            (Lock::default(), true)
+        }
+    };
     let (installed, _) = scan(project);
     let roots: BTreeMap<String, String> = manifest
         .dependencies
@@ -459,7 +467,9 @@ pub fn sync(project: &Path, index: Option<&RegistryIndex>) -> Result<Resolution,
         );
     }
     let lock_missing = !project.join(super::manifest::LOCK_FILE).is_file();
-    if lock != old_lock || (lock_missing && project.join(super::manifest::MANIFEST_FILE).is_file())
+    if lock != old_lock
+        || lock_broken
+        || (lock_missing && project.join(super::manifest::MANIFEST_FILE).is_file())
     {
         lock.save(project)?;
     }

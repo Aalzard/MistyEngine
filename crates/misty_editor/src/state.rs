@@ -306,6 +306,8 @@ pub struct EditorState {
     pub packages: crate::packages::PackagesWindow,
     /// Optional built-in packages the project installed (the Recorder, ...).
     pub optional_packages: crate::packages::optional::Installed,
+    /// "Save changes?" of the Script Graph, Effect Graph or Behaviour Tree window.
+    pub graph_prompt: Option<crate::graph_prompt::Prompt>,
     /// Recorder window and the recordings in progress (the optional Recorder package).
     pub recorder: crate::recorder::RecorderState,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
@@ -473,6 +475,7 @@ impl EditorState {
             asset_groups: Default::default(),
             packages: Default::default(),
             optional_packages: crate::packages::optional::Installed::load(&root),
+            graph_prompt: None,
             recorder: Default::default(),
             probes: Default::default(),
             lightmapper: Default::default(),
