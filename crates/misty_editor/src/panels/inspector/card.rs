@@ -29,7 +29,7 @@ pub fn card<T, R>(
 ) -> Option<R> {
     let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, true);
     let r = Frame::new()
-        .fill(theme::CARD_BG)
+        .fill(theme::card_bg())
         .corner_radius(RADIUS)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -45,7 +45,7 @@ pub fn card<T, R>(
                 CornerRadius::same(RADIUS)
             };
             let bar = Frame::new()
-                .fill(theme::CARD_HEADER)
+                .fill(theme::card_header())
                 .corner_radius(header_radius)
                 .inner_margin(Margin {
                     left: 2,

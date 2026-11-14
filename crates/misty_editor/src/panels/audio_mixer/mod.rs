@@ -136,11 +136,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         vec2(SIDEBAR_W.min(full.width() * 0.4), full.height()),
     );
     let right = Rect::from_min_max(pos2(left.right() + 1.0, full.top()), full.max);
-    ui.painter().rect_filled(left, 0.0, theme::PANEL_BG);
+    ui.painter().rect_filled(left, 0.0, theme::panel_bg());
     ui.painter().vline(
         left.right(),
         full.y_range(),
-        egui::Stroke::new(1.0, theme::BORDER),
+        egui::Stroke::new(1.0, theme::border()),
     );
     ui.scope_builder(UiBuilder::new().max_rect(left.shrink(4.0)), |ui| {
         egui::ScrollArea::vertical()
@@ -165,7 +165,7 @@ fn empty(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
         UiBuilder::new().max_rect(Rect::from_center_size(rect.center(), vec2(360.0, 60.0))),
         |ui| {
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new("No Audio Mixer in this project.").color(theme::TEXT_DIM));
+                ui.label(RichText::new("No Audio Mixer in this project.").color(theme::text_dim()));
                 if ui.button("Create Audio Mixer").clicked() {
                     s.push(Action::CreateAsset(AssetKind::AudioMixer));
                 }
@@ -231,7 +231,7 @@ fn toolbar(
     snap: usize,
     live: bool,
 ) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
@@ -239,14 +239,14 @@ fn toolbar(
                 ui.label(RichText::new(format!("{MIXER_ICON} {}", clip_name(path))).strong());
                 ui.label(
                     RichText::new(format!("Snapshot: {}", mixer.snapshots[snap].name))
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if live {
-                        ui.label(RichText::new("● Edit in Play Mode").color(theme::PLAY_TINT));
+                        ui.label(RichText::new("● Edit in Play Mode").color(theme::play_tint()));
                     } else if s.play.in_play_mode() {
                         ui.label(
-                            RichText::new("Not used by the running scene").color(theme::TEXT_DIM),
+                            RichText::new("Not used by the running scene").color(theme::text_dim()),
                         );
                     }
                 });
@@ -478,7 +478,7 @@ fn sidebar(
             ui.label(
                 RichText::new(mixer.key_label(&p.key))
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         })
         .response
@@ -534,6 +534,6 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }

@@ -25,8 +25,14 @@ pub fn height(s: &EditorState) -> f32 {
 }
 
 pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
-    ui.painter()
-        .rect_filled(rect, 6.0, Color32::from_rgba_unmultiplied(40, 41, 45, 240));
+    ui.painter().rect_filled(
+        rect,
+        6.0,
+        crate::theme::near(
+            |p| p.panel_bg,
+            Color32::from_rgba_unmultiplied(40, 41, 45, 240),
+        ),
+    );
     let busy = interacting(ui.ctx());
     let root = s.project.root.clone();
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
@@ -90,7 +96,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                             now = tr(now.label()),
                             last = tr(last.label())
                         ))
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                     );
                 }
                 if copy != node {

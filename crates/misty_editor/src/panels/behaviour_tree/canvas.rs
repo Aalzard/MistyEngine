@@ -20,13 +20,29 @@ const NODE_W: f32 = 184.0;
 const HEADER_H: f32 = 24.0;
 const LINE_H: f32 = 18.0;
 const PORT_R: f32 = 5.0;
-const CANVAS_BG: Color32 = Color32::from_rgb(34, 35, 38);
-const NODE_BG: Color32 = Color32::from_rgb(52, 53, 57);
-const SELECT: Color32 = Color32::from_rgb(88, 156, 236);
-const RUNNING: Color32 = Color32::from_rgb(255, 210, 90);
-const SUCCESS: Color32 = Color32::from_rgb(110, 210, 120);
-const FAILURE: Color32 = Color32::from_rgb(232, 96, 90);
-const WIRE: Color32 = Color32::from_rgb(170, 172, 180);
+// Colours follow the theme: the graph tokens for the canvas, nodes and selection, the rest
+// made for Dark and shaded for other themes.
+fn canvas_bg() -> Color32 {
+    theme::near(|p| p.graph_canvas, Color32::from_rgb(34, 35, 38))
+}
+fn node_bg() -> Color32 {
+    theme::near(|p| p.graph_node, Color32::from_rgb(52, 53, 57))
+}
+fn select() -> Color32 {
+    theme::near(|p| p.graph_select, Color32::from_rgb(88, 156, 236))
+}
+fn running() -> Color32 {
+    theme::shade(Color32::from_rgb(255, 210, 90))
+}
+fn success() -> Color32 {
+    theme::shade(Color32::from_rgb(110, 210, 120))
+}
+fn failure() -> Color32 {
+    theme::shade(Color32::from_rgb(232, 96, 90))
+}
+fn wire_color() -> Color32 {
+    theme::shade(Color32::from_rgb(170, 172, 180))
+}
 /// Ticks a finished node keeps its green or red outline.
 const FLASH_TICKS: u64 = 40;
 
@@ -55,12 +71,12 @@ pub(crate) struct CanvasState {
 /// Header colour by family.
 pub fn category_color(c: Category) -> Color32 {
     match c {
-        Category::Root => Color32::from_rgb(92, 94, 104),
-        Category::Composite => Color32::from_rgb(54, 100, 160),
-        Category::Decorator => Color32::from_rgb(120, 84, 160),
-        Category::Action => Color32::from_rgb(70, 128, 84),
-        Category::Condition => Color32::from_rgb(60, 120, 130),
-        Category::Scripting => Color32::from_rgb(170, 108, 44),
+        Category::Root => theme::shade(Color32::from_rgb(92, 94, 104)),
+        Category::Composite => theme::shade(Color32::from_rgb(54, 100, 160)),
+        Category::Decorator => theme::shade(Color32::from_rgb(120, 84, 160)),
+        Category::Action => theme::shade(Color32::from_rgb(70, 128, 84)),
+        Category::Condition => theme::shade(Color32::from_rgb(60, 120, 130)),
+        Category::Scripting => theme::shade(Color32::from_rgb(170, 108, 44)),
     }
 }
 
@@ -225,15 +241,15 @@ fn node_at(w: &BehaviourTreeWindow, view: View, p: Pos2) -> Option<u32> {
 fn live_stroke(w: &BehaviourTreeWindow, id: u32) -> Option<Color32> {
     let (now, last, age) = w.live_of(id)?;
     if now == Status::Running {
-        return Some(RUNNING);
+        return Some(running());
     }
     if age > FLASH_TICKS {
         return None;
     }
     let fade = 1.0 - age as f32 / FLASH_TICKS as f32;
     match last {
-        Status::Success => Some(SUCCESS.gamma_multiply(0.35 + 0.65 * fade)),
-        Status::Failure => Some(FAILURE.gamma_multiply(0.35 + 0.65 * fade)),
+        Status::Success => Some(success().gamma_multiply(0.35 + 0.65 * fade)),
+        Status::Failure => Some(failure().gamma_multiply(0.35 + 0.65 * fade)),
         _ => None,
     }
 }
@@ -241,7 +257,7 @@ fn live_stroke(w: &BehaviourTreeWindow, id: u32) -> Option<Color32> {
 pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     let resp = ui.interact(area, ui.id().with("bt_canvas"), Sense::click_and_drag());
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, CANVAS_BG);
+    painter.rect_filled(area, 0.0, canvas_bg());
     if s.behaviour_tree.canvas.frame_all {
         s.behaviour_tree.canvas.frame_all = false;
         frame_all(&mut s.behaviour_tree, area);
@@ -283,7 +299,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     if let Some(from) = s.behaviour_tree.canvas.linking {
         let hover = ui.input(|i| i.pointer.hover_pos());
         if let (Some(p), Some(n)) = (hover, s.behaviour_tree.tree.node(from)) {
-            wire_width(&painter, out_port(view, n), p, SELECT, view.zoom, 2.4);
+            wire_width(&painter, out_port(view, n), p, select(), view.zoom, 2.4);
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             s.behaviour_tree.canvas.linking = None;
@@ -325,8 +341,8 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
         painter.rect(
             band,
             2.0,
-            SELECT.gamma_multiply(0.12),
-            Stroke::new(1.0, SELECT.gamma_multiply(0.7)),
+            select().gamma_multiply(0.12),
+            Stroke::new(1.0, select().gamma_multiply(0.7)),
             StrokeKind::Inside,
         );
         if resp.drag_stopped() {
@@ -397,10 +413,10 @@ fn flash(ui: &Ui, painter: &egui::Painter, w: &mut BehaviourTreeWindow, area: Re
     if let Some((text, until)) = w.canvas.flash.clone() {
         if now < until {
             let at = pos2(area.center().x, area.bottom() - 24.0);
-            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::TEXT);
+            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::text());
             let r = Rect::from_center_size(at, galley.size() + vec2(20.0, 10.0));
-            painter.rect_filled(r, 6.0, Color32::from_rgb(90, 44, 44));
-            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::TEXT);
+            painter.rect_filled(r, 6.0, theme::shade(Color32::from_rgb(90, 44, 44)));
+            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::text());
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_secs_f64(until - now));
         } else {
@@ -419,18 +435,26 @@ fn wires(painter: &egui::Painter, w: &BehaviourTreeWindow, view: View) {
             let live = w
                 .live_of(*c)
                 .is_some_and(|(now, _, _)| now == Status::Running);
-            let (color, width) = if live { (RUNNING, 3.2) } else { (WIRE, 2.2) };
+            let (color, width) = if live {
+                (running(), 3.2)
+            } else {
+                (wire_color(), 2.2)
+            };
             let (a, b) = (out_port(view, n), in_port(view, child));
             wire_width(painter, a, b, color, view.zoom, width);
             if many {
                 let at = b - vec2(14.0 * view.zoom, 0.0);
-                painter.circle_filled(at, 7.0 * view.zoom, Color32::from_rgb(64, 66, 72));
+                painter.circle_filled(
+                    at,
+                    7.0 * view.zoom,
+                    theme::shade(Color32::from_rgb(64, 66, 72)),
+                );
                 painter.text(
                     at,
                     Align2::CENTER_CENTER,
                     format!("{}", k + 1),
                     FontId::proportional(10.0 * view.zoom),
-                    theme::TEXT,
+                    theme::text(),
                 );
             }
         }
@@ -451,7 +475,7 @@ fn node_ui(
     let w = &mut s.behaviour_tree;
     let selected = w.selected.contains(&n.id);
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z));
-    painter.rect_filled(rect, 6.0 * z, NODE_BG);
+    painter.rect_filled(rect, 6.0 * z, node_bg());
     painter.rect_filled(
         header,
         egui::CornerRadius {
@@ -476,7 +500,7 @@ fn node_ui(
             Align2::LEFT_CENTER,
             crate::i18n::display(&n.name),
             FontId::proportional(12.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
         y += LINE_H * z;
     }
@@ -489,7 +513,7 @@ fn node_ui(
         Align2::LEFT_CENTER,
         crate::i18n::display(&line),
         FontId::proportional(11.0 * z),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     let outline = live_stroke(w, n.id);
     if let Some(c) = outline {
@@ -501,16 +525,21 @@ fn node_ui(
         );
     }
     if selected {
-        painter.rect_stroke(rect, 6.0 * z, Stroke::new(1.8, SELECT), StrokeKind::Outside);
+        painter.rect_stroke(
+            rect,
+            6.0 * z,
+            Stroke::new(1.8, select()),
+            StrokeKind::Outside,
+        );
     }
     // Ports.
     if n.kind != NodeKind::Root {
-        painter.circle_filled(rect.left_center(), PORT_R * z, WIRE);
+        painter.circle_filled(rect.left_center(), PORT_R * z, wire_color());
     }
     let takes_children = !n.kind.is_leaf();
     let out = rect.right_center();
     if takes_children {
-        painter.circle_filled(out, PORT_R * z, WIRE);
+        painter.circle_filled(out, PORT_R * z, wire_color());
     }
     if let Some(e) = w.error_of(n.id) {
         let e = e.to_owned();
@@ -725,13 +754,13 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
         painter.rect(
             r,
             8.0 * z,
-            Color32::from_rgba_unmultiplied(120, 130, 160, 22),
+            theme::shade(Color32::from_rgba_unmultiplied(120, 130, 160, 22)),
             Stroke::new(
                 if chosen { 1.8 } else { 1.0 },
                 if chosen {
-                    SELECT
+                    select()
                 } else {
-                    Color32::from_rgba_unmultiplied(150, 160, 190, 90)
+                    theme::shade(Color32::from_rgba_unmultiplied(150, 160, 190, 90))
                 },
             ),
             StrokeKind::Inside,
@@ -742,7 +771,7 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
             Align2::LEFT_CENTER,
             crate::i18n::display(&g.title),
             FontId::proportional(13.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
         let resp = ui.interact(bar, ui.id().with(("bt_group", gi)), Sense::click_and_drag());
         if resp.clicked() || resp.drag_started() {
@@ -783,20 +812,24 @@ fn comments(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: Vie
         painter.rect(
             r,
             4.0 * z,
-            Color32::from_rgb(92, 86, 52),
+            theme::shade(Color32::from_rgb(92, 86, 52)),
             Stroke::new(
                 if chosen { 1.8 } else { 0.0 },
-                if chosen { SELECT } else { Color32::TRANSPARENT },
+                if chosen {
+                    select()
+                } else {
+                    Color32::TRANSPARENT
+                },
             ),
             StrokeKind::Outside,
         );
         let galley = painter.layout(
             crate::i18n::display(&c.text).into_owned(),
             FontId::proportional(12.0 * z),
-            theme::TEXT,
+            theme::text(),
             (r.width() - 12.0 * z).max(10.0),
         );
-        painter.galley(r.min + vec2(6.0, 6.0) * z, galley, theme::TEXT);
+        painter.galley(r.min + vec2(6.0, 6.0) * z, galley, theme::text());
         let resp = ui.interact(r, ui.id().with(("bt_comment", ci)), Sense::click_and_drag());
         if resp.clicked() || resp.drag_started() {
             w.canvas.comment = Some(ci);

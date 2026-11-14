@@ -56,9 +56,9 @@ fn row(
 ) {
     let selected = s.animator.layer == i;
     let fill = if selected {
-        Color32::from_rgb(44, 70, 104)
+        crate::theme::shade(Color32::from_rgb(44, 70, 104))
     } else {
-        theme::PANEL_BG.gamma_multiply(1.3)
+        theme::panel_bg().gamma_multiply(1.3)
     };
     egui::Frame::new()
         .fill(fill)
@@ -77,15 +77,15 @@ fn row(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(l) = c.layer(i) {
                         if l.sync_source.is_some() {
-                            ui.label(RichText::new("S").color(theme::TEXT_DIM))
+                            ui.label(RichText::new("S").color(theme::text_dim()))
                                 .on_hover_text("Synced");
                         }
                         if l.blending == LayerBlending::Additive {
-                            ui.label(RichText::new("A").color(theme::TEXT_DIM))
+                            ui.label(RichText::new("A").color(theme::text_dim()))
                                 .on_hover_text("Additive");
                         }
                         if l.mask.is_some() {
-                            ui.label(RichText::new("M").color(theme::TEXT_DIM))
+                            ui.label(RichText::new("M").color(theme::text_dim()))
                                 .on_hover_text("Avatar Mask");
                         }
                     }
@@ -95,7 +95,7 @@ fn row(
             let live_w = live.and_then(|l| l.layers.get(i)).map(|l| l.weight);
             let mut w = live_w.unwrap_or_else(|| c.layer(i).map_or(1.0, |l| l.weight));
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Weight").color(theme::TEXT_DIM));
+                ui.label(RichText::new("Weight").color(theme::text_dim()));
                 let r = ui.add_enabled(i > 0, egui::Slider::new(&mut w, 0.0..=1.0).max_decimals(2));
                 if r.changed() {
                     set_weight(s, path, i, w, live_w.is_some(), busy);

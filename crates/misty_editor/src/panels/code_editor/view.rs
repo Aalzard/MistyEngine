@@ -73,39 +73,72 @@ pub struct ViewOutput {
     pub copy: Option<String>,
 }
 
+/// The Code Editor's colours: the theme's code tokens, and fixed shades that follow the theme
+/// (see `theme::shade`).
 pub mod colors {
+    use crate::theme::{self, shade};
     use egui::Color32;
 
-    pub const BG: Color32 = Color32::from_rgb(30, 30, 32);
-    pub const GUTTER: Color32 = Color32::from_rgb(30, 30, 32);
-    pub const LINE_NO: Color32 = Color32::from_rgb(110, 118, 129);
-    pub const LINE_NO_ACTIVE: Color32 = Color32::from_rgb(205, 210, 215);
-    pub const CURRENT_LINE: Color32 = Color32::from_rgb(40, 40, 44);
-    pub const SELECTION: Color32 = Color32::from_rgb(38, 79, 120);
-    pub const SELECTION_INACTIVE: Color32 = Color32::from_rgb(58, 61, 65);
-    pub const FIND: Color32 = Color32::from_rgba_premultiplied(120, 90, 20, 140);
-    pub const OCCURRENCE: Color32 = Color32::from_rgba_premultiplied(40, 40, 40, 60);
-    pub const CARET: Color32 = Color32::from_rgb(220, 220, 220);
-    pub const BRACKET_BOX: Color32 = Color32::from_rgb(130, 130, 130);
-    pub const ERROR: Color32 = Color32::from_rgb(240, 70, 60);
-    pub const GUIDE: Color32 = Color32::from_rgb(55, 55, 58);
-    pub const TEXT: Color32 = Color32::from_rgb(212, 212, 212);
+    pub fn bg() -> Color32 {
+        theme::code_bg()
+    }
+    pub fn gutter() -> Color32 {
+        theme::code_bg()
+    }
+    pub fn line_no() -> Color32 {
+        theme::code_line_no()
+    }
+    pub fn line_no_active() -> Color32 {
+        theme::near(|p| p.code_text, Color32::from_rgb(205, 210, 215))
+    }
+    pub fn current_line() -> Color32 {
+        theme::code_current_line()
+    }
+    pub fn selection() -> Color32 {
+        theme::code_selection()
+    }
+    pub fn selection_inactive() -> Color32 {
+        theme::near(|p| p.code_current_line, Color32::from_rgb(58, 61, 65))
+    }
+    pub fn find() -> Color32 {
+        shade(Color32::from_rgba_premultiplied(120, 90, 20, 140))
+    }
+    pub fn occurrence() -> Color32 {
+        shade(Color32::from_rgba_premultiplied(40, 40, 40, 60))
+    }
+    pub fn caret() -> Color32 {
+        theme::near(|p| p.code_text, Color32::from_rgb(220, 220, 220))
+    }
+    pub fn bracket_box() -> Color32 {
+        shade(Color32::from_rgb(130, 130, 130))
+    }
+    pub fn error() -> Color32 {
+        shade(Color32::from_rgb(240, 70, 60))
+    }
+    pub fn guide() -> Color32 {
+        theme::near(|p| p.code_current_line, Color32::from_rgb(55, 55, 58))
+    }
+    pub fn text() -> Color32 {
+        theme::code_text()
+    }
 }
 
 /// Text colour of a token kind.
 pub fn token_color(kind: TokenKind) -> Color32 {
     match kind {
-        TokenKind::Keyword => Color32::from_rgb(197, 134, 192),
-        TokenKind::Literal | TokenKind::SelfKw => Color32::from_rgb(86, 156, 214),
-        TokenKind::Number => Color32::from_rgb(181, 206, 168),
-        TokenKind::String => Color32::from_rgb(214, 157, 133),
-        TokenKind::Comment => Color32::from_rgb(106, 153, 85),
-        TokenKind::EngineGlobal => Color32::from_rgb(78, 201, 176),
-        TokenKind::Builtin => Color32::from_rgb(86, 186, 214),
-        TokenKind::Function => Color32::from_rgb(220, 220, 170),
-        TokenKind::Identifier => Color32::from_rgb(156, 220, 254),
-        TokenKind::Bracket => Color32::from_rgb(255, 215, 0),
-        TokenKind::Operator | TokenKind::Punct => colors::TEXT,
+        TokenKind::Keyword => crate::theme::shade(Color32::from_rgb(197, 134, 192)),
+        TokenKind::Literal | TokenKind::SelfKw => {
+            crate::theme::shade(Color32::from_rgb(86, 156, 214))
+        }
+        TokenKind::Number => crate::theme::shade(Color32::from_rgb(181, 206, 168)),
+        TokenKind::String => crate::theme::shade(Color32::from_rgb(214, 157, 133)),
+        TokenKind::Comment => crate::theme::shade(Color32::from_rgb(106, 153, 85)),
+        TokenKind::EngineGlobal => crate::theme::shade(Color32::from_rgb(78, 201, 176)),
+        TokenKind::Builtin => crate::theme::shade(Color32::from_rgb(86, 186, 214)),
+        TokenKind::Function => crate::theme::shade(Color32::from_rgb(220, 220, 170)),
+        TokenKind::Identifier => crate::theme::shade(Color32::from_rgb(156, 220, 254)),
+        TokenKind::Bracket => crate::theme::shade(Color32::from_rgb(255, 215, 0)),
+        TokenKind::Operator | TokenKind::Punct => colors::text(),
     }
 }
 
@@ -164,14 +197,14 @@ impl Painter<'_> {
         for t in self.tokens.get(line).map(Vec::as_slice).unwrap_or(&[]) {
             let (s, e) = (byte(t.start), byte(t.end));
             if s > last {
-                job.sections.push(section(last..s, fmt(colors::TEXT)));
+                job.sections.push(section(last..s, fmt(colors::text())));
             }
             job.sections.push(section(s..e, fmt(token_color(t.kind))));
             last = e;
         }
         if last < text.len() || job.sections.is_empty() {
             job.sections
-                .push(section(last..text.len(), fmt(colors::TEXT)));
+                .push(section(last..text.len(), fmt(colors::text())));
         }
         self.painter.layout_job(job)
     }
@@ -310,7 +343,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
         scroll = scroll.vertical_scroll_offset(y.max(0.0));
     }
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_area));
-    child.painter().rect_filled(text_area, 0.0, colors::BG);
+    child.painter().rect_filled(text_area, 0.0, colors::bg());
     scroll.show_viewport(&mut child, |ui, viewport| {
         let origin = ui.max_rect().min;
         let content = Rect::from_min_size(
@@ -366,9 +399,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                 .intersect(ui.clip_rect()),
         );
         let sel_color = if out.focused {
-            colors::SELECTION
+            colors::selection()
         } else {
-            colors::SELECTION_INACTIVE
+            colors::selection_inactive()
         };
         let primary = doc.editor.primary();
         let word = (primary.is_empty())
@@ -387,7 +420,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                 Vec2::new(full_w, rows.tops[row + 1] - rows.tops[row]),
             );
             if primary.is_empty() && primary.head.line == line {
-                painter.rect_filled(row_rect, 0.0, colors::CURRENT_LINE);
+                painter.rect_filled(row_rect, 0.0, colors::current_line());
             }
             // Indent guides.
             let indent = lines_vec[line].len() - lines_vec[line].trim_start().len();
@@ -395,7 +428,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
             let mut col = tab;
             while col < indent || (lines_vec[line].trim().is_empty() && col < indent) {
                 let x = o.x + col as f32 * char_w - char_w * tab as f32 + 1.0;
-                painter.vline(x, row_rect.y_range(), Stroke::new(1.0, colors::GUIDE));
+                painter.vline(x, row_rect.y_range(), Stroke::new(1.0, colors::guide()));
                 col += tab;
             }
             let fill = |a: usize, b: usize, color: Color32| {
@@ -412,7 +445,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                         && (i == 0 || !is_word(chars[i - 1]))
                         && (i + wl == chars.len() || !is_word(chars[i + wl]));
                     if hit {
-                        fill(i, i + wl, colors::OCCURRENCE);
+                        fill(i, i + wl, colors::occurrence());
                         i += wl;
                     } else {
                         i += 1;
@@ -420,7 +453,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                 }
             }
             for (a, b) in cx.matches.iter().filter(|m| m.0.line == line) {
-                fill(a.col, b.col, colors::FIND);
+                fill(a.col, b.col, colors::find());
             }
             for s in &doc.editor.sels {
                 let (a, b) = (s.start(), s.end());
@@ -439,14 +472,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                             painter.rect_stroke(
                                 r.translate(o.to_vec2()),
                                 1.0,
-                                Stroke::new(1.0, colors::BRACKET_BOX),
+                                Stroke::new(1.0, colors::bracket_box()),
                                 egui::StrokeKind::Inside,
                             );
                         }
                     }
                 }
             }
-            painter.galley(o, g.clone(), colors::TEXT);
+            painter.galley(o, g.clone(), colors::text());
             if let Some(d) = doc.diagnostic.as_ref().filter(|d| d.line == line) {
                 for r in range_rects(&g, d.start, d.end.max(d.start + 1), row_h) {
                     squiggle(&painter, r.translate(o.to_vec2()));
@@ -461,7 +494,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                 painter.rect_stroke(
                     r,
                     2.0,
-                    Stroke::new(1.0, colors::LINE_NO),
+                    Stroke::new(1.0, colors::line_no()),
                     egui::StrokeKind::Inside,
                 );
                 painter.text(
@@ -469,7 +502,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                     egui::Align2::CENTER_CENTER,
                     "…",
                     font.clone(),
-                    colors::LINE_NO,
+                    colors::line_no(),
                 );
                 let hidden = end - line;
                 let r_resp = ui.interact(r, id.with(("fold", line)), Sense::click());
@@ -491,7 +524,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                     painter.vline(
                         x,
                         egui::Rangef::new(o.y + r.min.y, o.y + r.min.y + row_h),
-                        Stroke::new(2.0, colors::CARET),
+                        Stroke::new(2.0, colors::caret()),
                     );
                 }
             }
@@ -507,7 +540,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
             Pos2::new(gx, origin.y + viewport.min.y),
             Pos2::new(gx + gutter_w, origin.y + viewport.max.y),
         );
-        painter.rect_filled(gutter, 0.0, colors::GUTTER);
+        painter.rect_filled(gutter, 0.0, colors::gutter());
         let fold_starts: Vec<usize> = analysis.structure.folds.iter().map(|f| f.0).collect();
         let gutter_hovered = ui.rect_contains_pointer(gutter);
         let caret_lines: Vec<usize> = doc.editor.sels.iter().map(|s| s.head.line).collect();
@@ -516,9 +549,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
             let y = origin.y + rows.tops[row];
             if settings.line_numbers {
                 let color = if caret_lines.contains(&line) {
-                    colors::LINE_NO_ACTIVE
+                    colors::line_no_active()
                 } else {
-                    colors::LINE_NO
+                    colors::line_no()
                 };
                 painter.text(
                     Pos2::new(gx + marker_w + numbers_w - 6.0, y),
@@ -530,7 +563,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
             }
             if let Some(d) = doc.diagnostic.as_ref().filter(|d| d.line == line) {
                 let c = Pos2::new(gx + marker_w * 0.5 + 1.0, y + row_h * 0.5);
-                painter.circle_filled(c, 4.0, colors::ERROR);
+                painter.circle_filled(c, 4.0, colors::error());
                 let r = Rect::from_center_size(c, Vec2::splat(row_h));
                 ui.interact(r, id.with(("err", line)), Sense::hover())
                     .on_hover_text(&d.message);
@@ -546,7 +579,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, mut cx: ViewCtx<'_>) -> ViewOutput 
                         egui::Align2::CENTER_CENTER,
                         icon,
                         FontId::proportional(row_h * 0.7),
-                        colors::LINE_NO,
+                        colors::line_no(),
                     );
                     if ui
                         .interact(r, id.with(("fold_btn", line)), Sense::click())
@@ -623,7 +656,7 @@ fn squiggle(painter: &egui::Painter, r: Rect) {
         x += 2.0;
         up = !up;
     }
-    painter.add(egui::Shape::line(pts, Stroke::new(1.0, colors::ERROR)));
+    painter.add(egui::Shape::line(pts, Stroke::new(1.0, colors::error())));
 }
 
 /// Signature and description of the API name at `pos`.
@@ -769,10 +802,10 @@ fn completion_popup(ui: &Ui, c: &Completion, at: Pos2, font: &FontId) {
                             .color(if i == c.selected {
                                 Color32::WHITE
                             } else {
-                                colors::TEXT
+                                colors::text()
                             });
                     let bg = if i == c.selected {
-                        colors::SELECTION
+                        colors::selection()
                     } else {
                         Color32::TRANSPARENT
                     };
@@ -805,7 +838,11 @@ fn minimap(
     rows: &Rows,
 ) {
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(26, 26, 28));
+    painter.rect_filled(
+        rect,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(26, 26, 28)),
+    );
     let n = rows.lines.len().max(1);
     let line_h = (rect.height() / n as f32).clamp(0.5, 3.0);
     let cw = 1.2;

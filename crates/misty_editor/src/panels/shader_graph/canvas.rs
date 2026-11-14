@@ -24,10 +24,18 @@ const PARAM_H: f32 = 26.0;
 const PREVIEW: f32 = 124.0;
 const FOOT_H: f32 = 12.0;
 const PORT_R: f32 = 4.5;
-const CANVAS_BG: Color32 = Color32::from_rgb(36, 36, 38);
-const NODE_BG: Color32 = Color32::from_rgb(58, 58, 61);
-const HEADER_BG: Color32 = Color32::from_rgb(66, 66, 70);
-const SELECT: Color32 = Color32::from_rgb(88, 156, 236);
+fn canvas_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_canvas, Color32::from_rgb(36, 36, 38))
+}
+fn node_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_node, Color32::from_rgb(58, 58, 61))
+}
+fn header_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_header, Color32::from_rgb(66, 66, 70))
+}
+fn select() -> Color32 {
+    crate::theme::near(|p| p.graph_select, Color32::from_rgb(88, 156, 236))
+}
 
 /// A Blackboard property dragged onto the canvas.
 #[derive(Clone, Debug)]
@@ -74,24 +82,24 @@ pub(crate) struct CanvasState {
 /// Port colour by type (soft, readable on the dark canvas).
 pub fn type_color(t: ValueType) -> Color32 {
     match t {
-        ValueType::Float => Color32::from_rgb(132, 196, 236),
-        ValueType::Vec2 => Color32::from_rgb(150, 214, 140),
-        ValueType::Vec3 => Color32::from_rgb(236, 214, 120),
-        ValueType::Vec4 => Color32::from_rgb(226, 150, 200),
-        ValueType::Texture => Color32::from_rgb(236, 120, 110),
+        ValueType::Float => crate::theme::shade(Color32::from_rgb(132, 196, 236)),
+        ValueType::Vec2 => crate::theme::shade(Color32::from_rgb(150, 214, 140)),
+        ValueType::Vec3 => crate::theme::shade(Color32::from_rgb(236, 214, 120)),
+        ValueType::Vec4 => crate::theme::shade(Color32::from_rgb(226, 150, 200)),
+        ValueType::Texture => crate::theme::shade(Color32::from_rgb(236, 120, 110)),
     }
 }
 
 /// Header accent per category.
 fn category_color(kind: &NodeKind) -> Color32 {
     match kind.category() {
-        "Input" => Color32::from_rgb(96, 150, 210),
-        "Math" => Color32::from_rgb(120, 170, 120),
-        "Texture" => Color32::from_rgb(210, 120, 100),
-        "Procedural" => Color32::from_rgb(180, 130, 210),
-        "Master" => Color32::from_rgb(200, 160, 80),
-        "Sub Graphs" => Color32::from_rgb(90, 180, 180),
-        _ => Color32::from_rgb(150, 150, 150),
+        "Input" => crate::theme::shade(Color32::from_rgb(96, 150, 210)),
+        "Math" => crate::theme::shade(Color32::from_rgb(120, 170, 120)),
+        "Texture" => crate::theme::shade(Color32::from_rgb(210, 120, 100)),
+        "Procedural" => crate::theme::shade(Color32::from_rgb(180, 130, 210)),
+        "Master" => crate::theme::shade(Color32::from_rgb(200, 160, 80)),
+        "Sub Graphs" => crate::theme::shade(Color32::from_rgb(90, 180, 180)),
+        _ => crate::theme::shade(Color32::from_rgb(150, 150, 150)),
     }
 }
 
@@ -340,7 +348,7 @@ fn frame_all(w: &mut ShaderGraphWindow, area: Rect) {
 pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     let resp = ui.interact(area, ui.id().with("sg_canvas"), Sense::click_and_drag());
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, CANVAS_BG);
+    painter.rect_filled(area, 0.0, canvas_bg());
     if s.shader_graph.canvas.frame_all {
         s.shader_graph.canvas.frame_all = false;
         frame_all(&mut s.shader_graph, area);
@@ -398,8 +406,8 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
         painter.rect(
             band,
             2.0,
-            SELECT.gamma_multiply(0.12),
-            Stroke::new(1.0, SELECT.gamma_multiply(0.7)),
+            select().gamma_multiply(0.12),
+            Stroke::new(1.0, select().gamma_multiply(0.7)),
             StrokeKind::Inside,
         );
         if resp.drag_stopped() {
@@ -460,10 +468,10 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     if let Some((text, until)) = w.canvas.flash.clone() {
         if now < until {
             let at = pos2(area.center().x, area.bottom() - 24.0);
-            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::TEXT);
+            let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), theme::text());
             let r = Rect::from_center_size(at, galley.size() + vec2(20.0, 10.0));
-            painter.rect_filled(r, 6.0, Color32::from_rgb(90, 44, 44));
-            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::TEXT);
+            painter.rect_filled(r, 6.0, crate::theme::shade(Color32::from_rgb(90, 44, 44)));
+            painter.galley(r.min + vec2(10.0, 5.0), galley, theme::text());
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_secs_f64(until - now));
         } else {
@@ -576,7 +584,7 @@ fn node_ui(
         round,
         Color32::from_black_alpha(70),
     );
-    painter.rect_filled(rect, round, NODE_BG);
+    painter.rect_filled(rect, round, node_bg());
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z));
     painter.rect_filled(
         header,
@@ -586,7 +594,7 @@ fn node_ui(
             sw: 0,
             se: 0,
         },
-        HEADER_BG,
+        header_bg(),
     );
     let accent = category_color(&node.kind);
     painter.rect_filled(
@@ -602,7 +610,7 @@ fn node_ui(
         Align2::LEFT_CENTER,
         &title,
         FontId::proportional(13.0 * z),
-        theme::TEXT,
+        theme::text(),
     );
     let error = w.error.as_ref().filter(|e| e.node == Some(id));
     let selected = w.selected.contains(&id);
@@ -628,7 +636,7 @@ fn node_ui(
         ui.interact(badge, ui.id().with(("sg_err", id)), Sense::hover())
             .on_hover_text(&e.message);
     } else if selected {
-        painter.rect_stroke(rect, round, Stroke::new(2.0, SELECT), StrokeKind::Outside);
+        painter.rect_stroke(rect, round, Stroke::new(2.0, select()), StrokeKind::Outside);
     }
 
     // Master stack block headings.
@@ -639,7 +647,7 @@ fn node_ui(
             Align2::LEFT_CENTER,
             *text,
             FontId::proportional(11.0 * z),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
 
@@ -686,7 +694,7 @@ fn node_ui(
             if connected {
                 painter.circle_filled(pos, r, color);
             } else {
-                painter.circle_filled(pos, r, NODE_BG);
+                painter.circle_filled(pos, r, node_bg());
                 painter.circle_stroke(pos, r, Stroke::new(1.6 * z.max(0.6), color));
             }
             let (text_pos, align) = if output {
@@ -699,7 +707,7 @@ fn node_ui(
                 align,
                 p.name,
                 FontId::proportional(11.5 * z),
-                theme::TEXT.gamma_multiply(0.85),
+                theme::text().gamma_multiply(0.85),
             );
             port_events.push((*p, output, presp, pos, connected, ty));
         }
@@ -797,7 +805,7 @@ fn node_ui(
                     Align2::CENTER_CENTER,
                     "—",
                     FontId::proportional(14.0 * z),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
             }
         }
@@ -811,7 +819,7 @@ fn node_ui(
             Align2::CENTER_CENTER,
             arrow,
             FontId::proportional(9.0 * z),
-            theme::TEXT_DIM.gamma_multiply(if fresp.hovered() { 1.6 } else { 1.0 }),
+            theme::text_dim().gamma_multiply(if fresp.hovered() { 1.6 } else { 1.0 }),
         );
         if fresp.clicked() {
             s.shader_graph.edit("Toggle Preview", false, |g| {
@@ -918,7 +926,7 @@ fn inline_value(
         let galley = painter.layout_no_wrap(
             label.to_owned(),
             FontId::proportional(10.5 * z),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
         let r = Rect::from_min_size(
             pos2(
@@ -927,11 +935,15 @@ fn inline_value(
             ),
             vec2(galley.size().x + 12.0 * z, h),
         );
-        painter.rect_filled(r, 4.0 * z, Color32::from_rgb(46, 46, 49));
+        painter.rect_filled(
+            r,
+            4.0 * z,
+            crate::theme::shade(Color32::from_rgb(46, 46, 49)),
+        );
         painter.galley(
             r.min + vec2(6.0 * z, (h - galley.size().y) * 0.5),
             galley,
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
         painter.line_segment(
             [pos2(r.right(), pos.y), pos - vec2(PORT_R * z, 0.0)],
@@ -949,7 +961,11 @@ fn inline_value(
         pos2(pos.x - 14.0 * z - total, pos.y - h * 0.5 - 1.0),
         vec2(total, h + 2.0),
     );
-    painter.rect_filled(r, 4.0 * z, Color32::from_rgb(46, 46, 49));
+    painter.rect_filled(
+        r,
+        4.0 * z,
+        crate::theme::shade(Color32::from_rgb(46, 46, 49)),
+    );
     painter.line_segment(
         [pos2(r.right(), pos.y), pos - vec2(PORT_R * z, 0.0)],
         Stroke::new(1.0, Color32::from_white_alpha(30)),
@@ -964,7 +980,8 @@ fn inline_value(
             st.spacing.interact_size.y = h;
             st.spacing.item_spacing = vec2(2.0 * z, 0.0);
             st.spacing.button_padding = vec2(2.0 * z, 0.0);
-            st.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(40, 40, 43);
+            st.visuals.widgets.inactive.weak_bg_fill =
+                crate::theme::shade(Color32::from_rgb(40, 40, 43));
             // Fixed slots so the fields never spill onto the node.
             for (k, c) in v.iter_mut().take(n).enumerate() {
                 let slot = Rect::from_min_size(
@@ -1050,7 +1067,11 @@ fn params_ui(ui: &mut Ui, s: &mut EditorState, node: &Node, r: Rect, z: f32) {
 
 /// A soft checkerboard behind previews (shows transparency).
 fn checker(painter: &egui::Painter, r: Rect, z: f32) {
-    painter.rect_filled(r, 4.0 * z, Color32::from_rgb(44, 44, 46));
+    painter.rect_filled(
+        r,
+        4.0 * z,
+        crate::theme::shade(Color32::from_rgb(44, 44, 46)),
+    );
     let cell = 10.0 * z;
     if cell < 3.0 {
         return;
@@ -1069,7 +1090,7 @@ fn checker(painter: &egui::Painter, r: Rect, z: f32) {
                 vec2(cell, cell),
             )
             .intersect(r);
-            painter.rect_filled(c, 0.0, Color32::from_rgb(52, 52, 55));
+            painter.rect_filled(c, 0.0, crate::theme::shade(Color32::from_rgb(52, 52, 55)));
         }
     }
 }
@@ -1234,12 +1255,15 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
         painter.rect_filled(
             r,
             8.0 * z,
-            Color32::from_rgba_unmultiplied(120, 140, 170, 28),
+            crate::theme::shade(Color32::from_rgba_unmultiplied(120, 140, 170, 28)),
         );
         painter.rect_stroke(
             r,
             8.0 * z,
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(150, 170, 200, 70)),
+            Stroke::new(
+                1.0,
+                crate::theme::shade(Color32::from_rgba_unmultiplied(150, 170, 200, 70)),
+            ),
             StrokeKind::Inside,
         );
         let bar = Rect::from_min_size(r.min, vec2(r.width(), 26.0 * z));
@@ -1286,7 +1310,7 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
                 Align2::LEFT_CENTER,
                 &group.title,
                 FontId::proportional(14.0 * z),
-                theme::TEXT.gamma_multiply(0.9),
+                theme::text().gamma_multiply(0.9),
             );
         }
         if resp.double_clicked() {
@@ -1349,7 +1373,11 @@ fn notes(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, 
             6.0 * z,
             Color32::from_black_alpha(60),
         );
-        painter.rect_filled(r, 6.0 * z, Color32::from_rgb(228, 208, 120));
+        painter.rect_filled(
+            r,
+            6.0 * z,
+            crate::theme::shade(Color32::from_rgb(228, 208, 120)),
+        );
         let strip = Rect::from_min_size(r.min, vec2(r.width(), 14.0 * z));
         let resp = ui.interact(strip, ui.id().with(("sg_note", i)), Sense::click_and_drag());
         let w = &mut s.shader_graph;

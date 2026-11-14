@@ -46,8 +46,11 @@ fn text_param(ui: &mut Ui, node: &Node, key: &str, label: &str, hint: &str) -> O
 }
 
 pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
-    ui.painter()
-        .rect_filled(rect, 8.0, Color32::from_rgba_unmultiplied(44, 45, 49, 245));
+    ui.painter().rect_filled(
+        rect,
+        8.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(44, 45, 49, 245)),
+    );
     ui.painter().rect_stroke(
         rect,
         8.0,
@@ -64,7 +67,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
         ui.label(
             RichText::new("Graph Properties")
                 .strong()
-                .color(theme::TEXT),
+                .color(theme::text()),
         );
         ui.separator();
         match single(s) {
@@ -88,10 +91,10 @@ fn graph_summary(ui: &mut Ui, s: &mut EditorState) {
             g.variables.len(),
             g.macros.len()
         ))
-        .color(theme::TEXT_DIM),
+        .color(theme::text_dim()),
     );
     if w.errors.is_empty() {
-        ui.label(RichText::new("✔ No problems").color(theme::TEXT_DIM));
+        ui.label(RichText::new("✔ No problems").color(theme::text_dim()));
     }
     let errors = w.errors.clone();
     for e in errors.iter().take(10) {
@@ -119,7 +122,7 @@ fn graph_summary(ui: &mut Ui, s: &mut EditorState) {
              F9: breakpoint · F10: step · F: frame all",
         )
         .small()
-        .color(theme::TEXT_DIM),
+        .color(theme::text_dim()),
     );
 }
 
@@ -128,12 +131,12 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
     ui.label(
         RichText::new(nodes::title(node, &g))
             .strong()
-            .color(theme::TEXT),
+            .color(theme::text()),
     );
     ui.label(
         RichText::new(format!("{} · node {}", nodes::category(node), node.id))
             .small()
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
     );
     ui.add_space(4.0);
     let mut set: Vec<(String, String)> = Vec::new();
@@ -178,7 +181,7 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
             ui.label(
                 RichText::new("Actions of the scene's Player Inputs (Input System).")
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
         "OnCustomEvent" | "SendCustomEvent" | "BroadcastCustomEvent" => {
@@ -193,7 +196,7 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
                      Lua sends them with gameObject:SendCustomEvent(name, ...).",
                 )
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
         }
         "Sequence" | "MakeList" => {
@@ -239,7 +242,7 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
             ui.label(
                 RichText::new("Name:type, … (exec, bool, int, float, string, vector3, quaternion, gameobject, list, any)")
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
         "Subgraph" => {
@@ -279,7 +282,7 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
                     "Calls the Lua binding (pins take any value)."
                 })
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
             if !native && a.mode == visual_script::api::Mode::Call {
                 param(
@@ -292,14 +295,14 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
             ui.label(
                 RichText::new("Seconds of game time.")
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
         "While" => {
             ui.label(
                 RichText::new("Stops with an error after Max Iterations passes.")
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         }
         _ => {}

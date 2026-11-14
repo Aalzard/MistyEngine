@@ -24,7 +24,7 @@ pub fn mixer_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
     let mixer = match s.anim_clips.mixers.get(rel) {
         Ok(m) => m.clone(),
         Err(e) => {
-            ui.colored_label(egui::Color32::LIGHT_RED, e);
+            ui.colored_label(crate::theme::error(), e);
             return;
         }
     };
@@ -147,7 +147,7 @@ fn value_row(
         .find(|p| p.key == key)
         .map(|p| p.name.clone());
     let text = match &exposed {
-        Some(_) => RichText::new(format!("{label} ➜")).color(theme::PREFAB),
+        Some(_) => RichText::new(format!("{label} ➜")).color(theme::prefab()),
         None => RichText::new(label),
     };
     let label_resp = ui.label(text);
@@ -227,12 +227,12 @@ fn response_curve(ui: &mut Ui, kind: EffectKind, values: &[f32]) {
     let width = ui.available_width().clamp(160.0, 320.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 70.0), egui::Sense::hover());
     let p = ui.painter_at(rect);
-    p.rect_filled(rect, 2.0, theme::FIELD_BG);
+    p.rect_filled(rect, 2.0, theme::field_bg());
     let y_of = |db: f32| rect.bottom() - (db + 24.0) / 36.0 * rect.height();
     p.hline(
         rect.x_range(),
         y_of(0.0),
-        egui::Stroke::new(1.0, theme::BORDER),
+        egui::Stroke::new(1.0, theme::border()),
     );
     let pts: Vec<egui::Pos2> = (0..=120)
         .map(|i| {
@@ -244,7 +244,10 @@ fn response_curve(ui: &mut Ui, kind: EffectKind, values: &[f32]) {
         .collect();
     p.add(egui::Shape::line(
         pts,
-        egui::Stroke::new(1.5, egui::Color32::from_rgb(110, 180, 230)),
+        egui::Stroke::new(
+            1.5,
+            crate::theme::shade(egui::Color32::from_rgb(110, 180, 230)),
+        ),
     ));
     for (f, label) in [(100.0, "100"), (1000.0, "1k"), (10000.0, "10k")] {
         let x = rect.left() + (f / 20.0f32).log10() / 3.0 * rect.width();
@@ -253,7 +256,7 @@ fn response_curve(ui: &mut Ui, kind: EffectKind, values: &[f32]) {
             egui::Align2::CENTER_BOTTOM,
             label,
             egui::FontId::monospace(9.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
 }
@@ -276,7 +279,7 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
             mixer.path(gid),
             mixer.snapshots[s.audio_mixer.snapshot.min(mixer.snapshots.len() - 1)].name
         ))
-        .color(theme::TEXT_DIM)
+        .color(theme::text_dim())
         .small(),
     );
     ui.separator();
@@ -340,7 +343,7 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
                     }
                     let title = crate::theme::bold(ui.ctx(), fx.kind.label());
                     ui.label(if open {
-                        title.color(theme::PREFAB)
+                        title.color(theme::prefab())
                     } else {
                         title
                     });

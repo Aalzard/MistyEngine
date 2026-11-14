@@ -70,7 +70,7 @@ fn wgsl_files(root: &std::path::Path) -> Vec<String> {
 /// Slot rows (name, type, remove) and an add button; true when changed.
 fn slots_ui(ui: &mut Ui, label: &str, id: u32, slots: &mut Vec<Slot>, textures: bool) -> bool {
     let before = slots.clone();
-    ui.label(RichText::new(label).color(theme::TEXT_DIM));
+    ui.label(RichText::new(label).color(theme::text_dim()));
     let mut remove = None;
     for (i, s) in slots.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -175,7 +175,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect, id: u32) {
                         if source == FunctionSource::Inline {
                             ui.label(
                                 RichText::new("Body: read the inputs, assign the outputs")
-                                    .color(theme::TEXT_DIM),
+                                    .color(theme::text_dim()),
                             );
                             changed |= ui
                                 .add(
@@ -192,7 +192,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect, id: u32) {
                                     "The file defines fn {function}(inputs…) returning the output (or a struct of the outputs)"
                                 ))
                                 .small()
-                                .color(theme::TEXT_DIM),
+                                .color(theme::text_dim()),
                             );
                         }
                     });

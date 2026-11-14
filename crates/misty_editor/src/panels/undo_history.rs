@@ -43,7 +43,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             steps.len()
         ))
         .small()
-        .color(theme::TEXT_DIM),
+        .color(theme::text_dim()),
     );
 }
 
@@ -92,7 +92,7 @@ fn row(ui: &mut Ui, state: &mut EditorState, name: &str, target: usize, position
     let redoable = target > position;
     let mut text = RichText::new(name);
     if redoable {
-        text = text.color(theme::TEXT_DIM).italics();
+        text = text.color(theme::text_dim()).italics();
     }
     let hint = if current {
         "Current state"

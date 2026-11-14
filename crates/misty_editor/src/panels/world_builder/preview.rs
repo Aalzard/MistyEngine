@@ -379,7 +379,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
         let galley = painter.layout_no_wrap(
             text,
             egui::FontId::proportional(11.0),
-            egui::Color32::from_gray(235),
+            crate::theme::shade(egui::Color32::from_gray(235)),
         );
         let bg = egui::Rect::from_min_size(
             pos - egui::vec2(3.0, galley.size().y + 1.0),

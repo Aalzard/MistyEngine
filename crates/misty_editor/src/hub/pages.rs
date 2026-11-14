@@ -58,14 +58,21 @@ pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
                     .selectable_value(&mut hub.config.theme, theme, label)
                     .changed()
                 {
+                    // The editor follows: Dark or Light (Edit ▸ Preferences ▸ Appearance).
+                    hub.config.editor_theme = match theme {
+                        HubTheme::Dark => None,
+                        HubTheme::Light => Some("light".to_owned()),
+                    };
                     changed = true;
                 }
             }
         });
         ui.label(
-            RichText::new(tr!("Applies to the Hub; the editor keeps its dark theme."))
-                .small()
-                .color(p.dim),
+            RichText::new(tr!(
+                "Also sets the editor's theme (more themes in the editor's Preferences)."
+            ))
+            .small()
+            .color(p.dim),
         );
         // The Hub and the editor share the language (Edit ▸ Preferences ▸ Language).
         ui.add_space(6.0);

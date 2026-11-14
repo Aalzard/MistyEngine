@@ -191,7 +191,7 @@ pub fn window(ctx: &egui::Context, state: &mut EditorState) {
                     ui.end_row();
                 });
             if let Some(err) = &w.error {
-                ui.colored_label(crate::theme::AXIS_X, err);
+                ui.colored_label(crate::theme::shade(crate::theme::AXIS_X), err);
             }
             ui.horizontal(|ui| {
                 if ui.button("Create").clicked() {

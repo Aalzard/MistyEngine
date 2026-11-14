@@ -38,6 +38,8 @@ see a box like this:
    GIF and picture sequences at a fixed frame rate, from the window or a Timeline.
 12. [Behaviour Trees](12-behaviour-trees.md): AI for enemies and NPCs with the optional
    Behaviour Trees package: nodes, the blackboard, aborts and live debugging.
+13. [Themes and fonts](13-themes-and-fonts.md): light and dark themes, your own colours, and
+   the fonts of the interface and the Code Editor.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

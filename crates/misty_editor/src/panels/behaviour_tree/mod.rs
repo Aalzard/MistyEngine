@@ -660,7 +660,7 @@ fn shortcuts(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
@@ -721,7 +721,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     .unwrap_or_default();
                 ui.label(
                     RichText::new(format!("{ICON} {name}{}", if dirty { " *" } else { "" }))
-                        .color(theme::TEXT),
+                        .color(theme::text()),
                 );
                 let problems: Vec<&CompileError> = s
                     .behaviour_tree
@@ -741,7 +741,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                             .on_hover_text(&e.message);
                     }
                     None if s.behaviour_tree.live.is_none() => {
-                        ui.label(RichText::new(tr!("✔ No problems")).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(tr!("✔ No problems")).color(theme::text_dim()));
                     }
                     None => {}
                 }
@@ -764,7 +764,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
 fn agent_picker(ui: &mut Ui, s: &mut EditorState) {
     let w = &mut s.behaviour_tree;
     if w.agents.is_empty() {
-        ui.label(RichText::new(tr!("No object runs this tree")).color(theme::TEXT_DIM));
+        ui.label(RichText::new(tr!("No object runs this tree")).color(theme::text_dim()));
         return;
     }
     let shown = w
@@ -802,7 +802,7 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 

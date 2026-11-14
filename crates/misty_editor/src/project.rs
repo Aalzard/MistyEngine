@@ -60,7 +60,7 @@ impl AssetEntry {
     /// Icon tint in the Project window (prefabs are blue).
     pub fn icon_color(&self) -> egui::Color32 {
         if self.path.extension().is_some_and(|e| e == "prefab") {
-            crate::theme::PREFAB
+            crate::theme::prefab()
         } else {
             egui::Color32::from_gray(200)
         }

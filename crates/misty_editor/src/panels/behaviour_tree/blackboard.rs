@@ -22,8 +22,14 @@ pub fn height(s: &EditorState) -> f32 {
 }
 
 pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
-    ui.painter()
-        .rect_filled(rect, 6.0, Color32::from_rgba_unmultiplied(40, 41, 45, 240));
+    ui.painter().rect_filled(
+        rect,
+        6.0,
+        crate::theme::near(
+            |p| p.panel_bg,
+            Color32::from_rgba_unmultiplied(40, 41, 45, 240),
+        ),
+    );
     let busy = interacting(ui.ctx());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
         let w = &mut s.behaviour_tree;
@@ -121,7 +127,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                                 } else {
                                     name.clone()
                                 };
-                                ui.label(RichText::new(label).color(theme::TEXT_DIM));
+                                ui.label(RichText::new(label).color(theme::text_dim()));
                                 ui.label(crate::i18n::display(value));
                                 ui.end_row();
                             }

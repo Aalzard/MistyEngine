@@ -160,8 +160,14 @@ pub fn height(s: &mut EditorState) -> f32 {
 }
 
 pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
-    ui.painter()
-        .rect_filled(rect, 6.0, Color32::from_rgba_unmultiplied(40, 41, 45, 240));
+    ui.painter().rect_filled(
+        rect,
+        6.0,
+        crate::theme::near(
+            |p| p.panel_bg,
+            Color32::from_rgba_unmultiplied(40, 41, 45, 240),
+        ),
+    );
     let items = items(s);
     let mut add: Option<PaletteItem> = None;
     let mut refresh = false;
@@ -201,7 +207,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                     if shown.is_empty() {
                         continue;
                     }
-                    ui.label(RichText::new(tr(c.label())).small().color(theme::TEXT_DIM));
+                    ui.label(
+                        RichText::new(tr(c.label()))
+                            .small()
+                            .color(theme::text_dim()),
+                    );
                     for item in shown {
                         let id = ui.id().with(("bt_pal", item.title()));
                         let r = ui

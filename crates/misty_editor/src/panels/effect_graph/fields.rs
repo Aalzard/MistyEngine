@@ -14,8 +14,9 @@ pub fn small_scope<R>(ui: &mut Ui, rect: Rect, z: f32, f: impl FnOnce(&mut Ui) -
         st.spacing.interact_size.y = (16.0 * z).max(8.0);
         st.spacing.item_spacing = vec2(3.0 * z, 0.0);
         st.spacing.button_padding = vec2(3.0 * z, 0.0);
-        st.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(40, 40, 43);
-        st.visuals.widgets.inactive.bg_fill = Color32::from_rgb(40, 40, 43);
+        st.visuals.widgets.inactive.weak_bg_fill =
+            crate::theme::shade(Color32::from_rgb(40, 40, 43));
+        st.visuals.widgets.inactive.bg_fill = crate::theme::shade(Color32::from_rgb(40, 40, 43));
         f(ui)
     })
     .inner
@@ -131,14 +132,18 @@ pub fn paint_gradient(p: &egui::Painter, rect: Rect, g: &Gradient) {
     p.rect_stroke(
         rect,
         2.0,
-        Stroke::new(1.0, Color32::from_gray(25)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_gray(25))),
         egui::StrokeKind::Inside,
     );
 }
 
 /// A curve's line in a dark box (0..1 time across, the value range up the box).
 pub fn paint_curve(p: &egui::Painter, rect: Rect, c: &Curve) {
-    p.rect_filled(rect, 2.0, Color32::from_rgb(36, 36, 39));
+    p.rect_filled(
+        rect,
+        2.0,
+        crate::theme::shade(Color32::from_rgb(36, 36, 39)),
+    );
     let (lo, hi) = c
         .keys
         .iter()
@@ -156,12 +161,12 @@ pub fn paint_curve(p: &egui::Painter, rect: Rect, c: &Curve) {
         .collect();
     p.add(egui::Shape::line(
         pts,
-        Stroke::new(1.5, Color32::from_rgb(132, 196, 236)),
+        Stroke::new(1.5, crate::theme::shade(Color32::from_rgb(132, 196, 236))),
     ));
     p.rect_stroke(
         rect,
         2.0,
-        Stroke::new(1.0, Color32::from_gray(25)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_gray(25))),
         egui::StrokeKind::Inside,
     );
 }
@@ -209,7 +214,7 @@ pub fn curve_editor(ui: &mut Ui, c: &mut Curve) -> bool {
     ui.label(
         egui::RichText::new("Time 0..1 over the particle's life")
             .small()
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
     );
     ch
 }

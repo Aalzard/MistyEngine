@@ -26,7 +26,7 @@ pub fn show(
 ) {
     let editing = !s.play.in_play_mode();
     let top = Rect::from_min_size(rect.min, vec2(rect.width(), RULER_H + MARKERS_H));
-    ui.painter().rect_filled(top, 0.0, theme::TOOLBAR_BG);
+    ui.painter().rect_filled(top, 0.0, theme::toolbar_bg());
     let mut bar = ui.new_child(
         UiBuilder::new()
             .max_rect(top.shrink2(vec2(6.0, 2.0)))
@@ -115,11 +115,11 @@ fn header(
     let resp = ui.interact(inner, ui.id().with(("tl_header", &id)), Sense::click());
     let selected = s.timeline.selected == Some(TimelineSel::Track(id.clone()));
     let fill = if selected {
-        SELECTED
+        crate::theme::shade(SELECTED)
     } else if resp.hovered() {
-        theme::CARD_HEADER
+        theme::card_header()
     } else {
-        theme::CARD_BG
+        theme::card_bg()
     };
     let p = ui.painter();
     p.rect_filled(inner, CornerRadius::same(5), fill);
@@ -234,7 +234,11 @@ fn name_label(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track, muted
         }
         return;
     }
-    let color = if muted { theme::TEXT_DIM } else { theme::TEXT };
+    let color = if muted {
+        theme::text_dim()
+    } else {
+        theme::text()
+    };
     let r = ui.add(
         egui::Label::new(RichText::new(&track.name).color(color))
             .truncate()
@@ -249,7 +253,7 @@ fn name_label(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track, muted
 fn record_button(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track) {
     let on = s.timeline.recording.as_deref() == Some(track.id.as_str());
     let can = super::record::can_record(s, path, &track.id);
-    let color = if on { super::REC } else { theme::TEXT_DIM };
+    let color = if on { super::REC } else { theme::text_dim() };
     let tip = if can {
         "Record: changes to the bound object in the Editor Scene or the Properties panel become keys at the playhead"
     } else {
@@ -272,7 +276,7 @@ fn record_button(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track) {
 
 /// A small icon toggle: bright when on. Returns true when clicked.
 fn toggle(ui: &mut Ui, icon: &str, on: bool, tip: &str) -> bool {
-    let color = if on { theme::WARN } else { theme::TEXT_DIM };
+    let color = if on { theme::warn() } else { theme::text_dim() };
     ui.add(
         egui::Button::new(RichText::new(icon).color(color).size(12.0))
             .frame_when_inactive(false)

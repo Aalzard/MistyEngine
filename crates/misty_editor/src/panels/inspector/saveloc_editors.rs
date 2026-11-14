@@ -282,7 +282,7 @@ fn localized_text(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     }
     if state.scene.world.get::<&UiText>(e).is_err() {
         ui.colored_label(
-            egui::Color32::from_rgb(230, 170, 60),
+            crate::theme::shade(egui::Color32::from_rgb(230, 170, 60)),
             "Needs a Text on this object to show anything.",
         );
     }
@@ -290,7 +290,7 @@ fn localized_text(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let table = Some(l.table.as_str()).filter(|t| !t.is_empty());
         if !loc.has_key(table, &l.key) {
             ui.colored_label(
-                egui::Color32::from_rgb(230, 120, 110),
+                crate::theme::shade(egui::Color32::from_rgb(230, 120, 110)),
                 format!("No table has the key '{}'.", l.key),
             );
         } else {
@@ -309,7 +309,7 @@ fn localized_text(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                                     ui.label(text);
                                 } else {
                                     ui.colored_label(
-                                        egui::Color32::from_rgb(230, 120, 110),
+                                        crate::theme::shade(egui::Color32::from_rgb(230, 120, 110)),
                                         format!("{text}  (missing, fallback)"),
                                     );
                                 }

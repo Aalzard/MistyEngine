@@ -237,7 +237,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
     let size = vec2(cols as f32 * CELL, rows as f32 * CELL);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 2.0, Color32::from_gray(36));
+    painter.rect_filled(rect, 2.0, crate::theme::shade(Color32::from_gray(36)));
     let cell_rect = |c: IVec2| {
         Rect::from_min_size(
             rect.min + vec2(c.x as f32 * CELL, c.y as f32 * CELL),
@@ -257,7 +257,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
             painter.rect_stroke(
                 r,
                 1.0,
-                Stroke::new(1.0, Color32::from_gray(52)),
+                Stroke::new(1.0, crate::theme::shade(Color32::from_gray(52))),
                 egui::StrokeKind::Inside,
             );
         }
@@ -294,7 +294,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
                     egui::Align2::RIGHT_TOP,
                     badge,
                     egui::FontId::proportional(10.0),
-                    Color32::from_rgb(255, 210, 90),
+                    crate::theme::shade(Color32::from_rgb(255, 210, 90)),
                 );
             }
         } else {
@@ -303,7 +303,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
                 egui::Align2::CENTER_CENTER,
                 "?",
                 egui::FontId::proportional(14.0),
-                Color32::LIGHT_RED,
+                crate::theme::error(),
             );
         }
     }
@@ -311,7 +311,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
         painter.rect_stroke(
             cell_rect(c).shrink(1.0),
             2.0,
-            Stroke::new(2.0, Color32::from_rgb(255, 200, 60)),
+            Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(255, 200, 60))),
             egui::StrokeKind::Inside,
         );
     }
@@ -323,7 +323,7 @@ fn palette_grid(ui: &mut Ui, state: &mut EditorState) {
         painter.rect_stroke(
             cell_rect(c).shrink(1.0),
             2.0,
-            Stroke::new(1.0, Color32::from_gray(150)),
+            Stroke::new(1.0, crate::theme::shade(Color32::from_gray(150))),
             egui::StrokeKind::Inside,
         );
     }

@@ -512,7 +512,7 @@ pub fn bar(ui: &mut egui::Ui, s: &mut EditorState) {
         .collect();
     let dirty = s.scene_dirty;
     egui::Frame::new()
-        .fill(BAR_FILL)
+        .fill(crate::theme::shade(BAR_FILL))
         .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -522,7 +522,7 @@ pub fn bar(ui: &mut egui::Ui, s: &mut EditorState) {
                     ui.label(
                         egui::RichText::new(text)
                             .strong()
-                            .color(crate::theme::PREFAB),
+                            .color(crate::theme::prefab()),
                     );
                     if ui.button("Save").clicked() {
                         s.push(Action::PrefabModeAnswer(true));
@@ -561,7 +561,7 @@ pub fn bar(ui: &mut egui::Ui, s: &mut EditorState) {
                         let star = if dirty { "*" } else { "" };
                         let text = egui::RichText::new(format!("{icon} {crumb}{star}"))
                             .strong()
-                            .color(crate::theme::PREFAB);
+                            .color(crate::theme::prefab());
                         ui.label(text);
                     } else if ui.link(format!("{icon} {crumb}")).clicked() {
                         s.push(Action::ClosePrefab { levels: last - i });
@@ -610,7 +610,7 @@ pub fn hierarchy_header(ui: &mut egui::Ui, s: &mut EditorState) {
     let variant = s.scene.prefab_link(st.root).is_some();
     let star = if s.scene_dirty { "*" } else { "" };
     egui::Frame::new()
-        .fill(BAR_FILL)
+        .fill(crate::theme::shade(BAR_FILL))
         .inner_margin(egui::Margin::symmetric(4, 2))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -627,7 +627,7 @@ pub fn hierarchy_header(ui: &mut egui::Ui, s: &mut EditorState) {
                 ui.label(
                     egui::RichText::new(text)
                         .strong()
-                        .color(crate::theme::PREFAB),
+                        .color(crate::theme::prefab()),
                 )
                 .on_hover_text(kind);
             });

@@ -294,7 +294,10 @@ fn header(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
         }
         ui.weak(format!("→ {}", biome_ui::display_name(&path)));
         if world_gen::terrain_of(&state.scene, builder).is_none() {
-            ui.colored_label(crate::theme::AXIS_X, "no terrain uses this asset");
+            ui.colored_label(
+                crate::theme::shade(crate::theme::AXIS_X),
+                "no terrain uses this asset",
+            );
         }
     });
 }

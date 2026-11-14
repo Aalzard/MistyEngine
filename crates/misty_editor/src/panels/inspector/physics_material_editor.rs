@@ -119,7 +119,7 @@ pub fn physics_material_asset(ui: &mut Ui, _state: &mut EditorState, rel: &str) 
     let mut m = match PhysicsMaterial::load(&path) {
         Ok(m) => m,
         Err(e) => {
-            ui.colored_label(crate::theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(crate::theme::AXIS_X), e);
             return;
         }
     };
@@ -165,7 +165,7 @@ pub fn physics_material_asset(ui: &mut Ui, _state: &mut EditorState, rel: &str) 
          Average < Minimum < Multiply < Maximum.",
     );
     if ch && let Err(e) = m.save(&path) {
-        ui.colored_label(crate::theme::AXIS_X, e);
+        ui.colored_label(crate::theme::shade(crate::theme::AXIS_X), e);
     }
 }
 

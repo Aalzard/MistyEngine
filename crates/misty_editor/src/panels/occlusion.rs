@@ -287,7 +287,7 @@ fn bake_page(ui: &mut Ui, state: &mut EditorState) {
             let params = [p.smallest_occluder, p.smallest_hole, p.backface_threshold];
             if d.params != params {
                 ui.colored_label(
-                    egui::Color32::from_rgb(230, 190, 90),
+                    crate::theme::shade(egui::Color32::from_rgb(230, 190, 90)),
                     "The bake parameters changed: bake again.",
                 );
             }

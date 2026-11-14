@@ -94,7 +94,7 @@ fn header(ui: &mut Ui, text: &str) {
         Align2::LEFT_CENTER,
         text,
         FontId::proportional(12.5),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 
@@ -140,7 +140,7 @@ fn folder_row(
     let parent = !node.children.is_empty();
     tree_lines::paint_background(ui.painter(), rect, index, parent);
     if selected {
-        ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 0.0, theme::selection());
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 0.0, tree_lines::HOVER);
     }
@@ -160,9 +160,9 @@ fn folder_row(
         let arrow = ui.interact(arrow_rect, id, Sense::click());
         let is_open = browser.expanded.contains(&node.path);
         let color = if arrow.hovered() {
-            tree_lines::ARROW_HOVER
+            crate::theme::shade(tree_lines::ARROW_HOVER)
         } else {
-            tree_lines::ARROW
+            crate::theme::shade(tree_lines::ARROW)
         };
         tree_lines::paint_arrow(ui.painter(), arrow_rect.center(), is_open, color);
         if arrow.clicked() {
@@ -180,9 +180,9 @@ fn folder_row(
             .as_ref()
             .is_some_and(|(p, _)| *p == node.path);
     let color = match (selected, parent) {
-        (true, _) => Color32::WHITE,
-        (false, true) => tree_lines::PARENT_TEXT,
-        (false, false) => theme::TEXT,
+        (true, _) => crate::theme::selection_text(),
+        (false, true) => crate::theme::shade(tree_lines::PARENT_TEXT),
+        (false, false) => theme::text(),
     };
     let label = if renaming { "" } else { node.name.as_str() };
     paint_label(ui, rect, depth, label, color, parent);

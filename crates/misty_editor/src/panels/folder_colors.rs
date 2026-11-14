@@ -113,8 +113,11 @@ fn wheel(ui: &mut Ui, current: Option<Color32>) -> Option<[f32; 3]> {
     ui.painter().circle_filled(c, r * HOLE - 3.0, hole);
     let hit = resp.interact_pointer_pos().or(resp.hover_pos())?;
     let (hue, t) = at(c, r, hit)?;
-    ui.painter()
-        .circle_stroke(hit, 4.0, egui::Stroke::new(1.5, Color32::from_gray(40)));
+    ui.painter().circle_stroke(
+        hit,
+        4.0,
+        egui::Stroke::new(1.5, crate::theme::shade(Color32::from_gray(40))),
+    );
     resp.clicked().then(|| pastel(hue, t))
 }
 

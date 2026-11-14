@@ -106,11 +106,11 @@ pub fn property_list(
             .iter()
             .all(|c| s.animation.focused_curves.contains(c));
         let bg = if focused {
-            theme::SELECTION
+            theme::selection()
         } else if i % 2 == 0 {
-            Color32::from_rgb(58, 58, 58)
+            crate::theme::shade(Color32::from_rgb(58, 58, 58))
         } else {
-            Color32::from_rgb(54, 54, 54)
+            crate::theme::shade(Color32::from_rgb(54, 54, 54))
         };
         ui.painter().rect_filled(rect, 0.0, bg);
         let resp = ui.interact(rect, ui.id().with(("anim_row", i)), Sense::click());
@@ -157,9 +157,9 @@ pub fn property_list(
                 }
             }
             let color = if row.missing {
-                Color32::from_rgb(230, 190, 60)
+                crate::theme::shade(Color32::from_rgb(230, 190, 60))
             } else {
-                theme::TEXT
+                theme::text()
             };
             ui.add(
                 egui::Label::new(RichText::new(&row.label).color(color))
@@ -190,7 +190,7 @@ fn value_field(ui: &mut Ui, s: &mut EditorState, root: Entity, clip: &AnimationC
     let tint = if s.animation.recording {
         super::RECORD_RED
     } else {
-        Color32::from_rgb(80, 140, 220)
+        crate::theme::shade(Color32::from_rgb(80, 140, 220))
     };
     let changed = if property == Property::Active {
         let mut on = v >= 0.5;

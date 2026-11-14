@@ -134,7 +134,7 @@ pub fn normal_map_fix_row(ui: &mut Ui, state: &mut EditorState, map: Option<&str
             fix_normal_map(ui.ctx(), state, rel);
         }
         ui.add(
-            egui::Label::new(RichText::new(tr!("⚠ Not a normal map")).color(theme::WARN))
+            egui::Label::new(RichText::new(tr!("⚠ Not a normal map")).color(theme::warn()))
                 .truncate(),
         )
         .on_hover_text(tr!(
@@ -218,7 +218,7 @@ pub fn texture_square(
     // Paint.
     let tex = value.as_deref().and_then(|rel| thumbnail(ui, state, rel));
     let painter = ui.painter();
-    painter.rect_filled(rect, 2.0, theme::FIELD_BG);
+    painter.rect_filled(rect, 2.0, theme::field_bg());
     match (&tex, value.is_some()) {
         (Some(t), _) => {
             let uv = square_uv(t.size_vec2());
@@ -231,26 +231,26 @@ pub fn texture_square(
                 Align2::CENTER_CENTER,
                 "?",
                 egui::FontId::proportional(12.0),
-                theme::WARN,
+                theme::warn(),
             );
         }
         (None, false) => {}
     }
     let stroke = if over {
-        Stroke::new(2.0, theme::OVERRIDE)
+        Stroke::new(2.0, theme::overridden())
     } else if dragging {
-        Stroke::new(1.0, theme::PREFAB_DIM)
+        Stroke::new(1.0, theme::prefab_dim())
     } else if resp.hovered() || open {
-        Stroke::new(1.0, theme::TEXT_DIM)
+        Stroke::new(1.0, theme::text_dim())
     } else {
-        Stroke::new(1.0, Color32::from_rgb(30, 30, 30))
+        Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(30, 30, 30)))
     };
     painter.rect_stroke(rect, 2.0, stroke, StrokeKind::Inside);
     if let Some(x) = &x_resp
         && value.is_some()
     {
         let fill = if x.hovered() {
-            theme::WARN
+            theme::warn()
         } else {
             Color32::from_black_alpha(200)
         };
@@ -299,7 +299,7 @@ fn tooltip(ui: &mut Ui, name: &str, value: Option<&str>, tex: Option<&egui::Text
     ));
     ui.weak(crate::i18n::display(rel).into_owned());
     if tex.is_none() {
-        ui.colored_label(theme::WARN, tr!("Missing texture"));
+        ui.colored_label(theme::warn(), tr!("Missing texture"));
     }
     ui.weak(tr!(
         "Click: choose · Right-click: clear · Ctrl+click: show in Asset Files"
@@ -345,15 +345,15 @@ fn picker_row(
     });
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     if selected {
-        painter.rect_filled(rect, 2.0, theme::SELECTION);
+        painter.rect_filled(rect, 2.0, theme::selection());
     } else if resp.hovered() {
-        painter.rect_filled(rect, 2.0, theme::HOVER_BG);
+        painter.rect_filled(rect, 2.0, theme::hover_bg());
     }
     let icon = Rect::from_center_size(
         egui::pos2(rect.left() + 4.0 + 8.0, rect.center().y),
         vec2(16.0, 16.0),
     );
-    painter.rect_filled(icon, 2.0, theme::FIELD_BG);
+    painter.rect_filled(icon, 2.0, theme::field_bg());
     if let Some(t) = tex {
         painter.image(t.id(), icon, square_uv(t.size_vec2()), Color32::WHITE);
     }
@@ -362,7 +362,7 @@ fn picker_row(
         Align2::LEFT_CENTER,
         crate::i18n::display(text),
         egui::TextStyle::Body.resolve(ui.style()),
-        theme::TEXT,
+        theme::text(),
     );
     resp
 }

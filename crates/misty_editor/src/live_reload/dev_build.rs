@@ -495,7 +495,7 @@ pub fn pill(ui: &mut egui::Ui, s: &EditorState) -> bool {
             .color(egui::Color32::WHITE)
             .strong(),
     )
-    .fill(GREEN)
+    .fill(crate::theme::shade(GREEN))
     .corner_radius(egui::CornerRadius::same(10))
     .min_size(egui::vec2(0.0, 20.0));
     let path = dev

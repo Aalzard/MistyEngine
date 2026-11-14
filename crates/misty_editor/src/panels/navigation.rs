@@ -291,7 +291,7 @@ fn areas_page(ui: &mut Ui, state: &mut EditorState) {
                 });
                 let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
                 let color = if a.name.is_empty() {
-                    Color32::from_gray(70)
+                    crate::theme::shade(Color32::from_gray(70))
                 } else {
                     super::inspector::nav_area_color(i as u8)
                 };
@@ -332,7 +332,7 @@ fn agent_diagram(ui: &mut Ui, a: &AgentSettings) {
         egui::Sense::hover(),
     );
     let p = ui.painter_at(rect);
-    p.rect_filled(rect, 4.0, Color32::from_gray(40));
+    p.rect_filled(rect, 4.0, crate::theme::shade(Color32::from_gray(40)));
     let ground = rect.bottom() - 14.0;
     // Pixels per metre: fit the taller of height and diameter.
     let scale = (70.0 / a.height.max(a.radius * 2.0).max(0.1)).min(60.0);
@@ -342,15 +342,15 @@ fn agent_diagram(ui: &mut Ui, a: &AgentSettings) {
     p.rect_filled(
         body,
         2.0,
-        Color32::from_rgba_unmultiplied(80, 160, 255, 120),
+        crate::theme::shade(Color32::from_rgba_unmultiplied(80, 160, 255, 120)),
     );
     p.rect_stroke(
         body,
         2.0,
-        Stroke::new(1.0, Color32::from_rgb(120, 190, 255)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(120, 190, 255))),
         egui::StrokeKind::Inside,
     );
-    let line = Stroke::new(1.0, Color32::from_gray(170));
+    let line = Stroke::new(1.0, crate::theme::shade(Color32::from_gray(170)));
     p.line_segment(
         [
             pos2(rect.left() + 8.0, ground),
@@ -373,7 +373,7 @@ fn agent_diagram(ui: &mut Ui, a: &AgentSettings) {
     let end = pos2(start.x + len * ang.cos(), ground - len * ang.sin());
     p.line_segment(
         [start, end],
-        Stroke::new(1.5, Color32::from_rgb(120, 190, 255)),
+        Stroke::new(1.5, crate::theme::shade(Color32::from_rgb(120, 190, 255))),
     );
     let font = egui::FontId::proportional(11.0);
     p.text(
@@ -381,14 +381,14 @@ fn agent_diagram(ui: &mut Ui, a: &AgentSettings) {
         egui::Align2::LEFT_TOP,
         format!("{:.0}°", a.max_slope),
         font.clone(),
-        Color32::GRAY,
+        crate::theme::text_dim(),
     );
     p.text(
         pos2(cx, ground + 2.0),
         egui::Align2::CENTER_TOP,
         format!("R {:.2}  H {:.2}", a.radius, a.height),
         font,
-        Color32::GRAY,
+        crate::theme::text_dim(),
     );
 }
 

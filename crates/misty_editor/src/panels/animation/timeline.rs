@@ -67,7 +67,11 @@ impl ValueAxis {
 pub fn show(ui: &mut Ui, s: &mut EditorState, clip: &AnimationClip, rows: &[Row], rect: Rect) {
     let axis = zoom_and_pan(ui, s, clip, rect);
     let painter = ui.painter().clone();
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(44, 44, 44));
+    painter.rect_filled(
+        rect,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(44, 44, 44)),
+    );
     // Beyond the clip's end is shaded.
     let end_x = axis.x(clip.length);
     if end_x < rect.right() {
@@ -162,9 +166,9 @@ pub fn time_label(t: f32, sample_rate: f32) -> String {
 fn time_ruler(ui: &mut Ui, s: &mut EditorState, clip: &AnimationClip, axis: Axis, rect: Rect) {
     let painter = ui.painter();
     let bg = if s.animation.recording {
-        Color32::from_rgb(90, 45, 45)
+        crate::theme::shade(Color32::from_rgb(90, 45, 45))
     } else {
-        Color32::from_rgb(58, 58, 58)
+        crate::theme::shade(Color32::from_rgb(58, 58, 58))
     };
     painter.rect_filled(rect, 0.0, bg);
     let step = tick_step(clip.sample_rate, axis.pps) / clip.sample_rate;
@@ -179,7 +183,7 @@ fn time_ruler(ui: &mut Ui, s: &mut EditorState, clip: &AnimationClip, axis: Axis
         painter.vline(
             x,
             rect.bottom() - h..=rect.bottom(),
-            Stroke::new(1.0, theme::TEXT_DIM),
+            Stroke::new(1.0, theme::text_dim()),
         );
         if major {
             painter.text(
@@ -187,7 +191,7 @@ fn time_ruler(ui: &mut Ui, s: &mut EditorState, clip: &AnimationClip, axis: Axis
                 Align2::LEFT_TOP,
                 time_label(t, clip.sample_rate),
                 FontId::proportional(10.0),
-                theme::TEXT_DIM,
+                theme::text_dim(),
             );
         }
     }
@@ -277,11 +281,11 @@ fn dopesheet(
     let painter = ui.painter().clone();
     for (i, (r, _)) in lines.iter().enumerate() {
         let fill = if i == 0 {
-            Color32::from_rgb(50, 50, 50)
+            crate::theme::shade(Color32::from_rgb(50, 50, 50))
         } else if i % 2 == 1 {
-            Color32::from_rgb(48, 48, 48)
+            crate::theme::shade(Color32::from_rgb(48, 48, 48))
         } else {
-            Color32::from_rgb(44, 44, 44)
+            crate::theme::shade(Color32::from_rgb(44, 44, 44))
         };
         painter.rect_filled(*r, 0.0, fill);
     }
@@ -339,9 +343,9 @@ fn dopesheet(
             let selected =
                 !keys.is_empty() && keys.iter().all(|k| s.animation.selected.contains(k));
             let fill = if selected {
-                Color32::from_rgb(90, 160, 255)
+                crate::theme::shade(Color32::from_rgb(90, 160, 255))
             } else {
-                Color32::from_gray(200)
+                crate::theme::shade(Color32::from_gray(200))
             };
             diamond(&painter, pos2(x, r.center().y), 5.0, fill);
         }
@@ -356,7 +360,7 @@ fn box_outline(painter: &egui::Painter, s: &EditorState, resp: &egui::Response) 
         painter.rect_stroke(
             Rect::from_two_pos(*start, p),
             0.0,
-            Stroke::new(1.0, theme::PREFAB),
+            Stroke::new(1.0, theme::prefab()),
             egui::StrokeKind::Inside,
         );
     }
@@ -542,10 +546,10 @@ fn key_menu(ui: &mut Ui, s: &mut EditorState) {
 fn curve_color(p: misty_engine::animation::Property) -> Color32 {
     use misty_engine::animation::Property::*;
     match p {
-        Position(0) | Rotation(0) | Scale(0) | LightColor(0) => theme::AXIS_X,
-        Position(1) | Rotation(1) | Scale(1) | LightColor(1) => theme::AXIS_Y,
-        Position(_) | Rotation(_) | Scale(_) | LightColor(_) => theme::AXIS_Z,
-        _ => Color32::from_rgb(230, 200, 80),
+        Position(0) | Rotation(0) | Scale(0) | LightColor(0) => crate::theme::shade(theme::AXIS_X),
+        Position(1) | Rotation(1) | Scale(1) | LightColor(1) => crate::theme::shade(theme::AXIS_Y),
+        Position(_) | Rotation(_) | Scale(_) | LightColor(_) => crate::theme::shade(theme::AXIS_Z),
+        _ => crate::theme::shade(Color32::from_rgb(230, 200, 80)),
     }
 }
 
@@ -593,13 +597,17 @@ fn curves(
     for i in 0..=4 {
         let v = va.min + (va.max - va.min) * i as f32 / 4.0;
         let y = va.y(v);
-        painter.hline(body.x_range(), y, Stroke::new(1.0, Color32::from_gray(56)));
+        painter.hline(
+            body.x_range(),
+            y,
+            Stroke::new(1.0, crate::theme::shade(Color32::from_gray(56))),
+        );
         painter.text(
             pos2(body.left() + 2.0, y - 1.0),
             Align2::LEFT_BOTTOM,
             format!("{v:.2}"),
             FontId::proportional(10.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
     }
     for &c in &shown {

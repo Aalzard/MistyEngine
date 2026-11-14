@@ -401,7 +401,7 @@ fn preview(
     let (rect, _) = ui.allocate_exact_size(vec2(w * scale, h * scale), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     // Checkerboard behind transparent pixels.
-    painter.rect_filled(rect, 0.0, Color32::from_gray(60));
+    painter.rect_filled(rect, 0.0, crate::theme::shade(Color32::from_gray(60)));
     painter.image(
         tex.id(),
         rect,
@@ -409,7 +409,7 @@ fn preview(
         Color32::WHITE,
     );
     if s.is_sprite() && s.sprite_mode == SpriteMode::Multiple {
-        let stroke = Stroke::new(1.0, Color32::from_rgb(80, 160, 255));
+        let stroke = Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(80, 160, 255)));
         for r in &s.sprites {
             let [x, y, rw, rh] = r.rect;
             let min = rect.min + vec2(x * scale, (h - y - rh) * scale);

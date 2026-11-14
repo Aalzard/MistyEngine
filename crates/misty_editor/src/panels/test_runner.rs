@@ -457,11 +457,11 @@ pub fn aggregate(statuses: &[Status]) -> Status {
 
 pub fn status_icon(status: Status) -> (&'static str, Color32) {
     match status {
-        Status::Passed => ("✔", PASSED),
-        Status::Failed => ("✖", FAILED),
-        Status::Skipped => ("⊘", SKIPPED),
-        Status::Running => ("⟳", RUNNING),
-        Status::NotRun => ("○", Color32::GRAY),
+        Status::Passed => ("✔", crate::theme::shade(PASSED)),
+        Status::Failed => ("✖", crate::theme::shade(FAILED)),
+        Status::Skipped => ("⊘", crate::theme::shade(SKIPPED)),
+        Status::Running => ("⟳", crate::theme::shade(RUNNING)),
+        Status::NotRun => ("○", crate::theme::text_dim()),
     }
 }
 
@@ -762,7 +762,10 @@ fn details(ui: &mut Ui, s: &mut EditorState) {
 
 fn failure_ui(ui: &mut Ui, s: &mut EditorState, f: &testing::Failure) {
     ui.add_space(4.0);
-    ui.add(egui::Label::new(RichText::new(&f.message).color(FAILED)).selectable(true));
+    ui.add(
+        egui::Label::new(RichText::new(&f.message).color(crate::theme::shade(FAILED)))
+            .selectable(true),
+    );
     if let Some((rel, line)) = &f.location {
         ui.horizontal(|ui| {
             ui.label("at");

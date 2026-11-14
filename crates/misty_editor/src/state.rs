@@ -434,6 +434,9 @@ pub struct EditorState {
     pub vcs: crate::vcs::Vcs,
     /// Edit ▸ Preferences ▸ UI Scale (the editor app loads the saved value).
     pub ui_scale: crate::a11y::UiScale,
+    /// Edit ▸ Preferences ▸ Appearance: theme, custom themes and fonts (the editor app loads
+    /// the saved choice).
+    pub appearance: crate::theme::editor::Appearance,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
     /// Autosave, the session marker and the Recover Unsaved Work dialog (off until the editor
@@ -569,6 +572,7 @@ impl EditorState {
             mcp: Default::default(),
             vcs: Default::default(),
             ui_scale: Default::default(),
+            appearance: Default::default(),
             actions: Vec::new(),
             autosave: Default::default(),
         };

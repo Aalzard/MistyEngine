@@ -359,7 +359,7 @@ fn light_2d(ui: &mut Ui, l: &mut Light2D, layers: &[String]) -> bool {
 pub fn tile_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let abs = state.assets.absolute(rel);
     let Ok(mut t) = TileAsset::load(&abs) else {
-        ui.colored_label(Color32::LIGHT_RED, "Could not read this tile asset.");
+        ui.colored_label(crate::theme::error(), "Could not read this tile asset.");
         return;
     };
     let name = std::path::Path::new(rel)
@@ -494,9 +494,13 @@ fn neighbor_grid(ui: &mut Ui, n: &mut [Neighbor; 8]) -> bool {
             )
             .shrink(1.0);
             let painter = ui.painter();
-            painter.rect_filled(r, 2.0, Color32::from_gray(45));
+            painter.rect_filled(r, 2.0, crate::theme::shade(Color32::from_gray(45)));
             if row == 1 && col == 1 {
-                painter.rect_filled(r.shrink(4.0), 1.0, Color32::from_gray(120));
+                painter.rect_filled(
+                    r.shrink(4.0),
+                    1.0,
+                    crate::theme::shade(Color32::from_gray(120)),
+                );
                 continue;
             }
             let idx = i;
@@ -510,11 +514,11 @@ fn neighbor_grid(ui: &mut Ui, n: &mut [Neighbor; 8]) -> bool {
                     painter.arrow(
                         c - d,
                         d * 2.0,
-                        Stroke::new(2.0, Color32::from_rgb(80, 220, 100)),
+                        Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(80, 220, 100))),
                     );
                 }
                 Neighbor::NotThis => {
-                    let s = Stroke::new(2.0, Color32::from_rgb(235, 80, 70));
+                    let s = Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(235, 80, 70)));
                     let r2 = r.shrink(4.0);
                     painter.line_segment([r2.left_top(), r2.right_bottom()], s);
                     painter.line_segment([r2.right_top(), r2.left_bottom()], s);
