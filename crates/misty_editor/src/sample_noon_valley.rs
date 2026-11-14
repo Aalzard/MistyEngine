@@ -407,12 +407,12 @@ fn forest_herbs(d: &TerrainData) -> DetailLayer {
     DetailLayer {
         name: "Forest Herbs".into(),
         // (Broad, low leaves rather than tufts: wide short blades, fewer of them.)
-        density: 28.0,
-        height: [0.06, 0.15],
-        width: 0.3,
+        density: 20.0,
+        height: [0.06, 0.14],
+        width: 0.45,
         bend: 1.5,
         dryness: 0.0,
-        tint: -0.65,
+        tint: -0.85,
         seed_heads: 0.0,
         map,
         ..DetailLayer::grass("Forest Herbs")
@@ -873,7 +873,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 10,
                 leaf_density: 1.05,
                 leaf_size: 1.1,
-                leaf_color: [0.6, 0.66, 0.44],
+                leaf_color: [0.52, 0.57, 0.38],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.5,
@@ -891,7 +891,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leader: 0.7,
                 leaf_density: 1.0,
                 leaf_size: 1.0,
-                leaf_color: [0.62, 0.67, 0.45],
+                leaf_color: [0.54, 0.58, 0.39],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.45,
@@ -913,7 +913,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 5,
                 leaf_density: 0.9,
                 leaf_size: 0.8,
-                leaf_color: [0.62, 0.68, 0.46],
+                leaf_color: [0.55, 0.6, 0.4],
                 leaf_variation: 0.5,
                 crown_shading: 0.4,
                 clumping: 0.3,
@@ -1325,7 +1325,7 @@ fn terrain_data() -> TerrainData {
     d.trees.shadow_detail = 0.34;
     // Ferns and ground cover shade the floor only near the camera (their shadows were most of
     // the inside view's shadow-map cost).
-    d.trees.plant_shadow_distance = 12.0;
+    d.trees.plant_shadow_distance = 7.0;
     // Placed on the heights as stored (16 bits), so the file and the generator agree.
     let stored = TerrainData {
         heights: d
@@ -1375,6 +1375,11 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
         (200.0, 40.0, 60.0, 4, &[OUTCROP, ROUND], [1.5, 2.5]),
         (300.0, 300.0, 120.0, 8, &[OUTCROP], [2.5, 4.0]),
         (330.0, 600.0, 150.0, 8, &[OUTCROP], [3.0, 5.0]),
+        // Big layered slabs in the cliff sites seen from the meadow: real faces and ledges
+        // that throw deep shadows (the 4 m height samples can't).
+        (250.0, 320.0, 70.0, 7, &[OUTCROP], [6.0, 10.0]),
+        (190.0, 540.0, 80.0, 7, &[OUTCROP], [7.0, 11.0]),
+        (340.0, 700.0, 80.0, 6, &[OUTCROP], [7.0, 11.0]),
     ];
     let mut n = 0u32;
     for &(right, ahead, spread, count, kinds, scale) in groups {
@@ -1440,7 +1445,8 @@ fn volume() -> PostProcessVolume {
     // Metered without the brightest fifth (sky and sun flecks through the canopy), a touch
     // brighter: the shaded forest floor reads mid-brown, not black.
     ae.histogram_high = 70.0;
-    ae.compensation = 0.0;
+    // (A touch under: the darker sky would otherwise lift the meadow above the photo's.)
+    ae.compensation = -0.3;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
