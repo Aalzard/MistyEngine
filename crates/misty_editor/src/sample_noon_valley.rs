@@ -38,6 +38,9 @@ const LIMESTONE_HEIGHT: &str = "Assets/NoonValley/Textures/LimestoneHeight.png";
 // From tools/noon_valley_textures.py (2048²: leaf litter, twigs; bark; fern and groundcover
 // leaf atlases).
 const FOREST_FLOOR: &str = "Assets/NoonValley/Textures/ForestFloor.png";
+// The litter as the wood's floor uses it: ForestFloor.png darker and warmer (in the sun
+// flecks the pale litter read near white).
+const FOREST_FLOOR_TONED: &str = "Assets/NoonValley/Textures/ForestFloorToned.png";
 // The meadow's ground under (and past) the grass: dark turf, generated here.
 const TURF_GROUND: &str = "Assets/NoonValley/Textures/MeadowTurf.png";
 const TURF_GROUND_NORMAL: &str = "Assets/NoonValley/Textures/MeadowTurfNormal.png";
@@ -1219,7 +1222,7 @@ fn terrain_data() -> TerrainData {
         },
         TerrainLayer {
             name: "Forest Floor".into(),
-            diffuse: Some(FOREST_FLOOR.into()),
+            diffuse: Some(FOREST_FLOOR_TONED.into()),
             normal_map: Some(FOREST_FLOOR_NORMAL.into()),
             height_map: Some(FOREST_FLOOR_HEIGHT.into()),
             normal_scale: 1.2,
@@ -1745,16 +1748,22 @@ fn write_noon_outcrop(root: &std::path::Path) {
         let mut c = Vec3::new(lin(px[0]), lin(px[1]), lin(px[2]));
         let h = (p.y - lo) / (hi - lo).max(1e-3);
         let around = p.x.atan2(p.z) * 3.0;
+        // Warm tan limestone (the sample's is a cool cream).
+        c *= Vec3::new(1.0, 0.86, 0.66) * 0.82;
+        // Strata: thin darker partings between the beds, a little wavy.
+        let bed = (h * 9.0 + 0.25 * noise::fbm(around, p.y * 3.0, 1.2, 2, 511)).fract();
+        let parting = smooth(0.8, 0.95, bed) * (1.0 - smooth(0.95, 1.0, bed));
+        c *= 1.0 - 0.45 * parting;
         // The foot: damp, mossy, darker towards the soil.
         let ragged = 0.08 * noise::fbm(around, p.y * 4.0, 0.7, 3, 501);
-        let foot = 1.0 - smooth(0.0, 0.42, h + ragged);
+        let foot = 1.0 - smooth(0.0, 0.5, h + ragged);
         let patch = 0.6 + 0.4 * smooth(-0.3, 0.3, noise::fbm(p.x * 6.0, p.z * 6.0, 1.0, 3, 503));
         let moss = Vec3::new(0.035, 0.05, 0.014);
         c = c.lerp(
             c * Vec3::new(0.5, 0.6, 0.36) + moss * 0.4,
             foot * patch * 0.85,
         );
-        c = c.lerp(Vec3::new(0.03, 0.026, 0.018), foot * foot * 0.4);
+        c = c.lerp(Vec3::new(0.025, 0.024, 0.014), foot * foot * 0.65);
         // Moss on the ledges (faces turned up).
         let ledge = smooth(0.55, 0.9, nrm.y)
             * smooth(0.0, 0.5, noise::fbm(p.x * 4.0, p.z * 4.0, 1.0, 3, 507));
@@ -1785,11 +1794,33 @@ fn write_noon_outcrop(root: &std::path::Path) {
     refresh_guids(root);
 }
 
+/// ForestFloor.png darker and warmer: sunlit leaves, not bleached litter.
+fn forest_floor_toned(root: &std::path::Path) -> image::RgbImage {
+    let mut img = image::open(root.join(FOREST_FLOOR)).unwrap().to_rgb8();
+    let lin = |v: u8| {
+        let c = v as f32 / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let k = [0.62, 0.55, 0.45];
+    for px in img.pixels_mut() {
+        for i in 0..3 {
+            px[i] = srgb(lin(px[i]) * k[i]);
+        }
+    }
+    img
+}
+
 /// The sample outcrop's material with NoonValley's retouched albedo.
 fn noon_outcrop_material(root: &std::path::Path) -> misty_engine::assets::Material {
     let rock = &crate::sample_rocks::rocks()[crate::sample_rocks::OUTCROP];
     let mut m = misty_engine::assets::Material::load(&root.join(rock.material_path())).unwrap();
     m.albedo_map = Some(NOON_OUTCROP_ALBEDO.into());
+    // Deeper relief than the sample's boulders.
+    m.normal_scale = 2.0;
     m
 }
 
@@ -1810,6 +1841,9 @@ fn write_noon_valley() {
         tree.save(&root.join(rel)).unwrap();
     }
     write_noon_outcrop(&root);
+    forest_floor_toned(&root)
+        .save(root.join(FOREST_FLOOR_TONED))
+        .unwrap();
     let d = terrain_data();
     eprintln!("{} trees", d.trees.instances.len());
     d.save(&root.join(DATA)).unwrap();
@@ -1832,6 +1866,7 @@ fn noon_valley_matches_its_generator() {
         TURF_GROUND_NORMAL,
         TURF_GROUND_HEIGHT,
         FOREST_FLOOR,
+        FOREST_FLOOR_TONED,
         FOREST_FLOOR_NORMAL,
         FOREST_FLOOR_HEIGHT,
         NOON_OUTCROP_ALBEDO,
