@@ -281,7 +281,7 @@ fn clip_editor(
         ui.label("End");
         ui.label(format!("{:.2} s", c.end()));
         ui.end_row();
-        if kind != TrackKind::Activation {
+        if kind != TrackKind::Activation && kind != TrackKind::Recorder {
             grid_sub_header(ui, "Blend");
             ui.label("Ease In");
             secs(&mut c.ease_in, ui);
@@ -364,6 +364,10 @@ fn clip_editor(
             ui.end_row();
         }
     });
+    // Recorder clips: what they record (the Recorder package; inert without it).
+    if kind == TrackKind::Recorder {
+        crate::recorder::timeline::clip_inspector(ui, state, &mut c);
+    }
     c.duration = c.duration.max(1.0 / rate);
     c.ease_in = c.ease_in.min(c.duration);
     c.ease_out = c.ease_out.min(c.duration);

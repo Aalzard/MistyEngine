@@ -72,6 +72,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#playerprefs">PlayerPrefs</a></li>
 <li><a href="#qualitysettings">QualitySettings</a></li>
 <li><a href="#ragdoll">Ragdoll</a></li>
+<li><a href="#recorder">Recorder</a></li>
 <li><a href="#rendersettings">RenderSettings</a></li>
 <li><a href="#rpctarget">RpcTarget</a></li>
 <li><a href="#savesystem">SaveSystem</a></li>
@@ -987,6 +988,27 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="entry" data-key="ragdoll.isenabled(go) ">
 <div class="sig">Ragdoll.IsEnabled(go)</div>
 <div class="meta">function · source: <code>physics_api.rs</code></div>
+</div>
+</section>
+<section id="recorder">
+<h2>Recorder</h2>
+<p>Record videos, GIFs and image sequences (in the editor, with the Recorder package)</p>
+<div class="entry" data-key="recorder.start([recordername]) start every enabled recorder, or the one with this name">
+<div class="sig">Recorder.Start([recorderName])</div>
+<div class="meta">function · source: <code>recorder_api.rs</code></div>
+<p>Start every enabled recorder, or the one with this name</p>
+<p class="notes">Start every enabled recorder of the Recorder window, or the one called <code>name</code>.</p>
+</div>
+<div class="entry" data-key="recorder.stop() stop recording; the files are written in the background">
+<div class="sig">Recorder.Stop()</div>
+<div class="meta">function · source: <code>recorder_api.rs</code></div>
+<p>Stop recording; the files are written in the background</p>
+<p class="notes">Stop recording; the files are written in the background.</p>
+</div>
+<div class="entry" data-key="recorder.isrecording true while a recording runs">
+<div class="sig">Recorder.isRecording</div>
+<div class="meta">property</div>
+<p>True while a recording runs</p>
 </div>
 </section>
 <section id="rendersettings">

@@ -17,6 +17,8 @@ egui_dock.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
 misty_engine = { path = "../misty_engine" }
+# The optional Recorder package's capture and encoders.
+misty_recorder = { path = "../misty_recorder" }
 # Editor scripts (`editor_scripts`) run in their own Lua state.
 mlua.workspace = true
 png = "0.18"

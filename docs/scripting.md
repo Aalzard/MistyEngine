@@ -759,6 +759,21 @@ The Hub's **2D Platformer** template starts with its own versions of both: the c
 jumps with W or Up, remembers a jump pressed just before landing, allows one just after leaving a
 ledge and makes a short hop when the key is let go early; the camera stops at the level's edges.
 
+### Recording (Recorder package)
+
+With the optional Recorder package installed (Window ▸ Package Manager ▸ Built-in ▸ Recorder),
+scripts can start and stop the Recorder window's recorders in the editor:
+
+| Call | Does |
+|---|---|
+| `Recorder.Start()` | start every enabled recorder (Play mode recorders record from the next frame) |
+| `Recorder.Start("Movie Recorder")` | start the recorder with this name |
+| `Recorder.Stop()` | stop; the files are written in the background |
+| `Recorder.isRecording` | true while a recording runs |
+
+While recording, `Time.deltaTime` is one frame of the recorder's frame rate (capture time).
+A built game has no Recorder: the calls do nothing there.
+
 ## Scripting defines
 
 A Build Profile's **Scripting Defines** (File ▸ Build Profiles) turn blocks of Lua on and off:

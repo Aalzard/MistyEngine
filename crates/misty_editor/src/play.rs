@@ -164,12 +164,14 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         return;
     }
     // A single step advances one nominal frame.
+    // A recording runs the game in capture time: one frame of its rate a frame.
     let dt = if s.play == PlayState::Paused {
         1.0 / 60.0
     } else {
-        real_dt
+        crate::recorder::capture_dt(s).unwrap_or(real_dt)
     };
     s.time.advance(dt);
+    crate::recorder::on_tick(s);
     let input = std::mem::take(&mut s.game_input);
     // The Script Graph window's debugger: the graph, breakpoints and object to watch.
     crate::panels::script_graph::sync_debugger(s);

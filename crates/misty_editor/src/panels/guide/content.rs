@@ -44,6 +44,7 @@ pub static CHAPTERS: &[Chapter] = &[
     chapter!("08-guide-animation"),
     chapter!("09-autosave"),
     chapter!("10-node-game"),
+    chapter!("11-recorder"),
     chapter!("glossary"),
 ];
 

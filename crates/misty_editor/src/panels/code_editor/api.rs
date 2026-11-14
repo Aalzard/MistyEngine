@@ -27,6 +27,7 @@ const TABLE: &str = r#"
 |Water||Water surface heights (buoyancy, wading)
 |Weather||Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeatherChanged)
 |Accessibility||UI text scale and colour-blind filter (for options menus)
+|Recorder||Record videos, GIFs and image sequences (in the editor, with the Recorder package)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
 |print|print(...)|Same as Debug.Log
@@ -216,6 +217,9 @@ Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as desig
 Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
 Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)
 Accessibility|simulate|simulate|Show how colour-blind players see the game instead of correcting it
+Recorder|Start|Start([recorderName])|Start every enabled recorder, or the one with this name
+Recorder|Stop|Stop()|Stop recording; the files are written in the background
+Recorder|isRecording|isRecording|True while a recording runs
 Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #self|gameObject|gameObject|The GameObject this script is attached to
 #self|transform|transform|This object's Transform

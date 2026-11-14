@@ -137,6 +137,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::PackageManager => packages::show(ui, self.state),
             Tab::InputActions => input_actions::show(ui, self.state),
             Tab::Guide => guide::show(ui, self.state),
+            Tab::Recorder => crate::recorder::window::show(ui, self.state),
             Tab::Tool(id) => crate::editor_scripts::windows::show(ui, self.state, *id),
         }
     }

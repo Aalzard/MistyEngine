@@ -111,6 +111,9 @@ pub fn new_clip(
         }
         _ => ACTIVATION_LEN,
     };
+    if kind == TrackKind::Recorder {
+        return crate::recorder::timeline::new_clip(time);
+    }
     TimelineClip {
         name: match asset {
             Some(a) => misty_engine::scene::clip_name(a),

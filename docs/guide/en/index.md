@@ -34,6 +34,8 @@ see a box like this:
    Unsaved Work window and crash reports.
 10. [A game made only with nodes](10-node-game.md): a whole 2D platformer, with a menu,
    enemies and three stages, built from Script Graphs alone.
+11. [Recording videos and GIFs](11-recorder.md): the optional Recorder package, MP4, WebM,
+   GIF and picture sequences at a fixed frame rate, from the window or a Timeline.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

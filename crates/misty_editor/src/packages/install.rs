@@ -45,7 +45,7 @@ pub fn package_dir(project: &Path, name: &str) -> PathBuf {
 /// its `package.json`. Does not touch the manifest.
 fn place(project: &Path, src: &Path) -> Result<PackageJson, String> {
     let info = PackageJson::read(src)?;
-    if builtin::is_builtin(&info.name) {
+    if builtin::is_builtin(&info.name) || super::optional::is_optional(&info.name) {
         return Err(format!("{} is a built-in package", info.name));
     }
     let dest = package_dir(project, &info.name);
@@ -324,7 +324,8 @@ pub fn candidates(
     index: Option<&RegistryIndex>,
 ) -> BTreeMap<String, Vec<Candidate>> {
     let mut out: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
-    for b in builtin::all() {
+    // Optional built-ins resolve like the modules once the manifest asks for them.
+    for b in builtin::all().into_iter().chain(super::optional::all()) {
         out.entry(b.name.clone()).or_default().push(Candidate {
             version: b.version(),
             origin: Origin::BuiltIn,
