@@ -5120,3 +5120,18 @@ private memory up about 1 MB a cycle (left open).
 - Still differs: the outcrops' feet read mostly through the darker apron from the meadow (the
   retouched foot is small at that distance and half sunk); the far meadow is still darker than
   the photo's; the slabs are paler and smoother than the photo's tan limestone.
+
+### Round 59.6 — tan limestone with strata, lighter far meadow, sunlit litter, exposure
+
+- **Outcrops**: NoonValley's outcrop albedo warmed to tan (× 1.0 / 0.86 / 0.66, a little
+  darker), thin darker partings between beds, a wider and darker damp foot; its material's
+  normal scale 2.0. From the meadow the nearest slab now reads as warm layered strata.
+  `cliffs_outcrops_r5_r6.jpg` (left site round 5 / round 6, nearest slab).
+- **Exposure**: the eye adaptation now meters the brightest 15 % out instead of 30 % (the sun
+  flecks count) and sits at 0 EV (was −0.3). The first view is now close to the photo: sky top
+  73/88/120 (photo 76/90/112), meadow near 62/81/25 (59/76/18), mid 78/93/36 (76/87/43).
+- **Far meadow**: `FAR_SHADE` 0.04, far field brightness 0.3: eye level far / past crest /
+  grass 84/94/55, 81/89/41, 77/88/33 (photo far meadow 85/97/59).
+- **Forest floor**: the litter is a toned copy (`ForestFloorToned.png`: darker, warmer, more
+  saturated). The sun flecks in `inside` read warmer but still bright (lower-half p95 0.69,
+  photo 0.76; the sunlit share is larger than the photo's, 30 % vs 20 %).
