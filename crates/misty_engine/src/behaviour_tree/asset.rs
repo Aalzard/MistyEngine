@@ -692,7 +692,7 @@ impl BehaviourTree {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
-        std::fs::write(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
+        crate::asset_db::write_asset(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     pub fn node(&self, id: u32) -> Option<&BtNode> {

@@ -258,7 +258,7 @@ impl BuildSettings {
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         let text = crate::asset_db::embed_json(&(text + "\n"));
-        std::fs::write(path, text).map_err(|e| e.to_string())
+        crate::asset_db::write_asset(path, text).map_err(|e| e.to_string())
     }
 
     /// Keep the window size usable and the App ID numeric.

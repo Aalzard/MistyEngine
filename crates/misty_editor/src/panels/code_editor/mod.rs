@@ -267,7 +267,7 @@ impl CodeEditor {
     pub fn save(&mut self, i: usize) -> Result<(), String> {
         let abs = self.abs(&self.docs[i].path);
         let doc = &mut self.docs[i];
-        std::fs::write(&abs, doc.editor.text()).map_err(|e| e.to_string())?;
+        misty_engine::asset_db::write_asset(&abs, doc.editor.text()).map_err(|e| e.to_string())?;
         doc.saved_version = doc.editor.version;
         doc.disk_mtime = mtime(&abs);
         doc.disk_conflict = false;

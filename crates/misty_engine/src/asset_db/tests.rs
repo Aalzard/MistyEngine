@@ -407,3 +407,62 @@ fn read_only_projects_refuse_asset_saves() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&other);
 }
+
+/// Round 70: asset saves that wrote with `std::fs::write` (Animator controllers, which save
+/// after every edit, Script / Shader / Effect Graphs, Behaviour Trees, mixers, physics
+/// materials, localization tables…) went straight past the read-only check, so a second editor
+/// on a project overwrote the first one's files. They go through [`write_asset`] now.
+#[test]
+fn read_only_projects_refuse_saves_of_every_asset_kind() {
+    let root = temp("read_only_kinds");
+    let path = |name: &str| root.join("Assets").join(name);
+    type Save = Box<dyn Fn(&Path) -> Result<(), String>>;
+    let saves: Vec<(&str, Save)> = vec![
+        (
+            "A.controller",
+            Box::new(|p| crate::animation::controller::AnimatorController::default().save(p)),
+        ),
+        (
+            "A.vgraph",
+            Box::new(|p| crate::visual_script::ScriptGraph::default().save(p)),
+        ),
+        (
+            "A.shadergraph",
+            Box::new(|p| crate::shader_graph::ShaderGraph::default().save(p)),
+        ),
+        (
+            "A.vfx",
+            Box::new(|p| crate::vfx::graph::EffectGraph::default().save(p)),
+        ),
+        (
+            "A.btree",
+            Box::new(|p| crate::behaviour_tree::BehaviourTree::new_default().save(p)),
+        ),
+        (
+            "A.mixer",
+            Box::new(|p| crate::audio::mixer::AudioMixer::default().save(p)),
+        ),
+        (
+            "A.physicmaterial",
+            Box::new(|p| crate::physics::material::PhysicsMaterial::default().save(p)),
+        ),
+        (
+            "A.loctable",
+            Box::new(|p| crate::localization::table::StringTable::new("A", &["en"]).save(p)),
+        ),
+    ];
+    for (name, _) in &saves {
+        std::fs::write(path(name), "before").unwrap();
+    }
+    set_read_only(&root, true);
+    for (name, save) in &saves {
+        assert!(save(&path(name)).is_err(), "{name} saved in a read-only project");
+        assert_eq!(std::fs::read_to_string(path(name)).unwrap(), "before", "{name}");
+    }
+    set_read_only(&root, false);
+    for (name, save) in &saves {
+        save(&path(name)).unwrap();
+        assert_ne!(std::fs::read_to_string(path(name)).unwrap(), "before", "{name}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
