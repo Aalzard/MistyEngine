@@ -270,6 +270,7 @@ fn node_game_plays_stage_one() {
     let mut brute_health = Vec::new();
     let mut jumped_from = Vec::new();
     let mut was_dashing = false;
+    let mut jump_held = 0;
     for frame in 0..60 * 40 {
         if !s.loads.is_empty() {
             break;
@@ -287,13 +288,16 @@ fn node_game_plays_stage_one() {
             .iter()
             .any(|(a, b)| (*a..*b).contains(&p.x));
         let mut held = vec!["d"];
-        if at_gap && p.y < 0.6 {
+        if at_gap && p.y < 0.6 && jump_held == 0 {
             pressed.push("space");
             jumped_from.push(p.x);
+            jump_held = 10;
         }
-        // Hold the jump key while over a gap: a full jump.
-        if at_gap || p.y > 0.6 {
+        // Hold the jump key a moment: a short hop clears a two-tile gap (a full jump flies
+        // over the Brute).
+        if jump_held > 0 {
             held.push("space");
+            jump_held -= 1;
         }
         s.frame(&held, &pressed);
         let dashing = s.dashing(player);
