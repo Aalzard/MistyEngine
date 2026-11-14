@@ -12,7 +12,7 @@ default, that Remove takes out cleanly; a Recorder window, a Timeline Recorder t
 | Optional built-in packages (Package Manager) | done, tested |
 | Recorder window (Window ▸ General ▸ Recorder, only when installed) | done, tested (kittest) |
 | Capture time (fixed dt while recording) | done, tested |
-| GPU readback ring + encoder threads | done (GPU path not covered by a headless test) |
+| GPU readback ring + encoder threads | done, GPU test (`misty_recorder::gpu_tests`) |
 | PNG / JPG sequences | done, tested (decoded back) |
 | GIF | done, tested (frame count, size, timing) |
 | MP4 (H.264) | done, tested (decoded back with OpenH264, frame count, error) |
@@ -95,10 +95,27 @@ should know that (AV1 / WebM is the royalty-free choice).
   audio thread (a kira effect on the main track writing into a ring) and an AAC (MP4) or Opus
   (WebM) encoder. Neither has a mature pure-Rust encoder; the checkbox is shown greyed out
   with "Sound is not recorded yet".
-- The GPU readback ring has no headless test (the editor tests drive the capture loop without
-  a GPU and get black frames); checked by hand in the editor (see Checks).
+- The editor tests drive the capture loop without a GPU (black frames); the ring itself has a
+  GPU test in the recorder crate. Not yet tried by hand in a running editor.
 - Frame rates are whole numbers (no 29.97).
+- OpenH264 refuses the non-real-time usage types; it runs as real-time camera video with
+  frame skipping off and bit-rate rate control.
 
 ## Checks
 
-(filled in at the end of the round)
+Release build, target `E:\MistyTargets61-recorder`, commit 755ba415 (+ the GPU test after):
+
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- `cargo test --workspace --release --no-fail-fast`: all pass. Editor 952 passed (87 ignored),
+  MCP end-to-end 1, engine 1608 passed (111 ignored), player 11, recorder 8.
+- Recorder tests: exact N frames for frame and time ranges (crate and editor, the editor one in
+  capture time with a 0.5 s "real" frame), PNG and JPG sequences decoded back, GIF frame count,
+  size and timing, MP4 decoded back with OpenH264 (40/40 frames, mean error under 12/255),
+  WebM parsed back (12 blocks, key frame first, timestamps, duration), install / remove,
+  window and menu follow the package, Lua start / stop only with the package.
+- No render code changed (the recorder renders through the existing renderer into its own
+  target), so no golden shots.
+- Note: the engine's GPU tests in the workspace run overlapped with r59 holding
+  `gpu-timing.lock` (the lock was taken by r59 after my run had started; stopping my own test
+  process was not permitted). The recorder GPU test ran under the lock.
