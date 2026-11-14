@@ -70,7 +70,7 @@ const GROUND_FRONT: [f32; 4] = [1.35, 1.3, 1.2, 0.0];
 
 /// Grass far field: how much darker it grows from the blades' fade to well past them (the
 /// blades seen ever more edge-on and shading each other; tests: `MISTY_FAR_SHADE`).
-const FAR_SHADE: f32 = 0.25;
+const FAR_SHADE: f32 = 0.35;
 
 fn far_shade() -> f32 {
     #[cfg(test)]
