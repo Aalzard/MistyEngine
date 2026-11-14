@@ -35,6 +35,8 @@ const SCENES: [&str; 5] = [
     "NodeGameWin",
 ];
 
+const SCREEN: glam::Vec2 = glam::Vec2::new(1280.0, 720.0);
+
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
 }
@@ -171,6 +173,12 @@ impl Session {
         input
             .pressed
             .extend(pressed.iter().map(|k| (*k).to_owned()));
+        self.frame_with(input);
+    }
+
+    /// One frame at 60 FPS with this input (on a 1280x720 game view).
+    fn frame_with(&mut self, mut input: Input) {
+        input.screen_size = SCREEN;
         self.time.advance(1.0 / 60.0);
         self.rt.update(&mut self.scene, &self.time, input);
         self.frames += 1;
@@ -338,7 +346,37 @@ fn node_game_plays_stage_one() {
     assert!(s.find("Player").is_some());
 }
 
-/// The menu starts stage 1 on Enter, and the win screen goes back to the menu on a key.
+/// A mouse click on the menu's Play button runs the Menu graph's Custom Event *Play* through
+/// the button's On Click, which loads stage 1.
+#[test]
+fn node_game_menu_play_button_click() {
+    let mut s = Session::start("NodeGameMenu");
+    for _ in 0..10 {
+        s.frame(&[], &[]);
+    }
+    let button = s.find("Play Button").unwrap();
+    let centre = misty_engine::ui::layout(&s.scene, SCREEN)
+        .node(button)
+        .unwrap()
+        .screen
+        .center();
+    let click = |down: bool| Input {
+        mouse_position: Some(centre),
+        mouse_held: [down, false, false],
+        mouse_pressed: [down, false, false],
+        mouse_released: [!down, false, false],
+        ..Default::default()
+    };
+    s.frame_with(click(true));
+    s.frame_with(click(false));
+    for _ in 0..30 {
+        s.frame(&[], &[]);
+    }
+    assert_eq!(s.loads, ["NodeGameStage1"]);
+}
+
+/// The menu starts stage 1 on Enter (the selected Play button), and the win screen goes back
+/// to the menu on a key.
 #[test]
 fn node_game_menu_and_win_screen() {
     let mut s = Session::start("NodeGameMenu");
