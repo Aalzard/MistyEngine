@@ -12,29 +12,16 @@ See the checklist at the bottom. Commits so far are on the branch; nothing pushe
 An **optional package** (Package Manager ▸ Built-in ▸ Behaviour Trees ▸ Install), not
 installed by default: a visual AI editor for enemies and NPCs.
 
-### Optional package mechanism (shared with r61-recorder)
+### Optional package mechanism
 
-`crates/misty_editor/src/packages/optional.rs` is **r61-recorder's file, copied as it was on
-2026-11-14 02:00** (same names: `optional::all`, `is_optional`, `installed`, `install`,
-`remove`, `settings_files`, `Installed`, `REQUIREMENT`, `RECORDER`), plus one entry
-`BEHAVIOUR_TREES = "com.misty.behaviour-trees"` in its `PACKAGES` list. `install.rs`,
-`packages/mod.rs` (`PackagesWindow::install_optional`, the optional branch of `remove`) and
-`panels/packages.rs` are r61's versions too, and `EditorState::optional_packages` is the same
-field. The only differences from r61:
-
-- `panels/packages.rs` doesn't call `crate::recorder::package_changed` (no recorder here);
-- `PACKAGES` has two entries (`[(..); 2]`).
-
-**Merging r61 and r63:** take r61's side of these files, then add the `BEHAVIOUR_TREES`
-const and its `PACKAGES` entry (array length 2). Locale entries: r63 put its strings in a new
-`[behaviour_trees]` table placed before `[night_sky]` (not at the end) and does not add r61's
-Package Manager strings ("Optional", "Built-in (optional, …)", "Install").
-
-Gating: Window ▸ AI ▸ Behaviour Tree, Assets ▸ Create ▸ Behaviour Tree and Add Archetype ▸
-Behaviour Tree Agent appear only while installed (`s.optional_packages`, mirrored per frame
-into `behaviour_tree::package_installed()` for the Create menu, which has no state). The
-window itself shows "Install Behaviour Trees" when not installed. The runtime is always in
-the engine, so scenes with agents play (and built games run them) either way.
+Main's `packages/optional.rs` (from r61-recorder, merged in 97cc0dff): Behaviour Trees is a
+second row of its `PACKAGES` table, `BEHAVIOUR_TREES = "com.misty.behaviour-trees"`. Gating
+uses `EditorState::optional_packages` like the Recorder: Window ▸ AI ▸ Behaviour Tree,
+Assets ▸ Create ▸ Behaviour Tree and Add Archetype ▸ Behaviour Tree Agent appear only while
+installed (the Create menu and Add Archetype list have no state, so the window mirrors the flag
+into `behaviour_tree::package_installed()` once per frame). The window shows "Install
+Behaviour Trees" when not installed. The runtime is always in the engine, so scenes with agents
+play (and built games run them) either way.
 
 ### Engine (`crates/misty_engine/src/behaviour_tree/`)
 
@@ -89,7 +76,8 @@ SampleProject's manifest does **not** install the package (the scene plays witho
 - [x] Editor window, palette, inspector, blackboard, agent Properties, gating
 - [x] Demo generator + plays test
 - [x] Guide chapter EN/AR, locales TR/AR
-- [ ] Build, fix compile errors
-- [ ] Run tests, write demo files, regenerate docs/api
+- [x] Build, fix compile errors; BT tests pass (engine 22, editor 9, demo plays)
+- [x] Demo files written; merged main 97cc0dff (Recorder)
+- [ ] Regenerate docs/api
 - [ ] fmt, clippy 0 warnings, full workspace tests
 - [ ] Editor smoke run on a copy under C:\MistyTry\r63\

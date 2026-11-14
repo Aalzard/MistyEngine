@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "name": "After"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Delay",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Self",
+      "position": [
+        410.0,
+        95.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Api",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "owner": "",
+        "member": "Destroy",
+        "mode": "call"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Duration"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Self",
+      "to": 5,
+      "input": "Object"
+    },
+    {
+      "from": 3,
+      "output": "Completed",
+      "to": 5,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "After",
+      "type": "float",
+      "value": {
+        "Float": 1.2
+      },
+      "scope": "Object"
+    }
+  ]
+}

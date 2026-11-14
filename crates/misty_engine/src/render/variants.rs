@@ -280,9 +280,24 @@ impl Pipelines {
         n
     }
 
-    /// Variants still compiling in the background.
+    /// Variants queued and not picked up yet (a frame takes the finished ones).
     pub fn variants_pending(&self) -> usize {
         self.variants.pending.len()
+    }
+
+    /// Variants still compiling. Finished ones waiting to be picked up don't count: they are
+    /// only taken when a view renders, and a view that doesn't redraw (an idle editor, a
+    /// screenshot run) looked busy for good.
+    pub fn variants_compiling(&self) -> usize {
+        let built = self
+            .variants
+            .built
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|(k, _)| self.variants.pending.contains(k))
+            .count();
+        self.variants.pending.len().saturating_sub(built)
     }
 
     /// The main-pass pipeline of `key`. While an Opaque surface's own variant (unlit,

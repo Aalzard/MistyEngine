@@ -1,0 +1,593 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnTriggerEnter2D",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#GameObject",
+        "member": "CompareTag",
+        "mode": "call"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Branch",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 5,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "Touching"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "OnTriggerExit2D",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        80.0,
+        432.5
+      ],
+      "params": {
+        "owner": "#GameObject",
+        "member": "CompareTag",
+        "mode": "call"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "Branch",
+      "position": [
+        330.0,
+        337.5
+      ]
+    },
+    {
+      "id": 9,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        337.5
+      ],
+      "params": {
+        "name": "Touching"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        410.0,
+        770.0
+      ],
+      "params": {
+        "name": "Touching"
+      }
+    },
+    {
+      "id": 11,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        675.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        960.0
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 13,
+      "type": "IsValid",
+      "position": [
+        -170.0,
+        865.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "GetVariable",
+      "position": [
+        -420.0,
+        1150.0
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 15,
+      "type": "Not",
+      "position": [
+        -170.0,
+        1055.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "And",
+      "position": [
+        80.0,
+        770.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Branch",
+      "position": [
+        330.0,
+        675.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Branch",
+      "position": [
+        660.0,
+        675.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        865.0
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 20,
+      "type": "GetObjectVariable",
+      "position": [
+        740.0,
+        770.0
+      ],
+      "values": {
+        "Name": {
+          "String": "Dashing"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Branch",
+      "position": [
+        990.0,
+        675.0
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Api",
+      "position": [
+        820.0,
+        865.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 23,
+      "type": "GetVariable",
+      "position": [
+        820.0,
+        960.0
+      ],
+      "params": {
+        "name": "Next Hit At"
+      }
+    },
+    {
+      "id": 24,
+      "type": "GreaterOrEqual",
+      "position": [
+        1070.0,
+        770.0
+      ]
+    },
+    {
+      "id": 25,
+      "type": "Branch",
+      "position": [
+        1320.0,
+        675.0
+      ]
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        1150.0,
+        865.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 27,
+      "type": "AddFloat",
+      "position": [
+        1400.0,
+        770.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.4
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "SetVariable",
+      "position": [
+        1650.0,
+        675.0
+      ],
+      "params": {
+        "name": "Next Hit At"
+      }
+    },
+    {
+      "id": 29,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        865.0
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 30,
+      "type": "GetObjectVariable",
+      "position": [
+        1730.0,
+        770.0
+      ],
+      "values": {
+        "Name": {
+          "String": "Facing"
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "SendCustomEvent",
+      "position": [
+        1980.0,
+        675.0
+      ],
+      "params": {
+        "name": "DashHit",
+        "args": "direction"
+      }
+    },
+    {
+      "id": 32,
+      "type": "GetVariable",
+      "position": [
+        1070.0,
+        1212.5
+      ],
+      "params": {
+        "name": "Player"
+      }
+    },
+    {
+      "id": 33,
+      "type": "SendCustomEvent",
+      "position": [
+        1320.0,
+        1117.5
+      ],
+      "params": {
+        "name": "Hurt"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 2,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 4,
+      "input": "Value"
+    },
+    {
+      "from": 3,
+      "output": "True",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Other",
+      "to": 7,
+      "input": "Target"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "Condition"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "True",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "Object"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "Value"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 16,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "B"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 17,
+      "input": "Condition"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 18,
+      "input": "Condition"
+    },
+    {
+      "from": 17,
+      "output": "True",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "Value",
+      "to": 20,
+      "input": "Target"
+    },
+    {
+      "from": 20,
+      "output": "Value",
+      "to": 21,
+      "input": "Condition"
+    },
+    {
+      "from": 18,
+      "output": "True",
+      "to": 21,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Value",
+      "to": 24,
+      "input": "A"
+    },
+    {
+      "from": 23,
+      "output": "Value",
+      "to": 24,
+      "input": "B"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "Condition"
+    },
+    {
+      "from": 21,
+      "output": "True",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "Value",
+      "to": 27,
+      "input": "A"
+    },
+    {
+      "from": 27,
+      "output": "Result",
+      "to": 28,
+      "input": "Value"
+    },
+    {
+      "from": 25,
+      "output": "True",
+      "to": 28,
+      "input": "In"
+    },
+    {
+      "from": 29,
+      "output": "Value",
+      "to": 30,
+      "input": "Target"
+    },
+    {
+      "from": 30,
+      "output": "Value",
+      "to": 31,
+      "input": "direction"
+    },
+    {
+      "from": 28,
+      "output": "Out",
+      "to": 31,
+      "input": "In"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 33,
+      "input": "Target"
+    },
+    {
+      "from": 21,
+      "output": "False",
+      "to": 33,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Dead",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Player",
+      "type": "gameobject",
+      "value": "None"
+    },
+    {
+      "name": "Touching",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "Next Hit At",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    }
+  ]
+}

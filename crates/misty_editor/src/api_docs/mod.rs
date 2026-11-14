@@ -42,6 +42,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "particles_api.rs",
     "physics2d_api.rs",
     "physics_api.rs",
+    "recorder_api.rs",
     "render_settings_api.rs",
     "rigging_api.rs",
     "save_api.rs",

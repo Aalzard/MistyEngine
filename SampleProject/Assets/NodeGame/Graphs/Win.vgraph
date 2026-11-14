@@ -1,0 +1,530 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Chime.wav"
+        },
+        "volume": {
+          "Float": 0.7
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "GetVariable",
+      "position": [
+        410.0,
+        95.0
+      ],
+      "params": {
+        "name": "Wait"
+      }
+    },
+    {
+      "id": 5,
+      "type": "Delay",
+      "position": [
+        660.0,
+        0.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "SendCustomEvent",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "Back"
+      }
+    },
+    {
+      "id": 7,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Sequence",
+      "position": [
+        330.0,
+        337.5
+      ],
+      "params": {
+        "count": "2"
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        -90.0,
+        622.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "return"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        -90.0,
+        717.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "space"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "Or",
+      "position": [
+        160.0,
+        527.5
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        160.0,
+        812.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "escape"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Or",
+      "position": [
+        410.0,
+        432.5
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Branch",
+      "position": [
+        660.0,
+        337.5
+      ]
+    },
+    {
+      "id": 15,
+      "type": "SendCustomEvent",
+      "position": [
+        990.0,
+        337.5
+      ],
+      "params": {
+        "name": "Back"
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        -840.0,
+        1545.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 17,
+      "type": "MultiplyFloat",
+      "position": [
+        -590.0,
+        1450.0
+      ],
+      "values": {
+        "B": {
+          "Float": 3.0
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "Sin",
+      "position": [
+        -340.0,
+        1355.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "MultiplyFloat",
+      "position": [
+        -90.0,
+        1260.0
+      ],
+      "values": {
+        "B": {
+          "Float": 0.06
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "AddFloat",
+      "position": [
+        160.0,
+        1165.0
+      ],
+      "values": {
+        "A": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "MakeVector3",
+      "position": [
+        410.0,
+        1070.0
+      ],
+      "values": {
+        "Z": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "Api",
+      "position": [
+        410.0,
+        1640.0
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Title"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "Api",
+      "position": [
+        660.0,
+        975.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "localScale",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 24,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        1897.5
+      ],
+      "params": {
+        "name": "Back"
+      }
+    },
+    {
+      "id": 25,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        1992.5
+      ],
+      "params": {
+        "name": "Leaving"
+      }
+    },
+    {
+      "id": 26,
+      "type": "Branch",
+      "position": [
+        330.0,
+        1897.5
+      ]
+    },
+    {
+      "id": 27,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        1897.5
+      ],
+      "params": {
+        "name": "Leaving"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "Api",
+      "position": [
+        990.0,
+        1897.5
+      ],
+      "params": {
+        "owner": "SceneManager",
+        "member": "LoadScene",
+        "mode": "call",
+        "args": "nameOrIndex, mode"
+      },
+      "values": {
+        "nameOrIndex": {
+          "String": "NodeGameMenu"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "position"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Value",
+      "to": 5,
+      "input": "Duration"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "Completed",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "B"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 14,
+      "input": "Condition"
+    },
+    {
+      "from": 8,
+      "output": "Then 0",
+      "to": 14,
+      "input": "In"
+    },
+    {
+      "from": 14,
+      "output": "True",
+      "to": 15,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Value",
+      "to": 17,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Result",
+      "to": 18,
+      "input": "Radians"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "B"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 21,
+      "input": "X"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 21,
+      "input": "Y"
+    },
+    {
+      "from": 21,
+      "output": "Vector",
+      "to": 23,
+      "input": "Value"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Target"
+    },
+    {
+      "from": 8,
+      "output": "Then 1",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 25,
+      "output": "Value",
+      "to": 26,
+      "input": "Condition"
+    },
+    {
+      "from": 24,
+      "output": "Out",
+      "to": 26,
+      "input": "In"
+    },
+    {
+      "from": 26,
+      "output": "False",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 27,
+      "output": "Out",
+      "to": 28,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Leaving",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "Wait",
+      "type": "float",
+      "value": {
+        "Float": 6.0
+      },
+      "scope": "Object"
+    }
+  ]
+}

@@ -30,6 +30,12 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
+9. [Autosave and crash recovery](09-autosave.md): backups of unsaved work, the Recover
+   Unsaved Work window and crash reports.
+10. [A game made only with nodes](10-node-game.md): a whole 2D platformer, with a menu,
+   enemies and three stages, built from Script Graphs alone.
+11. [Recording videos and GIFs](11-recorder.md): the optional Recorder package, MP4, WebM,
+   GIF and picture sequences at a fixed frame rate, from the window or a Timeline.
 12. [Behaviour Trees](12-behaviour-trees.md): AI for enemies and NPCs with the optional
    Behaviour Trees package: nodes, the blackboard, aborts and live debugging.
 

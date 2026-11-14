@@ -26,13 +26,13 @@ const PACKAGES: [(&str, &str, &str); 2] = [
         RECORDER,
         "Recorder",
         "Record the Scene Viewer, a camera or the Editor Scene to MP4, GIF, or PNG / JPG \
-     sequences at a fixed frame rate, by hand or from a Timeline.",
+         sequences at a fixed frame rate, by hand or from a Timeline.",
     ),
     (
         BEHAVIOUR_TREES,
         "Behaviour Trees",
         "Visual AI for enemies and NPCs: Behaviour Tree assets and their editor, blackboards, \
-     the Behaviour Tree Agent component and live debugging in Play mode.",
+         the Behaviour Tree Agent component and live debugging in Play mode.",
     ),
 ];
 
@@ -61,6 +61,7 @@ pub fn is_optional(name: &str) -> bool {
 }
 
 /// Whether `project`'s manifest lists the optional package `name`.
+#[cfg(test)]
 pub fn installed(project: &Path, name: &str) -> bool {
     Manifest::load(project).is_ok_and(|m| m.dependencies.contains_key(name))
 }
@@ -72,7 +73,8 @@ pub fn install(project: &Path, name: &str) -> Result<PackageJson, String> {
         .find(|p| p.name == name)
         .ok_or_else(|| format!("{name} is not an optional package"))?;
     let mut m = Manifest::load(project)?;
-    m.dependencies.insert(name.to_owned(), REQUIREMENT.to_owned());
+    m.dependencies
+        .insert(name.to_owned(), REQUIREMENT.to_owned());
     m.save(project)?;
     Ok(info)
 }
@@ -118,14 +120,5 @@ impl Installed {
 
     pub fn has(&self, name: &str) -> bool {
         self.0.contains(name)
-    }
-
-    /// Mark a package installed or not (tests, and right after Install / Remove).
-    pub fn set(&mut self, name: &str, on: bool) {
-        if on {
-            self.0.insert(name.to_owned());
-        } else {
-            self.0.remove(name);
-        }
     }
 }

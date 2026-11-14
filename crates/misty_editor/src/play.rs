@@ -115,6 +115,12 @@ pub fn start(s: &mut EditorState) {
     s.console.info("Entered Play mode.");
 }
 
+/// While playing: the scenes as they were before Play and whether they had unsaved changes
+/// (what autosave backs up; Play-mode changes are thrown away on Stop).
+pub fn edit_scene(s: &EditorState) -> Option<(&Scene, bool)> {
+    s.play_session.as_ref().map(|p| (&p.scene, p.dirty))
+}
+
 /// Leave Play mode: every change made while playing is reverted.
 pub fn stop(s: &mut EditorState) {
     let Some(session) = s.play_session.take() else {
@@ -158,12 +164,14 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         return;
     }
     // A single step advances one nominal frame.
+    // A recording runs the game in capture time: one frame of its rate a frame.
     let dt = if s.play == PlayState::Paused {
         1.0 / 60.0
     } else {
-        real_dt
+        crate::recorder::capture_dt(s).unwrap_or(real_dt)
     };
     s.time.advance(dt);
+    crate::recorder::on_tick(s);
     let input = std::mem::take(&mut s.game_input);
     // The Script Graph window's debugger: the graph, breakpoints and object to watch.
     crate::panels::script_graph::sync_debugger(s);

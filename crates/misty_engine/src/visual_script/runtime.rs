@@ -580,12 +580,18 @@ impl GraphRuntime {
 
     /// A trigger or collision of `me` with `other`.
     pub fn contact(&mut self, lua: &Lua, me: Entity, other: Entity, kind: &EventKind) {
+        self.contact_with(lua, me, kind, &[Value::Object(other)]);
+    }
+
+    /// A contact event of `me` with its outputs (Other first; 2D collisions add Point, Normal
+    /// and Relative Velocity).
+    pub fn contact_with(&mut self, lua: &Lua, me: Entity, kind: &EventKind, args: &[Value]) {
         for i in 0..self.instances.len() {
             if self.instances[i].entity != me || !self.instances[i].prog.has_event(kind) {
                 continue;
             }
             if self.can_run(lua, i) {
-                self.fire_kind(lua, i, kind, &[Value::Object(other)]);
+                self.fire_kind(lua, i, kind, args);
             }
         }
     }

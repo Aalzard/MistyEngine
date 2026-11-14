@@ -10,6 +10,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     ui.horizontal(|ui| {
         // Right: "Reloaded 3 assets" and rebuild progress; the console line fills the rest.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // "Autosaved 14:32", rightmost and dim.
+            crate::autosave::status_item(ui, state);
             crate::live_reload::status_items(ui, state);
             // A scene's first launch: dense meshes' GI distance fields bake in the background.
             let bakes = misty_engine::render::mesh_sdf_bakes_pending();

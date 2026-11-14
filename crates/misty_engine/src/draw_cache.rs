@@ -398,7 +398,9 @@ impl DrawCache {
                     size,
                     min,
                     max,
-                    fade: group.fade(),
+                    // A level that never draws (its threshold equals the one above) gets no
+                    // fade-in band either: it drew over both its neighbours there.
+                    fade: if max > min { group.fade() } else { 0.0 },
                     virtual_lod: virtual_first.then_some(crate::render::lod::VirtualLod {
                         group: g.id(),
                         first: i == 0,

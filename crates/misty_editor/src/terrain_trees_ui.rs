@@ -534,6 +534,18 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                 "",
                 false,
             );
+            ch |= kit::slider(
+                ui,
+                &tr!("Plant Shadow Distance"),
+                &tr!(
+                    "Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)"
+                ),
+                &mut s.plant_shadow_distance,
+                0.0..=150.0,
+                def.plant_shadow_distance,
+                " m",
+                false,
+            );
         },
     );
     if ch {
@@ -544,6 +556,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             d.trees.lod_fade = s.lod_fade;
             d.trees.cast_shadows = s.cast_shadows;
             d.trees.shadow_detail = s.shadow_detail;
+            d.trees.plant_shadow_distance = s.plant_shadow_distance;
         });
     }
 }

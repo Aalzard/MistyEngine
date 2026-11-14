@@ -667,12 +667,18 @@ fn node_ui(
         draw_pin(painter, *pos, p.ty, *connected, z);
         let mut x = pos.x + 10.0 * z;
         if shows_label(p) {
+            // Optional Lua arguments are dimmed (left out of the call while unset).
+            let color = if p.optional {
+                theme::TEXT_DIM
+            } else {
+                theme::TEXT
+            };
             painter.text(
                 pos2(x, pos.y),
                 Align2::LEFT_CENTER,
                 &p.name,
                 FontId::proportional(11.5 * z),
-                theme::TEXT,
+                color,
             );
             x += text_w(&p.name, 11.5) * z + 4.0 * z;
         }
@@ -763,7 +769,15 @@ fn pin_interact(
             .edit("Break Links", false, |g| g.disconnect(id, &name, output));
     }
     if resp.hovered() {
-        let mut tip = format!("{} ({})", p.name, p.ty.label());
+        let mut tip = if p.optional {
+            crate::i18n::tr!(
+                "{name} ({kind}, optional: left out while unset)",
+                name = p.name,
+                kind = p.ty.label()
+            )
+        } else {
+            format!("{} ({})", p.name, p.ty.label())
+        };
         if s.script_graph.at_root()
             && s.script_graph.live.is_some()
             && !p.ty.is_exec()

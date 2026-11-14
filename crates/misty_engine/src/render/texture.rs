@@ -546,9 +546,22 @@ impl TextureCache {
         self.background = on;
     }
 
-    /// Textures being decoded on the import queue.
+    /// Textures queued for decoding and not picked up yet.
     pub fn pending(&self) -> usize {
         self.pending.len()
+    }
+
+    /// Textures still decoding (decoded ones waiting for a view to pick them up don't count;
+    /// see `Pipelines::variants_compiling`).
+    pub fn decoding(&self) -> usize {
+        let arrived = self
+            .arrived
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|(rel, kind, _, _)| self.pending.contains(&(rel.clone(), *kind)))
+            .count();
+        self.pending.len().saturating_sub(arrived)
     }
 
     /// Pick up the textures the import queue decoded: the bind groups that used a 1×1

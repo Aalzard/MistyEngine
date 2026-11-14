@@ -1,0 +1,394 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Sequence",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "count": "4"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        410.0,
+        95.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetAxis",
+        "mode": "call"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Horizontal"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "name": "Move"
+      }
+    },
+    {
+      "id": 5,
+      "type": "Api",
+      "position": [
+        -90.0,
+        532.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKey",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "space"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        -90.0,
+        627.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKey",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "w"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "Or",
+      "position": [
+        160.0,
+        437.5
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        160.0,
+        722.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKey",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "up"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Or",
+      "position": [
+        410.0,
+        342.5
+      ]
+    },
+    {
+      "id": 10,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        247.5
+      ],
+      "params": {
+        "name": "Jump Held"
+      }
+    },
+    {
+      "id": 11,
+      "type": "Api",
+      "position": [
+        -90.0,
+        1170.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "space"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        -90.0,
+        1265.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "w"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Or",
+      "position": [
+        160.0,
+        1075.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Api",
+      "position": [
+        160.0,
+        1360.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "up"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "Or",
+      "position": [
+        410.0,
+        980.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Branch",
+      "position": [
+        660.0,
+        885.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "SendCustomEvent",
+      "position": [
+        990.0,
+        885.0
+      ],
+      "params": {
+        "name": "JumpPressed"
+      }
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        410.0,
+        1617.5
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "e"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "Branch",
+      "position": [
+        660.0,
+        1522.5
+      ]
+    },
+    {
+      "id": 20,
+      "type": "SendCustomEvent",
+      "position": [
+        990.0,
+        1522.5
+      ],
+      "params": {
+        "name": "DashPressed"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "Value"
+    },
+    {
+      "from": 2,
+      "output": "Then 0",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "Result",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 6,
+      "output": "Result",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 9,
+      "input": "A"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 9,
+      "input": "B"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 10,
+      "input": "Value"
+    },
+    {
+      "from": 2,
+      "output": "Then 1",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "Condition"
+    },
+    {
+      "from": 2,
+      "output": "Then 2",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "True",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "Condition"
+    },
+    {
+      "from": 2,
+      "output": "Then 3",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "True",
+      "to": 20,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Move",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Held",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    }
+  ]
+}

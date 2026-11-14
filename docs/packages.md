@@ -47,7 +47,14 @@ Window ▸ Package Manager…
 
 - **Packages: In Project / Built-in / Registry** picks the list.
   - *Built-in*: the engine's modules (Physics, Audio, UI, ...), with versions and descriptions.
-    Other packages can depend on them by name; they can't be removed.
+    Other packages can depend on them by name; they can't be removed. The list ends with the
+    *optional* built-in packages (marked **Optional**, or ✔ when installed): features that
+    ship with the editor but that a project only gets when you click **Install**, such as the
+    **Recorder** (`com.misty.recorder`, see the User Guide's "Recording videos and GIFs").
+    Installing adds `"com.misty.recorder": "*"` to the manifest (locked with source
+    `builtin`, nothing copied into `Packages/`); **Remove** takes the entry out, with the
+    package's settings file (`ProjectSettings/Recorder.json`), and its windows and menu items
+    go away. New projects, templates and existing projects don't have them.
   - *In Project*: the packages in `Packages/`. A package with a newer registry version shows `↑`.
   - *Registry*: the packages of the registry configured in Project Settings ▸ Package Manager
     (none by default: "No registry configured").

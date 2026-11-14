@@ -626,7 +626,7 @@ mod sample_tests {
     /// The sample project's scripts must load and expose their fields.
     #[test]
     fn sample_scripts_inspect_cleanly() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let root = crate::test_sample::shared_copy();
         let db = AssetDatabase::open(&root);
         let rotator = &db.scripts["Assets/Scripts/Rotator.lua"];
         let names: Vec<_> = rotator

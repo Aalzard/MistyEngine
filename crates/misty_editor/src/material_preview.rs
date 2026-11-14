@@ -39,6 +39,8 @@ pub enum PreviewShape {
 
 struct Thumb {
     modified: Option<SystemTime>,
+    /// The file was read at `modified` (whether or not it parsed).
+    read: bool,
     material: Option<Material>,
     texture: Option<(wgpu::Texture, egui::TextureId)>,
     rendered: bool,
@@ -98,14 +100,18 @@ impl MaterialPreviews {
         let frame = self.frame;
         let t = self.thumbs.entry(path.to_path_buf()).or_insert(Thumb {
             modified: None,
+            read: false,
             material: None,
             texture: None,
             rendered: false,
             used: frame,
         });
         t.used = frame;
-        if t.material.is_none() || t.modified != modified {
+        // A file that doesn't parse is read again when it changes, not every frame (a broken
+        // `.mat` in view cost a read and a parse on the main thread each frame).
+        if !t.read || t.modified != modified {
             t.modified = modified;
+            t.read = true;
             t.material = Material::load(path).ok();
             t.rendered = false;
         }
@@ -427,6 +433,43 @@ mod tests {
         p.thumbnail(&path);
         assert!(p.pending());
         assert_eq!(p.thumbs[&path].material.as_ref(), Some(&m));
+    }
+
+    /// A `.mat` that doesn't parse is read once per version of the file, not on every frame
+    /// it is in view; fixing the file (a new stamp) reads it again.
+    #[test]
+    fn a_broken_material_is_not_read_again_every_frame() {
+        let dir = std::env::temp_dir().join(format!("misty_thumb_broken_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Broken.mat");
+        std::fs::write(&path, "not json").unwrap();
+        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let mut p = MaterialPreviews::default();
+        assert_eq!(p.thumbnail(&path), None);
+        assert!(p.thumbs[&path].material.is_none());
+        // Same stamp, new content: not read again (it would be, were it read every frame).
+        Material::default().save(&path).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp)
+            .unwrap();
+        p.thumbnail(&path);
+        assert!(
+            p.thumbs[&path].material.is_none(),
+            "read again at the same stamp"
+        );
+        // A new stamp: read.
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp + std::time::Duration::from_secs(5))
+            .unwrap();
+        p.thumbnail(&path);
+        assert!(p.thumbs[&path].material.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Thumbnails panels stop asking for (scrolled away, deleted, renamed) are dropped after

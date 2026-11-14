@@ -980,6 +980,7 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let (mcp, project) = (&mut s.mcp, &s.project.root);
     let (ui_scale, console) = (&mut s.ui_scale, &mut s.console);
     let updater = &mut s.updater;
+    let autosave = &mut s.autosave;
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -1013,6 +1014,8 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
                     console.warn(format!("Console size not saved: {e}"));
                 }
             }
+            ui.separator();
+            crate::autosave::preferences_ui(ui, autosave, console);
             ui.separator();
             ui.strong(tr!("External Tools"));
             ui.horizontal(|ui| {

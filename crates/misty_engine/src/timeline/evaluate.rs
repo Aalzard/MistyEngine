@@ -259,7 +259,11 @@ pub fn apply_nested(
             TrackKind::Activation => tracks::activation::apply(scene, track, e, t, base),
             TrackKind::Animation => tracks::animation::apply(scene, track, e, clips, t, base),
             TrackKind::Camera => shots.extend(tracks::camera::shot(track, resolver, e, t)),
-            TrackKind::Audio | TrackKind::Signal | TrackKind::Group | TrackKind::Control => {}
+            TrackKind::Audio
+            | TrackKind::Signal
+            | TrackKind::Group
+            | TrackKind::Control
+            | TrackKind::Recorder => {}
         }
     }
 }

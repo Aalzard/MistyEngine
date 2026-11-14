@@ -54,6 +54,8 @@ pub enum Tab {
     AssetGroups,
     /// Window ▸ Package Manager.
     PackageManager,
+    /// Window ▸ General ▸ Recorder (the optional Recorder package).
+    Recorder,
     /// Window ▸ Input ▸ Input Actions (or double-click an `.inputactions` asset).
     InputActions,
     /// Help ▸ User Guide: the guide's chapters, rendered.
@@ -99,6 +101,7 @@ impl Tab {
         Tab::PackageManager,
         Tab::InputActions,
         Tab::Guide,
+        Tab::Recorder,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -141,6 +144,8 @@ impl Tab {
             Tab::Guide => Some(Tab::Scene),
             // Script tools sit by the Inspector, like Lighting and Navigation.
             Tab::Tool(_) => Some(Tab::Inspector),
+            // A settings list that keeps the Scene Viewer in sight while recording.
+            Tab::Recorder => Some(Tab::Inspector),
             _ => None,
         }
     }
@@ -177,6 +182,7 @@ impl Tab {
             Tab::PackageManager => "Package Manager",
             Tab::InputActions => "Input Actions",
             Tab::Guide => "User Guide",
+            Tab::Recorder => "Recorder",
             // The real title comes from the script (`PanelViewer::title`).
             Tab::Tool(_) => "Tool Window",
         }
@@ -240,6 +246,7 @@ impl Tab {
             Tab::PackageManager => "package_manager",
             Tab::InputActions => "input_actions",
             Tab::Guide => "guide",
+            Tab::Recorder => "recorder",
             Tab::Tool(_) => "tool",
         }
     }
@@ -281,6 +288,7 @@ impl Tab {
             Tab::PackageManager => crate::panels::packages::ICON,
             Tab::InputActions => crate::panels::input_actions::ICON,
             Tab::Guide => crate::panels::guide::ICON,
+            Tab::Recorder => crate::recorder::window::ICON,
             Tab::Tool(_) => TOOL_ICON,
         }
     }
@@ -318,6 +326,7 @@ impl Tab {
             | Tab::PackageManager
             | Tab::InputActions
             | Tab::Guide
+            | Tab::Recorder
             | Tab::Tool(_) => "",
         }
     }

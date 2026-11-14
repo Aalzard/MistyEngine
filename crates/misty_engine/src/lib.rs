@@ -44,6 +44,7 @@ pub mod prefs;
 pub mod preset;
 pub mod profiler;
 pub mod quality;
+pub mod recorder;
 pub mod render;
 pub mod render_scene;
 pub mod rigging;

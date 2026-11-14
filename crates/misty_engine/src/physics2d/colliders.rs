@@ -44,6 +44,10 @@ impl Physics2D {
                     .density(0.0)
                     .friction(common.material.friction)
                     .restitution(common.material.bounciness)
+                    // Like the familiar 2D engines: friction is the geometric mean (one
+                    // frictionless collider is enough to slide), bounciness the larger one.
+                    .friction_combine_rule(rp::CoefficientCombineRule::GeometricMean)
+                    .restitution_combine_rule(rp::CoefficientCombineRule::Max)
                     .sensor(common.is_trigger)
                     .collision_groups(groups)
                     .active_events(rp::ActiveEvents::COLLISION_EVENTS);

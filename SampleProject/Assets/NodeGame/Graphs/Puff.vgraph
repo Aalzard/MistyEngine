@@ -1,0 +1,635 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "name": "DashHit",
+        "args": "direction"
+      }
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Branch",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "name": "Dead"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "MultiplyFloat",
+      "position": [
+        740.0,
+        95.0
+      ],
+      "values": {
+        "B": {
+          "Float": 7.0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "Push"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        1070.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        1320.0,
+        0.0
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Clap.wav"
+        },
+        "volume": {
+          "Float": 0.5
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        432.5
+      ],
+      "params": {
+        "name": "Dead"
+      }
+    },
+    {
+      "id": 11,
+      "type": "Branch",
+      "position": [
+        330.0,
+        337.5
+      ]
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        -90.0,
+        622.5
+      ],
+      "params": {
+        "name": "Push"
+      }
+    },
+    {
+      "id": 13,
+      "type": "MultiplyFloat",
+      "position": [
+        160.0,
+        527.5
+      ]
+    },
+    {
+      "id": 14,
+      "type": "MultiplyFloat",
+      "position": [
+        160.0,
+        717.5
+      ],
+      "values": {
+        "B": {
+          "Float": 2.0
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "MakeVector3",
+      "position": [
+        410.0,
+        432.5
+      ],
+      "values": {
+        "Z": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        660.0,
+        337.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "Translate",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 17,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        527.5
+      ],
+      "params": {
+        "name": "Fade"
+      }
+    },
+    {
+      "id": 18,
+      "type": "MultiplyFloat",
+      "position": [
+        490.0,
+        622.5
+      ],
+      "values": {
+        "B": {
+          "Float": 1.7
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "MoveTowards",
+      "position": [
+        740.0,
+        432.5
+      ],
+      "values": {
+        "Target": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        337.5
+      ],
+      "params": {
+        "name": "Fade"
+      }
+    },
+    {
+      "id": 21,
+      "type": "GetVariable",
+      "position": [
+        820.0,
+        527.5
+      ],
+      "params": {
+        "name": "Fade"
+      }
+    },
+    {
+      "id": 22,
+      "type": "Api",
+      "position": [
+        1070.0,
+        432.5
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 0.75
+        },
+        "g": {
+          "Float": 0.6
+        },
+        "b": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "Api",
+      "position": [
+        1320.0,
+        337.5
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 24,
+      "type": "GetVariable",
+      "position": [
+        900.0,
+        622.5
+      ],
+      "params": {
+        "name": "Fade"
+      }
+    },
+    {
+      "id": 25,
+      "type": "Lerp",
+      "position": [
+        1150.0,
+        527.5
+      ],
+      "values": {
+        "A": {
+          "Float": 1.5
+        },
+        "B": {
+          "Float": 0.8
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "MakeVector3",
+      "position": [
+        1400.0,
+        432.5
+      ],
+      "values": {
+        "Z": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "Api",
+      "position": [
+        1650.0,
+        337.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "localScale",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 28,
+      "type": "GetVariable",
+      "position": [
+        1480.0,
+        527.5
+      ],
+      "params": {
+        "name": "Fade"
+      }
+    },
+    {
+      "id": 29,
+      "type": "LessOrEqual",
+      "position": [
+        1730.0,
+        432.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "Branch",
+      "position": [
+        1980.0,
+        337.5
+      ]
+    },
+    {
+      "id": 31,
+      "type": "Self",
+      "position": [
+        2060.0,
+        432.5
+      ]
+    },
+    {
+      "id": 32,
+      "type": "Api",
+      "position": [
+        2310.0,
+        337.5
+      ],
+      "params": {
+        "owner": "",
+        "member": "Destroy",
+        "mode": "call"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "False",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "direction",
+      "to": 5,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Result",
+      "to": 6,
+      "input": "Value"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Value",
+      "to": 8,
+      "input": "position"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "Condition"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 11,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "Delta Time",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 9,
+      "output": "Delta Time",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 13,
+      "output": "Result",
+      "to": 15,
+      "input": "X"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 15,
+      "input": "Y"
+    },
+    {
+      "from": 15,
+      "output": "Vector",
+      "to": 16,
+      "input": "Translation"
+    },
+    {
+      "from": 11,
+      "output": "True",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Delta Time",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Value",
+      "to": 19,
+      "input": "Current"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "Max Delta"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "Value"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 22,
+      "input": "a"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Value"
+    },
+    {
+      "from": 20,
+      "output": "Out",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 24,
+      "output": "Value",
+      "to": 25,
+      "input": "T"
+    },
+    {
+      "from": 25,
+      "output": "Result",
+      "to": 26,
+      "input": "X"
+    },
+    {
+      "from": 25,
+      "output": "Result",
+      "to": 26,
+      "input": "Y"
+    },
+    {
+      "from": 26,
+      "output": "Vector",
+      "to": 27,
+      "input": "Value"
+    },
+    {
+      "from": 23,
+      "output": "Out",
+      "to": 27,
+      "input": "In"
+    },
+    {
+      "from": 28,
+      "output": "Value",
+      "to": 29,
+      "input": "A"
+    },
+    {
+      "from": 29,
+      "output": "Result",
+      "to": 30,
+      "input": "Condition"
+    },
+    {
+      "from": 27,
+      "output": "Out",
+      "to": 30,
+      "input": "In"
+    },
+    {
+      "from": 31,
+      "output": "Self",
+      "to": 32,
+      "input": "Object"
+    },
+    {
+      "from": 30,
+      "output": "True",
+      "to": 32,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Dead",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Push",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Fade",
+      "type": "float",
+      "value": {
+        "Float": 1.0
+      }
+    }
+  ]
+}

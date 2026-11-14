@@ -1,0 +1,4394 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.307692307692308,
+            3.5,
+            -10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Camera": {
+          "background": [
+            0.42,
+            0.72,
+            0.95,
+            1.0
+          ],
+          "clear_flags": "SolidColor",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.5,
+          "orthographic": true,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "Min X": 9.307692307692308,
+                "Max X": 36.69230769230769,
+                "Height": 3.5
+              },
+              "path": "Assets/NodeGame/Graphs/Camera Follow.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Light 2D": {
+          "color": [
+            1.0,
+            0.97,
+            0.92
+          ],
+          "enabled": true,
+          "falloff_strength": 0.5,
+          "inner_angle": 360.0,
+          "inner_radius": 0.0,
+          "intensity": 1.0,
+          "kind": "Global",
+          "outer_angle": 360.0,
+          "outer_radius": 5.0,
+          "shadow_softness": 0.3,
+          "shadow_strength": 1.0,
+          "shadows_enabled": false,
+          "target_sorting_layers": null
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light 2D"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Global Light 2D",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Post-process Volume": {
+          "bloom": {
+            "active": true,
+            "intensity": 0.6,
+            "scatter": 0.7,
+            "threshold": 1.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "color_adjustments": {
+            "active": false,
+            "color_filter": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "contrast": 0.0,
+            "post_exposure": 0.0,
+            "saturation": 0.0
+          },
+          "enabled": true,
+          "priority": 0.0,
+          "tonemapping": {
+            "active": false,
+            "mode": "Aces"
+          },
+          "vignette": {
+            "active": true,
+            "color": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "intensity": 0.15,
+            "smoothness": 0.2
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Post-process Volume"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Post-process Volume",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Backdrop",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            23.0,
+            8.5,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.4,
+            2.4,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            2.6,
+            2.3,
+            1.4,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -30,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sun",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -12.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            7.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            14.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 3",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            20.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 3",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            27.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 4",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            33.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 4",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            40.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 5",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            46.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 5",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            53.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            16.0,
+            11.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.62,
+            0.84,
+            0.58,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -26,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Far Hill 6",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            59.5,
+            -2.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            13.0,
+            9.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.5,
+            0.76,
+            0.46,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -25,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 6",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Grid": {
+          "cell_gap": [
+            0.0,
+            0.0
+          ],
+          "cell_size": [
+            1.0,
+            1.0
+          ],
+          "layout": "Rectangle"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Grid"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Grid",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Tilemap": {
+          "animation_frame_rate": 1.0,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tile_anchor": [
+            0.5,
+            0.5
+          ],
+          "tiles": {
+            "cells": [
+              [
+                0,
+                -5,
+                0,
+                0
+              ],
+              [
+                0,
+                -4,
+                0,
+                0
+              ],
+              [
+                0,
+                -3,
+                0,
+                0
+              ],
+              [
+                0,
+                -2,
+                0,
+                0
+              ],
+              [
+                0,
+                -1,
+                0,
+                0
+              ],
+              [
+                1,
+                -5,
+                0,
+                0
+              ],
+              [
+                1,
+                -4,
+                0,
+                0
+              ],
+              [
+                1,
+                -3,
+                0,
+                0
+              ],
+              [
+                1,
+                -2,
+                0,
+                0
+              ],
+              [
+                1,
+                -1,
+                0,
+                0
+              ],
+              [
+                2,
+                -5,
+                0,
+                0
+              ],
+              [
+                2,
+                -4,
+                0,
+                0
+              ],
+              [
+                2,
+                -3,
+                0,
+                0
+              ],
+              [
+                2,
+                -2,
+                0,
+                0
+              ],
+              [
+                2,
+                -1,
+                0,
+                0
+              ],
+              [
+                3,
+                -5,
+                0,
+                0
+              ],
+              [
+                3,
+                -4,
+                0,
+                0
+              ],
+              [
+                3,
+                -3,
+                0,
+                0
+              ],
+              [
+                3,
+                -2,
+                0,
+                0
+              ],
+              [
+                3,
+                -1,
+                0,
+                0
+              ],
+              [
+                4,
+                -5,
+                0,
+                0
+              ],
+              [
+                4,
+                -4,
+                0,
+                0
+              ],
+              [
+                4,
+                -3,
+                0,
+                0
+              ],
+              [
+                4,
+                -2,
+                0,
+                0
+              ],
+              [
+                4,
+                -1,
+                0,
+                0
+              ],
+              [
+                5,
+                -5,
+                0,
+                0
+              ],
+              [
+                5,
+                -4,
+                0,
+                0
+              ],
+              [
+                5,
+                -3,
+                0,
+                0
+              ],
+              [
+                5,
+                -2,
+                0,
+                0
+              ],
+              [
+                5,
+                -1,
+                0,
+                0
+              ],
+              [
+                6,
+                -5,
+                0,
+                0
+              ],
+              [
+                6,
+                -4,
+                0,
+                0
+              ],
+              [
+                6,
+                -3,
+                0,
+                0
+              ],
+              [
+                6,
+                -2,
+                0,
+                0
+              ],
+              [
+                6,
+                -1,
+                0,
+                0
+              ],
+              [
+                7,
+                -5,
+                0,
+                0
+              ],
+              [
+                7,
+                -4,
+                0,
+                0
+              ],
+              [
+                7,
+                -3,
+                0,
+                0
+              ],
+              [
+                7,
+                -2,
+                0,
+                0
+              ],
+              [
+                7,
+                -1,
+                0,
+                0
+              ],
+              [
+                8,
+                -5,
+                0,
+                0
+              ],
+              [
+                8,
+                -4,
+                0,
+                0
+              ],
+              [
+                8,
+                -3,
+                0,
+                0
+              ],
+              [
+                8,
+                -2,
+                0,
+                0
+              ],
+              [
+                8,
+                -1,
+                0,
+                0
+              ],
+              [
+                9,
+                -5,
+                0,
+                0
+              ],
+              [
+                9,
+                -4,
+                0,
+                0
+              ],
+              [
+                9,
+                -3,
+                0,
+                0
+              ],
+              [
+                9,
+                -2,
+                0,
+                0
+              ],
+              [
+                9,
+                -1,
+                0,
+                0
+              ],
+              [
+                10,
+                -5,
+                0,
+                0
+              ],
+              [
+                10,
+                -4,
+                0,
+                0
+              ],
+              [
+                10,
+                -3,
+                0,
+                0
+              ],
+              [
+                10,
+                -2,
+                0,
+                0
+              ],
+              [
+                10,
+                -1,
+                0,
+                0
+              ],
+              [
+                11,
+                -5,
+                0,
+                0
+              ],
+              [
+                11,
+                -4,
+                0,
+                0
+              ],
+              [
+                11,
+                -3,
+                0,
+                0
+              ],
+              [
+                11,
+                -2,
+                0,
+                0
+              ],
+              [
+                11,
+                -1,
+                0,
+                0
+              ],
+              [
+                12,
+                -5,
+                0,
+                0
+              ],
+              [
+                12,
+                -4,
+                0,
+                0
+              ],
+              [
+                12,
+                -3,
+                0,
+                0
+              ],
+              [
+                12,
+                -2,
+                0,
+                0
+              ],
+              [
+                12,
+                -1,
+                0,
+                0
+              ],
+              [
+                13,
+                -5,
+                0,
+                0
+              ],
+              [
+                13,
+                -4,
+                0,
+                0
+              ],
+              [
+                13,
+                -3,
+                0,
+                0
+              ],
+              [
+                13,
+                -2,
+                0,
+                0
+              ],
+              [
+                13,
+                -1,
+                0,
+                0
+              ],
+              [
+                14,
+                -5,
+                0,
+                0
+              ],
+              [
+                14,
+                -4,
+                0,
+                0
+              ],
+              [
+                14,
+                -3,
+                0,
+                0
+              ],
+              [
+                14,
+                -2,
+                0,
+                0
+              ],
+              [
+                14,
+                -1,
+                0,
+                0
+              ],
+              [
+                17,
+                -5,
+                0,
+                0
+              ],
+              [
+                17,
+                -4,
+                0,
+                0
+              ],
+              [
+                17,
+                -3,
+                0,
+                0
+              ],
+              [
+                17,
+                -2,
+                0,
+                0
+              ],
+              [
+                17,
+                -1,
+                0,
+                0
+              ],
+              [
+                18,
+                -5,
+                0,
+                0
+              ],
+              [
+                18,
+                -4,
+                0,
+                0
+              ],
+              [
+                18,
+                -3,
+                0,
+                0
+              ],
+              [
+                18,
+                -2,
+                0,
+                0
+              ],
+              [
+                18,
+                -1,
+                0,
+                0
+              ],
+              [
+                19,
+                -5,
+                0,
+                0
+              ],
+              [
+                19,
+                -4,
+                0,
+                0
+              ],
+              [
+                19,
+                -3,
+                0,
+                0
+              ],
+              [
+                19,
+                -2,
+                0,
+                0
+              ],
+              [
+                19,
+                -1,
+                0,
+                0
+              ],
+              [
+                20,
+                -5,
+                0,
+                0
+              ],
+              [
+                20,
+                -4,
+                0,
+                0
+              ],
+              [
+                20,
+                -3,
+                0,
+                0
+              ],
+              [
+                20,
+                -2,
+                0,
+                0
+              ],
+              [
+                20,
+                -1,
+                0,
+                0
+              ],
+              [
+                21,
+                -5,
+                0,
+                0
+              ],
+              [
+                21,
+                -4,
+                0,
+                0
+              ],
+              [
+                21,
+                -3,
+                0,
+                0
+              ],
+              [
+                21,
+                -2,
+                0,
+                0
+              ],
+              [
+                21,
+                -1,
+                0,
+                0
+              ],
+              [
+                22,
+                -5,
+                0,
+                0
+              ],
+              [
+                22,
+                -4,
+                0,
+                0
+              ],
+              [
+                22,
+                -3,
+                0,
+                0
+              ],
+              [
+                22,
+                -2,
+                0,
+                0
+              ],
+              [
+                22,
+                -1,
+                0,
+                0
+              ],
+              [
+                23,
+                -5,
+                0,
+                0
+              ],
+              [
+                23,
+                -4,
+                0,
+                0
+              ],
+              [
+                23,
+                -3,
+                0,
+                0
+              ],
+              [
+                23,
+                -2,
+                0,
+                0
+              ],
+              [
+                23,
+                -1,
+                0,
+                0
+              ],
+              [
+                23,
+                2,
+                0,
+                0
+              ],
+              [
+                24,
+                -5,
+                0,
+                0
+              ],
+              [
+                24,
+                -4,
+                0,
+                0
+              ],
+              [
+                24,
+                -3,
+                0,
+                0
+              ],
+              [
+                24,
+                -2,
+                0,
+                0
+              ],
+              [
+                24,
+                -1,
+                0,
+                0
+              ],
+              [
+                24,
+                2,
+                0,
+                0
+              ],
+              [
+                25,
+                -5,
+                0,
+                0
+              ],
+              [
+                25,
+                -4,
+                0,
+                0
+              ],
+              [
+                25,
+                -3,
+                0,
+                0
+              ],
+              [
+                25,
+                -2,
+                0,
+                0
+              ],
+              [
+                25,
+                -1,
+                0,
+                0
+              ],
+              [
+                25,
+                2,
+                0,
+                0
+              ],
+              [
+                26,
+                -5,
+                0,
+                0
+              ],
+              [
+                26,
+                -4,
+                0,
+                0
+              ],
+              [
+                26,
+                -3,
+                0,
+                0
+              ],
+              [
+                26,
+                -2,
+                0,
+                0
+              ],
+              [
+                26,
+                -1,
+                0,
+                0
+              ],
+              [
+                27,
+                -5,
+                0,
+                0
+              ],
+              [
+                27,
+                -4,
+                0,
+                0
+              ],
+              [
+                27,
+                -3,
+                0,
+                0
+              ],
+              [
+                27,
+                -2,
+                0,
+                0
+              ],
+              [
+                27,
+                -1,
+                0,
+                0
+              ],
+              [
+                28,
+                -5,
+                0,
+                0
+              ],
+              [
+                28,
+                -4,
+                0,
+                0
+              ],
+              [
+                28,
+                -3,
+                0,
+                0
+              ],
+              [
+                28,
+                -2,
+                0,
+                0
+              ],
+              [
+                28,
+                -1,
+                0,
+                0
+              ],
+              [
+                31,
+                -5,
+                0,
+                0
+              ],
+              [
+                31,
+                -4,
+                0,
+                0
+              ],
+              [
+                31,
+                -3,
+                0,
+                0
+              ],
+              [
+                31,
+                -2,
+                0,
+                0
+              ],
+              [
+                31,
+                -1,
+                0,
+                0
+              ],
+              [
+                32,
+                -5,
+                0,
+                0
+              ],
+              [
+                32,
+                -4,
+                0,
+                0
+              ],
+              [
+                32,
+                -3,
+                0,
+                0
+              ],
+              [
+                32,
+                -2,
+                0,
+                0
+              ],
+              [
+                32,
+                -1,
+                0,
+                0
+              ],
+              [
+                33,
+                -5,
+                0,
+                0
+              ],
+              [
+                33,
+                -4,
+                0,
+                0
+              ],
+              [
+                33,
+                -3,
+                0,
+                0
+              ],
+              [
+                33,
+                -2,
+                0,
+                0
+              ],
+              [
+                33,
+                -1,
+                0,
+                0
+              ],
+              [
+                34,
+                -5,
+                0,
+                0
+              ],
+              [
+                34,
+                -4,
+                0,
+                0
+              ],
+              [
+                34,
+                -3,
+                0,
+                0
+              ],
+              [
+                34,
+                -2,
+                0,
+                0
+              ],
+              [
+                34,
+                -1,
+                0,
+                0
+              ],
+              [
+                35,
+                -5,
+                0,
+                0
+              ],
+              [
+                35,
+                -4,
+                0,
+                0
+              ],
+              [
+                35,
+                -3,
+                0,
+                0
+              ],
+              [
+                35,
+                -2,
+                0,
+                0
+              ],
+              [
+                35,
+                -1,
+                0,
+                0
+              ],
+              [
+                36,
+                -5,
+                0,
+                0
+              ],
+              [
+                36,
+                -4,
+                0,
+                0
+              ],
+              [
+                36,
+                -3,
+                0,
+                0
+              ],
+              [
+                36,
+                -2,
+                0,
+                0
+              ],
+              [
+                36,
+                -1,
+                0,
+                0
+              ],
+              [
+                37,
+                -5,
+                0,
+                0
+              ],
+              [
+                37,
+                -4,
+                0,
+                0
+              ],
+              [
+                37,
+                -3,
+                0,
+                0
+              ],
+              [
+                37,
+                -2,
+                0,
+                0
+              ],
+              [
+                37,
+                -1,
+                0,
+                0
+              ],
+              [
+                38,
+                -5,
+                0,
+                0
+              ],
+              [
+                38,
+                -4,
+                0,
+                0
+              ],
+              [
+                38,
+                -3,
+                0,
+                0
+              ],
+              [
+                38,
+                -2,
+                0,
+                0
+              ],
+              [
+                38,
+                -1,
+                0,
+                0
+              ],
+              [
+                39,
+                -5,
+                0,
+                0
+              ],
+              [
+                39,
+                -4,
+                0,
+                0
+              ],
+              [
+                39,
+                -3,
+                0,
+                0
+              ],
+              [
+                39,
+                -2,
+                0,
+                0
+              ],
+              [
+                39,
+                -1,
+                0,
+                0
+              ],
+              [
+                40,
+                -5,
+                0,
+                0
+              ],
+              [
+                40,
+                -4,
+                0,
+                0
+              ],
+              [
+                40,
+                -3,
+                0,
+                0
+              ],
+              [
+                40,
+                -2,
+                0,
+                0
+              ],
+              [
+                40,
+                -1,
+                0,
+                0
+              ],
+              [
+                41,
+                -5,
+                0,
+                0
+              ],
+              [
+                41,
+                -4,
+                0,
+                0
+              ],
+              [
+                41,
+                -3,
+                0,
+                0
+              ],
+              [
+                41,
+                -2,
+                0,
+                0
+              ],
+              [
+                41,
+                -1,
+                0,
+                0
+              ],
+              [
+                42,
+                -5,
+                0,
+                0
+              ],
+              [
+                42,
+                -4,
+                0,
+                0
+              ],
+              [
+                42,
+                -3,
+                0,
+                0
+              ],
+              [
+                42,
+                -2,
+                0,
+                0
+              ],
+              [
+                42,
+                -1,
+                0,
+                0
+              ],
+              [
+                43,
+                -5,
+                0,
+                0
+              ],
+              [
+                43,
+                -4,
+                0,
+                0
+              ],
+              [
+                43,
+                -3,
+                0,
+                0
+              ],
+              [
+                43,
+                -2,
+                0,
+                0
+              ],
+              [
+                43,
+                -1,
+                0,
+                0
+              ],
+              [
+                44,
+                -5,
+                0,
+                0
+              ],
+              [
+                44,
+                -4,
+                0,
+                0
+              ],
+              [
+                44,
+                -3,
+                0,
+                0
+              ],
+              [
+                44,
+                -2,
+                0,
+                0
+              ],
+              [
+                44,
+                -1,
+                0,
+                0
+              ],
+              [
+                45,
+                -5,
+                0,
+                0
+              ],
+              [
+                45,
+                -4,
+                0,
+                0
+              ],
+              [
+                45,
+                -3,
+                0,
+                0
+              ],
+              [
+                45,
+                -2,
+                0,
+                0
+              ],
+              [
+                45,
+                -1,
+                0,
+                0
+              ]
+            ],
+            "palette": [
+              "Assets/Tiles/Ground.tile"
+            ]
+          }
+        },
+        "Tilemap Renderer": {
+          "enabled": true,
+          "mode": "Chunk",
+          "order_in_layer": 0,
+          "sorting_layer": "Default"
+        },
+        "Tilemap Collider 2D": {
+          "common": {
+            "enabled": true,
+            "is_trigger": false,
+            "material": {
+              "bounciness": 0.0,
+              "friction": 0.4
+            },
+            "offset": [
+              0.0,
+              0.0
+            ]
+          },
+          "used_by_composite": true
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Tilemap",
+            "Tilemap Renderer",
+            "Tilemap Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 17
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.5,
+            6.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            30.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Left Wall",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            46.5,
+            6.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            30.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Right Wall",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Enemies",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            20.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.95,
+            0.95,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.78,
+            0.22,
+            0.2,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 4,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "Rigidbody 2D": {
+          "angular_drag": 0.05,
+          "body_type": "Kinematic",
+          "collision_detection": "Discrete",
+          "freeze_position": [
+            false,
+            false
+          ],
+          "freeze_rotation": true,
+          "gravity_scale": 0.0,
+          "linear_drag": 0.0,
+          "mass": 1.0
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            1.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "Speed": 1.4
+              },
+              "path": "Assets/NodeGame/Graphs/Patrol.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Enemy Touch.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Brute.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Rigidbody 2D",
+            "Box Collider 2D",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Brute 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 21
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 22
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 23
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 22
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 25
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            11.5,
+            0.4,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.75,
+            0.6,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 4,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "Rigidbody 2D": {
+          "angular_drag": 0.05,
+          "body_type": "Kinematic",
+          "collision_detection": "Discrete",
+          "freeze_position": [
+            false,
+            false
+          ],
+          "freeze_rotation": true,
+          "gravity_scale": 0.0,
+          "linear_drag": 0.0,
+          "mass": 1.0
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            1.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "Speed": 1.0
+              },
+              "path": "Assets/NodeGame/Graphs/Patrol.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Enemy Touch.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Puff.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Rigidbody 2D",
+            "Box Collider 2D",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Puff 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 21
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 27
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 28
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 27
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 30
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            34.5,
+            0.4,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.75,
+            0.6,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 4,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "Rigidbody 2D": {
+          "angular_drag": 0.05,
+          "body_type": "Kinematic",
+          "collision_detection": "Discrete",
+          "freeze_position": [
+            false,
+            false
+          ],
+          "freeze_rotation": true,
+          "gravity_scale": 0.0,
+          "linear_drag": 0.0,
+          "mass": 1.0
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            1.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "Speed": 1.0
+              },
+              "path": "Assets/NodeGame/Graphs/Patrol.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Enemy Touch.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Puff.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Rigidbody 2D",
+            "Box Collider 2D",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Puff 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 21
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 1",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 33
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.2,
+            0.12,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.2,
+            0.26,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 7,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Eye 2",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.15,
+            -0.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            0.5,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.08,
+            0.08,
+            0.12,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 8,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pupil",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 35
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            42.5,
+            1.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            3.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Goal.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Goal",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.12,
+            3.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.92,
+            0.92,
+            0.95,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 2,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Square.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pole",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 37
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.45,
+            1.55,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.8,
+            0.7,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            2.2,
+            1.7,
+            0.4,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 3,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Triangle.png"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Flag",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 37
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 5,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Player.png"
+        },
+        "Rigidbody 2D": {
+          "angular_drag": 0.05,
+          "body_type": "Dynamic",
+          "collision_detection": "Discrete",
+          "freeze_position": [
+            false,
+            false
+          ],
+          "freeze_rotation": true,
+          "gravity_scale": 3.0,
+          "linear_drag": 0.0,
+          "mass": 1.0
+        },
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.0
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            0.7,
+            0.95
+          ]
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": true,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 70.0,
+              "b": 70.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 1.0,
+            "gravity_modifier": 0.0,
+            "looping": true,
+            "max_particles": 200,
+            "play_on_awake": false,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 0.2,
+              "b": 0.35,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.2,
+              "b": 0.45,
+              "random": true
+            },
+            "start_speed": {
+              "a": 0.2,
+              "b": 0.8,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 2.5,
+            "texture": null
+          },
+          "seed": 0,
+          "shape": {
+            "angle": 25.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.3,
+            "shape": "Sphere"
+          },
+          "size_over_lifetime": {
+            "enabled": true,
+            "end": 0.1,
+            "start": 1.0
+          }
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Player.vgraph"
+            },
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/NodeGame/Graphs/Player Input.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Rigidbody 2D",
+            "Box Collider 2D",
+            "Particle System",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 5,
+          "name": "Player",
+          "tag": "Player"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "This Scene": "NodeGameStage1",
+                "Next Scene": "NodeGameStage2"
+              },
+              "path": "Assets/NodeGame/Graphs/Stage.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Game",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            0,
+            0
+          ],
+          "anchor_max": [
+            1,
+            1
+          ],
+          "anchored_position": [
+            0,
+            0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0,
+            0
+          ]
+        },
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.5,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            1600.0,
+            900.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Canvas",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            28.0,
+            -20.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            400.0,
+            56.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            0.08,
+            0.1,
+            0.2,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 40.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "Hearts: 3",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Hearts Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 42
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            28.0,
+            -72.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            400.0,
+            44.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            0.08,
+            0.1,
+            0.2,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 30.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "Dash: ready",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Dash Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 42
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            1.0,
+            1.0
+          ],
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchored_position": [
+            -28.0,
+            -20.0
+          ],
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "size_delta": [
+            400.0,
+            56.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperRight",
+          "color": [
+            0.08,
+            0.1,
+            0.2,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 40.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "Stage 1",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Stage Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 42
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            0.5,
+            0.6
+          ],
+          "anchor_max": [
+            0.5,
+            0.6
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.6
+          ],
+          "size_delta": [
+            1200.0,
+            140.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            1.0,
+            0.97,
+            0.85,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 96.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Banner Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 42
+    },
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchor_max": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            28.0,
+            20.0
+          ],
+          "pivot": [
+            0.0,
+            0.0
+          ],
+          "size_delta": [
+            900.0,
+            36.0
+          ]
+        },
+        "Text": {
+          "alignment": "LowerLeft",
+          "color": [
+            1.0,
+            0.97,
+            0.9,
+            0.9
+          ],
+          "enabled": true,
+          "font_size": 24.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "A/D or arrows: run    Space: jump    E: dash attack",
+          "wrap": false
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Controls Text",
+          "tag": "Untagged"
+        }
+      },
+      "parent": 42
+    }
+  ],
+  "version": 1
+}
