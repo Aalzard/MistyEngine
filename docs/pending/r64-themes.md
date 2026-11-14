@@ -106,4 +106,4 @@ goes through `shade`; the project lock dialog has no colours. The chapter is
 - `cargo fmt --all --check`: clean.
 - `cargo clippy --workspace --all-targets --release`: 0 warnings.
 - `cargo test --workspace --release --no-fail-fast`: 2643 passed, 0 failed.
-- Golden (`golden_shots`, GPU lock): see below.
+- Golden (`golden_shots`, GPU lock): passed, unchanged (renderer untouched).
