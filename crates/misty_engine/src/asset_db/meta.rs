@@ -76,6 +76,8 @@ pub fn compose(guid: Guid, rest: &Map<String, Value>) -> String {
 pub fn write_guid(asset: &Path, guid: Guid) -> Result<(), String> {
     let path = meta_path(asset);
     let text = match std::fs::read_to_string(&path) {
+        // An empty meta file (cut short by a crash or a power cut) holds nothing to keep.
+        Ok(old) if old.trim().is_empty() => compose(guid, &Map::new()),
         Ok(old) => with_guid(&old, guid)
             .ok_or_else(|| format!("{} is not a JSON object", path.display()))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => compose(guid, &Map::new()),

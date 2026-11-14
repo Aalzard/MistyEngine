@@ -1,6 +1,6 @@
 //! GUID ↔ path map of one project, built from the `.meta` files under `Assets/`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -23,6 +23,10 @@ pub struct GuidDatabase {
     root: PathBuf,
     by_guid: HashMap<Guid, String>,
     by_path: HashMap<String, Guid>,
+    /// Assets the last scan found but could not give a GUID (their meta file could not be
+    /// written). The file watcher counts them as known: else every walk listed them as new
+    /// and rescanned the whole project every few seconds, failing on them again each time.
+    unresolved: BTreeSet<String>,
 }
 
 impl GuidDatabase {
@@ -117,6 +121,7 @@ impl GuidDatabase {
                 Ok(()) => report.created.push(rel),
                 Err(e) => {
                     db.remove_path(&rel);
+                    db.unresolved.insert(rel);
                     report.errors.push(e);
                 }
             }
@@ -164,6 +169,11 @@ impl GuidDatabase {
     /// Paths currently known (unsorted).
     pub fn paths(&self) -> impl Iterator<Item = &str> {
         self.by_path.keys().map(String::as_str)
+    }
+
+    /// Assets the last scan could not give a GUID (see the field).
+    pub fn unresolved(&self) -> impl Iterator<Item = &str> {
+        self.unresolved.iter().map(String::as_str)
     }
 
     /// Map `rel` to `guid` (replacing what either was mapped to).
