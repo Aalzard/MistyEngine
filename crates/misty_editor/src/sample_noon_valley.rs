@@ -849,7 +849,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 branches: 10,
                 branch_angle: 50.0,
                 twigs: 10,
-                leaf_density: 1.35,
+                leaf_density: 1.25,
                 leaf_size: 1.1,
                 leaf_color: [0.44, 0.49, 0.31],
                 leaf_variation: 0.5,
@@ -997,7 +997,7 @@ fn wood_cell(
             color: q(6),
         });
     };
-    let gap = open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.7;
+    let gap = open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.66;
     let carpet = 0.45 + 0.55 * smooth(-0.3, 0.1, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
