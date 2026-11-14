@@ -129,6 +129,8 @@ pub struct ExecState {
     rng: u64,
     /// Seconds the tree has run.
     pub time: f64,
+    /// `time` when the current tick began (timers started during a tick count from here).
+    start: f64,
     pub ticks: u64,
     /// The Root's last result.
     pub result: Status,
@@ -149,6 +151,7 @@ impl ExecState {
             order: vec![0; tree.children.len()],
             rng: 0,
             time: 0.0,
+            start: 0.0,
             ticks: 0,
             result: Status::Idle,
             text: String::with_capacity(64),
@@ -200,6 +203,7 @@ impl ExecState {
         if tree.nodes.is_empty() {
             return Status::Failure;
         }
+        self.start = self.time;
         self.time += f64::from(dt.max(0.0));
         self.ticks += 1;
         self.observe(tree, h);
@@ -359,9 +363,9 @@ impl ExecState {
                 } else {
                     0.0
                 };
-                self.nodes[i].until = self.time + f64::from((seconds + jitter).max(0.0));
+                self.nodes[i].until = self.start + f64::from((seconds + jitter).max(0.0));
             }
-            CKind::TimeLimit(s) => self.nodes[i].until = self.time + f64::from(*s),
+            CKind::TimeLimit(s) => self.nodes[i].until = self.start + f64::from(*s),
             CKind::Conditional { key, .. } => {
                 let v = h.with_bb(|bb, sh| bb.version(sh, *key as usize));
                 self.nodes[i].seen = v;
@@ -494,7 +498,7 @@ impl ExecState {
             }
             CKind::Cooldown(s) => {
                 let s = *s;
-                if entering && self.time < self.nodes[i].until {
+                if entering && self.time + 1e-6 < self.nodes[i].until {
                     return Status::Failure;
                 }
                 let r = self.only_child(tree, i, h, dt);
@@ -504,7 +508,7 @@ impl ExecState {
                 r
             }
             CKind::TimeLimit(_) => {
-                if self.time >= self.nodes[i].until {
+                if self.time + 1e-6 >= self.nodes[i].until {
                     if count > 0 {
                         let c = tree.child(i, 0);
                         self.abort(tree, c, h);
@@ -565,7 +569,7 @@ impl ExecState {
                 Status::Running
             }
             CKind::Wait { .. } => {
-                if self.time >= self.nodes[i].until {
+                if self.time + 1e-6 >= self.nodes[i].until {
                     Status::Success
                 } else {
                     Status::Running

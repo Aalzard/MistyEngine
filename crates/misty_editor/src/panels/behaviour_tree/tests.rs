@@ -77,7 +77,7 @@ fn node_rect(h: &Harness<'_, EditorState>, id: u32) -> egui::Rect {
 /// item, Create ▸ entry and Add Component entry appear; Remove takes them away again.
 #[test]
 fn package_install_and_remove() {
-    let (mut s, root) = project("pkg", false);
+    let (s, root) = project("pkg", false);
     // Not installed by default.
     assert!(!optional::installed(&root, optional::BEHAVIOUR_TREES));
     assert!(!s.optional_packages.has(optional::BEHAVIOUR_TREES));

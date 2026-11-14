@@ -18,6 +18,7 @@ mod inspector;
 mod palette;
 
 pub use inspector::{assets_with, value_field};
+#[cfg(test)]
 pub use palette::scan as palette_scan;
 #[cfg(test)]
 mod tests;
@@ -578,7 +579,8 @@ fn not_installed(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                 let root = s.project.root.clone();
                 s.packages.ensure_loaded(&root);
                 s.packages.install_optional(&root, BEHAVIOUR_TREES);
-                s.optional_packages = optional::Installed::load(&root);
+                let on = optional::installed(&root, BEHAVIOUR_TREES);
+                s.optional_packages.set(BEHAVIOUR_TREES, on);
                 note_package(s);
                 if let Some((err, m)) = s.packages.status.clone() {
                     if err {

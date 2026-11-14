@@ -311,12 +311,13 @@ fn shared_keys_lookat_stop_start_and_tick_rate() {
     let mut host = ScriptHost::start(&mut scene, physics, root.clone());
     let mut time = Time::default();
     frames(&mut host, &mut scene, &mut time, 3);
-    // Both face the target (+X).
-    for e in [watcher, listener] {
-        let fwd = scene.world_rotation(e) * Vec3::Z;
-        assert!(fwd.distance(Vec3::X) < 0.01, "faces the target: {fwd}");
-    }
+    // The watcher (every frame) already faces the target (+X); the listener (10 per second)
+    // hasn't ticked yet.
+    let facing = |scene: &Scene, e: Entity| (scene.world_rotation(e) * Vec3::Z).distance(Vec3::X) < 0.01;
+    assert!(facing(&scene, watcher));
+    assert!(!facing(&scene, listener));
     frames(&mut host, &mut scene, &mut time, 57);
+    assert!(facing(&scene, listener), "the listener turned too");
     let logs = texts(&host.take_logs());
     assert!(logs.iter().any(|l| l == "alarm heard"), "{logs:?}");
     assert!(logs.contains(&"status Stopped".to_owned()), "{logs:?}");
