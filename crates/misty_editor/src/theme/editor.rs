@@ -12,6 +12,9 @@ use super::presets::Preset;
 use super::{Group, Palette, TOKENS};
 use crate::i18n::tr;
 
+/// The text sizes offered in Preferences.
+const TEXT_SIZES: [f32; 7] = [0.8, 0.9, 1.0, 1.1, 1.2, 1.35, 1.5];
+
 /// Which font the inline picker is choosing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FontSlot {
@@ -409,20 +412,27 @@ pub fn appearance_section(
     }
     ui.horizontal(|ui| {
         let l = ui.label(tr!("Text Size"));
-        let mut pct = (a.fonts.scale * 100.0).round();
-        let r = ui
-            .add(
-                egui::Slider::new(
-                    &mut pct,
-                    fonts::MIN_SCALE * 100.0..=fonts::MAX_SCALE * 100.0,
-                )
-                .step_by(5.0)
-                .suffix("%"),
-            )
-            .labelled_by(l.id);
-        let r = crate::a11y::name(r, egui::WidgetType::Slider, &tr!("Text Size"));
-        if r.changed()
-            && let Err(e) = a.set_font_scale(ui.ctx(), pct / 100.0)
+        let mut picked = None;
+        egui::ComboBox::from_id_salt("pref_text_size")
+            .selected_text(format!("{:.0}%", a.fonts.scale * 100.0))
+            .show_ui(ui, |ui| {
+                for s in TEXT_SIZES {
+                    if ui
+                        .selectable_label(
+                            (a.fonts.scale - s).abs() < 1e-3,
+                            format!("{:.0}%", s * 100.0),
+                        )
+                        .clicked()
+                    {
+                        picked = Some(s);
+                    }
+                }
+            })
+            .response
+            .labelled_by(l.id)
+            .on_hover_text(tr!("Size of the editor's text"));
+        if let Some(s) = picked
+            && let Err(e) = a.set_font_scale(ui.ctx(), s)
         {
             console.warn(format!("Text size not saved: {e}"));
         }

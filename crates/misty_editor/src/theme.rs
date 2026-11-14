@@ -292,6 +292,25 @@ pub fn near(token: fn(&Palette) -> Color32, dark: Color32) -> Color32 {
     )
 }
 
+/// `c` as text on the active theme's panels: unchanged when it already reads (always under
+/// Dark), otherwise darkened or lightened until it reaches 3:1 against the panel colour.
+pub fn readable(c: Color32) -> Color32 {
+    let p = current();
+    let target = if p.is_dark() {
+        Color32::WHITE
+    } else {
+        Color32::BLACK
+    };
+    let mut out = c;
+    for i in 1..=10 {
+        if contrast(out, p.panel_bg) >= 3.0 {
+            break;
+        }
+        out = c.lerp_to_gamma(target, i as f32 * 0.1);
+    }
+    out
+}
+
 /// The built-in Arabic font's name in the font definitions.
 pub(crate) const ARABIC_FONT: &str = "arabic";
 
