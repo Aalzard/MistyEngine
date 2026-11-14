@@ -2737,9 +2737,11 @@ dependencies = [
 name = "misty_recorder"
 version = "0.4.0"
 dependencies = [
+ "glam 0.34.2",
  "image",
  "misty_engine",
  "openh264",
+ "pollster 0.4.0",
  "rav1e",
  "serde",
  "serde_json",
