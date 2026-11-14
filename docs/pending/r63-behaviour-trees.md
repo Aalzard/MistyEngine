@@ -78,6 +78,7 @@ SampleProject's manifest does **not** install the package (the scene plays witho
 - [x] Guide chapter EN/AR, locales TR/AR
 - [x] Build, fix compile errors; BT tests pass (engine 22, editor 9, demo plays)
 - [x] Demo files written; merged main 97cc0dff (Recorder)
-- [ ] Regenerate docs/api
-- [ ] fmt, clippy 0 warnings, full workspace tests
+- [x] Regenerate docs/api
+- [x] Merged main c6159e41 (themes): editor colours use the graph tokens / theme::shade
+- [x] fmt clean, clippy 0 warnings, full workspace tests green (editor 1004 passed / 88 ignored, engine 1649 / 111, others green)
 - [ ] Editor smoke run on a copy under C:\MistyTry\r63\
