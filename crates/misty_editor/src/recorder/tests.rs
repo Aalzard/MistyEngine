@@ -289,3 +289,34 @@ fn scripts_can_start_and_stop_but_only_with_the_package() {
     assert_eq!(n, 3);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Removing the package mid-recording ends the recording for scripts too: the file is written
+/// and `Recorder.isRecording` is false (it stayed true for the rest of the session).
+#[test]
+fn removing_the_package_mid_recording_ends_it_for_scripts_too() {
+    let _turn = serial();
+    let root = project("remove_mid");
+    let mut s = state(&root);
+    install(&mut s);
+    {
+        let r = &mut s.recorder.list(&root).recorders[0];
+        r.format = OutputFormat::PngSequence;
+        r.source = misty_engine::recorder::Source::EditorScene;
+        r.match_game = false;
+        r.width = 8;
+        r.height = 8;
+    }
+    request_start(&mut s, None);
+    gpu_frame(None, &mut s);
+    gpu_frame(None, &mut s);
+    assert!(misty_engine::recorder::is_recording());
+    remove(&mut s);
+    assert!(!s.recorder.recording());
+    assert!(!misty_engine::recorder::is_recording());
+    wait_all(&mut s, None);
+    assert_eq!(
+        std::fs::read_dir(root.join("Recordings")).unwrap().count(),
+        2
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

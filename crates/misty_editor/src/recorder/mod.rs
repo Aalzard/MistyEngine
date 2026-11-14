@@ -152,8 +152,13 @@ pub fn installed(s: &EditorState) -> bool {
 /// recording stops.
 pub fn package_changed(s: &mut EditorState) {
     if !installed(s) {
-        for a in std::mem::take(&mut s.recorder.active) {
-            finish(&mut s.recorder, a, None);
+        if !s.recorder.active.is_empty() {
+            for a in std::mem::take(&mut s.recorder.active) {
+                finish(&mut s.recorder, a, None);
+            }
+            // Scripts saw `Recorder.isRecording` true for good after the package went
+            // mid-recording.
+            misty_engine::recorder::set_recording(false);
         }
         s.recorder.list = None;
         s.recorder.pending.clear();
