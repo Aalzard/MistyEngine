@@ -163,8 +163,9 @@ fn finished_variants_are_not_pending_before_a_view_picks_them_up() {
     r.warm_common_pipelines(&device);
     assert!(crate::load_queue::shaders().wait_idle(WAIT));
     // No frame rendered: nothing took the built variants, yet nothing is still compiling.
-    assert_eq!(r.background_pending(), 0);
+    assert_eq!(r.background_working(), (0, 0, 0));
+    assert!(r.background_pending() > 0, "waiting to be picked up");
     // A later frame picks them up as before.
     assert!(r.pipelines.take_built_variants() > 0);
-    assert_eq!(r.pipelines.variants_pending(), 0);
+    assert_eq!(r.background_pending(), 0);
 }

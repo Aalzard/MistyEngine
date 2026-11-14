@@ -217,14 +217,16 @@ impl EditorApp {
     }
 
     /// Something is still loading in the background: the renderer, shader variants, models
-    /// or textures (screenshot runs wait for it).
+    /// or textures (screenshot runs wait for it). Results waiting for a view to pick them up
+    /// don't count: a view that doesn't redraw never takes them, and screenshot runs waited
+    /// for good (the glowless variants queued by a scene's last frames before it went idle).
     fn background_busy(&self) -> bool {
         self.gpu_start.is_some()
             || misty_engine::load_queue::busy()
             || self
                 .gpu
                 .as_ref()
-                .is_some_and(|g| g.renderer.background_pending() > 0)
+                .is_some_and(|g| g.renderer.background_working() != (0, 0, 0))
     }
 
     /// Save the layout if it changed (debounced), or now when `force` is set.
@@ -1203,12 +1205,9 @@ impl eframe::App for EditorApp {
                 // A capture that never shoots: say what keeps it waiting.
                 let q = misty_engine::load_queue::shaders().progress();
                 let i = misty_engine::load_queue::imports().progress();
-                let parts = self
-                    .gpu
-                    .as_ref()
-                    .map(|g| g.renderer.background_pending_parts());
+                let parts = self.gpu.as_ref().map(|g| g.renderer.background_working());
                 eprintln!(
-                    "capture waiting: gpu start {}, shaders {}/{}, imports {}/{}, renderer pending (variants, textures, custom) {parts:?}, timeline {timeline}",
+                    "capture waiting: gpu start {}, shaders {}/{}, imports {}/{}, renderer working (variants, textures, custom) {parts:?}, timeline {timeline}",
                     self.gpu_start.is_some(),
                     q.done,
                     q.total,

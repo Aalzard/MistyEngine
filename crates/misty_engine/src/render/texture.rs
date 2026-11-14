@@ -546,9 +546,14 @@ impl TextureCache {
         self.background = on;
     }
 
-    /// Textures being decoded on the import queue (decoded ones waiting for a view to pick
-    /// them up don't count; see `Pipelines::variants_pending`).
+    /// Textures queued for decoding and not picked up yet.
     pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Textures still decoding (decoded ones waiting for a view to pick them up don't count;
+    /// see `Pipelines::variants_compiling`).
+    pub fn decoding(&self) -> usize {
         let arrived = self
             .arrived
             .lock()

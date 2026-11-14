@@ -455,9 +455,14 @@ impl CustomShaders {
         }
     }
 
-    /// Compiles still running on the shader queue (finished ones waiting for a view to pick
-    /// them up don't count; see `Pipelines::variants_pending`).
+    /// Compiles queued and not picked up yet.
     pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Compiles still running on the shader queue (finished ones waiting for a view to pick
+    /// them up don't count; see `Pipelines::variants_compiling`).
+    pub fn compiling(&self) -> usize {
         let built = self
             .built
             .lock()

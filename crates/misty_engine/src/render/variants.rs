@@ -280,10 +280,15 @@ impl Pipelines {
         n
     }
 
-    /// Variants still compiling in the background. Finished ones waiting to be picked up don't
-    /// count: they are only taken when a view renders, and a view that doesn't redraw (an idle
-    /// editor, a screenshot run) would otherwise look busy for good.
+    /// Variants queued and not picked up yet (a frame takes the finished ones).
     pub fn variants_pending(&self) -> usize {
+        self.variants.pending.len()
+    }
+
+    /// Variants still compiling. Finished ones waiting to be picked up don't count: they are
+    /// only taken when a view renders, and a view that doesn't redraw (an idle editor, a
+    /// screenshot run) looked busy for good.
+    pub fn variants_compiling(&self) -> usize {
         let built = self
             .variants
             .built
