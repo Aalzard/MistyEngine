@@ -182,6 +182,12 @@ impl Capture {
         self.held = waiting;
     }
 
+    /// Held past the shot frame for a long while (every 600 frames from then on): time to say
+    /// why.
+    pub fn held_long(&self) -> bool {
+        self.held && !self.requested && self.frames > 0 && self.frames.is_multiple_of(600)
+    }
+
     /// The views are still streaming in assets this frame (see [`FrameClock::last_loading`]).
     pub fn note_loading(&mut self, loading: bool) {
         if loading && !self.requested {

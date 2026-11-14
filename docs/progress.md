@@ -4965,3 +4965,7 @@ Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
 - **Timeline Recorder track**: a clip records while its timeline plays it in Play mode.
 - **Lua**: `Recorder.Start([name])`, `Recorder.Stop()`, `Recorder.isRecording`.
 - **Docs**: User Guide chapter 9 (English and Arabic), Turkish and Arabic UI strings.
+- **Editor captures finish again**: screenshot runs waited forever for shader variants that
+  had finished compiling but that no redraw picked up (the glowless variants queued as a scene
+  went idle). Only work still running counts as busy now; a stuck capture says what it waits
+  for.

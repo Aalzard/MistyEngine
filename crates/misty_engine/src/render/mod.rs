@@ -1062,6 +1062,19 @@ impl Renderer {
     }
 
     /// Things this renderer is waiting for from the background queues.
+    /// Background work still running for this renderer: shader variants compiling, textures
+    /// decoding, custom shaders compiling, as (variants, textures, custom). Unlike
+    /// [`Renderer::background_pending`], results waiting for the next frame to pick them up
+    /// don't count, so a view that stops redrawing (an idle editor, a screenshot run) isn't
+    /// busy for good.
+    pub fn background_working(&self) -> (usize, usize, usize) {
+        (
+            self.pipelines.variants_compiling(),
+            self.textures.decoding(),
+            self.custom.as_ref().map_or(0, |c| c.compiling()),
+        )
+    }
+
     pub fn background_pending(&self) -> usize {
         self.pipelines.variants_pending()
             + self.textures.pending()

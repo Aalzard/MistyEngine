@@ -223,14 +223,16 @@ impl EditorApp {
     }
 
     /// Something is still loading in the background: the renderer, shader variants, models
-    /// or textures (screenshot runs wait for it).
+    /// or textures (screenshot runs wait for it). Results waiting for a view to pick them up
+    /// don't count: a view that doesn't redraw never takes them, and screenshot runs waited
+    /// for good (the glowless variants queued by a scene's last frames before it went idle).
     fn background_busy(&self) -> bool {
         self.gpu_start.is_some()
             || misty_engine::load_queue::busy()
             || self
                 .gpu
                 .as_ref()
-                .is_some_and(|g| g.renderer.background_pending() > 0)
+                .is_some_and(|g| g.renderer.background_working() != (0, 0, 0))
     }
 
     /// Save the layout if it changed (debounced), or now when `force` is set.
@@ -1233,7 +1235,22 @@ impl eframe::App for EditorApp {
             } else {
                 capture.note_loading(busy);
             }
-            capture.hold(crate::panels::timeline::capture_waiting(&self.state) || busy);
+            let timeline = crate::panels::timeline::capture_waiting(&self.state);
+            capture.hold(timeline || busy);
+            if capture.held_long() {
+                // A capture that never shoots: say what keeps it waiting.
+                let q = misty_engine::load_queue::shaders().progress();
+                let i = misty_engine::load_queue::imports().progress();
+                let parts = self.gpu.as_ref().map(|g| g.renderer.background_working());
+                eprintln!(
+                    "capture waiting: gpu start {}, shaders {}/{}, imports {}/{}, renderer working (variants, textures, custom) {parts:?}, timeline {timeline}",
+                    self.gpu_start.is_some(),
+                    q.done,
+                    q.total,
+                    i.done,
+                    i.total,
+                );
+            }
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {
