@@ -264,13 +264,14 @@ pub fn settings_ui(
                     ui.add(egui::Slider::new(&mut r.quality, 1..=100));
                 });
             }
-            if r.format.is_video() {
-                row(ui, "Capture Audio", |ui| {
-                    r.audio = false;
-                    ui.add_enabled(false, egui::Checkbox::new(&mut r.audio, ""))
-                        .on_disabled_hover_text(tr!(
-                            "Sound is not recorded yet: videos are silent."
-                        ));
+            if r.format.has_audio() {
+                row(ui, "Record Audio", |ui| {
+                    let tip = if r.format.is_sequence() {
+                        tr!("The game's sound, saved as a WAV file beside the frames.")
+                    } else {
+                        tr!("The game's sound, in step with the frames.")
+                    };
+                    ui.checkbox(&mut r.record_audio, "").on_hover_text(tip);
                 });
             }
             row(ui, "Resolution", |ui| {

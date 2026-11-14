@@ -103,6 +103,7 @@ fn a_fixed_rate_time_range_writes_exactly_n_frames_as_png() {
         end_time: 1.5,
         folder: "Out".into(),
         pattern: "<Scene>_<Take>_<Frame>".into(),
+        record_audio: false,
         ..Default::default()
     };
     // One second at 24 fps from frame 12: frames 12..=35.
@@ -130,6 +131,7 @@ fn frame_range_and_jpg_sequence() {
         folder: dir.to_string_lossy().into_owned(),
         pattern: "shot".into(),
         quality: 90,
+        record_audio: false,
         ..Default::default()
     };
     let files = record(settings, Path::new("unused"), 40, 30, 1000);

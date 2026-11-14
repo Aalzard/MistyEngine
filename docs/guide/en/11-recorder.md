@@ -28,6 +28,7 @@ or delete it. Select one to see its settings on the right:
 | Source | **Scene Viewer** (the game, as players see it), **Camera** (one camera of the scene, by name) or **Editor Scene** (the editor's view, gizmos and all) |
 | Output | MP4 (H.264), WebM (AV1), GIF, PNG Sequence or JPG Sequence |
 | Quality | How good videos and JPG pictures look, and how big the files get |
+| Record Audio | Record the game's sound too (on by default; not for GIFs) |
 | Resolution | The size of the Scene Viewer, or a size you type in |
 | Frame Rate | Frames per second of the recording |
 | Start / Stop | **Manual**, **Frame Range**, **Time Range** or **Timeline Clip** |
@@ -70,6 +71,22 @@ frames, ten seconds at 30 frames per second. **Time Range** does the same in sec
 seconds at 30 frames per second is 60 frames. The frames before the range still run, so the
 game reaches the same state it would without the recorder.
 
+## Sound
+
+With **Record Audio** on (it is on for new recorders), the recording keeps everything the game
+plays through the Audio Listener and the Audio Mixers: music, effects, voices, as you would
+hear them. MP4 and WebM files get a sound track; picture sequences get a WAV file beside the
+pictures, with the same name and no frame number (`Level1_001.wav`). GIFs have no sound.
+
+Sound stays in step with the picture even when the recording runs slower or faster than real
+time: while you record, the game's sound is mixed in capture time too, one frame of sound for
+each frame of picture. What you hear from the speakers while recording follows the recording,
+so on a slow computer it can sound choppy. The file is not: it plays smoothly, in step.
+
+> [!NOTE]
+> Turn **Record Audio** off for a silent video, or when you will add music later in a video
+> editor. When the game plays no sound at all, the sound track is silent but still there.
+
 ## Recording from a Timeline
 
 A Timeline can record its own shots:
@@ -86,14 +103,14 @@ five-second clip at 30 frames per second makes 150 frames.
 
 | Format | Good for | Notes |
 |---|---|---|
-| MP4 (H.264) | sharing, video editors | plays almost everywhere |
-| WebM (AV1) | the web | small files, slower to record |
-| GIF | short loops in chats and pages | 256 colours, loops forever |
-| PNG Sequence | editing, compositing | one lossless picture a frame |
-| JPG Sequence | quick previews | one smaller picture a frame |
+| MP4 (H.264) | sharing, video editors | plays almost everywhere; sound in Opus |
+| WebM (AV1) | the web | small files, slower to record; sound in Opus |
+| GIF | short loops in chats and pages | 256 colours, loops forever, no sound |
+| PNG Sequence | editing, compositing | one lossless picture a frame; sound as a WAV |
+| JPG Sequence | quick previews | one smaller picture a frame; sound as a WAV |
 
-Everything is built into the editor: you don't need to install anything else. Videos have no
-sound yet.
+Everything is built into the editor: you don't need to install anything else. Sound is saved
+as Opus (48 kHz stereo), a free format that web browsers, VLC and video editors play.
 
 > [!PROGRAMMERS]
 > Scripts can record too: `Recorder.Start()` starts every enabled recorder,
@@ -101,3 +118,7 @@ sound yet.
 > `Recorder.isRecording` says whether a recording runs. They work in the editor with the
 > package installed; a built game ignores them. Frames are copied back from the graphics card
 > through a ring of buffers and encoded on worker threads, so drawing doesn't wait for disks.
+> Sound comes from a tap on the final mix, which costs nothing when no recording keeps sound.
+> Each block it copies carries the mix's sample clock, and while recording the mix renders only
+> as far as capture time has gone, so the Recorder places every sample by that clock, not by
+> when it arrived; any gap becomes silence and the track is cut to the video's exact length.

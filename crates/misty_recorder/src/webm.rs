@@ -1,11 +1,16 @@
-//! WebM files holding one AV1 video track: the EBML header, a Segment (size patched at the end)
-//! with Info (duration patched too) and Tracks, then Clusters of SimpleBlocks, a new cluster at
-//! every key frame. Timestamps are in milliseconds. [`read_blocks`] reads such a file back.
+//! WebM files holding one AV1 video track and, when the recording keeps sound, one Opus audio
+//! track: the EBML header, a Segment (size patched at the end) with Info (duration patched too)
+//! and Tracks, then Clusters of SimpleBlocks in timestamp order, a new cluster at every key
+//! frame. Timestamps are in milliseconds; Opus packets are 20 ms, so theirs are exact, and the
+//! encoder delay is the track's CodecDelay. [`read_blocks`] reads such a file back.
 
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use std::collections::VecDeque;
+
+use crate::audio::{CHANNELS, OPUS_FRAME, OpusStream, RATE, opus_bitrate};
 use crate::av1::{Av1, Av1Packet};
 use crate::{Frame, Output, Sink};
 
@@ -36,6 +41,11 @@ mod id {
     pub const VIDEO: u32 = 0xE0;
     pub const PIXEL_WIDTH: u32 = 0xB0;
     pub const PIXEL_HEIGHT: u32 = 0xBA;
+    pub const CODEC_DELAY: u32 = 0x56AA;
+    pub const SEEK_PRE_ROLL: u32 = 0x56BB;
+    pub const AUDIO: u32 = 0xE1;
+    pub const SAMPLING_FREQUENCY: u32 = 0xB5;
+    pub const CHANNELS: u32 = 0x9F;
     pub const CLUSTER: u32 = 0x1F43_B675;
     pub const TIMESTAMP: u32 = 0xE7;
     pub const SIMPLE_BLOCK: u32 = 0xA3;
@@ -73,6 +83,8 @@ fn master(out: &mut Vec<u8>, id: u32, body: impl FnOnce(&mut Vec<u8>)) {
 
 pub struct WebmSink {
     encoder: Av1,
+    /// The sound (track 2), when the recording keeps it.
+    audio: Option<OpusStream>,
     file: BufWriter<File>,
     path: PathBuf,
     fps: u32,
@@ -83,11 +95,21 @@ pub struct WebmSink {
     pos: u64,
     cluster: Option<(u64, Vec<u8>)>,
     blocks: u64,
+    /// Encoded frames and packets waiting to be written in timestamp order: (ms, key, data).
+    /// With sound, frames wait for the packets of their time (and the other way round).
+    video_q: VecDeque<(u64, bool, Vec<u8>)>,
+    audio_q: VecDeque<(u64, Vec<u8>)>,
+    audio_packets: u64,
 }
 
 impl WebmSink {
     pub fn create(out: &Output) -> Result<Self, String> {
         let encoder = Av1::new(out.width, out.height, out.fps, out.quality)?;
+        let audio = if out.audio {
+            Some(OpusStream::new(opus_bitrate(out.quality))?)
+        } else {
+            None
+        };
         let path = out.path(None);
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
         let mut file = BufWriter::new(File::create(&path).map_err(err)?);
@@ -138,10 +160,31 @@ impl WebmSink {
                     uint(b, id::PIXEL_HEIGHT, out.height as u64);
                 });
             });
+            if let Some(a) = &audio {
+                master(b, id::TRACK_ENTRY, |b| {
+                    uint(b, id::TRACK_NUMBER, 2);
+                    uint(b, id::TRACK_UID, 2);
+                    uint(b, id::TRACK_TYPE, 2);
+                    uint(b, id::FLAG_LACING, 0);
+                    element(b, id::CODEC_ID, b"A_OPUS");
+                    element(b, id::CODEC_PRIVATE, &a.head());
+                    uint(
+                        b,
+                        id::CODEC_DELAY,
+                        a.pre_skip as u64 * 1_000_000_000 / RATE as u64,
+                    );
+                    uint(b, id::SEEK_PRE_ROLL, 80_000_000);
+                    master(b, id::AUDIO, |b| {
+                        element(b, id::SAMPLING_FREQUENCY, &(RATE as f64).to_be_bytes());
+                        uint(b, id::CHANNELS, CHANNELS as u64);
+                    });
+                });
+            }
         });
         file.write_all(&h).map_err(err)?;
         Ok(Self {
             encoder,
+            audio,
             file,
             fps: out.fps.max(1),
             segment_size_at,
@@ -150,6 +193,9 @@ impl WebmSink {
             pos: h.len() as u64,
             cluster: None,
             blocks: 0,
+            video_q: VecDeque::new(),
+            audio_q: VecDeque::new(),
+            audio_packets: 0,
             path,
         })
     }
@@ -170,12 +216,48 @@ impl WebmSink {
         Ok(())
     }
 
-    fn add(&mut self, p: Av1Packet) -> Result<(), String> {
+    fn add(&mut self, p: Av1Packet) {
         let t = self.ms(p.frame);
+        self.video_q.push_back((t, p.key, p.data));
+        self.blocks += 1;
+    }
+
+    fn add_audio(&mut self, packet: Vec<u8>) {
+        // 20 ms a packet: whole milliseconds.
+        let t = self.audio_packets * (OPUS_FRAME as u64 * 1000 / RATE as u64);
+        self.audio_q.push_back((t, packet));
+        self.audio_packets += 1;
+    }
+
+    /// Write what is due in timestamp order (`all`: everything, the streams have ended).
+    fn flush(&mut self, all: bool) -> Result<(), String> {
+        let with_audio = self.audio.is_some();
+        loop {
+            let v = self.video_q.front().map(|f| f.0);
+            let a = self.audio_q.front().map(|p| p.0);
+            let video_next = match (v, a) {
+                (Some(v), Some(a)) => v <= a,
+                (Some(_), None) if all || !with_audio => true,
+                (None, Some(_)) if all => false,
+                _ => break,
+            };
+            if video_next {
+                let (t, key, data) = self.video_q.pop_front().expect("checked");
+                self.block(1, t, key, &data)?;
+            } else {
+                let (t, data) = self.audio_q.pop_front().expect("checked");
+                self.block(2, t, true, &data)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One SimpleBlock of `track`; a new cluster at every video key frame and every 30 s.
+    fn block(&mut self, track: u8, t: u64, key: bool, data: &[u8]) -> Result<(), String> {
         let open = self
             .cluster
             .as_ref()
-            .is_some_and(|(start, _)| !p.key && t - start < 30_000);
+            .is_some_and(|(start, _)| !(track == 1 && key) && t - start < 30_000);
         if !open {
             self.close_cluster()?;
             let mut body = Vec::new();
@@ -183,12 +265,11 @@ impl WebmSink {
             self.cluster = Some((t, body));
         }
         let (start, body) = self.cluster.as_mut().expect("opened above");
-        let mut block = vec![0x81];
+        let mut block = vec![0x80 | track];
         block.extend_from_slice(&((t - *start) as i16).to_be_bytes());
-        block.push(if p.key { 0x80 } else { 0x00 });
-        block.extend_from_slice(&p.data);
+        block.push(if key { 0x80 } else { 0x00 });
+        block.extend_from_slice(data);
         element(body, id::SIMPLE_BLOCK, &block);
-        self.blocks += 1;
         Ok(())
     }
 }
@@ -196,19 +277,37 @@ impl WebmSink {
 impl Sink for WebmSink {
     fn write(&mut self, frame: Frame) -> Result<(), String> {
         for p in self.encoder.encode(&frame)? {
-            self.add(p)?;
+            self.add(p);
         }
-        Ok(())
+        self.flush(false)
+    }
+
+    fn write_audio(&mut self, samples: &[f32]) -> Result<(), String> {
+        let Some(a) = self.audio.as_mut() else {
+            return Ok(());
+        };
+        for p in a.push(samples)? {
+            self.add_audio(p);
+        }
+        self.flush(false)
     }
 
     fn finish(mut self: Box<Self>) -> Result<Vec<PathBuf>, String> {
         for p in self.encoder.finish()? {
-            self.add(p)?;
+            self.add(p);
         }
+        let mut audio_ms = 0.0;
+        if let Some(mut a) = self.audio.take() {
+            for p in a.finish()? {
+                self.add_audio(p);
+            }
+            audio_ms = a.samples() as f64 * 1000.0 / RATE as f64;
+        }
+        self.flush(true)?;
         self.close_cluster()?;
         let path = self.path.clone();
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
-        let duration = self.ms(self.blocks) as f64;
+        let duration = (self.ms(self.blocks) as f64).max(audio_ms);
         let mut size = Vec::new();
         put_size(&mut size, self.pos - self.segment_start);
         self.file
@@ -228,12 +327,22 @@ impl Sink for WebmSink {
 #[derive(Clone, Debug, Default)]
 pub struct WebmInfo {
     pub doc_type: String,
+    /// The video track's codec.
     pub codec: String,
     pub width: u32,
     pub height: u32,
     pub duration_ms: f64,
-    /// (timestamp ms, key frame, data) of every SimpleBlock.
+    /// (timestamp ms, key frame, data) of every video SimpleBlock.
     pub blocks: Vec<(u64, bool, Vec<u8>)>,
+    /// The audio track's codec (empty: no sound).
+    pub audio_codec: String,
+    /// Its CodecPrivate (`OpusHead`).
+    pub audio_private: Vec<u8>,
+    pub codec_delay_ns: u64,
+    pub sampling_frequency: f64,
+    pub channels: u32,
+    /// (timestamp ms, data) of every audio SimpleBlock.
+    pub audio_blocks: Vec<(u64, Vec<u8>)>,
 }
 
 fn read_vint(d: &[u8], at: usize, keep_marker: bool) -> Option<(u64, usize)> {
@@ -269,8 +378,11 @@ pub fn read_blocks(path: &Path) -> Result<WebmInfo, String> {
         id::TRACKS,
         id::TRACK_ENTRY,
         id::VIDEO,
+        id::AUDIO,
         id::CLUSTER,
     ];
+    // Type of the track entry being read (1 video, 2 audio).
+    let mut track_type = 0;
     let mut stack: Vec<(usize, u64)> = vec![(d.len(), 0)];
     let mut at = 0;
     while at < d.len() {
@@ -295,7 +407,17 @@ pub fn read_blocks(path: &Path) -> Result<WebmInfo, String> {
         let b = &d[body..end];
         match eid {
             id::DOC_TYPE => info.doc_type = String::from_utf8_lossy(b).into_owned(),
+            id::TRACK_TYPE => track_type = be_uint(b),
+            id::CODEC_ID if track_type == 2 => {
+                info.audio_codec = String::from_utf8_lossy(b).into_owned()
+            }
             id::CODEC_ID => info.codec = String::from_utf8_lossy(b).into_owned(),
+            id::CODEC_PRIVATE if track_type == 2 => info.audio_private = b.to_vec(),
+            id::CODEC_DELAY => info.codec_delay_ns = be_uint(b),
+            id::SAMPLING_FREQUENCY if b.len() == 8 => {
+                info.sampling_frequency = f64::from_be_bytes(b.try_into().unwrap_or_default())
+            }
+            id::CHANNELS => info.channels = be_uint(b) as u32,
             id::PIXEL_WIDTH => info.width = be_uint(b) as u32,
             id::PIXEL_HEIGHT => info.height = be_uint(b) as u32,
             id::DURATION if b.len() == 8 => {
@@ -310,8 +432,13 @@ pub fn read_blocks(path: &Path) -> Result<WebmInfo, String> {
                 let base = stack.last().map_or(0, |s| s.1);
                 let rel = i16::from_be_bytes([b[1], b[2]]) as i64;
                 let key = b[3] & 0x80 != 0;
-                info.blocks
-                    .push(((base as i64 + rel) as u64, key, b[4..].to_vec()));
+                let t = (base as i64 + rel) as u64;
+                // Track number: a one-byte vint here.
+                if b[0] & 0x7f == 2 {
+                    info.audio_blocks.push((t, b[4..].to_vec()));
+                } else {
+                    info.blocks.push((t, key, b[4..].to_vec()));
+                }
             }
             _ => {}
         }

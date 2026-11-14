@@ -2742,6 +2742,7 @@ dependencies = [
  "image",
  "misty_engine",
  "openh264",
+ "opus1",
  "pollster 0.4.0",
  "rav1e",
  "serde",
@@ -3438,6 +3439,12 @@ dependencies = [
  "nasm-rs",
  "walkdir",
 ]
+
+[[package]]
+name = "opus1"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8371789de09e00d6805166461224f024848c1fd155c6df28da8c19eebcc3650d"
 
 [[package]]
 name = "orbclient"

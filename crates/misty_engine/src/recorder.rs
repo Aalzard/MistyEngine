@@ -89,9 +89,15 @@ impl OutputFormat {
         matches!(self, Self::PngSequence | Self::JpgSequence)
     }
 
-    /// A video file that could carry sound.
+    /// A video file.
     pub fn is_video(self) -> bool {
         matches!(self, Self::Mp4 | Self::WebM)
+    }
+
+    /// Can record the game's sound: inside the video (MP4, WebM), or as a WAV beside an image
+    /// sequence. GIFs have no sound.
+    pub fn has_audio(self) -> bool {
+        self != Self::Gif
     }
 
     /// Video encoders want even sizes (4:2:0 chroma).
@@ -172,8 +178,9 @@ pub struct RecorderSettings {
     pub include_ui: bool,
     /// 1–100: JPG quality and the video bit rate.
     pub quality: u8,
-    /// Record the game's sound into video files (not supported yet; kept for later).
-    pub audio: bool,
+    /// Record the game's sound (Opus in MP4 and WebM, a WAV beside image sequences). Older
+    /// files' `audio` (always off: sound wasn't recorded then) is ignored.
+    pub record_audio: bool,
 }
 
 impl Default for RecorderSettings {
@@ -199,7 +206,7 @@ impl Default for RecorderSettings {
             auto_increment: true,
             include_ui: true,
             quality: 75,
-            audio: false,
+            record_audio: true,
         }
     }
 }

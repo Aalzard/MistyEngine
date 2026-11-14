@@ -831,6 +831,11 @@ pub fn apply_env(
         misty_engine::profile_scope!("Editor.EnterPlay");
         crate::play::start(s);
     }
+    // `MISTY_RECORD=1` presses the Recorder window's Start Recording (the package must be
+    // installed; Scene Viewer recorders enter Play mode themselves).
+    if std::env::var_os("MISTY_RECORD").is_some() {
+        crate::recorder::request_start(s, None);
+    }
     // `MISTY_PREFERENCES=1` opens Edit ▸ Preferences (the language picker).
     if std::env::var_os("MISTY_PREFERENCES").is_some() {
         s.code_editor.ui.prefs_open = true;

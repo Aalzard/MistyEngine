@@ -5179,3 +5179,48 @@ is flat from the fifth cycle.
 - Timings: hero 12.0 ms GPU (parts 11.8), inside 11.1 ms (parts 10.8). Checks: fmt clean,
   clippy 0 warnings, editor tests 1009 passed (with `noon_valley_matches_its_generator`),
   workspace tests passed on the round's first state; no engine change since round 6's golden.
+
+## Round 69 — The Recorder records sound (branch r69-recaudio)
+
+- **Record Audio** (new setting, on by default): MP4 and WebM recordings get the game's sound
+  mix as an Opus track (48 kHz stereo, 64–192 kb/s with Quality); PNG / JPG sequences get a
+  16-bit WAV beside the frames (`<name>.wav`); GIFs stay silent and don't show the setting.
+  The old, always-off `audio` field of `Recorder.json` is ignored (it replaced the disabled
+  "Capture Audio" box).
+- **Mix taps** (`misty_engine::audio::tap`): a lock-free copy of the final mix, pushed block
+  by block with the mix's sample clock. With no subscriber the graph's tap list is empty and
+  nothing else happens; a tap whose reader is dropped leaves on the next block.
+- **Capture time for sound**: while a recording keeps sound, the game's mix runs in capture
+  time like the game (`Audio::start_capture` / `advance_capture` / `stop_capture`): each
+  captured frame renders exactly one frame of sound, ordered with that frame's commands in the
+  same queue (`Command::Advance`), on the device thread or offline. The device plays what
+  that rendered (silence while the game is slower than real time, up to 0.25 s behind when
+  it is faster). A device opened mid-recording joins at the current capture time; Play mode
+  starting and scene swaps get a fresh tap.
+- **Sync**: the Recorder places every tap sample by its sample clock on the recording's own
+  timeline (sample 0 = the first captured frame), resamples device rates to 48 kHz (Hermite),
+  fills uncovered time with silence after a 2 s grace, and cuts / pads the track to exactly
+  frames ÷ fps. MP4: an `Opus` sample entry with `dOps` and an edit list that trims the
+  encoder delay; WebM: an `A_OPUS` track with CodecDelay and SeekPreRoll, blocks written in
+  timestamp order.
+- **Codec**: `opus1` 0.3 (BSD-3-Clause, a pure-Rust port of libopus): nothing to install or
+  compile from C. Opus is royalty-free; no patented codec (AAC) was added.
+- **Readers**: `mp4::read_audio` and the WebM reader's audio fields, used by the tests and the
+  editor check below. `MISTY_RECORD=1` presses Start Recording (automation hook).
+- **Docs**: User Guide chapter 11 (English and Arabic) has a Sound section; Turkish and
+  Arabic strings for the new setting.
+- **Tests**: engine `audio::tap_tests` (8: no subscriber means no tap and the same mix, a
+  silent mix taps silence, exact sample counts at 44.1 / 48 kHz and 24 / 30 / 60 fps, a late
+  tap knows its capture time, a sound starts on its frame's sample, the device thread catches
+  up in command order, ten minutes with no drift, back to real time). Recorder (8 new): the
+  feed places samples by clock, silence of exactly the video's length, 44.1 kHz in → 48 kHz
+  counts, Opus round trip in step, a 3-minute MP4 (44.1 kHz mix) and a 1-minute WebM with a
+  click every 10 / 5 s (every click within 2 ms of its frame, no drift), sequences get a WAV,
+  GIF / off have none; plus an ignored `probe_a_recording` (`MISTY_PROBE=<file>`). Editor: a
+  video keeps the game's sound in capture time (the mix is untouched with Record Audio off).
+- **In the editor**: a copy of SampleProject with the package installed, `AudioDemo.scene`,
+  a 180-frame 640×360 MP4 recorder at 30 fps (`MISTY_RECORD=1`): 180 video frames, an Opus
+  track of exactly 6.000 s (301 packets); decoded through the Recorder's reader it holds the
+  scene's music (RMS 0.089, peak 0.35). No ffprobe on this machine.
+- Checks: fmt clean, clippy 0 warnings (workspace, all targets, release), recorder 18 passed
+  (1 ignored), engine audio 74 passed, editor 1011 passed (88 ignored).

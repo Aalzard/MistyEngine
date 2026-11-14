@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use super::VoiceParams;
 use super::dsp::Frame;
 use super::effects::EffectSpec;
+use super::tap::TapWriter;
 
 /// Handle to one playing sound.
 pub type VoiceId = u64;
@@ -77,6 +78,20 @@ pub trait AudioBackend {
     fn render(&mut self, frames: usize) -> Option<Vec<Frame>> {
         let _ = frames;
         None
+    }
+
+    /// Copy the final mix into `tap` (the Recorder). Backends that mix nothing drop it, and its
+    /// reader stays empty.
+    fn add_tap(&mut self, tap: TapWriter) {
+        drop(tap);
+    }
+    /// Run the mix in capture time from second `at` (`None`: back to real time).
+    fn set_clock(&mut self, at: Option<f64>) {
+        let _ = at;
+    }
+    /// Capture time reached second `until`: mix up to there.
+    fn advance_clock(&mut self, until: f64) {
+        let _ = until;
     }
 }
 
