@@ -30,7 +30,7 @@ see a box like this:
    position between runs.
 8. [Guide: animation transitions](08-guide-animation.md): Idle, Walk, Run and Jump driven
    by speed through the Animator.
-9. [Behaviour Trees](09-behaviour-trees.md): AI for enemies and NPCs with the optional
+12. [Behaviour Trees](12-behaviour-trees.md): AI for enemies and NPCs with the optional
    Behaviour Trees package: nodes, the blackboard, aborts and live debugging.
 
 [Glossary](glossary.md): the words this guide uses, in one place.

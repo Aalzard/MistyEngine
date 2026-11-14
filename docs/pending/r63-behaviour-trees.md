@@ -79,7 +79,7 @@ SampleProject's manifest does **not** install the package (the scene plays witho
 
 ### Docs
 
-- User Guide chapter `docs/guide/{en,ar}/09-behaviour-trees.md` (+ index entries).
+- User Guide chapter `docs/guide/{en,ar}/12-behaviour-trees.md` (+ index entries).
 - `docs/api` regenerated for the `BehaviourTree` Lua table.
 
 ## Checklist

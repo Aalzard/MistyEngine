@@ -4791,5 +4791,5 @@ merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
 - **Scripting**: the `BehaviourTree` Lua table (GetValue, SetValue, HasKey, Start, Stop,
   Restart, IsRunning, GetStatus, Finish), also Script Graph nodes; `docs/api` regenerated.
 - **Sample**: `BehaviourTreeDemo` scene: a guard that patrols, chases the player when it sees
-  them, attacks in range, searches and returns to patrol. User Guide chapter 9 (English and
+  them, attacks in range, searches and returns to patrol. User Guide chapter 12 (English and
   Arabic); Turkish and Arabic UI strings.

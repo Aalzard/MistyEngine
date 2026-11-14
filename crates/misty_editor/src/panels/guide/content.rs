@@ -42,7 +42,7 @@ pub static CHAPTERS: &[Chapter] = &[
     chapter!("06-guide-door"),
     chapter!("07-guide-saving"),
     chapter!("08-guide-animation"),
-    chapter!("09-behaviour-trees"),
+    chapter!("12-behaviour-trees"),
     chapter!("glossary"),
 ];
 
