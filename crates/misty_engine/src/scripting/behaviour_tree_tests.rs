@@ -283,7 +283,7 @@ fn shared_keys_lookat_stop_start_and_tick_rate() {
     ]);
     let mut scene = Scene::new("t");
     let target = scene.spawn("Target", None);
-    scene.transform_mut(target).position = Vec3::new(10.0, 0.0, 0.0);
+    scene.set_transform(target, crate::scene::Transform::from_position(Vec3::new(10.0, 0.0, 0.0)));
     let watcher = agent(&mut scene, "Watcher", "Assets/AI/Pair.btree");
     let listener = agent(&mut scene, "Listener", "Assets/AI/Pair.btree");
     for (e, watching) in [(watcher, true), (listener, false)] {

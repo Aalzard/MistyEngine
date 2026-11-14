@@ -141,7 +141,7 @@ impl BtRuntime {
         self.frame += 1;
         let frame = self.frame;
         let mut fresh: Vec<Entity> = Vec::new();
-        for (e, a) in scene.world.query::<&BehaviourTreeAgent>().iter() {
+        for (e, a) in scene.world.query::<(Entity, &BehaviourTreeAgent)>().iter() {
             match self.index.get(&e) {
                 Some(&i) => self.agents[i].alive = frame,
                 None if a.tree.as_deref().is_some_and(|t| !t.is_empty()) => fresh.push(e),

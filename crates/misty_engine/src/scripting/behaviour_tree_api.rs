@@ -626,13 +626,21 @@ impl ScriptHost {
                         path: g.to_string(),
                         ..Default::default()
                     };
-                    match w.scene.world.get::<&mut crate::scene::Scripts>(e) {
-                        Ok(mut s) => {
+                    let pushed = w
+                        .scene
+                        .world
+                        .get::<&mut crate::scene::Scripts>(e)
+                        .map(|mut s| {
                             s.list.push(r.clone());
-                            Some((s.list.len() - 1, r))
-                        }
-                        Err(_) => {
-                            let s = crate::scene::Scripts { list: vec![r.clone()] };
+                            s.list.len() - 1
+                        })
+                        .ok();
+                    match pushed {
+                        Some(slot) => Some((slot, r)),
+                        None => {
+                            let s = crate::scene::Scripts {
+                                list: vec![r.clone()],
+                            };
                             let _ = w.scene.world.insert_one(e, s);
                             Some((0, r))
                         }
