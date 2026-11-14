@@ -476,6 +476,7 @@ fn node_ui(
     let selected = w.selected.contains(&n.id);
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z));
     painter.rect_filled(rect, 6.0 * z, node_bg());
+    let header_fill = category_color(n.kind.category());
     painter.rect_filled(
         header,
         egui::CornerRadius {
@@ -484,14 +485,14 @@ fn node_ui(
             sw: 0,
             se: 0,
         },
-        category_color(n.kind.category()),
+        header_fill,
     );
     painter.text(
         header.left_center() + vec2(8.0 * z, 0.0),
         Align2::LEFT_CENTER,
         tr(n.kind.label()),
         FontId::proportional(12.5 * z),
-        Color32::WHITE,
+        theme::text_on(header_fill),
     );
     let mut y = header.bottom() + 3.0 * z;
     if !n.name.is_empty() {
