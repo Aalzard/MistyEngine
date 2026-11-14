@@ -245,7 +245,7 @@ impl AssetDatabase {
         let messages = &mut self.messages;
         for rel in model_files {
             let entry = models::model(&rel).map(|m| {
-                match models::extract_materials(&rel, &m) {
+                match models::extract_materials_in(&self.root, &rel, &m) {
                     Ok(created) => {
                         for c in created {
                             if misty_engine::assets::is_texture(&c) {
@@ -258,7 +258,7 @@ impl AssetDatabase {
                     }
                     Err(e) => messages.push(format!("Could not extract materials of {rel}: {e}")),
                 }
-                match models::extract_animations(&rel, &m) {
+                match models::extract_animations_in(&self.root, &rel, &m) {
                     Ok(created) => {
                         for c in created {
                             messages.push(format!("Imported {c} from {rel}"));
@@ -616,6 +616,56 @@ mod tests {
         assert_eq!(AssetDatabase::material_name(Some(&a)), "New Material");
         assert_eq!(reopened.params(None), MaterialParams::default());
         std::fs::remove_dir_all(root).ok();
+    }
+
+    /// A model imported while another thread has moved the global project root (the editor's
+    /// tests do that all the time: one opens a temp copy of the sample, another sets the root to
+    /// the repo's own) gets its materials extracted into its own project. They were written
+    /// next to `Assets/Models/Crate.fbx` of whatever project the global root named: the repo's
+    /// SampleProject got `Crate_Metal.mat`, `Crate_Metal_Normal.png` and `Crate_Wood.mat`
+    /// after full test runs.
+    #[test]
+    fn models_extract_into_their_own_project_whatever_the_global_root() {
+        let base = std::env::temp_dir().join(format!("misty_extract_root_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (own, other) = (base.join("Own"), base.join("Other"));
+        for p in [&own, &other] {
+            std::fs::create_dir_all(p.join("Assets/Models")).unwrap();
+        }
+        let mut db = AssetDatabase::open(&own);
+        // Another project becomes the global root (a test running alongside), then a model
+        // appears in this one.
+        misty_engine::assets::set_project_root(&other);
+        let crate_fbx = crate::test_sample::repo_sample().join("Assets/Models/Crate.fbx");
+        for p in [&own, &other] {
+            std::fs::copy(&crate_fbx, p.join("Assets/Models/Crate.fbx")).unwrap();
+        }
+        // (Other tests move the global root too: the model itself may not be found under the
+        // root they set; try again until it is read. Nothing must ever land in `other`.)
+        for _ in 0..50 {
+            misty_engine::assets::set_project_root(&other);
+            db.refresh();
+            if own.join("Assets/Models/Crate_Wood.mat").is_file() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            own.join("Assets/Models/Crate_Wood.mat").is_file(),
+            "{:?}",
+            db.messages
+        );
+        let stray: Vec<_> = std::fs::read_dir(other.join("Assets/Models"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .filter(|n| n != "Crate.fbx")
+            .collect();
+        assert!(
+            stray.is_empty(),
+            "written into the other project: {stray:?}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 

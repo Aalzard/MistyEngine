@@ -1165,7 +1165,8 @@ fn vfx_demo2_renders() {
         eprintln!("no GPU adapter: skipped");
         return;
     };
-    let root = project();
+    // A copy: the global project root never names the repo's sample (see test_sample).
+    let root = crate::test_sample::shared_copy();
     misty_engine::assets::set_project_root(&root);
     misty_engine::vfx::subgraph::register(ORBIT, orbit());
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();

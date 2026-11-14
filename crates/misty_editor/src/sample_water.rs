@@ -437,7 +437,8 @@ fn water_demo_matches_its_generator() {
 fn water_demo_plays_and_crates_float() {
     use misty_engine::runtime::Time;
     use misty_engine::scripting::{Input, ScriptHost};
-    let root = project();
+    // A copy: the global project root never names the repo's sample (see test_sample).
+    let root = crate::test_sample::shared_copy();
     misty_engine::assets::set_project_root(&root);
     let (mut scene, _) = Scene::load(&root.join(WATER_SCENE)).unwrap();
     let physics = misty_engine::physics::Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));

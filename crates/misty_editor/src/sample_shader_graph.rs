@@ -563,7 +563,8 @@ fn shader_graph_demo_renders() {
         eprintln!("no GPU adapter: skipped");
         return;
     };
-    let root = project();
+    // A copy: the global project root never names the repo's sample (see test_sample).
+    let root = crate::test_sample::shared_copy();
     misty_engine::assets::set_project_root(&root);
     let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     let mut assets = misty_engine::assets::AssetCache::open(&root);

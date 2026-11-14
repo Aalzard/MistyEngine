@@ -1,6 +1,13 @@
 //! Material extraction: each model material becomes a `.mat` asset next to the model
 //! ("Ship_Hull.mat"), with embedded textures written as PNG ("Ship_Hull_Albedo.png").
 //! Existing files are never overwritten, so edits to extracted materials survive re-imports.
+//!
+//! Paths are project-relative. The plain functions resolve them against the global project
+//! root ([`assets::set_project_root`]); the `_in` ones against the root they are given, so an
+//! import of one project can't write into another one that a different thread set as the
+//! global root meanwhile (the editor's tests open temp copies of the sample project while
+//! others set the root to the repo's own: `Crate_Metal.mat` and friends were extracted into
+//! the repo).
 
 use std::path::{Path, PathBuf};
 
@@ -20,9 +27,33 @@ fn clean(name: &str) -> String {
         .collect()
 }
 
+/// A project root to resolve paths against (`None` = the global one).
+#[derive(Clone, Copy)]
+struct Root<'a>(Option<&'a Path>);
+
+impl Root<'_> {
+    fn absolute(self, rel: &str) -> PathBuf {
+        match self.0 {
+            Some(root) => root.join(rel),
+            None => assets::absolute(rel),
+        }
+    }
+
+    fn relative(self, path: &Path) -> String {
+        match self.0 {
+            Some(root) => path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/"),
+            None => assets::relative(path),
+        }
+    }
+}
+
 /// Model folder (absolute) and file stem.
-fn base(model_rel: &str) -> (PathBuf, String) {
-    let abs = assets::absolute(model_rel);
+fn base(root: Root, model_rel: &str) -> (PathBuf, String) {
+    let abs = root.absolute(model_rel);
     let stem = abs
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -35,11 +66,15 @@ fn base(model_rel: &str) -> (PathBuf, String) {
 
 /// Project-relative `.mat` path for material `index` of the model at `model_rel`.
 pub fn material_asset_path(model_rel: &str, model: &Model, index: usize) -> Option<String> {
+    material_path(Root(None), model_rel, model, index)
+}
+
+fn material_path(root: Root, model_rel: &str, model: &Model, index: usize) -> Option<String> {
     let m = model.materials.get(index)?;
-    let (mut dir, stem) = base(model_rel);
+    let (mut dir, stem) = base(root, model_rel);
     // Import setting: materials extracted to another folder ("Extract Materials…").
     if !model.material_folder.is_empty() {
-        dir = assets::absolute(&model.material_folder);
+        dir = root.absolute(&model.material_folder);
     }
     // Two materials with the same name get the index appended.
     let dupes = model.materials.iter().filter(|o| o.name == m.name).count();
@@ -48,18 +83,31 @@ pub fn material_asset_path(model_rel: &str, model: &Model, index: usize) -> Opti
     } else {
         format!("{stem}_{}", clean(&m.name))
     };
-    Some(assets::relative(&dir.join(format!("{name}.mat"))))
+    Some(root.relative(&dir.join(format!("{name}.mat"))))
 }
 
 /// Write missing `.mat` files (and embedded textures) for the model's materials.
 /// Returns the project-relative paths of the files created.
 pub fn extract_materials(model_rel: &str, model: &Model) -> Result<Vec<String>, String> {
+    extract_materials_at(Root(None), model_rel, model)
+}
+
+/// [`extract_materials`] in the project at `root`.
+pub fn extract_materials_in(
+    root: &Path,
+    model_rel: &str,
+    model: &Model,
+) -> Result<Vec<String>, String> {
+    extract_materials_at(Root(Some(root)), model_rel, model)
+}
+
+fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Vec<String>, String> {
     let mut created = Vec::new();
     for (i, m) in model.materials.iter().enumerate() {
-        let Some(rel) = material_asset_path(model_rel, model, i) else {
+        let Some(rel) = material_path(root, model_rel, model, i) else {
             continue;
         };
-        let path = assets::absolute(&rel);
+        let path = root.absolute(&rel);
         if path.exists() {
             continue;
         }
@@ -75,14 +123,14 @@ pub fn extract_materials(model_rel: &str, model: &Model) -> Result<Vec<String>, 
             ("Normal", &m.normal, &mut material.normal_map),
         ] {
             *target = match source {
-                Some(TextureSource::File(p)) => Some(assets::relative(p)),
+                Some(TextureSource::File(p)) => Some(root.relative(p)),
                 Some(TextureSource::Embedded(bytes)) => {
                     let png = dir.join(format!("{stem}_{slot}.png"));
                     if !png.exists() {
                         write_png(bytes, &png)?;
-                        created.push(assets::relative(&png));
+                        created.push(root.relative(&png));
                     }
-                    Some(assets::relative(&png))
+                    Some(root.relative(&png))
                 }
                 None => None,
             };
@@ -90,14 +138,14 @@ pub fn extract_materials(model_rel: &str, model: &Model) -> Result<Vec<String>, 
         // Feature maps from glTF extensions (Clear Coat normal).
         for (map, source) in &m.extra_maps {
             let rel = match source {
-                TextureSource::File(p) => assets::relative(p),
+                TextureSource::File(p) => root.relative(p),
                 TextureSource::Embedded(bytes) => {
                     let png = dir.join(format!("{stem}_{}.png", map.label()));
                     if !png.exists() {
                         write_png(bytes, &png)?;
-                        created.push(assets::relative(&png));
+                        created.push(root.relative(&png));
                     }
-                    assets::relative(&png)
+                    root.relative(&png)
                 }
             };
             *map.slot(&mut material) = Some(rel);
@@ -120,26 +168,47 @@ fn write_png(bytes: &[u8], path: &Path) -> Result<(), String> {
 
 /// Project-relative `.anim` path for animation `index` of the model ("Tentacle_Bend.anim").
 pub fn animation_asset_path(model_rel: &str, model: &Model, index: usize) -> Option<String> {
+    animation_path(Root(None), model_rel, model, index)
+}
+
+fn animation_path(root: Root, model_rel: &str, model: &Model, index: usize) -> Option<String> {
     let a = model.animations.get(index)?;
-    let (dir, stem) = base(model_rel);
+    let (dir, stem) = base(root, model_rel);
     let dupes = model.animations.iter().filter(|o| o.name == a.name).count();
     let name = if dupes > 1 {
         format!("{stem}_{} {index}", clean(&a.name))
     } else {
         format!("{stem}_{}", clean(&a.name))
     };
-    Some(assets::relative(&dir.join(format!("{name}.anim"))))
+    Some(root.relative(&dir.join(format!("{name}.anim"))))
 }
 
 /// Write missing `.anim` clips for the model's animations (existing files are kept, so edits
 /// survive re-imports). Returns the project-relative paths of the files created.
 pub fn extract_animations(model_rel: &str, model: &Model) -> Result<Vec<String>, String> {
+    extract_animations_at(Root(None), model_rel, model)
+}
+
+/// [`extract_animations`] in the project at `root`.
+pub fn extract_animations_in(
+    root: &Path,
+    model_rel: &str,
+    model: &Model,
+) -> Result<Vec<String>, String> {
+    extract_animations_at(Root(Some(root)), model_rel, model)
+}
+
+fn extract_animations_at(
+    root: Root,
+    model_rel: &str,
+    model: &Model,
+) -> Result<Vec<String>, String> {
     let mut created = Vec::new();
     for (i, a) in model.animations.iter().enumerate() {
-        let Some(rel) = animation_asset_path(model_rel, model, i) else {
+        let Some(rel) = animation_path(root, model_rel, model, i) else {
             continue;
         };
-        let path = assets::absolute(&rel);
+        let path = root.absolute(&rel);
         if path.exists() {
             continue;
         }
