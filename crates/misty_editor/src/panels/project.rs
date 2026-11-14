@@ -493,7 +493,7 @@ fn tile_icon(
             Align2::CENTER_CENTER,
             e.icon(),
             FontId::proportional(cell * 0.6),
-            e.icon_color(),
+            crate::theme::shade(e.icon_color()),
         );
     }
 }

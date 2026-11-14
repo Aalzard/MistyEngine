@@ -160,9 +160,9 @@ fn folder_row(
         let arrow = ui.interact(arrow_rect, id, Sense::click());
         let is_open = browser.expanded.contains(&node.path);
         let color = if arrow.hovered() {
-            tree_lines::ARROW_HOVER
+            crate::theme::shade(tree_lines::ARROW_HOVER)
         } else {
-            tree_lines::ARROW
+            crate::theme::shade(tree_lines::ARROW)
         };
         tree_lines::paint_arrow(ui.painter(), arrow_rect.center(), is_open, color);
         if arrow.clicked() {
@@ -180,8 +180,8 @@ fn folder_row(
             .as_ref()
             .is_some_and(|(p, _)| *p == node.path);
     let color = match (selected, parent) {
-        (true, _) => Color32::WHITE,
-        (false, true) => tree_lines::PARENT_TEXT,
+        (true, _) => crate::theme::selection_text(),
+        (false, true) => crate::theme::shade(tree_lines::PARENT_TEXT),
         (false, false) => theme::text(),
     };
     let label = if renaming { "" } else { node.name.as_str() };

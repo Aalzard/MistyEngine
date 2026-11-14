@@ -116,9 +116,9 @@ pub fn vec3_row_mixed(
 
 fn axis_color(i: usize) -> Color32 {
     match i {
-        0 => theme::AXIS_X,
-        1 => theme::AXIS_Y,
-        _ => theme::AXIS_Z,
+        0 => crate::theme::shade(theme::AXIS_X),
+        1 => crate::theme::shade(theme::AXIS_Y),
+        _ => crate::theme::shade(theme::AXIS_Z),
     }
 }
 

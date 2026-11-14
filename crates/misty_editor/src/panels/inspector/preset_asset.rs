@@ -63,7 +63,10 @@ pub fn preset_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         }
         Err(e) => {
             // Keep the edit (e.g. half-typed) without saving it.
-            ui.colored_label(theme::AXIS_X, format!("Not saved: {e}"));
+            ui.colored_label(
+                crate::theme::shade(theme::AXIS_X),
+                format!("Not saved: {e}"),
+            );
             ui.ctx().data_mut(|d| d.insert_temp(id, draft));
         }
     }

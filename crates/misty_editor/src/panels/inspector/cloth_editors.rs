@@ -85,7 +85,7 @@ pub(super) fn cloth(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         .map(|m| m.vertices.len());
     if smr.is_none() {
         ui.colored_label(
-            crate::theme::AXIS_X,
+            crate::theme::shade(crate::theme::AXIS_X),
             "Cloth simulates a Skinned Mesh Renderer's mesh.",
         );
         let plain = state.scene.world.get::<&MeshFilter>(e).is_ok()

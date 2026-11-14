@@ -21,7 +21,7 @@ pub fn mask_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let mask = match state.anim_clips.masks.get(rel) {
         Ok(m) => m.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };
@@ -181,7 +181,7 @@ pub fn avatar_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let avatar = match Avatar::load(&state.assets.absolute(rel)) {
         Ok(a) => a,
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };
@@ -206,7 +206,7 @@ pub fn avatar_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                         ui.label(RichText::new(&x.path).color(theme::text_dim()));
                     }
                     None if b.required() => {
-                        ui.colored_label(theme::AXIS_X, "Missing");
+                        ui.colored_label(crate::theme::shade(theme::AXIS_X), "Missing");
                     }
                     None => {
                         ui.weak("(optional)");

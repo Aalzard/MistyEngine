@@ -546,9 +546,9 @@ fn key_menu(ui: &mut Ui, s: &mut EditorState) {
 fn curve_color(p: misty_engine::animation::Property) -> Color32 {
     use misty_engine::animation::Property::*;
     match p {
-        Position(0) | Rotation(0) | Scale(0) | LightColor(0) => theme::AXIS_X,
-        Position(1) | Rotation(1) | Scale(1) | LightColor(1) => theme::AXIS_Y,
-        Position(_) | Rotation(_) | Scale(_) | LightColor(_) => theme::AXIS_Z,
+        Position(0) | Rotation(0) | Scale(0) | LightColor(0) => crate::theme::shade(theme::AXIS_X),
+        Position(1) | Rotation(1) | Scale(1) | LightColor(1) => crate::theme::shade(theme::AXIS_Y),
+        Position(_) | Rotation(_) | Scale(_) | LightColor(_) => crate::theme::shade(theme::AXIS_Z),
         _ => crate::theme::shade(Color32::from_rgb(230, 200, 80)),
     }
 }

@@ -211,7 +211,7 @@ pub fn timeline_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let asset = match state.anim_clips.timelines.get(rel) {
         Ok(t) => t.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };

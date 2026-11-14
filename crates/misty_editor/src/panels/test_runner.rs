@@ -571,16 +571,16 @@ fn summary_bar(ui: &mut Ui, s: &mut EditorState) {
         let (done, all) = run.progress();
         let name = run.current().map(|c| c.name.as_str()).unwrap_or("…");
         (
-            crate::theme::shade(RUNNING).gamma_multiply(0.55),
+            RUNNING.gamma_multiply(0.55),
             format!("Running {}/{all}: {name}", done + 1),
         )
     } else {
         let fill = if sum.failed > 0 {
-            crate::theme::shade(FAILED).gamma_multiply(0.6)
+            FAILED.gamma_multiply(0.6)
         } else if sum.passed > 0 {
-            crate::theme::shade(PASSED).gamma_multiply(0.55)
+            PASSED.gamma_multiply(0.55)
         } else {
-            crate::theme::shade(Color32::from_gray(70))
+            Color32::from_gray(70)
         };
         let mut text = format!(
             "✔ {} passed    ✖ {} failed    ⊘ {} skipped",

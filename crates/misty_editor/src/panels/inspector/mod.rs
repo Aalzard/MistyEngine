@@ -849,7 +849,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ));
         }
         Err(err) => {
-            ui.colored_label(theme::AXIS_X, err);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), err);
         }
     }
 }

@@ -118,7 +118,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 Align2::CENTER_CENTER,
                 "Display 1\nNo cameras rendering",
                 FontId::proportional(16.0),
-                crate::theme::shade(Color32::from_gray(200)),
+                Color32::from_gray(200),
             );
         }
     }

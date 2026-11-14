@@ -134,7 +134,7 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let clip = match state.anim_clips.get(rel) {
         Ok(c) => c.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };

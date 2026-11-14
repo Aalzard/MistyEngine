@@ -420,6 +420,7 @@ pub fn appearance_section(
                 .suffix("%"),
             )
             .labelled_by(l.id);
+        let r = crate::a11y::name(r, egui::WidgetType::Slider, &tr!("Text Size"));
         if r.changed()
             && let Err(e) = a.set_font_scale(ui.ctx(), pct / 100.0)
         {

@@ -193,7 +193,7 @@ pub fn controller_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let ctrl = match state.anim_clips.controllers.get(rel) {
         Ok(c) => c.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };

@@ -71,7 +71,10 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let saved = match TreeAsset::load(&abs) {
         Ok(t) => t,
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, format!("Could not read the tree: {e}"));
+            ui.colored_label(
+                crate::theme::shade(theme::AXIS_X),
+                format!("Could not read the tree: {e}"),
+            );
             return;
         }
     };
@@ -327,7 +330,7 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         }
         None => match store::error(rel) {
             Some(e) => {
-                ui.colored_label(theme::AXIS_X, e);
+                ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             }
             None => {
                 ui.weak("Building…");

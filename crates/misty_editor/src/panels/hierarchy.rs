@@ -243,7 +243,7 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
     }
     let color = match (loaded, active) {
         (false, _) => theme::text_dim(),
-        (true, true) => Color32::WHITE,
+        (true, true) => theme::shade(Color32::WHITE),
         (true, false) => theme::text(),
     };
     let text_pos = pos2(rect.left() + 18.0, rect.center().y);
@@ -355,9 +355,9 @@ fn scene_menu(ui: &mut Ui, state: &mut EditorState, id: SceneId) {
 /// Foldout triangle colour: brighter under the pointer.
 fn arrow_color(arrow: &egui::Response) -> Color32 {
     if arrow.hovered() {
-        tree_lines::ARROW_HOVER
+        theme::shade(tree_lines::ARROW_HOVER)
     } else {
-        tree_lines::ARROW
+        theme::shade(tree_lines::ARROW)
     }
 }
 
@@ -437,9 +437,9 @@ fn row(
     // Prefab instances (root and children) have blue names; red when the prefab is missing.
     let prefab_color = super::prefab_rows::name_color(prefab, active);
     let color = match (selected && state.hierarchy.focused, active, prefab_color) {
-        (true, _, _) => Color32::WHITE,
+        (true, _, _) => theme::selection_text(),
         (false, _, Some(c)) => c,
-        (false, true, None) if has_children || is_folder => tree_lines::PARENT_TEXT,
+        (false, true, None) if has_children || is_folder => theme::shade(tree_lines::PARENT_TEXT),
         (false, true, None) => theme::text(),
         (false, false, None) => theme::text_dim(),
     };
@@ -901,7 +901,11 @@ pub fn row_with_icon(
         );
     }
     let mut pos = rect.left_center() + vec2(6.0 + depth as f32 * INDENT, 0.0);
-    let color = if selected { Color32::WHITE } else { color };
+    let color = if selected {
+        theme::selection_text()
+    } else {
+        color
+    };
     if let Some(icon) = icon {
         let slot = Rect::from_min_size(pos2(pos.x, rect.top()), vec2(15.0, ROW_H));
         crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, color);
