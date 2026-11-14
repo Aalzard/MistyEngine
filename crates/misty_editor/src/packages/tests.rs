@@ -321,3 +321,35 @@ fn registry_installs_check_hashes_and_resolve_dependencies() {
     assert!(matches!(w.registry, RegistryState::NotConfigured));
     assert!(RegistryIndex::parse("{", "x").is_err());
 }
+
+/// A project open read-only (another editor holds its lock) keeps its package manifest and
+/// the Recorder's settings: Install, Remove and the Recorder window's saves wrote them with
+/// plain file writes, past the lock (Remove also deleted `ProjectSettings/Recorder.json` of the
+/// editor that owns the project).
+#[test]
+fn a_read_only_project_keeps_its_manifest_and_recorder_settings() {
+    let root = temp("read_only");
+    optional::install(&root, optional::RECORDER).unwrap();
+    let list = crate::recorder::RecorderList::default();
+    list.save(&root).unwrap();
+    let manifest = std::fs::read_to_string(root.join(manifest::MANIFEST_FILE)).unwrap();
+    let settings = root.join(crate::recorder::SETTINGS_FILE);
+
+    misty_engine::asset_db::set_read_only(&root, true);
+    let removed = optional::remove(
+        &root,
+        optional::RECORDER,
+        optional::settings_files(optional::RECORDER),
+    );
+    let saved = list.save(&root);
+    let installed = optional::install(&root, "com.misty.recorder");
+    misty_engine::asset_db::set_read_only(&root, false);
+
+    assert!(removed.is_err() && saved.is_err() && installed.is_err());
+    assert!(settings.is_file(), "the settings file was deleted");
+    assert_eq!(
+        std::fs::read_to_string(root.join(manifest::MANIFEST_FILE)).unwrap(),
+        manifest
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

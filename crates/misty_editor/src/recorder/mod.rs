@@ -68,7 +68,9 @@ impl RecorderList {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())? + "\n";
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+        // Refused in a project open read-only (another editor holds its lock).
+        misty_engine::asset_db::write_atomic(&path, text)
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 
