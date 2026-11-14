@@ -4903,3 +4903,22 @@ The PC lost power and hit memory bugchecks several times: unsaved scene work mus
 - Views: `docs/screenshots/r59/level_*.jpg`. Hero 11.9 ms GPU (parts 11.5).
 - Checks: fmt clean, clippy 0 warnings, tests 945 editor + 1606 engine + 13 passed, golden
   20 / 20 unchanged.
+
+### Round 59.3 — grey band past the crest, inside view cost, limestone outcrops
+
+- **Grass edge**: the far field is 20 % more saturated than the blades' mean (the haze greys
+  it as much as it greys the blades) and the eye adaptation sits 0.3 EV under. Eye level, sRGB
+  just past the crest / grass mass: round 2 78/84/43 / 77/87/35, now 65/71/32 / 64/74/25
+  (main 82/91/48 / 57/66/27). `fade_graze_crest_main_r2_r3.jpg` (rows: main, round 2, round 3).
+- **Inside view cost**: tree shadow detail 0.2 (lighter meshes in the cascades), Plant Shadow
+  Distance 4 m, tree full meshes to 20 m, a third fewer ground-cover carpets, fewer and broader
+  dark herbs. Inside GPU 14.3 → 13.4 ms (parts 13.8 → 12.3; shadow maps 2.9 → 1.5, trees
+  2.1 → 1.7; 9.5 M triangles from 13.1 M). Hero 12.3 ms (parts 11.9).
+- **Cliffs**: big layered limestone outcrops (10–18 m) in the three cliff sites of the first
+  view; the nearest reads as stacked tan slabs with shadowed partings from the meadow
+  (`cliffs_outcrops_r3.jpg`); the others sit mostly behind the hillside forest.
+- Checks: fmt clean, clippy 0 warnings, editor tests 969 passed (with
+  `noon_valley_matches_its_generator`), engine tests 1622 passed, golden 20 / 20 (engine
+  checked on the first round-3 build; the second only changed the generator). One editor UI
+  test (`right_click_on_empty_space_opens_the_folder_menu_everywhere`, from main) failed once
+  under load and passed 3 / 3 alone and in the next full editor run.

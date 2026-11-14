@@ -77,6 +77,23 @@ meadow brighter than the photo (the darker sky raised the eye adaptation); herbs
 pale sprouts; `inside2` crowns still light; inside 1.6 ms over target; cliffs still smooth
 from the meadow (no rock meshes yet).
 
+## Round 3: grey band, inside cost, outcrops
+
+Eye level (sRGB, same bands): r5 far 71/78/55, past crest 78/84/43, grass 77/87/35;
+r6 / r7 far 58/65/43, past crest 65/71/32, grass 64/74/25. On / off at the edge (16–60 rows):
+1.17 / 1.07 / 0.95 / 1.12 (pose, hero, away, left).
+
+Timing tries with the test knobs (inside, High 1920×1080): as regenerated in r6 15.3 ms
+(parts 14.3, shadow maps 2.8); `shadowdetail:0.2,plantshadow:4` 14.0 (12.8, shadow 1.6);
+plus `treelod:20` 12.8 (12.4). Committed (r7): inside 13.42 ms GPU, parts 12.33, CPU 2.9;
+hero 12.31, parts 11.88. Herbs are still 0.6 + 0.8 ms (the next cut if the inside view must
+drop further).
+
+Still differs: the far meadow (200–500 m) is darker grey-olive than the photo's lighter
+olive; herbs still read as pale sprouts in the sun; the cliff terrain patch on the left of the
+first view is a beige patch with tree dots (no outcrops show there); `inside2` crowns lighter
+than the photo; inside GPU ~0.7 ms over 12.7.
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
