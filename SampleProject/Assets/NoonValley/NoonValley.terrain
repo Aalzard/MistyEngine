@@ -109,7 +109,7 @@
     },
     {
       "name": "Forest Floor",
-      "diffuse": "Assets/NoonValley/Textures/ForestFloor.png",
+      "diffuse": "Assets/NoonValley/Textures/ForestFloorToned.png",
       "normal_map": "Assets/NoonValley/Textures/ForestFloorNormal.png",
       "normal_scale": 1.2,
       "tile_size": [
@@ -357,7 +357,6 @@
     "Assets/Flowers/DaisyRoughness.png": "9dd01e4155054048bdb26104fb1de158",
     "Assets/Flowers/DaisyTranslucency.png": "ea0f29654c3b464d880061465154ed33",
     "Assets/NoonValley/Textures/CreamDaisy.png": "5d8d4650101cf7b1c284fca7b0cdac66",
-    "Assets/NoonValley/Textures/ForestFloor.png": "ea9f260ca66743d5bd77ae0b5866e1dd",
     "Assets/NoonValley/Textures/ForestFloorHeight.png": "a790dd416b10e172e8ef9c3991808e2e",
     "Assets/NoonValley/Textures/ForestFloorNormal.png": "7daaf7d1759324d55d216f7cb4f3e5f1",
     "Assets/NoonValley/Textures/Limestone.png": "11fa64daa15c8c04e793514f316405ea",
