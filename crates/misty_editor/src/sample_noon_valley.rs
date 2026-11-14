@@ -1285,8 +1285,8 @@ fn terrain_data() -> TerrainData {
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         // Patches of moss over the litter in the woods (the dark turf, no grass on it).
         if out[3] > 0 {
-            let moss = smooth(0.05, 0.35, noise::fbm(x, z, 11.0, 3, 91))
-                * (0.55 + 0.45 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
+            let moss = (0.3 + 0.5 * smooth(-0.2, 0.3, noise::fbm(x, z, 11.0, 3, 91)))
+                * (0.6 + 0.4 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
             let moved = (out[3] as f32 * moss * 0.7).round() as u8;
             out[3] -= moved;
             out[1] = out[1].saturating_add(moved);
@@ -1329,7 +1329,7 @@ fn terrain_data() -> TerrainData {
         .filter(|p| p.rock == crate::sample_rocks::OUTCROP && p.scale > CLIFF_SLAB)
     {
         let c = Vec2::new(p.position.x - CORNER.x, p.position.z - CORNER.z);
-        let r = 1.6 * p.scale;
+        let r = 2.2 * p.scale;
         let reach = (r / texel).ceil() as i32 + 1;
         let (cx, cz) = ((c.x / texel) as i32, (c.y / texel) as i32);
         for tz in (cz - reach).max(0)..=(cz + reach).min(n as i32 - 1) {
