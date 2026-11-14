@@ -48,7 +48,7 @@ fn mask(v: Option<i64>, default: u32) -> u32 {
 pub struct LRigidbody2D(pub Entity);
 
 /// Velocity change of a force for one fixed step (mass from the component, like 3D).
-fn delta_velocity(w: &World, e: Entity, f: Vec2, mode: &str) -> Vec2 {
+pub(crate) fn delta_velocity(w: &World, e: Entity, f: Vec2, mode: &str) -> Vec2 {
     let mass = w
         .scene
         .world

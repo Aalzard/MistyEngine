@@ -657,6 +657,10 @@ pub fn create_scene_asset(s: &mut EditorState, folder: &Path) -> Result<String, 
 /// Window title: "Project - ActiveScene* - Misty Engine" (* = an open scene has changes).
 pub fn window_title(s: &EditorState) -> String {
     let (project, scene) = title_parts(s);
+    if s.project_lock.read_only() {
+        let read_only = tr!("Read-Only");
+        return format!("{project} ({read_only}) - {scene} - Misty Engine");
+    }
     format!("{project} - {scene} - Misty Engine")
 }
 
@@ -780,7 +784,7 @@ mod tests {
     /// view, or the last scene's) moves the eye above the ground.
     #[test]
     fn opening_a_scene_lifts_a_view_left_under_the_terrain() {
-        let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let sample = crate::test_sample::shared_copy();
         let mut s = EditorState::new(ProjectBrowser::open(sample.clone()));
         // The terrain is found through the process-wide project root, which tests running
         // alongside move: try again (a few times) only when that happened meanwhile.

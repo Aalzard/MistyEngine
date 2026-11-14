@@ -1,5 +1,6 @@
 //! The MCP tools: `scene.*` (objects and components of the open scenes), `asset.*` (project
-//! files) and `editor.*` (menus, Play mode, Console, screenshots, tests, builds, undo).
+//! files), `graph.*` (Script Graph files) and `editor.*` (menus, Play mode, Console,
+//! screenshots, tests, builds, undo).
 //!
 //! Each tool has a JSON schema for its arguments (checked before it runs) and returns an
 //! [`Outcome`]: a result now, a [`Job`] that finishes over the next frames (Play mode, tests,
@@ -7,6 +8,7 @@
 
 mod asset;
 mod editor;
+mod graph;
 mod scene;
 
 use misty_engine::hecs::Entity;
@@ -132,6 +134,7 @@ pub fn all() -> Vec<&'static Tool> {
     scene::TOOLS
         .iter()
         .chain(asset::TOOLS)
+        .chain(graph::TOOLS)
         .chain(editor::TOOLS)
         .collect()
 }

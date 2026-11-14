@@ -588,6 +588,8 @@ impl Audio {
             .map(|v| v.id)
             .chain(self.one_shots.iter().map(|o| o.id))
             .chain(self.points.iter().map(|p| p.id))
+            // Weather loops, thunder and other ambient voices: scripts never pause these.
+            .chain(self.clips.iter().copied())
             .collect();
         if let Some(b) = self.backend.as_mut() {
             for id in resumable {

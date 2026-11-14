@@ -31,7 +31,8 @@ struct Clouds {
     // x = history weight (0 = no history), y = shadow map size, z = shadow map world size (m),
     // w = shadow steps.
     misc: vec4<f32>,
-    // xy = shadow map origin (world xz of its corner).
+    // xy = shadow map origin (world xz of its corner), z = cloud size (1 = default heaps),
+    // w = softness (0..1).
     shadow: vec4<f32>,
 };
 
@@ -108,7 +109,8 @@ fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
     }
     let lean = cl.wind_dir.xy * cl.wind_dir.z * h;
     // Cumulus are separate heaps a few hundred metres across: a finer base shape.
-    let tile = BASE_TILE * mix(1.0, 0.5, cl.wind_dir.w);
+    // Size scales the heaps (and the space between them).
+    let tile = BASE_TILE * mix(1.0, 0.5, cl.wind_dir.w) * cl.shadow.z;
     let q = vec3<f32>(p.x + cl.wind.x + lean.x, p.y, p.z + cl.wind.y + lean.y) / tile;
     let n = textureSampleLevel(base_noise, repeat_linear, q, 0.0);
     let low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
@@ -124,13 +126,20 @@ fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
 
 // Full density (0..1): base shape eroded by the detail noise (wispy at the base, billowy above).
 fn full_density(p: vec3<f32>, h: f32, base: f32) -> f32 {
-    let q = vec3<f32>(p.x + cl.wind.z, p.y, p.z + cl.wind.w) / DETAIL_TILE;
+    // Bigger clouds get somewhat bigger billows too.
+    let q = vec3<f32>(p.x + cl.wind.z, p.y, p.z + cl.wind.w) / (DETAIL_TILE * sqrt(cl.shadow.z));
     let n = textureSampleLevel(detail_noise, repeat_linear, q, 0.0);
     let hf = n.r * 0.625 + n.g * 0.25 + n.b * 0.125;
     let billow = mix(1.0 - hf, hf, clamp(h * 8.0, 0.0, 1.0));
     let sharp = cl.shape.z;
-    let erosion = mix(0.55, 0.22, sharp);
+    let soft = cl.shadow.w;
+    // Soft clouds: less erosion, so the edges stay smooth rather than cauliflower-like.
+    let erosion = mix(0.55, 0.22, sharp) * (1.0 - 0.6 * soft);
     var d = clamp(remap(base, billow * erosion, 1.0, 0.0, 1.0), 0.0, 1.0);
+    if (soft > 0.0) {
+        // ... and thin out gradually towards the edge instead of at once.
+        d = pow(d, 1.0 + 1.5 * soft);
+    }
     // Sharp clouds reach full density right inside their edge.
     d = clamp(d * mix(1.0, 3.5, sharp), 0.0, 1.0);
     return d;

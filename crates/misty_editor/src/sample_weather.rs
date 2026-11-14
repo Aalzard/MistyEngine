@@ -232,6 +232,8 @@ fn grass() -> details::DetailSettings {
         gust_scale: 16.0,
         turbulence: 0.4,
         depth_shading: 0.0,
+        far_field: 0.0,
+        far_field_brightness: 1.0,
     }
 }
 

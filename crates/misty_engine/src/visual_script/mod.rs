@@ -81,6 +81,14 @@ pub struct Variable {
     pub value: Literal,
     #[serde(default, skip_serializing_if = "is_default")]
     pub scope: VarScope,
+    /// Macros only: not a variable of the macro's own but the variable of the same name of
+    /// the graph the macro is in; its nodes read and write that one. Collapse To Macro links
+    /// the variables the collapsed nodes used this way, so they keep working on the graph's
+    /// values (a private copy, which each use of the macro has, would start from the default
+    /// and never be seen outside). Ignored in a graph's own variables and in subgraph assets
+    /// (they are not inside a graph: an error).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub outer: bool,
 }
 
 impl Variable {
@@ -90,6 +98,7 @@ impl Variable {
             ty,
             value,
             scope: VarScope::Graph,
+            outer: false,
         }
     }
 

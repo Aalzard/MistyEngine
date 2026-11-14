@@ -266,6 +266,14 @@ fn copy_paste_and_collapse_to_macro() {
     assert_eq!(name, "Macro");
     let m = w.graph.macro_graph("Macro").unwrap();
     assert!(m.nodes.iter().any(|n| n.kind == "GraphOutput"));
+    // Get Speed keeps reading the graph's Speed: the macro links it instead of copying it
+    // (a copy is private to the macro and starts from its default).
+    assert_eq!(m.variables.len(), 1, "only the variables its nodes use");
+    assert!(
+        m.variables[0].name == "Speed" && m.variables[0].outer,
+        "{:?}",
+        m.variables
+    );
     let sub = w
         .graph
         .nodes
@@ -471,4 +479,61 @@ fn a_breakpoint_pauses_play_and_step_and_continue_drive_the_flow() {
     continue_flow(&mut s, false);
     assert_eq!(s.play, crate::state::PlayState::Playing);
     crate::play::stop(&mut s);
+}
+
+/// Lua functions taking `...` in Rust get their documented arguments as pins; optional ones
+/// (`[, x]`) are optional pins.
+#[test]
+fn variadic_api_functions_get_documented_pins() {
+    let entries = search::api_entries();
+    for (owner, member, args) in [
+        (
+            "Physics2D",
+            "RaycastAll",
+            "origin, direction, [distance], [layerMask]",
+        ),
+        ("#Tilemap", "SetTile", "cell, tile"),
+        ("Input", "GetButton", "name"),
+        ("#Tilemap", "GetTile", "cell"),
+    ] {
+        let e = entries
+            .iter()
+            .find(|e| {
+                let p = |k: &str| {
+                    e.params
+                        .iter()
+                        .find(|(x, _)| x == k)
+                        .map(|(_, v)| v.as_str())
+                };
+                p("owner") == Some(owner)
+                    && p("member") == Some(member)
+                    && p("mode") == Some("call")
+            })
+            .unwrap_or_else(|| panic!("{owner}.{member}"));
+        let got = e
+            .params
+            .iter()
+            .find(|(k, _)| k == "args")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(got, Some(args), "{owner}.{member}");
+        let node = misty_engine::visual_script::Node {
+            id: 1,
+            kind: "Api".into(),
+            position: [0.0; 2],
+            params: e.params.iter().cloned().collect(),
+            values: Default::default(),
+        };
+        let ports = misty_engine::visual_script::api::ports(&node);
+        let pins: Vec<(String, bool)> = ports
+            .inputs
+            .iter()
+            .filter(|p| !p.ty.is_exec() && p.name != "Target")
+            .map(|p| (p.name.clone(), p.optional))
+            .collect();
+        let want: Vec<(String, bool)> = args
+            .split(", ")
+            .map(|a| (a.trim_matches(['[', ']']).to_owned(), a.starts_with('[')))
+            .collect();
+        assert_eq!(pins, want, "{owner}.{member}");
+    }
 }

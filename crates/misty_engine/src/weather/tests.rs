@@ -480,6 +480,30 @@ fn thunder_arrives_after_the_flash_by_distance() {
     assert!(l.strikes[0].bolt.is_none());
 }
 
+/// Strikes out of earshot queue no thunder, and the queue has a limit: a script striking 1e7 m
+/// away every frame used to grow it for hours (each took 8 hours to arrive).
+#[test]
+fn far_or_endless_strikes_do_not_pile_up_thunder() {
+    let mut l = Lightning::default();
+    l.seed(9);
+    let cam = Vec3::ZERO;
+    for _ in 0..10_000 {
+        l.strike_at(Vec3::new(0.0, 0.0, 1e7), 1e7, 1.0, false, cam);
+        l.update(1.0 / 60.0, 0.0, 0.0, 0.0, 1.0, cam, false);
+    }
+    assert!(
+        l.thunder.is_empty(),
+        "{} far thunders queued",
+        l.thunder.len()
+    );
+    for _ in 0..10_000 {
+        l.strike_at(Vec3::new(0.0, 0.0, 20_000.0), 20_000.0, 1.0, false, cam);
+        l.update(1.0 / 60.0, 0.0, 0.0, 0.0, 1.0, cam, false);
+    }
+    assert!(!l.thunder.is_empty() && l.thunder.len() <= lightning::MAX_PENDING_THUNDER);
+    assert!(l.strikes.len() < 100, "flashes end: {}", l.strikes.len());
+}
+
 #[test]
 fn lightning_rate_and_bolts() {
     let mut l = Lightning::default();

@@ -28,6 +28,13 @@ use crate::settings::ProjectSettings;
 pub const FRAME_DT: f32 = 1.0 / 60.0;
 /// Longest game time a PlayMode test may run unless it calls `setTimeout`.
 pub const DEFAULT_TIMEOUT: f64 = 30.0;
+
+/// Longest real time a PlayMode test may run, for a game-time `timeout`: four times it, and at
+/// least two minutes (slow machines, heavy scenes).
+pub fn wall_limit(timeout: f64) -> f64 {
+    (timeout * 4.0).max(120.0)
+}
+
 /// Longest wall-clock time Lua may run without yielding (infinite loops).
 pub const RESUME_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 10 });
 /// Screen size PlayMode games see (UI layout).
@@ -198,6 +205,9 @@ struct ActiveTest {
     /// Frames left before the coroutine resumes.
     wait: u32,
     frames: u64,
+    /// Game time (scaled) of the test across scene loads: a game-side `LoadScene` restarts the
+    /// session's `Time.time` at 0, so `yield(seconds)`, `waitUntil` and the timeout use this.
+    clock: f64,
     timeout: f64,
     started: Instant,
     logs: Vec<String>,
@@ -401,6 +411,7 @@ impl OpenFile {
             session,
             wait: 0,
             frames: 0,
+            clock: 0.0,
             timeout: DEFAULT_TIMEOUT,
             started: Instant::now(),
             logs: Vec::new(),
@@ -419,6 +430,7 @@ impl OpenFile {
             return Yielded::Error("no test is running".into());
         };
         let thread = t.thread.clone();
+        let _ = framework(lua).and_then(|m| m.set("clock", t.clock));
         let call = || guarded(lua, || thread.resume::<Value>(args));
         let r = match t.session.as_mut() {
             Some(s) => s.runtime.lend_world(&mut s.scene, lua, call),
@@ -539,18 +551,30 @@ impl OpenFile {
         s.time.advance(FRAME_DT);
         s.runtime.update(&mut s.scene, &s.time, input);
         t.frames += 1;
+        t.clock += f64::from(s.time.delta);
         let requests = s.runtime.take_requests();
         self.collect_logs();
         for r in requests {
             self.game_request(cx, r);
         }
         let Some(t) = self.test.as_mut() else { return };
-        let game_time = t.session.as_ref().map_or(0.0, |s| s.time.time);
-        if game_time > t.timeout {
-            let message = format!(
+        let real = t.started.elapsed().as_secs_f64();
+        let wall_limit = wall_limit(t.timeout);
+        let message = if t.clock > t.timeout {
+            Some(format!(
                 "timed out after {:.1} s of game time (setTimeout(seconds) allows longer)",
                 t.timeout
-            );
+            ))
+        } else if real > wall_limit {
+            // A paused game (Time.timeScale = 0) never reaches the game-time timeout.
+            Some(format!(
+                "timed out after {wall_limit:.0} s of real time ({:.1} s of game time)",
+                t.clock
+            ))
+        } else {
+            None
+        };
+        if let Some(message) = message {
             self.abort();
             self.finish(results, None, Some(message));
             return;

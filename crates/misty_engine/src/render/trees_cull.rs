@@ -477,19 +477,19 @@ impl TerrainCull {
         view_proj: &Mat4,
         lod: [f32; 4],
         cascades: &[(Mat4, u8, f32)],
-        reach: f32,
+        reach: [f32; 2],
         protos: &[ProtoGpu],
         mesh_ranges: impl Fn(usize, usize) -> [std::ops::Range<u32>; 2],
     ) {
         let views_n = (1 + cascades.len()).min(MAX_VIEWS);
         let params = Params {
             camera: camera.extend(self.count as f32).to_array(),
-            lod: [lod[0], lod[1], lod[2], reach],
+            lod: [lod[0], lod[1], lod[2], reach[0]],
             counts: [
                 views_n as u32,
                 self.protos as u32,
                 self.lists.len() as u32,
-                0,
+                reach[1].to_bits(),
             ],
             occlusion: match occlusion {
                 Some(o) => [o.mips as f32, o.size.0 as f32, o.size.1 as f32, lod[3]],

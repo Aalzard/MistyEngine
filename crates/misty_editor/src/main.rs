@@ -66,6 +66,7 @@ mod presets;
 mod probe_gizmos;
 mod probe_tools;
 mod project;
+mod project_lock;
 mod project_settings;
 mod project_settings_2d;
 mod project_settings_input;
@@ -249,6 +250,8 @@ mod terrain_tools;
 mod terrain_trees_ui;
 #[cfg(test)]
 mod terrain_ui_tests;
+#[cfg(test)]
+mod test_sample;
 #[cfg(test)]
 mod test_util;
 mod texture_drop;
@@ -436,19 +439,16 @@ fn main() -> eframe::Result<()> {
         // is still set, for the taskbar.
         .with_decorations(false)
         .with_resizable(true);
+    // `MISTY_WINDOW_SIZE=1280x720`: a window of that size at the top left corner, not
+    // maximised and not remembered (automated runs that must not cover the screen).
+    let capture_size = window_size_env(std::env::var("MISTY_WINDOW_SIZE").ok().as_deref());
     let (viewport, persist_window) = match &start {
         Start::Editor(project) => {
             // Automated captures don't touch the user's recent list.
             if std::env::var_os("MISTY_SCREENSHOT").is_none() {
                 hub::config::record_open(project);
             }
-            // `MISTY_WINDOW_SIZE=1280x720`: a window of that size at the top left corner,
-            // not maximised and not remembered (automated runs that must not cover the screen).
-            let fixed = std::env::var("MISTY_WINDOW_SIZE").ok().and_then(|v| {
-                let (w, h) = v.split_once('x')?;
-                Some([w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?])
-            });
-            match fixed {
+            match capture_size {
                 Some(size) => {
                     let v = viewport
                         .with_inner_size(size)
@@ -484,8 +484,12 @@ fn main() -> eframe::Result<()> {
 
     // eframe restores the window geometry saved under the app name, so the Hub keeps its own
     // name (and saves none) to always open at its size rather than the editor's maximised one.
+    // eframe restores the saved geometry even with `persist_window` off, so a sized capture
+    // window uses a name that never saves any: the user's maximised editor window isn't
+    // restored over it.
     let app_name = match start {
         Start::Hub => "Misty Hub",
+        Start::Editor(_) if capture_size.is_some() => CAPTURE_APP_NAME,
         Start::Editor(_) => branding::PRODUCT,
     };
     eframe::run_native(
@@ -571,5 +575,37 @@ mod cli_tests {
         assert!(args(&["--profile"]).is_err());
         assert!(args(&["a", "b"]).is_err());
         assert!(args(&["--zip"]).is_err());
+    }
+}
+
+/// eframe app name of `MISTY_WINDOW_SIZE` runs (no saved window geometry under it).
+const CAPTURE_APP_NAME: &str = "Misty Capture Window";
+
+/// `MISTY_WINDOW_SIZE` (`1100x650`) as a window size; None when unset or malformed.
+fn window_size_env(v: Option<&str>) -> Option<[f32; 2]> {
+    let (w, h) = v?.split_once(['x', 'X'])?;
+    let size = [w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?];
+    size.iter()
+        .all(|d| d.is_finite() && *d >= 100.0)
+        .then_some(size)
+}
+
+#[cfg(test)]
+mod window_size_tests {
+    #[test]
+    fn misty_window_size_parses_and_uses_its_own_app_name() {
+        assert_eq!(
+            super::window_size_env(Some("1100x650")),
+            Some([1100.0, 650.0])
+        );
+        assert_eq!(
+            super::window_size_env(Some(" 800 X 500 ")),
+            Some([800.0, 500.0])
+        );
+        assert_eq!(super::window_size_env(Some("big")), None);
+        assert_eq!(super::window_size_env(Some("0x0")), None);
+        assert_eq!(super::window_size_env(None), None);
+        // A different name from the editor's, whose saved (maximised) geometry eframe restores.
+        assert_ne!(super::CAPTURE_APP_NAME, crate::branding::PRODUCT);
     }
 }

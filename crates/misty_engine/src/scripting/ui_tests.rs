@@ -170,3 +170,101 @@ return Counter
     );
     assert_eq!(h.ui_interaction().pressed, None);
 }
+
+/// On Click and On Value Changed run a Script Graph's Custom Event of the method's name (the
+/// value as its first argument), with no "no script has a method" warning.
+#[test]
+fn on_click_and_on_value_changed_run_script_graph_custom_events() {
+    use crate::scene::UiToggle;
+    use crate::visual_script::value::Literal;
+    use crate::visual_script::{NoFiles, ScriptGraph};
+    let root = project("Unused.lua", "return {}\n");
+    let mut g = ScriptGraph::default();
+    let log = |g: &mut ScriptGraph, x: f32| {
+        g.add_node_with(
+            "Api",
+            &[("owner", "Debug"), ("member", "Log"), ("mode", "call")],
+            [x, 0.0],
+        )
+    };
+    let play = g.add_node_with("OnCustomEvent", &[("name", "Play")], [0.0, 0.0]);
+    let l1 = log(&mut g, 100.0);
+    g.set_value(l1, "Message", Literal::String("play".into()));
+    g.connect(play, "Out", l1, "In", &NoFiles).unwrap();
+    let mute = g.add_node_with(
+        "OnCustomEvent",
+        &[("name", "Mute"), ("args", "on")],
+        [0.0, 100.0],
+    );
+    let text = g.add_node("Append", [100.0, 100.0]);
+    g.set_value(text, "A", Literal::String("mute ".into()));
+    g.connect(mute, "on", text, "B", &NoFiles).unwrap();
+    let l2 = log(&mut g, 200.0);
+    g.connect(text, "Result", l2, "Message", &NoFiles).unwrap();
+    g.connect(mute, "Out", l2, "In", &NoFiles).unwrap();
+    g.save(&root.join("Assets/Game.vgraph")).unwrap();
+
+    let (mut scene, button, _) = ui_scene();
+    let game = scene.spawn("Game", None);
+    scene.add(
+        game,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Game.vgraph".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    scene.world.get::<&mut UiButton>(button).unwrap().on_click = vec![ButtonCall {
+        target: Some(game),
+        method: "Play".into(),
+    }];
+    let canvas = scene.find_by_name("Canvas").unwrap();
+    let toggle = scene.spawn("Toggle", Some(canvas));
+    scene.add(
+        toggle,
+        RectTransform {
+            anchored_position: Vec2::new(0.0, -200.0),
+            ..RectTransform::sized(40.0, 40.0)
+        },
+    );
+    scene.add(
+        toggle,
+        UiToggle {
+            on_value_changed: vec![ButtonCall {
+                target: Some(game),
+                method: "Mute".into(),
+            }],
+            ..Default::default()
+        },
+    );
+    let mut h = host(&mut scene, root);
+    let mut time = Time::default();
+    let screen = Vec2::new(800.0, 600.0);
+    let mut frame = |scene: &mut Scene, down: bool, up: bool| {
+        time.advance(1.0 / 60.0);
+        let input = Input {
+            mouse_position: Some(Vec2::new(400.0, 300.0)),
+            screen_size: screen,
+            mouse_pressed: [down, false, false],
+            mouse_released: [up, false, false],
+            ..Default::default()
+        };
+        h.update(scene, &time, input);
+    };
+    frame(&mut scene, false, false);
+    frame(&mut scene, true, false);
+    frame(&mut scene, false, true);
+    // A script switching the toggle off sends On Value Changed(false).
+    scene.world.get::<&mut UiToggle>(toggle).unwrap().is_on = false;
+    frame(&mut scene, false, false);
+    let logs = h.take_logs();
+    let warnings: Vec<&String> = logs
+        .iter()
+        .filter(|(k, _)| *k != LogKind::Info)
+        .map(|(_, t)| t)
+        .collect();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let infos: Vec<&str> = logs.iter().map(|(_, t)| t.as_str()).collect();
+    assert_eq!(infos, ["play", "mute false"]);
+}
