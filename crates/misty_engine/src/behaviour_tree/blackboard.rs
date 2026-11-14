@@ -310,7 +310,9 @@ impl KeyDef {
 
     /// The default, turned into the key's type when the file disagrees.
     pub fn initial(&self) -> BbValue {
-        self.default.convert(self.ty).unwrap_or_else(|| self.ty.zero())
+        self.default
+            .convert(self.ty)
+            .unwrap_or_else(|| self.ty.zero())
     }
 }
 
@@ -458,10 +460,7 @@ impl Blackboard {
             &converted
         };
         let (value, version) = match self.homes[slot] {
-            Home::Local(i) => (
-                &mut self.values[i as usize],
-                &mut self.versions[i as usize],
-            ),
+            Home::Local(i) => (&mut self.values[i as usize], &mut self.versions[i as usize]),
             Home::Shared(i) => {
                 let g = shared
                     .groups
@@ -506,7 +505,9 @@ impl Blackboard {
                 (
                     self.names[i].clone(),
                     self.types[i],
-                    self.get(shared, i).map(|v| v.to_string()).unwrap_or_default(),
+                    self.get(shared, i)
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
                     self.is_shared(i),
                 )
             })

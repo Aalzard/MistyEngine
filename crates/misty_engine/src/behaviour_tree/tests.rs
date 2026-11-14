@@ -159,12 +159,7 @@ impl Builder {
     }
 
     fn lua(&mut self, f: &str) -> u32 {
-        self.add(
-            NodeKind::RunLua {
-                function: f.into(),
-            },
-            &[],
-        )
+        self.add(NodeKind::RunLua { function: f.into() }, &[])
     }
 
     fn key(&mut self, name: &str, ty: KeyType) {
@@ -212,24 +207,64 @@ fn composite_semantics_table() {
     // (kind, leaves, results over the ticks, leaf calls of the first tick)
     let cases: Vec<(NodeKind, Vec<&str>, Vec<Status>, Vec<&str>)> = vec![
         (NodeKind::Sequence, vec!["S", "S"], vec![S], vec!["S", "S"]),
-        (NodeKind::Sequence, vec!["S", "F", "S"], vec![F], vec!["S", "F"]),
-        (NodeKind::Sequence, vec!["S", "R"], vec![R, R], vec!["S", "R"]),
-        (NodeKind::Sequence, vec!["R,S", "S"], vec![R, S], vec!["R,S"]),
-        (NodeKind::Selector, vec!["F", "S", "F"], vec![S], vec!["F", "S"]),
+        (
+            NodeKind::Sequence,
+            vec!["S", "F", "S"],
+            vec![F],
+            vec!["S", "F"],
+        ),
+        (
+            NodeKind::Sequence,
+            vec!["S", "R"],
+            vec![R, R],
+            vec!["S", "R"],
+        ),
+        (
+            NodeKind::Sequence,
+            vec!["R,S", "S"],
+            vec![R, S],
+            vec!["R,S"],
+        ),
+        (
+            NodeKind::Selector,
+            vec!["F", "S", "F"],
+            vec![S],
+            vec!["F", "S"],
+        ),
         (NodeKind::Selector, vec!["F", "F"], vec![F], vec!["F", "F"]),
-        (NodeKind::Selector, vec!["R,F", "S"], vec![R, S], vec!["R,F"]),
+        (
+            NodeKind::Selector,
+            vec!["R,F", "S"],
+            vec![R, S],
+            vec!["R,F"],
+        ),
         (par_all.clone(), vec!["S", "S"], vec![S], vec!["S", "S"]),
         (par_all.clone(), vec!["S", "F"], vec![F], vec!["S", "F"]),
-        (par_all.clone(), vec!["R,S", "S"], vec![R, S], vec!["R,S", "S"]),
+        (
+            par_all.clone(),
+            vec!["R,S", "S"],
+            vec![R, S],
+            vec!["R,S", "S"],
+        ),
         (par_one.clone(), vec!["F", "S"], vec![S], vec!["F", "S"]),
         (par_one.clone(), vec!["F", "F"], vec![F], vec!["F", "F"]),
-        (par_one.clone(), vec!["R", "R,S"], vec![R, S], vec!["R", "R,S"]),
+        (
+            par_one.clone(),
+            vec!["R", "R,S"],
+            vec![R, S],
+            vec!["R", "R,S"],
+        ),
     ];
     for (kind, leaves, want, first_calls) in cases {
         let tree = composite(kind.clone(), &leaves);
         let (got, h) = run(&tree, want.len(), 0.1);
         assert_eq!(got, want, "{} {leaves:?}", kind.label());
-        let first: Vec<&str> = h.calls.iter().take(first_calls.len()).map(|s| s.as_str()).collect();
+        let first: Vec<&str> = h
+            .calls
+            .iter()
+            .take(first_calls.len())
+            .map(|s| s.as_str())
+            .collect();
         assert_eq!(first, first_calls, "{} {leaves:?} calls", kind.label());
     }
 }
@@ -285,7 +320,13 @@ fn decorator_semantics_table() {
     for (kind, leaf, want) in cases {
         let tree = decorator(kind.clone(), leaf);
         let (got, h) = run(&tree, want.len(), 0.1);
-        assert_eq!(got, want, "{} over {leaf}: calls {:?}", kind.label(), h.calls);
+        assert_eq!(
+            got,
+            want,
+            "{} over {leaf}: calls {:?}",
+            kind.label(),
+            h.calls
+        );
     }
 }
 
@@ -299,19 +340,97 @@ fn cooldown_skips_its_child_while_cooling() {
 #[test]
 fn conditional_compares_blackboard_values() {
     let cases: Vec<(KeyType, BbValue, CompareOp, BbValue, Status)> = vec![
-        (KeyType::Bool, BbValue::Bool(true), CompareOp::IsSet, BbValue::Bool(true), S),
-        (KeyType::Bool, BbValue::Bool(false), CompareOp::IsSet, BbValue::Bool(true), F),
-        (KeyType::Bool, BbValue::Bool(false), CompareOp::IsNotSet, BbValue::Bool(true), S),
-        (KeyType::Int, BbValue::Int(3), CompareOp::Greater, BbValue::Int(2), S),
-        (KeyType::Int, BbValue::Int(3), CompareOp::Less, BbValue::Int(2), F),
-        (KeyType::Int, BbValue::Int(3), CompareOp::Equal, BbValue::Float(3.0), S),
-        (KeyType::Float, BbValue::Float(0.5), CompareOp::LessOrEqual, BbValue::Float(0.5), S),
-        (KeyType::Float, BbValue::Float(0.5), CompareOp::GreaterOrEqual, BbValue::Int(1), F),
-        (KeyType::String, BbValue::String("idle".into()), CompareOp::Equal, BbValue::String("idle".into()), S),
-        (KeyType::String, BbValue::String("idle".into()), CompareOp::NotEqual, BbValue::String("idle".into()), F),
-        (KeyType::Vector, BbValue::Vector(Vec3::X), CompareOp::Equal, BbValue::Vector(Vec3::X), S),
-        (KeyType::Vector, BbValue::Vector(Vec3::ZERO), CompareOp::IsSet, BbValue::Bool(true), F),
-        (KeyType::Object, BbValue::Object(ObjRef(None)), CompareOp::IsNotSet, BbValue::Bool(true), S),
+        (
+            KeyType::Bool,
+            BbValue::Bool(true),
+            CompareOp::IsSet,
+            BbValue::Bool(true),
+            S,
+        ),
+        (
+            KeyType::Bool,
+            BbValue::Bool(false),
+            CompareOp::IsSet,
+            BbValue::Bool(true),
+            F,
+        ),
+        (
+            KeyType::Bool,
+            BbValue::Bool(false),
+            CompareOp::IsNotSet,
+            BbValue::Bool(true),
+            S,
+        ),
+        (
+            KeyType::Int,
+            BbValue::Int(3),
+            CompareOp::Greater,
+            BbValue::Int(2),
+            S,
+        ),
+        (
+            KeyType::Int,
+            BbValue::Int(3),
+            CompareOp::Less,
+            BbValue::Int(2),
+            F,
+        ),
+        (
+            KeyType::Int,
+            BbValue::Int(3),
+            CompareOp::Equal,
+            BbValue::Float(3.0),
+            S,
+        ),
+        (
+            KeyType::Float,
+            BbValue::Float(0.5),
+            CompareOp::LessOrEqual,
+            BbValue::Float(0.5),
+            S,
+        ),
+        (
+            KeyType::Float,
+            BbValue::Float(0.5),
+            CompareOp::GreaterOrEqual,
+            BbValue::Int(1),
+            F,
+        ),
+        (
+            KeyType::String,
+            BbValue::String("idle".into()),
+            CompareOp::Equal,
+            BbValue::String("idle".into()),
+            S,
+        ),
+        (
+            KeyType::String,
+            BbValue::String("idle".into()),
+            CompareOp::NotEqual,
+            BbValue::String("idle".into()),
+            F,
+        ),
+        (
+            KeyType::Vector,
+            BbValue::Vector(Vec3::X),
+            CompareOp::Equal,
+            BbValue::Vector(Vec3::X),
+            S,
+        ),
+        (
+            KeyType::Vector,
+            BbValue::Vector(Vec3::ZERO),
+            CompareOp::IsSet,
+            BbValue::Bool(true),
+            F,
+        ),
+        (
+            KeyType::Object,
+            BbValue::Object(ObjRef(None)),
+            CompareOp::IsNotSet,
+            BbValue::Bool(true),
+            S,
+        ),
     ];
     for (ty, start, op, value, want) in cases {
         let mut b = Builder::new();
@@ -339,7 +458,10 @@ fn conditional_compares_blackboard_values() {
 #[test]
 fn random_selector_is_deterministic_and_tries_every_child() {
     // Leaves named by their place, all failing: the call order is the shuffled order.
-    let tree = composite(NodeKind::RandomSelector, &["F", "F,F", "F,F,F", "F,F,F,F", "F,F,F,F,F"]);
+    let tree = composite(
+        NodeKind::RandomSelector,
+        &["F", "F,F", "F,F,F", "F,F,F,F", "F,F,F,F,F"],
+    );
     let c = compile(&tree);
     let order = |seed: u64| {
         let mut h = Fake::new(&[]);
@@ -369,7 +491,11 @@ fn wait_runs_for_its_time() {
     );
     let tree = b.root(w);
     let (got, _) = run(&tree, 4, 0.1);
-    assert_eq!(got, vec![R, R, S, R], "0.1, 0.2 waiting; 0.3 done; then starts over");
+    assert_eq!(
+        got,
+        vec![R, R, S, R],
+        "0.1, 0.2 waiting; 0.3 done; then starts over"
+    );
 }
 
 /// Selector [ Conditional(Alert, Lower Priority) → Chase, Patrol ].
@@ -459,11 +585,19 @@ fn both_aborts_go_back_and_forth() {
         h.calls.clear();
         h.set("Alert", BbValue::Bool(true));
         st.tick(&c, &mut h, 0.1);
-        assert_eq!(h.calls, ["Patrol:Abort", "Chase:Start", "Chase:Tick"], "round {round}");
+        assert_eq!(
+            h.calls,
+            ["Patrol:Abort", "Chase:Start", "Chase:Tick"],
+            "round {round}"
+        );
         h.calls.clear();
         h.set("Alert", BbValue::Bool(false));
         st.tick(&c, &mut h, 0.1);
-        assert_eq!(h.calls, ["Chase:Abort", "Patrol:Start", "Patrol:Tick"], "round {round}");
+        assert_eq!(
+            h.calls,
+            ["Chase:Abort", "Patrol:Start", "Patrol:Tick"],
+            "round {round}"
+        );
     }
 }
 
@@ -579,7 +713,11 @@ fn leaves_move_look_see_and_write_the_blackboard() {
         }
     }
     assert_eq!(results.last(), Some(&S), "{results:?} {:?}", h.calls);
-    assert!(h.calls.contains(&"param Speed=3.500".to_owned()), "{:?}", h.calls);
+    assert!(
+        h.calls.contains(&"param Speed=3.500".to_owned()),
+        "{:?}",
+        h.calls
+    );
     assert!(h.pos.distance(Vec3::new(0.0, 0.0, 3.0)) <= 0.5);
     assert_eq!(h.logs, ["speed 3.500 seen true {Nope}"]);
     assert_eq!(
@@ -654,9 +792,11 @@ fn compile_reports_problems() {
     assert!(has("no blackboard key 'Nope'"), "{text:?}");
     assert!(has("Inverter needs a child"), "{text:?}");
     assert!(has("never run"), "{text:?}");
-    assert!(compile(&BehaviourTree::default()).errors[0]
-        .message
-        .contains("no Root"));
+    assert!(
+        compile(&BehaviourTree::default()).errors[0]
+            .message
+            .contains("no Root")
+    );
 }
 
 #[test]
@@ -679,18 +819,33 @@ fn blackboard_types_convert_share_and_count_versions() {
     let mut other = Blackboard::new(&keys, "other", &mut shared);
     // Defaults by type.
     assert_eq!(a.get_named(&shared, "i"), Some(&BbValue::Int(0)));
-    assert_eq!(a.get_named(&shared, "v"), Some(&BbValue::Vector(Vec3::ZERO)));
-    assert_eq!(a.get_named(&shared, "s"), Some(&BbValue::String(String::new())));
+    assert_eq!(
+        a.get_named(&shared, "v"),
+        Some(&BbValue::Vector(Vec3::ZERO))
+    );
+    assert_eq!(
+        a.get_named(&shared, "s"),
+        Some(&BbValue::String(String::new()))
+    );
     // Conversions between numbers and to text; vectors don't go into numbers.
     a.set_named(&mut shared, "i", &BbValue::Float(2.7)).unwrap();
     assert_eq!(a.get_named(&shared, "i"), Some(&BbValue::Int(2)));
     a.set_named(&mut shared, "f", &BbValue::Int(4)).unwrap();
     assert_eq!(a.get_named(&shared, "f"), Some(&BbValue::Float(4.0)));
     a.set_named(&mut shared, "s", &BbValue::Int(9)).unwrap();
-    assert_eq!(a.get_named(&shared, "s"), Some(&BbValue::String("9".into())));
-    assert!(a.set_named(&mut shared, "f", &BbValue::Vector(Vec3::ONE)).is_err());
+    assert_eq!(
+        a.get_named(&shared, "s"),
+        Some(&BbValue::String("9".into()))
+    );
+    assert!(
+        a.set_named(&mut shared, "f", &BbValue::Vector(Vec3::ONE))
+            .is_err()
+    );
     assert!(a.set_named(&mut shared, "o", &BbValue::Int(1)).is_err());
-    assert!(a.set_named(&mut shared, "missing", &BbValue::Int(1)).is_err());
+    assert!(
+        a.set_named(&mut shared, "missing", &BbValue::Int(1))
+            .is_err()
+    );
     // Versions go up only on change.
     let slot = a.index("b").unwrap();
     let v0 = a.version(&shared, slot);
@@ -700,18 +855,27 @@ fn blackboard_types_convert_share_and_count_versions() {
     // Per agent: b doesn't see a's own values.
     assert_eq!(b.get_named(&shared, "b"), Some(&BbValue::Bool(false)));
     // Shared keys: one value per group.
-    b.set_named(&mut shared, "alarm", &BbValue::Bool(true)).unwrap();
+    b.set_named(&mut shared, "alarm", &BbValue::Bool(true))
+        .unwrap();
     assert_eq!(a.get_named(&shared, "alarm"), Some(&BbValue::Bool(true)));
     assert!(a.is_shared(a.index("alarm").unwrap()));
-    assert_eq!(other.get_named(&shared, "alarm"), Some(&BbValue::Bool(false)));
+    assert_eq!(
+        other.get_named(&shared, "alarm"),
+        Some(&BbValue::Bool(false))
+    );
     let alarm = a.index("alarm").unwrap();
     assert_eq!(a.version(&shared, alarm), b.version(&shared, alarm));
-    other.set_named(&mut shared, "alarm", &BbValue::Bool(true)).unwrap();
+    other
+        .set_named(&mut shared, "alarm", &BbValue::Bool(true))
+        .unwrap();
     // Objects: set, then forgotten when destroyed.
     let e = Entity::from_bits(1 << 32 | 3).unwrap();
     a.set_named(&mut shared, "o", &BbValue::Object(ObjRef(Some(e))))
         .unwrap();
-    assert_eq!(a.get_named(&shared, "o").and_then(BbValue::as_object), Some(e));
+    assert_eq!(
+        a.get_named(&shared, "o").and_then(BbValue::as_object),
+        Some(e)
+    );
     a.forget_object(e);
     assert_eq!(a.get_named(&shared, "o").and_then(BbValue::as_object), None);
     // Text values reuse their buffer.
@@ -746,8 +910,11 @@ fn save_load_round_trip() {
         k.description = "about it".into();
         t.keys.push(k);
     }
-    if let Some(NodeKind::CustomLua { params, .. }) =
-        t.nodes.last_mut().map(|n| &mut n.kind).filter(|k| matches!(k, NodeKind::CustomLua { .. }))
+    if let Some(NodeKind::CustomLua { params, .. }) = t
+        .nodes
+        .last_mut()
+        .map(|n| &mut n.kind)
+        .filter(|k| matches!(k, NodeKind::CustomLua { .. }))
     {
         params.insert("speed".into(), "2".into());
     }
@@ -767,7 +934,11 @@ fn save_load_round_trip() {
     assert_eq!(back.to_json(), text, "stable output");
     // Files from a newer editor are refused, broken files explain why.
     let newer = text.replacen("\"version\": 1", "\"version\": 99", 1);
-    assert!(BehaviourTree::from_json(&newer).unwrap_err().contains("newer"));
+    assert!(
+        BehaviourTree::from_json(&newer)
+            .unwrap_err()
+            .contains("newer")
+    );
     assert!(BehaviourTree::from_json("{\"nodes\": 3}").is_err());
     // And through a file.
     let dir = std::env::temp_dir().join(format!("misty_bt_{}", std::process::id()));
@@ -781,9 +952,23 @@ fn save_load_round_trip() {
 fn editing_links_keeps_children_ordered_and_refuses_loops() {
     let mut t = BehaviourTree::new_default();
     let a = t.next_id();
-    t.nodes.push(BtNode::new(a, NodeKind::Wait { seconds: 1.0, random: 0.0 }, [400.0, 100.0]));
+    t.nodes.push(BtNode::new(
+        a,
+        NodeKind::Wait {
+            seconds: 1.0,
+            random: 0.0,
+        },
+        [400.0, 100.0],
+    ));
     let b = t.next_id();
-    t.nodes.push(BtNode::new(b, NodeKind::Wait { seconds: 1.0, random: 0.0 }, [400.0, -100.0]));
+    t.nodes.push(BtNode::new(
+        b,
+        NodeKind::Wait {
+            seconds: 1.0,
+            random: 0.0,
+        },
+        [400.0, -100.0],
+    ));
     t.link(2, a).unwrap();
     t.link(2, b).unwrap();
     assert_eq!(t.node(2).unwrap().children, vec![b, a], "top first");
@@ -792,17 +977,22 @@ fn editing_links_keeps_children_ordered_and_refuses_loops() {
     assert_eq!(t.node(2).unwrap().children, vec![a, b]);
     assert!(t.link(a, 2).is_err(), "a leaf has no children");
     let s = t.next_id();
-    t.nodes.push(BtNode::new(s, NodeKind::Sequence, [600.0, 0.0]));
+    t.nodes
+        .push(BtNode::new(s, NodeKind::Sequence, [600.0, 0.0]));
     t.link(2, s).unwrap();
     assert!(t.link(s, 2).unwrap_err().contains("loop"));
     assert!(t.link(s, 1).is_err(), "nothing above the Root");
     // A decorator keeps one child: linking another replaces it.
     let inv = t.next_id();
-    t.nodes.push(BtNode::new(inv, NodeKind::Inverter, [800.0, 0.0]));
+    t.nodes
+        .push(BtNode::new(inv, NodeKind::Inverter, [800.0, 0.0]));
     t.link(inv, a).unwrap();
     t.link(inv, b).unwrap();
     assert_eq!(t.node(inv).unwrap().children, vec![b]);
-    assert!(!t.node(2).unwrap().children.contains(&b), "moved from its old parent");
+    assert!(
+        !t.node(2).unwrap().children.contains(&b),
+        "moved from its old parent"
+    );
     // Renaming a key follows into the nodes.
     t.keys.push(KeyDef::new("Target", KeyType::Object));
     let m = t.next_id();
@@ -815,7 +1005,9 @@ fn editing_links_keeps_children_ordered_and_refuses_loops() {
         [0.0, 0.0],
     ));
     t.rename_key("Target", "Enemy");
-    assert!(matches!(&t.node(m).unwrap().kind, NodeKind::MoveTo { target, .. } if target == "Enemy"));
+    assert!(
+        matches!(&t.node(m).unwrap().kind, NodeKind::MoveTo { target, .. } if target == "Enemy")
+    );
     t.remove_node(a);
     assert!(t.node(inv).is_some() && !t.node(2).unwrap().children.contains(&a));
 }

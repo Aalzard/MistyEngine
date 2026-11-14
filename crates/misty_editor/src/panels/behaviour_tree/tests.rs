@@ -83,8 +83,12 @@ fn package_install_and_remove() {
     assert!(!optional::installed(&root, optional::BEHAVIOUR_TREES));
     assert!(!s.optional_packages.has(optional::BEHAVIOUR_TREES));
     assert!(!package_installed());
-    assert!(!crate::panels::inspector::component_offered("Behaviour Tree Agent"));
-    assert!(crate::panels::inspector::component_offered("Nav Mesh Agent"));
+    assert!(!crate::panels::inspector::component_offered(
+        "Behaviour Tree Agent"
+    ));
+    assert!(crate::panels::inspector::component_offered(
+        "Nav Mesh Agent"
+    ));
     assert!(
         optional::all()
             .iter()
@@ -95,11 +99,14 @@ fn package_install_and_remove() {
     let mut s = h.into_state();
     // Install.
     s.packages.ensure_loaded(&root);
-    s.packages.install_optional(&root, optional::BEHAVIOUR_TREES);
+    s.packages
+        .install_optional(&root, optional::BEHAVIOUR_TREES);
     s.optional_packages = optional::Installed::load(&root);
     note_package(&s);
     assert!(package_installed());
-    assert!(crate::panels::inspector::component_offered("Behaviour Tree Agent"));
+    assert!(crate::panels::inspector::component_offered(
+        "Behaviour Tree Agent"
+    ));
     let manifest = crate::packages::manifest::Manifest::load(&root).unwrap();
     assert_eq!(
         manifest
@@ -115,7 +122,12 @@ fn package_install_and_remove() {
             .map(|l| l.source.as_str()),
         Some("builtin")
     );
-    assert!(!root.join("Packages").join(optional::BEHAVIOUR_TREES).exists());
+    assert!(
+        !root
+            .join("Packages")
+            .join(optional::BEHAVIOUR_TREES)
+            .exists()
+    );
     // The window now shows the tree; Create ▸ Behaviour Tree works.
     let h = window(s);
     h.get_by_label(&tr!("Save Asset"));
@@ -173,7 +185,11 @@ fn editing_undo_redo_copy_paste_group_comment_and_save() {
         [300.0, -40.0],
         Some(selector),
     );
-    assert_eq!(w.tree.node(selector).unwrap().children, vec![log, wait], "top first");
+    assert_eq!(
+        w.tree.node(selector).unwrap().children,
+        vec![log, wait],
+        "top first"
+    );
     assert!(w.dirty());
     // Undo / redo.
     assert_eq!(w.undo().as_deref(), Some("Create Node"));
@@ -243,7 +259,10 @@ fn dragging_from_an_output_links_nodes() {
     let from = node_rect(&h, 2).right_center();
     let to = node_rect(&h, id).center();
     drag(&mut h, from, to);
-    assert_eq!(h.state().behaviour_tree.tree.node(2).unwrap().children, vec![id]);
+    assert_eq!(
+        h.state().behaviour_tree.tree.node(2).unwrap().children,
+        vec![id]
+    );
     // A loop is refused with a message.
     let from = node_rect(&h, 2).right_center();
     let to = node_rect(&h, 1).center();
@@ -254,7 +273,10 @@ fn dragging_from_an_output_links_nodes() {
     let c = node_rect(&h, id).center();
     drag(&mut h, c, c + egui::vec2(40.0, 30.0));
     let after = h.state().behaviour_tree.tree.node(id).unwrap().position;
-    assert!((after[0] - before[0] - 40.0).abs() < 2.0, "{before:?} {after:?}");
+    assert!(
+        (after[0] - before[0] - 40.0).abs() < 2.0,
+        "{before:?} {after:?}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -372,7 +394,13 @@ fn texts_are_translated() {
     keys.extend(LogLevel::ALL.iter().map(|a| a.label().to_owned()));
     keys.extend(["Is Set", "Is Not Set"].map(String::from));
     keys.extend(
-        [Status::Idle, Status::Running, Status::Success, Status::Failure].map(|s| s.label().to_owned()),
+        [
+            Status::Idle,
+            Status::Running,
+            Status::Success,
+            Status::Failure,
+        ]
+        .map(|s| s.label().to_owned()),
     );
     keys.extend(
         [
@@ -412,7 +440,14 @@ fn texts_are_translated() {
 fn script_graphs_get_behaviour_tree_nodes() {
     let entries = crate::panels::script_graph::search::api_entries();
     for member in [
-        "GetValue", "SetValue", "HasKey", "Start", "Stop", "Restart", "IsRunning", "GetStatus",
+        "GetValue",
+        "SetValue",
+        "HasKey",
+        "Start",
+        "Stop",
+        "Restart",
+        "IsRunning",
+        "GetStatus",
         "Finish",
     ] {
         assert!(

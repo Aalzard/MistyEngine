@@ -144,7 +144,11 @@ pub fn summary(n: &BtNode) -> String {
             }
         }
         NodeKind::IsInRange { target, range } => {
-            tr!("{target} within {range} m", target = key(target), range = range)
+            tr!(
+                "{target} within {range} m",
+                target = key(target),
+                range = range
+            )
         }
         NodeKind::CanSeeTarget {
             target, range, fov, ..
@@ -489,7 +493,12 @@ fn node_ui(
     );
     let outline = live_stroke(w, n.id);
     if let Some(c) = outline {
-        painter.rect_stroke(rect.expand(2.0), 7.0 * z, Stroke::new(2.5, c), StrokeKind::Outside);
+        painter.rect_stroke(
+            rect.expand(2.0),
+            7.0 * z,
+            Stroke::new(2.5, c),
+            StrokeKind::Outside,
+        );
     }
     if selected {
         painter.rect_stroke(rect, 6.0 * z, Stroke::new(1.8, SELECT), StrokeKind::Outside);
@@ -516,7 +525,11 @@ fn node_ui(
     }
 
     let resp = ui
-        .interact(rect, ui.id().with(("bt_node", n.id)), Sense::click_and_drag())
+        .interact(
+            rect,
+            ui.id().with(("bt_node", n.id)),
+            Sense::click_and_drag(),
+        )
         .on_hover_text(tr(n.kind.help()));
     let mut clicked = false;
     if takes_children {

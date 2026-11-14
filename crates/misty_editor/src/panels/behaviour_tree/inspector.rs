@@ -78,7 +78,9 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                     });
                 if let Some(e) = w.error_of(id) {
                     ui.add_space(4.0);
-                    ui.label(RichText::new(format!("⚠ {e}")).color(crate::panels::node_canvas::ERROR));
+                    ui.label(
+                        RichText::new(format!("⚠ {e}")).color(crate::panels::node_canvas::ERROR),
+                    );
                 }
                 if let Some((now, last, _)) = w.live_of(id) {
                     ui.add_space(4.0);
@@ -168,7 +170,14 @@ fn group(ui: &mut Ui, s: &mut EditorState, gi: usize, busy: bool) {
 }
 
 /// A key picker limited to `types`.
-fn key_field(ui: &mut Ui, label: &str, key: &mut String, keys: &[(String, KeyType)], types: &[KeyType], optional: bool) {
+fn key_field(
+    ui: &mut Ui,
+    label: &str,
+    key: &mut String,
+    keys: &[(String, KeyType)],
+    types: &[KeyType],
+    optional: bool,
+) {
     ui.label(label);
     let shown = if key.is_empty() {
         tr!("(none)")
@@ -363,7 +372,14 @@ fn settings(ui: &mut Ui, n: &mut BtNode, keys: &[(String, KeyType)], root: &Path
             from_key,
         } => {
             text(ui, &tr!("Parameter"), parameter);
-            key_field(ui, &tr!("From Key"), from_key, keys, &[KeyType::Bool, KeyType::Int, KeyType::Float], true);
+            key_field(
+                ui,
+                &tr!("From Key"),
+                from_key,
+                keys,
+                &[KeyType::Bool, KeyType::Int, KeyType::Float],
+                true,
+            );
             if from_key.is_empty() {
                 ui.label(tr!("Value"));
                 let ty = match value {
@@ -390,7 +406,14 @@ fn settings(ui: &mut Ui, n: &mut BtNode, keys: &[(String, KeyType)], root: &Path
         }
         NodeKind::LookAt { target, turn_speed } => {
             key_field(ui, &tr!("Target"), target, keys, TARGET, false);
-            number(ui, &tr!("Turn speed (0 = at once)"), turn_speed, 0.0, 3600.0, " °/s");
+            number(
+                ui,
+                &tr!("Turn speed (0 = at once)"),
+                turn_speed,
+                0.0,
+                3600.0,
+                " °/s",
+            );
         }
         NodeKind::SetBlackboard {
             key,

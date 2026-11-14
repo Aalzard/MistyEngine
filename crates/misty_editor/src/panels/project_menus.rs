@@ -36,9 +36,7 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
         if kind == AssetKind::Material {
             create_shader_items(ui, actions);
         }
-        if kind == AssetKind::ScriptGraph
-            && crate::panels::behaviour_tree::package_installed()
-        {
+        if kind == AssetKind::ScriptGraph && crate::panels::behaviour_tree::package_installed() {
             let bt = AssetKind::BehaviourTree;
             if ui.button(tr(bt.label())).clicked() {
                 actions.push(Action::CreateAsset(bt));

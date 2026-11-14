@@ -24,6 +24,7 @@ mod lod_editor;
 mod mask_editor;
 #[cfg(test)]
 pub use mask_editor::IMPORT_LABEL as MASK_IMPORT_LABEL;
+mod bt_editors;
 mod material;
 mod material_features;
 #[cfg(test)]
@@ -33,7 +34,6 @@ mod mixed;
 mod mixer_inspector;
 mod model_settings;
 mod nav_editors;
-mod bt_editors;
 pub use bt_editors::offered as component_offered;
 pub use nav_editors::area_color32 as nav_area_color;
 mod net_editors;

@@ -550,7 +550,10 @@ impl Runtime {
     }
 
     /// The game's behaviour trees between frames (tests, tools).
-    pub fn with_behaviour<R>(&mut self, f: impl FnOnce(&mut crate::behaviour_tree::BtRuntime) -> R) -> R {
+    pub fn with_behaviour<R>(
+        &mut self,
+        f: impl FnOnce(&mut crate::behaviour_tree::BtRuntime) -> R,
+    ) -> R {
         self.host.with_behaviour(f)
     }
 

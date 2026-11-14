@@ -470,10 +470,16 @@ impl NodeKind {
             NodeKind::Parallel { .. } => "Runs all its children at the same time.",
             NodeKind::RandomSelector => "Tries its children in a random order until one succeeds.",
             NodeKind::Inverter => "Turns success into failure and failure into success.",
-            NodeKind::Repeat { .. } => "Runs its child again: a number of times, forever, or until it fails.",
-            NodeKind::Cooldown { .. } => "After its child finishes, fails for a while without running it.",
+            NodeKind::Repeat { .. } => {
+                "Runs its child again: a number of times, forever, or until it fails."
+            }
+            NodeKind::Cooldown { .. } => {
+                "After its child finishes, fails for a while without running it."
+            }
             NodeKind::TimeLimit { .. } => "Stops its child and fails when it takes too long.",
-            NodeKind::Conditional { .. } => "Runs its child only while a blackboard key matches; can stop other branches when the key changes.",
+            NodeKind::Conditional { .. } => {
+                "Runs its child only while a blackboard key matches; can stop other branches when the key changes."
+            }
             NodeKind::ForceSuccess => "Succeeds whatever its child did.",
             NodeKind::ForceFailure => "Fails whatever its child did.",
             NodeKind::MoveTo { .. } => "Walks the Nav Mesh Agent to a position or object.",
@@ -483,9 +489,15 @@ impl NodeKind {
             NodeKind::LookAt { .. } => "Turns to face a position or object.",
             NodeKind::SetBlackboard { .. } => "Writes a value into a blackboard key.",
             NodeKind::IsInRange { .. } => "Succeeds when the target is close enough.",
-            NodeKind::CanSeeTarget { .. } => "Succeeds when the target is in range, in the field of view and not hidden.",
-            NodeKind::HasLineOfSight { .. } => "Succeeds when nothing blocks the view of the target.",
-            NodeKind::RunScriptGraph { .. } => "Sends a custom event to a Script Graph and waits for it to finish.",
+            NodeKind::CanSeeTarget { .. } => {
+                "Succeeds when the target is in range, in the field of view and not hidden."
+            }
+            NodeKind::HasLineOfSight { .. } => {
+                "Succeeds when nothing blocks the view of the target."
+            }
+            NodeKind::RunScriptGraph { .. } => {
+                "Sends a custom event to a Script Graph and waits for it to finish."
+            }
             NodeKind::RunLua { .. } => "Calls a function of the object's Lua script.",
             NodeKind::CustomLua { .. } => "A leaf written in Lua (OnStart, OnTick, OnAbort).",
             NodeKind::Log { .. } => "Writes a message to the Console.",
@@ -540,7 +552,9 @@ impl NodeKind {
             NodeKind::MoveTo { target, .. }
             | NodeKind::LookAt { target, .. }
             | NodeKind::IsInRange { target, .. }
-            | NodeKind::HasLineOfSight { target, .. } => v.push((target.as_str(), TARGET, "Target")),
+            | NodeKind::HasLineOfSight { target, .. } => {
+                v.push((target.as_str(), TARGET, "Target"))
+            }
             NodeKind::CanSeeTarget { target, store, .. } => {
                 v.push((target.as_str(), TARGET, "Target"));
                 if !store.is_empty() {
@@ -669,7 +683,8 @@ impl BehaviourTree {
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text =
+            crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Self::from_json(&text)
     }
 

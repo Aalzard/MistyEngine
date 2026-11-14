@@ -173,7 +173,10 @@ pub fn compile(tree: &BehaviourTree) -> Compiled {
         if k.name.trim().is_empty() {
             err(None, "a blackboard key has no name".into());
         } else if !names.insert(k.name.as_str()) {
-            err(None, format!("blackboard key '{}' is declared twice", k.name));
+            err(
+                None,
+                format!("blackboard key '{}' is declared twice", k.name),
+            );
         }
     }
     let roots: Vec<&super::asset::BtNode> = tree
@@ -230,12 +233,13 @@ pub fn compile(tree: &BehaviourTree) -> Compiled {
     for (idx, (id, parent, k)) in order.iter().enumerate() {
         let n = tree.node(*id).expect("ordered nodes exist");
         let (min, max) = n.kind.child_limits();
-        let count = n.children.iter().filter(|c| tree.node(**c).is_some()).count();
+        let count = n
+            .children
+            .iter()
+            .filter(|c| tree.node(**c).is_some())
+            .count();
         if count < min {
-            err(
-                Some(n.id),
-                format!("{} needs a child", n.title()),
-            );
+            err(Some(n.id), format!("{} needs a child", n.title()));
         } else if count > max {
             err(
                 Some(n.id),
@@ -258,7 +262,11 @@ pub fn compile(tree: &BehaviourTree) -> Compiled {
                         "{}: key '{key}' is {}, {what} needs {}",
                         n.title(),
                         def.ty.label(),
-                        types.iter().map(|t| t.label()).collect::<Vec<_>>().join(" or ")
+                        types
+                            .iter()
+                            .map(|t| t.label())
+                            .collect::<Vec<_>>()
+                            .join(" or ")
                     ),
                 ),
                 _ => {}
@@ -315,7 +323,10 @@ pub fn compile(tree: &BehaviourTree) -> Compiled {
                     if !composite {
                         err(
                             Some(n.id),
-                            format!("{}: Lower Priority aborts need a composite above", n.title()),
+                            format!(
+                                "{}: Lower Priority aborts need a composite above",
+                                n.title()
+                            ),
                         );
                     }
                 }
@@ -480,9 +491,7 @@ pub fn compile(tree: &BehaviourTree) -> Compiled {
     if unreachable > 0 {
         out.errors.push(CompileError {
             node: None,
-            message: format!(
-                "{unreachable} node(s) are not connected to the Root and never run"
-            ),
+            message: format!("{unreachable} node(s) are not connected to the Root and never run"),
         });
     }
     out

@@ -478,7 +478,10 @@ impl ExecState {
                 Status::Running => Status::Running,
                 _ => Status::Failure,
             },
-            CKind::Repeat { count: n, until_fail } => {
+            CKind::Repeat {
+                count: n,
+                until_fail,
+            } => {
                 let (n, until_fail) = (*n, *until_fail);
                 // At most one round finishes per tick, so a child that finishes at once can't
                 // spin forever inside one frame.

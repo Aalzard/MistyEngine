@@ -161,7 +161,11 @@ impl BtRuntime {
         fresh.sort_by_key(|e| e.to_bits());
         let mut out = Vec::new();
         for e in fresh {
-            let Ok(c) = scene.world.get::<&BehaviourTreeAgent>(e).map(|c| (*c).clone()) else {
+            let Ok(c) = scene
+                .world
+                .get::<&BehaviourTreeAgent>(e)
+                .map(|c| (*c).clone())
+            else {
                 continue;
             };
             let path = c.tree.clone().unwrap_or_default();

@@ -137,7 +137,11 @@ pub fn lua_leaf(text: &str) -> Option<(String, BTreeMap<String, String>)> {
         let rest = rest.trim();
         if let Some(t) = rest.strip_prefix("@behaviour-leaf") {
             let t = t.trim();
-            title = Some(if t.is_empty() { "Lua Leaf".into() } else { t.to_owned() });
+            title = Some(if t.is_empty() {
+                "Lua Leaf".into()
+            } else {
+                t.to_owned()
+            });
         } else if let Some(p) = rest.strip_prefix("@param") {
             let mut parts = p.split_whitespace();
             if let Some(name) = parts.next() {
@@ -192,18 +196,12 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                     let shown: Vec<&PaletteItem> = items
                         .iter()
                         .filter(|i| i.kind.category() == c)
-                        .filter(|i| {
-                            search.is_empty() || i.title().to_lowercase().contains(&search)
-                        })
+                        .filter(|i| search.is_empty() || i.title().to_lowercase().contains(&search))
                         .collect();
                     if shown.is_empty() {
                         continue;
                     }
-                    ui.label(
-                        RichText::new(tr(c.label()))
-                            .small()
-                            .color(theme::TEXT_DIM),
-                    );
+                    ui.label(RichText::new(tr(c.label())).small().color(theme::TEXT_DIM));
                     for item in shown {
                         let id = ui.id().with(("bt_pal", item.title()));
                         let r = ui

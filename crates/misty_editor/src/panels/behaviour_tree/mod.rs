@@ -353,7 +353,11 @@ impl BehaviourTreeWindow {
             }
             for n in &part.nodes {
                 let Some(&p) = map.get(&n.id) else { continue };
-                let kids: Vec<u32> = n.children.iter().filter_map(|k| map.get(k).copied()).collect();
+                let kids: Vec<u32> = n
+                    .children
+                    .iter()
+                    .filter_map(|k| map.get(k).copied())
+                    .collect();
                 if let Some(pn) = t.node_mut(p) {
                     pn.children = kids;
                 }
@@ -437,7 +441,14 @@ impl BehaviourTreeWindow {
     }
 
     /// Live state of a node: (current, last result, ticks since it).
-    pub fn live_of(&self, id: u32) -> Option<(misty_engine::behaviour_tree::Status, misty_engine::behaviour_tree::Status, u64)> {
+    pub fn live_of(
+        &self,
+        id: u32,
+    ) -> Option<(
+        misty_engine::behaviour_tree::Status,
+        misty_engine::behaviour_tree::Status,
+        u64,
+    )> {
         let live = self.live.as_ref()?;
         live.nodes
             .iter()
@@ -765,7 +776,10 @@ fn agent_picker(ui: &mut Ui, s: &mut EditorState) {
         .unwrap_or_default();
     let follow = tr!("Follow Selection");
     egui::ComboBox::from_id_salt("bt_agent")
-        .selected_text(tr!("Debugging {object}", object = crate::i18n::display(&shown)))
+        .selected_text(tr!(
+            "Debugging {object}",
+            object = crate::i18n::display(&shown)
+        ))
         .show_ui(ui, |ui| {
             if ui.selectable_label(w.watch.is_none(), &follow).clicked() {
                 w.watch = None;

@@ -16,8 +16,7 @@ pub const NAMES: [&str; 1] = ["Behaviour Tree Agent"];
 /// Whether Add Component offers `name` in this project (optional packages' components appear
 /// once the package is installed).
 pub fn offered(name: &str) -> bool {
-    !NAMES.contains(&name)
-        || crate::panels::behaviour_tree::package_installed()
+    !NAMES.contains(&name) || crate::panels::behaviour_tree::package_installed()
 }
 
 pub fn icon(name: &str) -> Option<&'static str> {
@@ -117,8 +116,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
             .on_hover_text(tr!("Agents of one group share the tree's shared keys"));
             ui.end_row();
             ui.label(tr!("Seed"));
-            ui.add(egui::DragValue::new(&mut c.seed))
-                .on_hover_text(tr!("Random choices repeat with the same seed (0 = from the name)"));
+            ui.add(egui::DragValue::new(&mut c.seed)).on_hover_text(tr!(
+                "Random choices repeat with the same seed (0 = from the name)"
+            ));
             ui.end_row();
         });
     // Overrides.
@@ -148,12 +148,18 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
                                 .selected_text(crate::i18n::display(&shown))
                                 .width(130.0)
                                 .show_ui(ui, |ui| {
-                                    if ui.selectable_label(o.object.is_none(), tr!("(none)")).clicked() {
+                                    if ui
+                                        .selectable_label(o.object.is_none(), tr!("(none)"))
+                                        .clicked()
+                                    {
                                         o.object = None;
                                     }
                                     for (name, x) in &objects {
                                         if ui
-                                            .selectable_label(o.object == Some(*x), crate::i18n::display(name))
+                                            .selectable_label(
+                                                o.object == Some(*x),
+                                                crate::i18n::display(name),
+                                            )
                                             .clicked()
                                         {
                                             o.object = Some(*x);
@@ -181,7 +187,10 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> boo
             if !free.is_empty() {
                 ui.menu_button(tr!("＋ Override"), |ui| {
                     for k in free {
-                        if ui.button(format!("{} ({})", k.name, tr(k.ty.label()))).clicked() {
+                        if ui
+                            .button(format!("{} ({})", k.name, tr(k.ty.label())))
+                            .clicked()
+                        {
                             c.overrides.push(BlackboardOverride {
                                 key: k.name.clone(),
                                 value: if k.ty == KeyType::Object {

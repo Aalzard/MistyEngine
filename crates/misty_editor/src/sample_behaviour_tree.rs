@@ -373,7 +373,16 @@ pub fn guard_tree() -> BehaviourTree {
         size: [420.0, 70.0],
     });
     t.0.arrange();
-    let attack_nodes = vec![attack, in_range, attack_state, face, swing_or_wait, cooldown, swing, pause];
+    let attack_nodes = vec![
+        attack,
+        in_range,
+        attack_state,
+        face,
+        swing_or_wait,
+        cooldown,
+        swing,
+        pause,
+    ];
     t.0.groups.push(misty_engine::behaviour_tree::asset::Group {
         title: "Attack".into(),
         nodes: attack_nodes,
@@ -439,7 +448,12 @@ fn level(s: &mut Scene) {
         );
     };
     wall(s, "Wall North", Vec2::new(0.0, 14.25), Vec2::new(29.0, 0.5));
-    wall(s, "Wall South", Vec2::new(0.0, -14.25), Vec2::new(29.0, 0.5));
+    wall(
+        s,
+        "Wall South",
+        Vec2::new(0.0, -14.25),
+        Vec2::new(29.0, 0.5),
+    );
     wall(s, "Wall East", Vec2::new(14.25, 0.0), Vec2::new(0.5, 28.0));
     wall(s, "Wall West", Vec2::new(-14.25, 0.0), Vec2::new(0.5, 28.0));
     // The player hides behind it.
@@ -492,7 +506,10 @@ pub fn demo_scene() -> Scene {
         Transform::from_position(HIDDEN),
         STEEL,
     );
-    s.add(player, script(PLAYER_MOVE, &[("speed", ScriptValue::Number(5.0))]));
+    s.add(
+        player,
+        script(PLAYER_MOVE, &[("speed", ScriptValue::Number(5.0))]),
+    );
     let guard = shape(
         &mut s,
         "Guard",
@@ -523,7 +540,10 @@ pub fn demo_scene() -> Scene {
             ..Default::default()
         },
     );
-    s.add(guard, script(GUARD_BRAIN, &[("damage", ScriptValue::Number(10.0))]));
+    s.add(
+        guard,
+        script(GUARD_BRAIN, &[("damage", ScriptValue::Number(10.0))]),
+    );
     s
 }
 
@@ -638,9 +658,18 @@ fn behaviour_tree_demo_plays() {
     };
     // Patrol for a while: the player is hidden.
     sim.run(&mut scene, 6.0, |_| false);
-    assert_eq!(sim.state(), "Patrol", "states {:?} logs {:?}", sim.states, sim.logs);
+    assert_eq!(
+        sim.state(),
+        "Patrol",
+        "states {:?} logs {:?}",
+        sim.states,
+        sim.logs
+    );
     let moved = scene.world_position(guard);
-    assert!(moved.distance(start) > 3.0, "the guard walks its patrol: {moved}");
+    assert!(
+        moved.distance(start) > 3.0,
+        "the guard walks its patrol: {moved}"
+    );
     // Step out in front of the guard: it chases, then attacks.
     let fwd = scene.world_rotation(guard) * Vec3::Z;
     let flat = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero();
@@ -685,6 +714,10 @@ fn behaviour_tree_demo_plays() {
     assert!(pos("Patrol") < pos("Attack"), "{order:?}");
     assert!(pos("Attack") < pos("Search"), "{order:?}");
     assert_eq!(order.last(), Some(&"Patrol"), "{order:?}");
-    let problems: Vec<_> = sim.logs.iter().filter(|(k, _)| *k != LogKind::Info).collect();
+    let problems: Vec<_> = sim
+        .logs
+        .iter()
+        .filter(|(k, _)| *k != LogKind::Info)
+        .collect();
     assert!(problems.is_empty(), "{problems:?}");
 }

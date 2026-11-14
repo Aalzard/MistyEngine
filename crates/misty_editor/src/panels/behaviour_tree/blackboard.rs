@@ -13,7 +13,11 @@ use crate::theme;
 pub fn height(s: &EditorState) -> f32 {
     let w = &s.behaviour_tree;
     let rows = w.tree.keys.len().max(1) as f32;
-    let live = if w.live.is_some() { rows * 20.0 + 30.0 } else { 0.0 };
+    let live = if w.live.is_some() {
+        rows * 20.0 + 30.0
+    } else {
+        0.0
+    };
     70.0 + rows * 50.0 + live
 }
 
@@ -47,7 +51,9 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if w.tree.keys.is_empty() {
-                    ui.weak(tr!("No keys yet. Keys are the tree's memory: targets, flags, numbers."));
+                    ui.weak(tr!(
+                        "No keys yet. Keys are the tree's memory: targets, flags, numbers."
+                    ));
                 }
                 let mut remove = None;
                 for i in 0..w.tree.keys.len() {
@@ -62,11 +68,16 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                                 for ty in KeyType::ALL {
                                     if ui.selectable_label(k.ty == ty, tr(ty.label())).clicked() {
                                         k.ty = ty;
-                                        k.default = k.default.convert(ty).unwrap_or_else(|| ty.zero());
+                                        k.default =
+                                            k.default.convert(ty).unwrap_or_else(|| ty.zero());
                                     }
                                 }
                             });
-                        if ui.small_button("✖").on_hover_text(tr!("Delete key")).clicked() {
+                        if ui
+                            .small_button("✖")
+                            .on_hover_text(tr!("Delete key"))
+                            .clicked()
+                        {
                             remove = Some(i);
                         }
                     });
@@ -101,18 +112,20 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                 if let Some(live) = &w.live {
                     ui.add_space(4.0);
                     ui.label(RichText::new(tr!("Live values")).strong());
-                    egui::Grid::new("bt_live_keys").num_columns(2).show(ui, |ui| {
-                        for (name, _ty, value, shared) in &live.keys {
-                            let label = if *shared {
-                                format!("{name} ⇄")
-                            } else {
-                                name.clone()
-                            };
-                            ui.label(RichText::new(label).color(theme::TEXT_DIM));
-                            ui.label(crate::i18n::display(value));
-                            ui.end_row();
-                        }
-                    });
+                    egui::Grid::new("bt_live_keys")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            for (name, _ty, value, shared) in &live.keys {
+                                let label = if *shared {
+                                    format!("{name} ⇄")
+                                } else {
+                                    name.clone()
+                                };
+                                ui.label(RichText::new(label).color(theme::TEXT_DIM));
+                                ui.label(crate::i18n::display(value));
+                                ui.end_row();
+                            }
+                        });
                 }
             });
     });

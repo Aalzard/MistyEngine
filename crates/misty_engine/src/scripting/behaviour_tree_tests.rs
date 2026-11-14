@@ -283,7 +283,10 @@ fn shared_keys_lookat_stop_start_and_tick_rate() {
     ]);
     let mut scene = Scene::new("t");
     let target = scene.spawn("Target", None);
-    scene.set_transform(target, crate::scene::Transform::from_position(Vec3::new(10.0, 0.0, 0.0)));
+    scene.set_transform(
+        target,
+        crate::scene::Transform::from_position(Vec3::new(10.0, 0.0, 0.0)),
+    );
     let watcher = agent(&mut scene, "Watcher", "Assets/AI/Pair.btree");
     let listener = agent(&mut scene, "Listener", "Assets/AI/Pair.btree");
     for (e, watching) in [(watcher, true), (listener, false)] {
@@ -303,7 +306,10 @@ fn shared_keys_lookat_stop_start_and_tick_rate() {
     }
     {
         // The listener ticks 10 times a second.
-        let mut a = scene.world.get::<&mut BehaviourTreeAgent>(listener).unwrap();
+        let mut a = scene
+            .world
+            .get::<&mut BehaviourTreeAgent>(listener)
+            .unwrap();
         a.tick_rate = 10.0;
     }
     script(&mut scene, watcher, "Assets/AI/Control.lua");
@@ -313,7 +319,8 @@ fn shared_keys_lookat_stop_start_and_tick_rate() {
     frames(&mut host, &mut scene, &mut time, 3);
     // The watcher (every frame) already faces the target (+X); the listener (10 per second)
     // hasn't ticked yet.
-    let facing = |scene: &Scene, e: Entity| (scene.world_rotation(e) * Vec3::Z).distance(Vec3::X) < 0.01;
+    let facing =
+        |scene: &Scene, e: Entity| (scene.world_rotation(e) * Vec3::Z).distance(Vec3::X) < 0.01;
     assert!(facing(&scene, watcher));
     assert!(!facing(&scene, listener));
     frames(&mut host, &mut scene, &mut time, 57);

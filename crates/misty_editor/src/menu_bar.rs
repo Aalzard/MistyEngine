@@ -647,8 +647,7 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         // The optional Behaviour Trees package.
-        if s
-            .optional_packages
+        if s.optional_packages
             .has(crate::packages::optional::BEHAVIOUR_TREES)
         {
             let tab = Tab::BehaviourTree;

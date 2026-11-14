@@ -225,7 +225,10 @@ struct GameHost<'a> {
 
 impl GameHost<'_> {
     fn world<R>(&self, f: impl FnOnce(&mut World) -> R) -> R {
-        let mut w = self.lua.app_data_mut::<World>().expect("world is installed");
+        let mut w = self
+            .lua
+            .app_data_mut::<World>()
+            .expect("world is installed");
         f(&mut w)
     }
 
@@ -235,11 +238,7 @@ impl GameHost<'_> {
 
     /// The object with the Animator: this one, else a child.
     fn animated(&self, w: &World) -> Entity {
-        if w.scene
-            .world
-            .get::<&crate::scene::Animator>(self.e)
-            .is_ok()
-        {
+        if w.scene.world.get::<&crate::scene::Animator>(self.e).is_ok() {
             return self.e;
         }
         w.scene
@@ -348,8 +347,10 @@ impl GameHost<'_> {
             Err(e) => {
                 let name = self.name();
                 self.world(|w| {
-                    w.logs
-                        .push((LogKind::Error, format!("'{name}' Behaviour Tree {what}: {e}")))
+                    w.logs.push((
+                        LogKind::Error,
+                        format!("'{name}' Behaviour Tree {what}: {e}"),
+                    ))
                 });
                 None
             }
@@ -678,7 +679,15 @@ impl ScriptHost {
                 let active = enabled && w.scene.contains(e) && w.scene.active_in_hierarchy(e);
                 let a = &mut w.behaviour.agents[i];
                 let exec = std::mem::take(&mut a.exec);
-                (e, a.tree.clone(), exec, a.command.take(), active, interval, restart)
+                (
+                    e,
+                    a.tree.clone(),
+                    exec,
+                    a.command.take(),
+                    active,
+                    interval,
+                    restart,
+                )
             });
             let (e, tree, mut exec, command, active, interval, restart) = job;
             let mut host = GameHost {
