@@ -164,8 +164,7 @@ mod tests {
     #[test]
     fn main_panels_name_their_controls() {
         use egui_kittest::Harness;
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        let root = crate::test_sample::shared_copy();
         let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root));
         let cube = s.scene.spawn("Cube", None);
         s.selection.set(cube);

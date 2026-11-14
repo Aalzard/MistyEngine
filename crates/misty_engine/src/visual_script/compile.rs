@@ -423,21 +423,32 @@ fn flatten(g: &ScriptGraph, files: &dyn Resolver) -> Flat {
     let mut f = Flat {
         nodes: Vec::new(),
         conns: Vec::new(),
-        vars: g.variables.clone(),
+        // A graph's own variables are its own (a macro checked on its own included).
+        vars: g
+            .variables
+            .iter()
+            .map(|v| Variable {
+                outer: false,
+                ..v.clone()
+            })
+            .collect(),
         next: g.next_id().max(1) + 1_000_000,
         errors: Vec::new(),
     };
     let mut chain = Vec::new();
-    expand(&mut f, g, None, &mut chain, files);
+    expand(&mut f, g, None, &mut chain, files, &HashMap::new());
     f
 }
 
+/// Inline `g` into `f`. `owner` = the flat names of the variables of the graph a macro is in
+/// (by their names there; empty for the top graph and subgraph assets).
 fn expand(
     f: &mut Flat,
     g: &ScriptGraph,
     origin: Option<u32>,
     chain: &mut Vec<String>,
     files: &dyn Resolver,
+    owner: &HashMap<String, String>,
 ) {
     let mut map: HashMap<u32, u32> = HashMap::new();
     for n in &g.nodes {
@@ -450,16 +461,64 @@ fn expand(
         };
         map.insert(n.id, id);
     }
-    // Private variables of an inlined subgraph get names unique to this use.
+    // Private variables of an inlined subgraph get names unique to this use; a macro's links
+    // to the variables of the graph it is in take that graph's names. `names`: this graph's
+    // variable name → its name in the flat graph.
     let prefix = origin.map(|o| format!("{o}#{}/", chain.len()));
-    if let Some(p) = &prefix {
-        for v in &g.variables {
-            if v.scope == VarScope::Graph {
-                let mut v = v.clone();
-                v.name = format!("{p}{}", v.name);
-                f.vars.push(v);
-            } else if !f.vars.iter().any(|x| x.name == v.name) {
-                f.vars.push(v.clone());
+    let mut names: HashMap<String, String> = HashMap::new();
+    match &prefix {
+        None => {
+            for v in &g.variables {
+                names.insert(v.name.clone(), v.name.clone());
+            }
+        }
+        Some(p) => {
+            for v in &g.variables {
+                if v.outer {
+                    let at = origin.unwrap_or_default();
+                    match owner.get(&v.name) {
+                        Some(flat) => {
+                            let theirs = f.vars.iter().find(|x| x.name == *flat).map(|x| x.ty);
+                            if let Some(ty) = theirs
+                                && ty != v.ty
+                                && ty != PinType::Any
+                                && v.ty != PinType::Any
+                            {
+                                f.errors.push(GraphError::at(
+                                    at,
+                                    format!(
+                                        "inside the subgraph: the variable '{}' is a {} here but a {} in the graph",
+                                        v.name,
+                                        v.ty.label(),
+                                        ty.label()
+                                    ),
+                                ));
+                            }
+                            names.insert(v.name.clone(), flat.clone());
+                            continue;
+                        }
+                        None => f.errors.push(GraphError::at(
+                            at,
+                            format!(
+                                "inside the subgraph: it uses the variable '{}' of the graph it is in, which has none of that name",
+                                v.name
+                            ),
+                        )),
+                    }
+                }
+                if v.scope == VarScope::Graph {
+                    let mut v = v.clone();
+                    let name = format!("{p}{}", v.name);
+                    names.insert(v.name.clone(), name.clone());
+                    v.name = name;
+                    v.outer = false;
+                    f.vars.push(v);
+                } else {
+                    names.insert(v.name.clone(), v.name.clone());
+                    if !f.vars.iter().any(|x| x.name == v.name) {
+                        f.vars.push(v.clone());
+                    }
+                }
             }
         }
     }
@@ -489,7 +548,15 @@ fn expand(
             }
             let before = f.nodes.len();
             chain.push(key);
-            expand(f, &sub, Some(o), chain, files);
+            // A macro sees the variables of the graph it is in (its `outer` links); an asset
+            // is not inside any graph.
+            let none = HashMap::new();
+            let scope = if n.param("macro").is_empty() {
+                &none
+            } else {
+                &names
+            };
+            expand(f, &sub, Some(o), chain, files, scope);
             chain.pop();
             let find = |kind: &str| {
                 f.nodes[before..]
@@ -516,13 +583,12 @@ fn expand(
         } else {
             nodes::ports(n, g, files)
         };
-        if let Some(p) = &prefix
+        if prefix.is_some()
             && matches!(n.kind.as_str(), "GetVariable" | "SetVariable")
-            && g.variable(n.param("name"))
-                .is_some_and(|v| v.scope == VarScope::Graph)
+            && let Some(flat) = names.get(n.param("name"))
+            && flat != n.param("name")
         {
-            let renamed = format!("{p}{}", n.param("name"));
-            node.params.insert("name".into(), renamed);
+            node.params.insert("name".into(), flat.clone());
         }
         f.nodes.push(FNode {
             node,

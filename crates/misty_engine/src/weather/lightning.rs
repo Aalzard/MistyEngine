@@ -17,6 +17,11 @@ pub const STRIKE_TIME: f32 = 0.9;
 /// Height of the cloud base bolts come from (metres above the camera).
 pub const CLOUD_BASE: f32 = 900.0;
 
+/// Thunder from farther than this (metres) is not heard (real thunder carries about 25 km).
+pub const THUNDER_RANGE: f32 = 30_000.0;
+/// Thunder sounds on their way at most (more are dropped: a script striking every frame).
+pub const MAX_PENDING_THUNDER: usize = 256;
+
 /// Seconds after a strike its thunder is heard.
 pub fn thunder_delay(distance: f32) -> f32 {
     distance.max(0.0) / SPEED_OF_SOUND
@@ -310,11 +315,15 @@ impl Lightning {
         });
         // Near thunder is loud and cracks; far thunder is a low rumble.
         let volume = (intensity * (1.0 / (1.0 + distance / 2500.0))).clamp(0.0, 1.0);
-        self.thunder.push(PendingThunder {
-            delay: thunder_delay(distance),
-            distance,
-            volume,
-        });
+        // Out of earshot, nothing waits for it: `Weather.Strike` at 1e7 m every frame queued
+        // thunder hours away, and the list only grew.
+        if distance <= THUNDER_RANGE && self.thunder.len() < MAX_PENDING_THUNDER {
+            self.thunder.push(PendingThunder {
+                delay: thunder_delay(distance),
+                distance,
+                volume,
+            });
+        }
         (position, distance, intensity)
     }
 

@@ -200,7 +200,7 @@ mod tests {
             check(&mut problems, "tab", tab.title());
         }
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let sample = root.join("../../SampleProject");
+        let sample = crate::test_sample::shared_copy();
         let s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(sample));
         for c in crate::search::menu_items::all(&s) {
             check(&mut problems, "menu", &format!("{} ({})", c.title, c.path));

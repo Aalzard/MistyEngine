@@ -135,6 +135,24 @@ fn one_shots_and_editor_pause() {
     );
 }
 
+/// Editor Pause holds ambient voices too (weather rain, wind and thunder): they used to keep
+/// playing through Pause while every other sound stopped.
+#[test]
+fn editor_pause_holds_ambient_voices() {
+    let (mut audio, log) = Audio::null("root".into());
+    assert!(
+        audio
+            .play_ambient("Assets/Audio/Rain.wav", "", 0.5, true)
+            .is_some()
+    );
+    assert!(audio.play_clip("Assets/Audio/Thunder.wav", 0.8));
+    assert_eq!(log.lock().unwrap().voices.len(), 2);
+    audio.set_paused(true);
+    assert!(log.lock().unwrap().voices.values().all(|v| v.paused));
+    audio.set_paused(false);
+    assert!(log.lock().unwrap().voices.values().all(|v| !v.paused));
+}
+
 #[test]
 fn audio_files_are_clips() {
     assert!(is_clip("Assets/a.WAV") && is_clip("x.ogg") && is_clip("x.mp3"));

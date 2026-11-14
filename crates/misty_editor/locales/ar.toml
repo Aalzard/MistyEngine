@@ -805,6 +805,12 @@
 "Save changes to the following script(s)?" = "حفظ التغييرات على البرامج النصية التالية؟"
 "Save changes to {scene}?" = "حفظ التغييرات على {scene}؟"
 "Delete {count} objects?" = "حذف الكائنات ({count})؟"
+"Project Already Open" = "المشروع مفتوح بالفعل"
+"This project is open in another Misty editor (process {pid})." = "هذا المشروع مفتوح في محرر Misty آخر (العملية {pid})."
+"This project is open in another Misty editor." = "هذا المشروع مفتوح في محرر Misty آخر."
+"Open it read-only to look around: scenes, assets and settings can't be saved." = "افتحه للقراءة فقط لتتصفحه: لا يمكن حفظ المشاهد والأصول والإعدادات."
+"Open Read-Only" = "فتح للقراءة فقط"
+"Read-Only" = "للقراءة فقط"
 
 [preferences]
 "Preferences" = "التفضيلات"

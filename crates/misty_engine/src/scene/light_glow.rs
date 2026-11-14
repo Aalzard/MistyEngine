@@ -59,6 +59,9 @@ pub struct LightGlow {
     pub soft_core: f32,
 }
 
+/// Glow Intensity past this is ignored (the Properties field goes to 10).
+pub const MAX_GLOW_INTENSITY: f32 = 1000.0;
+
 impl Default for LightGlow {
     fn default() -> Self {
         Self {
@@ -76,11 +79,16 @@ impl LightGlow {
     }
 
     /// Clamped copy (negative intensity, spread and soft core outside 0..1 are ignored).
+    /// Numbers that aren't finite (`1e39` in a scene file reads as infinity) take their
+    /// defaults: `f32::clamp` passes NaN through, and an infinite intensity made the emitter's
+    /// bloom share `inf × 0` = NaN, which bloom spread over the whole image.
     pub fn clamped(&self) -> Self {
+        let d = Self::default();
+        let finite = |v: f32, default: f32| if v.is_finite() { v } else { default };
         Self {
-            intensity: self.intensity.max(0.0),
-            spread: self.spread.clamp(0.0, 1.0),
-            soft_core: self.soft_core.clamp(0.0, 1.0),
+            intensity: finite(self.intensity, d.intensity).clamp(0.0, MAX_GLOW_INTENSITY),
+            spread: finite(self.spread, d.spread).clamp(0.0, 1.0),
+            soft_core: finite(self.soft_core, d.soft_core).clamp(0.0, 1.0),
         }
     }
 }
@@ -131,6 +139,40 @@ impl SceneComponent for LensFlare {
 mod tests {
     use super::*;
     use crate::scene::Light;
+
+    /// Infinite or NaN glow numbers (a scene file's `1e39`) take the defaults instead of
+    /// reaching the renderer: an infinite intensity with Spread 1 used to make the emitter's
+    /// bloom share NaN.
+    #[test]
+    fn clamped_glow_is_always_finite() {
+        for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            for g in [
+                LightGlow {
+                    intensity: v,
+                    spread: 1.0,
+                    ..Default::default()
+                },
+                LightGlow {
+                    spread: v,
+                    ..Default::default()
+                },
+                LightGlow {
+                    soft_core: v,
+                    ..Default::default()
+                },
+            ] {
+                let c = g.clamped();
+                assert!(
+                    c.intensity.is_finite() && c.spread.is_finite() && c.soft_core.is_finite(),
+                    "{g:?} -> {c:?}"
+                );
+                // What `render::glow::emitter_feed` feeds bloom.
+                let feed = c.intensity * (1.0 - c.spread);
+                assert!(feed.is_finite(), "{g:?}: feed {feed}");
+            }
+        }
+        assert_eq!(LightGlow::default().clamped(), LightGlow::default());
+    }
 
     #[test]
     fn untouched_halo_is_not_saved() {
