@@ -18,10 +18,9 @@ SND_HIT = "Assets/Audio/Clap.wav"
 SND_WIN = "Assets/Audio/Chime.wav"
 SND_HURT = "Assets/Audio/Buzz.wav"
 
-# 2D triggers reach Script Graphs (fixed in round 66). False rebuilds the round 65 workarounds.
-TRIGGERS = False
-
-RAY_ARGS = "origin, direction, distance, mask"
+# 2D triggers and UI clicks reach Script Graphs (fixed in round 66). False rebuilds the round
+# 65 workarounds (distance checks, the menu reading Enter).
+TRIGGERS = True
 # The Default layer only: enemies, the player and the goal are on other layers.
 GROUND_MASK = 1
 
@@ -59,20 +58,20 @@ def tint(g, r, gr, b, a=1.0, target=None):
 
 
 def raycast(g, origin, direction, distance):
-    return g.call(
-        "Physics2D",
-        "Raycast",
-        RAY_ARGS,
-        origin=origin,
-        direction=direction,
-        distance=distance,
-        mask=GROUND_MASK,
+    """The native, pure Physics2D: Raycast node (Hit, Point, Normal, Distance, Collider)."""
+    return g.node(
+        "Api",
+        {"owner": "Physics2D", "member": "Raycast", "mode": "call"},
+        Origin=origin,
+        Direction=direction,
+        Distance=distance,
+        Layer_Mask=GROUND_MASK,
     )
 
 
 def hit(g, ray):
-    """True when a Physics2D.Raycast node hit something."""
-    return g.op("NotEqual", A=ray["Result"])
+    """True when a Physics2D: Raycast node hit something."""
+    return ray["Hit"]
 
 
 def load_scene(g, name):
@@ -177,9 +176,8 @@ def player():
         raycast(g, g.op("AddVector3", A=pos, B=(dx, -0.45, 0.0)), down, 0.12)
         for dx in (-0.3, 0.0, 0.3)
     ]
-    s.to(rays[0], "Then 0").to(rays[1]).to(rays[2])
     grounded = g.op("Or", A=g.op("Or", A=hit(g, rays[0]), B=hit(g, rays[1])), B=hit(g, rays[2]))
-    rays[2].to(g.branch(grounded)).to(g.setv("Grounded At", now(g)), "True")
+    s.to(g.branch(grounded), "Then 0").to(g.setv("Grounded At", now(g)), "True")
 
     # 1: face the way we move.
     moving = g.op("Greater", A=g.op("AbsFloat", Value=g.get("Move")), B=0.01)
@@ -319,23 +317,21 @@ def autopilot():
     under = raycast(g, pos, down, 0.7)
     ahead = raycast(g, g.op("AddVector3", A=pos, B=(0.9, 0.0, 0.0)), down, 1.5)
     wall = raycast(g, pos, const_v3(g, 1.0, 0.0, 0.0), 1.0)
-    s.to(under, "Then 1").to(ahead).to(wall)
     # Standing, and the ground ends or a wall is in the way: jump.
     must_jump = g.op(
         "And",
         A=hit(g, under),
         B=g.op("Or", A=g.op("Not", Value=hit(g, ahead)), B=hit(g, wall)),
     )
-    wall.to(g.branch(must_jump)).to(g.send("JumpPressed"), "True")
+    s.to(g.branch(must_jump), "Then 1").to(g.send("JumpPressed"), "True")
     # Anything close ahead that has a `Dead` variable (the Enemy Touch graph) is an enemy.
-    around = g.call(
-        "Physics2D",
-        "OverlapCircleAll",
-        "c, r, m",
-        c=g.op("AddVector3", A=position(g), B=(1.3, 0.0, 0.0)),
-        r=g.get("Dash Range"),
+    around = g.node(
+        "Api",
+        {"owner": "Physics2D", "member": "OverlapCircleAll", "mode": "call"},
+        Center=g.op("AddVector3", A=position(g), B=(1.3, 0.0, 0.0)),
+        Radius=g.get("Dash Range"),
     )
-    each = s.to(around, "Then 2").to(g.node("ForEach", None, List=around["Result"]))
+    each = s.to(g.node("ForEach", None, List=around["Result"]), "Then 2")
     reach = g.node("GetObjectVariable", None, Target=each["Item"], Name="Dead")["Value"]
     ex, _, _ = xyz(g, position(g, each["Item"]))
     px, _, _ = xyz(g, position(g))
@@ -371,9 +367,8 @@ def patrol():
     )
     wall = raycast(g, pos, g.vec(side, 0.0, 0.0), 0.65)
     live = fx.to(g.branch(g.get("Dead")))
-    live.to(ledge, "False").to(wall)
     blocked = g.op("Or", A=g.op("Not", Value=hit(g, ledge)), B=hit(g, wall))
-    b = wall.to(g.branch(blocked))
+    b = live.to(g.branch(blocked), "False")
     k = b.to(g.branch(knocked), "True")
     k.to(g.setv("Knock", 0.0), "True")
     turn = k.to(g.setv("Direction", g.op("NegateFloat", Value=g.get("Direction"))), "False")
@@ -409,11 +404,11 @@ def enemy_touch():
     g.var("Next Hit At", "float", 0.0)
     if TRIGGERS:
         # The enemy's collider is a trigger: remember the player while it is inside.
-        enter = g.node("OnTriggerEnter")
+        enter = g.node("OnTriggerEnter2D")
         is_player = g.call("#GameObject", "CompareTag", target=enter["Other"], Tag="Player")["Result"]
         e = enter.to(g.branch(is_player)).to(g.setv("Player", enter["Other"]), "True")
         e.to(g.setv("Touching", True))
-        leave = g.node("OnTriggerExit")
+        leave = g.node("OnTriggerExit2D")
         was_player = g.call("#GameObject", "CompareTag", target=leave["Other"], Tag="Player")["Result"]
         leave.to(g.branch(was_player)).to(g.setv("Touching", False), "True")
         touching = g.get("Touching")
@@ -523,7 +518,7 @@ def goal():
     """The flag at the end of a stage: the player reaching it broadcasts StageCleared (once)."""
     g = Graph()
     if TRIGGERS:
-        enter = g.node("OnTriggerEnter")
+        enter = g.node("OnTriggerEnter2D")
         is_player = g.call("#GameObject", "CompareTag", target=enter["Other"], Tag="Player")["Result"]
         here = enter.to(g.branch(is_player))
     else:
@@ -635,7 +630,11 @@ def menu():
     g.var("Started", "bool", False)
     up = g.node("OnUpdate")
     s = up.to(g.seq(3))
-    s.to(g.branch(any_key_down(g, ["return", "space"])), "Then 0").to(g.send("Play"), "True")
+    if not TRIGGERS:
+        # Round 65 workaround (On Click could not reach graphs): read Enter here.
+        s.to(g.branch(any_key_down(g, ["return", "space"])), "Then 0").to(
+            g.send("Play"), "True"
+        )
     s.to(g.branch(any_key_down(g, ["escape"])), "Then 1").to(g.send("Quit"), "True")
     # The title breathes.
     wave = g.op("Sin", Radians=g.op("MultiplyFloat", A=now(g), B=2.5))

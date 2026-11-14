@@ -13,8 +13,8 @@
       "id": 2,
       "type": "GetVariable",
       "position": [
-        -1340.0,
-        855.0
+        -2090.0,
+        1140.0
       ],
       "params": {
         "name": "Knock"
@@ -24,16 +24,16 @@
       "id": 3,
       "type": "AbsFloat",
       "position": [
-        -1090.0,
-        760.0
+        -1840.0,
+        1045.0
       ]
     },
     {
       "id": 4,
       "type": "Greater",
       "position": [
-        -840.0,
-        665.0
+        -1590.0,
+        950.0
       ],
       "values": {
         "B": {
@@ -45,8 +45,8 @@
       "id": 5,
       "type": "GetVariable",
       "position": [
-        -1090.0,
-        1140.0
+        -1840.0,
+        1425.0
       ],
       "params": {
         "name": "Direction"
@@ -56,8 +56,8 @@
       "id": 6,
       "type": "GetVariable",
       "position": [
-        -1090.0,
-        1235.0
+        -1840.0,
+        1520.0
       ],
       "params": {
         "name": "Speed"
@@ -67,24 +67,24 @@
       "id": 7,
       "type": "MultiplyFloat",
       "position": [
-        -840.0,
-        1045.0
+        -1590.0,
+        1330.0
       ]
     },
     {
       "id": 8,
       "type": "Select",
       "position": [
-        -590.0,
-        570.0
+        -1340.0,
+        855.0
       ]
     },
     {
       "id": 9,
       "type": "GetVariable",
       "position": [
-        -840.0,
-        950.0
+        -1590.0,
+        1235.0
       ],
       "params": {
         "name": "Knock"
@@ -94,16 +94,16 @@
       "id": 10,
       "type": "Sign",
       "position": [
-        -340.0,
-        475.0
+        -1090.0,
+        760.0
       ]
     },
     {
       "id": 11,
       "type": "Api",
       "position": [
-        160.0,
-        190.0
+        -590.0,
+        475.0
       ],
       "params": {
         "owner": "#Transform",
@@ -115,8 +115,8 @@
       "id": 12,
       "type": "MultiplyFloat",
       "position": [
-        -90.0,
-        380.0
+        -840.0,
+        665.0
       ],
       "values": {
         "B": {
@@ -128,8 +128,8 @@
       "id": 13,
       "type": "MakeVector3",
       "position": [
-        160.0,
-        285.0
+        -590.0,
+        570.0
       ],
       "values": {
         "Y": {
@@ -144,16 +144,16 @@
       "id": 14,
       "type": "AddVector3",
       "position": [
-        410.0,
-        95.0
+        -340.0,
+        380.0
       ]
     },
     {
       "id": 15,
       "type": "Vector3",
       "position": [
-        410.0,
-        1330.0
+        -340.0,
+        1615.0
       ],
       "values": {
         "Value": {
@@ -169,20 +169,19 @@
       "id": 16,
       "type": "Api",
       "position": [
-        660.0,
-        0.0
+        -90.0,
+        285.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "Raycast",
-        "mode": "call",
-        "args": "origin, direction, distance, mask"
+        "mode": "call"
       },
       "values": {
-        "distance": {
+        "Distance": {
           "Float": 1.0
         },
-        "mask": {
+        "Layer Mask": {
           "Int": 1
         }
       }
@@ -191,8 +190,8 @@
       "id": 17,
       "type": "MakeVector3",
       "position": [
-        740.0,
-        95.0
+        -90.0,
+        1805.0
       ],
       "values": {
         "Y": {
@@ -207,20 +206,19 @@
       "id": 18,
       "type": "Api",
       "position": [
-        990.0,
-        0.0
+        160.0,
+        1710.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "Raycast",
-        "mode": "call",
-        "args": "origin, direction, distance, mask"
+        "mode": "call"
       },
       "values": {
-        "distance": {
+        "Distance": {
           "Float": 0.65
         },
-        "mask": {
+        "Layer Mask": {
           "Int": 1
         }
       }
@@ -246,57 +244,41 @@
     },
     {
       "id": 21,
-      "type": "NotEqual",
-      "position": [
-        570.0,
-        285.0
-      ]
-    },
-    {
-      "id": 22,
       "type": "Not",
       "position": [
-        820.0,
+        160.0,
         190.0
       ]
     },
     {
-      "id": 23,
-      "type": "NotEqual",
-      "position": [
-        820.0,
-        380.0
-      ]
-    },
-    {
-      "id": 24,
+      "id": 22,
       "type": "Or",
       "position": [
-        1070.0,
+        410.0,
         95.0
       ]
     },
     {
+      "id": 23,
+      "type": "Branch",
+      "position": [
+        660.0,
+        0.0
+      ]
+    },
+    {
+      "id": 24,
+      "type": "Branch",
+      "position": [
+        990.0,
+        0.0
+      ]
+    },
+    {
       "id": 25,
-      "type": "Branch",
-      "position": [
-        1320.0,
-        0.0
-      ]
-    },
-    {
-      "id": 26,
-      "type": "Branch",
-      "position": [
-        1650.0,
-        0.0
-      ]
-    },
-    {
-      "id": 27,
       "type": "SetVariable",
       "position": [
-        1980.0,
+        1320.0,
         0.0
       ],
       "params": {
@@ -309,10 +291,10 @@
       }
     },
     {
-      "id": 28,
+      "id": 26,
       "type": "GetVariable",
       "position": [
-        1480.0,
+        820.0,
         340.0
       ],
       "params": {
@@ -320,18 +302,18 @@
       }
     },
     {
-      "id": 29,
+      "id": 27,
       "type": "NegateFloat",
       "position": [
-        1730.0,
+        1070.0,
         245.0
       ]
     },
     {
-      "id": 30,
+      "id": 28,
       "type": "SetVariable",
       "position": [
-        1980.0,
+        1320.0,
         150.0
       ],
       "params": {
@@ -339,10 +321,10 @@
       }
     },
     {
-      "id": 31,
+      "id": 29,
       "type": "GetVariable",
       "position": [
-        1810.0,
+        1150.0,
         340.0
       ],
       "params": {
@@ -350,10 +332,10 @@
       }
     },
     {
-      "id": 32,
+      "id": 30,
       "type": "Greater",
       "position": [
-        2060.0,
+        1400.0,
         245.0
       ],
       "values": {
@@ -363,10 +345,10 @@
       }
     },
     {
-      "id": 33,
+      "id": 31,
       "type": "Api",
       "position": [
-        2310.0,
+        1650.0,
         150.0
       ],
       "params": {
@@ -376,18 +358,18 @@
       }
     },
     {
-      "id": 34,
+      "id": 32,
       "type": "MultiplyFloat",
       "position": [
-        1150.0,
+        490.0,
         685.0
       ]
     },
     {
-      "id": 35,
+      "id": 33,
       "type": "MakeVector3",
       "position": [
-        1400.0,
+        740.0,
         590.0
       ],
       "values": {
@@ -400,10 +382,10 @@
       }
     },
     {
-      "id": 36,
+      "id": 34,
       "type": "Api",
       "position": [
-        1650.0,
+        990.0,
         495.0
       ],
       "params": {
@@ -413,10 +395,10 @@
       }
     },
     {
-      "id": 37,
+      "id": 35,
       "type": "GetVariable",
       "position": [
-        1480.0,
+        820.0,
         685.0
       ],
       "params": {
@@ -424,10 +406,10 @@
       }
     },
     {
-      "id": 38,
+      "id": 36,
       "type": "MultiplyFloat",
       "position": [
-        1480.0,
+        820.0,
         780.0
       ],
       "values": {
@@ -437,10 +419,10 @@
       }
     },
     {
-      "id": 39,
+      "id": 37,
       "type": "MoveTowards",
       "position": [
-        1730.0,
+        1070.0,
         590.0
       ],
       "values": {
@@ -450,10 +432,10 @@
       }
     },
     {
-      "id": 40,
+      "id": 38,
       "type": "SetVariable",
       "position": [
-        1980.0,
+        1320.0,
         495.0
       ],
       "params": {
@@ -538,13 +520,13 @@
       "from": 14,
       "output": "Result",
       "to": 16,
-      "input": "origin"
+      "input": "Origin"
     },
     {
       "from": 15,
       "output": "Value",
       "to": 16,
-      "input": "direction"
+      "input": "Direction"
     },
     {
       "from": 10,
@@ -556,13 +538,13 @@
       "from": 11,
       "output": "Value",
       "to": 18,
-      "input": "origin"
+      "input": "Origin"
     },
     {
       "from": 17,
       "output": "Vector",
       "to": 18,
-      "input": "direction"
+      "input": "Direction"
     },
     {
       "from": 19,
@@ -577,171 +559,147 @@
       "input": "In"
     },
     {
-      "from": 20,
-      "output": "False",
-      "to": 16,
-      "input": "In"
-    },
-    {
       "from": 16,
-      "output": "Out",
-      "to": 18,
-      "input": "In"
-    },
-    {
-      "from": 16,
-      "output": "Result",
+      "output": "Hit",
       "to": 21,
-      "input": "A"
+      "input": "Value"
     },
     {
       "from": 21,
       "output": "Result",
       "to": 22,
-      "input": "Value"
+      "input": "A"
     },
     {
       "from": 18,
-      "output": "Result",
-      "to": 23,
-      "input": "A"
+      "output": "Hit",
+      "to": 22,
+      "input": "B"
     },
     {
       "from": 22,
       "output": "Result",
-      "to": 24,
-      "input": "A"
-    },
-    {
-      "from": 23,
-      "output": "Result",
-      "to": 24,
-      "input": "B"
-    },
-    {
-      "from": 24,
-      "output": "Result",
-      "to": 25,
+      "to": 23,
       "input": "Condition"
     },
     {
-      "from": 18,
-      "output": "Out",
-      "to": 25,
+      "from": 20,
+      "output": "False",
+      "to": 23,
       "input": "In"
     },
     {
       "from": 4,
       "output": "Result",
-      "to": 26,
+      "to": 24,
       "input": "Condition"
     },
     {
-      "from": 25,
+      "from": 23,
       "output": "True",
-      "to": 26,
+      "to": 24,
+      "input": "In"
+    },
+    {
+      "from": 24,
+      "output": "True",
+      "to": 25,
       "input": "In"
     },
     {
       "from": 26,
-      "output": "True",
+      "output": "Value",
       "to": 27,
-      "input": "In"
+      "input": "Value"
     },
     {
-      "from": 28,
-      "output": "Value",
-      "to": 29,
+      "from": 27,
+      "output": "Result",
+      "to": 28,
       "input": "Value"
+    },
+    {
+      "from": 24,
+      "output": "False",
+      "to": 28,
+      "input": "In"
     },
     {
       "from": 29,
-      "output": "Result",
-      "to": 30,
-      "input": "Value"
-    },
-    {
-      "from": 26,
-      "output": "False",
-      "to": 30,
-      "input": "In"
-    },
-    {
-      "from": 31,
       "output": "Value",
-      "to": 32,
+      "to": 30,
       "input": "A"
     },
     {
-      "from": 32,
+      "from": 30,
       "output": "Result",
-      "to": 33,
+      "to": 31,
       "input": "Value"
     },
     {
-      "from": 30,
+      "from": 28,
       "output": "Out",
-      "to": 33,
+      "to": 31,
       "input": "In"
     },
     {
       "from": 8,
       "output": "Result",
-      "to": 34,
+      "to": 32,
       "input": "A"
     },
     {
       "from": 1,
       "output": "Delta Time",
-      "to": 34,
+      "to": 32,
       "input": "B"
     },
     {
-      "from": 34,
+      "from": 32,
       "output": "Result",
-      "to": 35,
+      "to": 33,
       "input": "X"
     },
     {
-      "from": 35,
+      "from": 33,
       "output": "Vector",
-      "to": 36,
+      "to": 34,
       "input": "Translation"
     },
     {
-      "from": 25,
+      "from": 23,
       "output": "False",
-      "to": 36,
+      "to": 34,
       "input": "In"
     },
     {
       "from": 1,
       "output": "Delta Time",
-      "to": 38,
+      "to": 36,
       "input": "A"
     },
     {
-      "from": 37,
+      "from": 35,
       "output": "Value",
-      "to": 39,
+      "to": 37,
       "input": "Current"
     },
     {
-      "from": 38,
+      "from": 36,
       "output": "Result",
-      "to": 39,
+      "to": 37,
       "input": "Max Delta"
     },
     {
-      "from": 39,
+      "from": 37,
       "output": "Result",
-      "to": 40,
+      "to": 38,
       "input": "Value"
     },
     {
-      "from": 36,
+      "from": 34,
       "output": "Out",
-      "to": 40,
+      "to": 38,
       "input": "In"
     }
   ],

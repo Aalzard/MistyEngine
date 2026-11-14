@@ -96,8 +96,8 @@
       "id": 9,
       "type": "Api",
       "position": [
-        740.0,
-        245.0
+        240.0,
+        435.0
       ],
       "params": {
         "owner": "#Transform",
@@ -109,8 +109,8 @@
       "id": 10,
       "type": "Vector3",
       "position": [
-        740.0,
-        340.0
+        240.0,
+        530.0
       ],
       "values": {
         "Value": {
@@ -126,20 +126,19 @@
       "id": 11,
       "type": "Api",
       "position": [
-        990.0,
-        150.0
+        490.0,
+        340.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "Raycast",
-        "mode": "call",
-        "args": "origin, direction, distance, mask"
+        "mode": "call"
       },
       "values": {
-        "distance": {
+        "Distance": {
           "Float": 0.7
         },
-        "mask": {
+        "Layer Mask": {
           "Int": 1
         }
       }
@@ -148,8 +147,8 @@
       "id": 12,
       "type": "AddVector3",
       "position": [
-        1070.0,
-        245.0
+        -260.0,
+        910.0
       ],
       "values": {
         "B": {
@@ -165,20 +164,19 @@
       "id": 13,
       "type": "Api",
       "position": [
-        1320.0,
-        150.0
+        -10.0,
+        815.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "Raycast",
-        "mode": "call",
-        "args": "origin, direction, distance, mask"
+        "mode": "call"
       },
       "values": {
-        "distance": {
+        "Distance": {
           "Float": 1.5
         },
-        "mask": {
+        "Layer Mask": {
           "Int": 1
         }
       }
@@ -187,8 +185,8 @@
       "id": 14,
       "type": "Vector3",
       "position": [
-        1400.0,
-        245.0
+        -10.0,
+        1100.0
       ],
       "values": {
         "Value": {
@@ -204,85 +202,60 @@
       "id": 15,
       "type": "Api",
       "position": [
-        1650.0,
-        150.0
+        240.0,
+        1005.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "Raycast",
-        "mode": "call",
-        "args": "origin, direction, distance, mask"
+        "mode": "call"
       },
       "values": {
-        "distance": {
+        "Distance": {
           "Float": 1.0
         },
-        "mask": {
+        "Layer Mask": {
           "Int": 1
         }
       }
     },
     {
       "id": 16,
-      "type": "NotEqual",
+      "type": "Not",
       "position": [
-        1480.0,
-        340.0
+        240.0,
+        720.0
       ]
     },
     {
       "id": 17,
-      "type": "NotEqual",
+      "type": "Or",
       "position": [
-        980.0,
+        490.0,
         625.0
       ]
     },
     {
       "id": 18,
-      "type": "Not",
-      "position": [
-        1230.0,
-        530.0
-      ]
-    },
-    {
-      "id": 19,
-      "type": "NotEqual",
-      "position": [
-        1230.0,
-        720.0
-      ]
-    },
-    {
-      "id": 20,
-      "type": "Or",
-      "position": [
-        1480.0,
-        435.0
-      ]
-    },
-    {
-      "id": 21,
       "type": "And",
       "position": [
-        1730.0,
+        740.0,
         245.0
       ]
     },
     {
-      "id": 22,
+      "id": 19,
       "type": "Branch",
       "position": [
-        1980.0,
+        990.0,
         150.0
       ]
     },
     {
-      "id": 23,
+      "id": 20,
       "type": "SendCustomEvent",
       "position": [
-        2310.0,
+        1320.0,
         150.0
       ],
       "params": {
@@ -290,11 +263,11 @@
       }
     },
     {
-      "id": 24,
+      "id": 21,
       "type": "Api",
       "position": [
-        490.0,
-        1075.0
+        240.0,
+        1560.0
       ],
       "params": {
         "owner": "#Transform",
@@ -303,11 +276,11 @@
       }
     },
     {
-      "id": 25,
+      "id": 22,
       "type": "AddVector3",
       "position": [
-        740.0,
-        980.0
+        490.0,
+        1465.0
       ],
       "values": {
         "B": {
@@ -320,44 +293,43 @@
       }
     },
     {
-      "id": 26,
+      "id": 23,
       "type": "GetVariable",
       "position": [
-        740.0,
-        1170.0
+        490.0,
+        1655.0
       ],
       "params": {
         "name": "Dash Range"
       }
     },
     {
-      "id": 27,
+      "id": 24,
       "type": "Api",
       "position": [
-        990.0,
-        885.0
+        740.0,
+        1370.0
       ],
       "params": {
         "owner": "Physics2D",
         "member": "OverlapCircleAll",
-        "mode": "call",
-        "args": "c, r, m"
+        "mode": "call"
       }
     },
     {
-      "id": 28,
+      "id": 25,
       "type": "ForEach",
       "position": [
-        1320.0,
-        885.0
+        990.0,
+        1275.0
       ]
     },
     {
-      "id": 29,
+      "id": 26,
       "type": "GetObjectVariable",
       "position": [
-        900.0,
-        1170.0
+        570.0,
+        1560.0
       ],
       "values": {
         "Name": {
@@ -366,11 +338,11 @@
       }
     },
     {
-      "id": 30,
+      "id": 27,
       "type": "Api",
       "position": [
-        650.0,
-        1455.0
+        320.0,
+        1845.0
       ],
       "params": {
         "owner": "#Transform",
@@ -379,72 +351,72 @@
       }
     },
     {
-      "id": 31,
+      "id": 28,
       "type": "BreakVector3",
       "position": [
-        900.0,
-        1360.0
+        570.0,
+        1750.0
+      ]
+    },
+    {
+      "id": 29,
+      "type": "Api",
+      "position": [
+        320.0,
+        2035.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 30,
+      "type": "BreakVector3",
+      "position": [
+        570.0,
+        1940.0
+      ]
+    },
+    {
+      "id": 31,
+      "type": "NotEqual",
+      "position": [
+        820.0,
+        1465.0
       ]
     },
     {
       "id": 32,
-      "type": "Api",
+      "type": "Greater",
       "position": [
-        650.0,
-        1645.0
-      ],
-      "params": {
-        "owner": "#Transform",
-        "member": "position",
-        "mode": "get"
-      }
+        820.0,
+        1655.0
+      ]
     },
     {
       "id": 33,
-      "type": "BreakVector3",
+      "type": "And",
       "position": [
-        900.0,
-        1550.0
+        1070.0,
+        1370.0
       ]
     },
     {
       "id": 34,
-      "type": "NotEqual",
+      "type": "Branch",
       "position": [
-        1150.0,
-        1075.0
+        1320.0,
+        1275.0
       ]
     },
     {
       "id": 35,
-      "type": "Greater",
-      "position": [
-        1150.0,
-        1265.0
-      ]
-    },
-    {
-      "id": 36,
-      "type": "And",
-      "position": [
-        1400.0,
-        980.0
-      ]
-    },
-    {
-      "id": 37,
-      "type": "Branch",
-      "position": [
-        1650.0,
-        885.0
-      ]
-    },
-    {
-      "id": 38,
       "type": "SendCustomEvent",
       "position": [
-        1980.0,
-        885.0
+        1650.0,
+        1275.0
       ],
       "params": {
         "name": "DashPressed"
@@ -498,13 +470,13 @@
       "from": 9,
       "output": "Value",
       "to": 11,
-      "input": "origin"
+      "input": "Origin"
     },
     {
       "from": 10,
       "output": "Value",
       "to": 11,
-      "input": "direction"
+      "input": "Direction"
     },
     {
       "from": 9,
@@ -516,216 +488,174 @@
       "from": 12,
       "output": "Result",
       "to": 13,
-      "input": "origin"
+      "input": "Origin"
     },
     {
       "from": 10,
       "output": "Value",
       "to": 13,
-      "input": "direction"
+      "input": "Direction"
     },
     {
       "from": 9,
       "output": "Value",
       "to": 15,
-      "input": "origin"
+      "input": "Origin"
     },
     {
       "from": 14,
       "output": "Value",
       "to": 15,
-      "input": "direction"
-    },
-    {
-      "from": 6,
-      "output": "Then 1",
-      "to": 11,
-      "input": "In"
-    },
-    {
-      "from": 11,
-      "output": "Out",
-      "to": 13,
-      "input": "In"
+      "input": "Direction"
     },
     {
       "from": 13,
-      "output": "Out",
-      "to": 15,
-      "input": "In"
+      "output": "Hit",
+      "to": 16,
+      "input": "Value"
     },
     {
-      "from": 11,
+      "from": 16,
       "output": "Result",
-      "to": 16,
+      "to": 17,
       "input": "A"
     },
     {
-      "from": 13,
-      "output": "Result",
+      "from": 15,
+      "output": "Hit",
       "to": 17,
+      "input": "B"
+    },
+    {
+      "from": 11,
+      "output": "Hit",
+      "to": 18,
       "input": "A"
     },
     {
       "from": 17,
       "output": "Result",
       "to": 18,
-      "input": "Value"
-    },
-    {
-      "from": 15,
-      "output": "Result",
-      "to": 19,
-      "input": "A"
+      "input": "B"
     },
     {
       "from": 18,
       "output": "Result",
-      "to": 20,
-      "input": "A"
-    },
-    {
-      "from": 19,
-      "output": "Result",
-      "to": 20,
-      "input": "B"
-    },
-    {
-      "from": 16,
-      "output": "Result",
-      "to": 21,
-      "input": "A"
-    },
-    {
-      "from": 20,
-      "output": "Result",
-      "to": 21,
-      "input": "B"
-    },
-    {
-      "from": 21,
-      "output": "Result",
-      "to": 22,
+      "to": 19,
       "input": "Condition"
     },
     {
-      "from": 15,
-      "output": "Out",
-      "to": 22,
+      "from": 6,
+      "output": "Then 1",
+      "to": 19,
       "input": "In"
     },
     {
-      "from": 22,
+      "from": 19,
       "output": "True",
-      "to": 23,
+      "to": 20,
       "input": "In"
     },
     {
-      "from": 24,
+      "from": 21,
       "output": "Value",
-      "to": 25,
+      "to": 22,
       "input": "A"
     },
     {
-      "from": 25,
+      "from": 22,
       "output": "Result",
-      "to": 27,
-      "input": "c"
+      "to": 24,
+      "input": "Center"
     },
     {
-      "from": 26,
+      "from": 23,
       "output": "Value",
-      "to": 27,
-      "input": "r"
+      "to": 24,
+      "input": "Radius"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "List"
     },
     {
       "from": 6,
       "output": "Then 2",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 25,
+      "output": "Item",
+      "to": 26,
+      "input": "Target"
+    },
+    {
+      "from": 25,
+      "output": "Item",
       "to": 27,
-      "input": "In"
-    },
-    {
-      "from": 27,
-      "output": "Result",
-      "to": 28,
-      "input": "List"
-    },
-    {
-      "from": 27,
-      "output": "Out",
-      "to": 28,
-      "input": "In"
-    },
-    {
-      "from": 28,
-      "output": "Item",
-      "to": 29,
       "input": "Target"
     },
     {
-      "from": 28,
-      "output": "Item",
-      "to": 30,
-      "input": "Target"
-    },
-    {
-      "from": 30,
+      "from": 27,
       "output": "Value",
-      "to": 31,
-      "input": "Vector"
-    },
-    {
-      "from": 32,
-      "output": "Value",
-      "to": 33,
+      "to": 28,
       "input": "Vector"
     },
     {
       "from": 29,
       "output": "Value",
-      "to": 34,
+      "to": 30,
+      "input": "Vector"
+    },
+    {
+      "from": 26,
+      "output": "Value",
+      "to": 31,
       "input": "A"
-    },
-    {
-      "from": 31,
-      "output": "X",
-      "to": 35,
-      "input": "A"
-    },
-    {
-      "from": 33,
-      "output": "X",
-      "to": 35,
-      "input": "B"
-    },
-    {
-      "from": 34,
-      "output": "Result",
-      "to": 36,
-      "input": "A"
-    },
-    {
-      "from": 35,
-      "output": "Result",
-      "to": 36,
-      "input": "B"
-    },
-    {
-      "from": 36,
-      "output": "Result",
-      "to": 37,
-      "input": "Condition"
     },
     {
       "from": 28,
+      "output": "X",
+      "to": 32,
+      "input": "A"
+    },
+    {
+      "from": 30,
+      "output": "X",
+      "to": 32,
+      "input": "B"
+    },
+    {
+      "from": 31,
+      "output": "Result",
+      "to": 33,
+      "input": "A"
+    },
+    {
+      "from": 32,
+      "output": "Result",
+      "to": 33,
+      "input": "B"
+    },
+    {
+      "from": 33,
+      "output": "Result",
+      "to": 34,
+      "input": "Condition"
+    },
+    {
+      "from": 25,
       "output": "Loop Body",
-      "to": 37,
+      "to": 34,
       "input": "In"
     },
     {
-      "from": 37,
+      "from": 34,
       "output": "True",
-      "to": 38,
+      "to": 35,
       "input": "In"
     }
   ],

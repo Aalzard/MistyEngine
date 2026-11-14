@@ -429,9 +429,9 @@ def stage(index, rows, driver="Player Input"):
                 "common": {
                     "enabled": True,
                     "is_trigger": False,
-                    # No friction: with the default 0.4 a player pushing against the side of
-                    # a platform sticks to it (frictions are averaged).
-                    "material": {"bounciness": 0.0, "friction": 0.0},
+                    # Frictions combine as the geometric mean: the frictionless player slides
+                    # along the sides of platforms.
+                    "material": {"bounciness": 0.0, "friction": 0.4},
                     "offset": [0.0, 0.0],
                 },
                 "used_by_composite": True,
@@ -440,7 +440,7 @@ def stage(index, rows, driver="Player Input"):
     )
     # Walls just outside the map keep everyone in.
     for name, x in (("Left Wall", -0.5), ("Right Wall", width + 0.5)):
-        s.add(name, pos=(x, 6.0, 0.0), static=True, **{"Box Collider 2D": box((1.0, 30.0), friction=0.0)})
+        s.add(name, pos=(x, 6.0, 0.0), static=True, **{"Box Collider 2D": box((1.0, 30.0))})
     enemies = s.add("Enemies")
     for i, (x, y) in enumerate(spawn.get("B", [])):
         brute(s, enemies, i + 1, x, y)
@@ -530,8 +530,8 @@ def screen(title, graph, fields, hint, buttons=()):
             "Event System": {
                 "drag_threshold": 10.0,
                 "enabled": True,
-                # Enter submits the selected button; its On Click reaches graphs only with
-                # the round 66 fix (graphs.TRIGGERS), until then the Menu graph reads Enter.
+                # Enter submits the selected button, whose On Click runs the Menu graph's
+                # Custom Event (round 66); before that the Menu graph read Enter itself.
                 "first_selected": first if graphs.TRIGGERS else None,
                 "send_navigation_events": True,
             }

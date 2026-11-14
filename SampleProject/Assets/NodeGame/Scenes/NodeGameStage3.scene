@@ -2773,7 +2773,7 @@
             "is_trigger": false,
             "material": {
               "bounciness": 0.0,
-              "friction": 0.0
+              "friction": 0.4
             },
             "offset": [
               0.0,
@@ -2829,7 +2829,7 @@
           "is_trigger": false,
           "material": {
             "bounciness": 0.0,
-            "friction": 0.0
+            "friction": 0.4
           },
           "offset": [
             0.0,
@@ -2885,7 +2885,7 @@
           "is_trigger": false,
           "material": {
             "bounciness": 0.0,
-            "friction": 0.0
+            "friction": 0.4
           },
           "offset": [
             0.0,
