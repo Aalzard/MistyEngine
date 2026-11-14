@@ -67,6 +67,12 @@ pub fn valid_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refused when the project is open read-only (another editor holds its lock): the file or
+/// folder at `path`, or one about to be made there, is the other editor's to change.
+fn writable(path: &Path) -> Result<(), String> {
+    misty_engine::asset_db::check_writable(path).map_err(|e| e.to_string())
+}
+
 /// Rename `from` to `new_stem` (keeping its extension). Returns the new path.
 pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
     // A save still on its way would write the file back at its old place.
@@ -93,6 +99,8 @@ pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
 /// asset would be moved on disk while the error left the database and references on the old
 /// path, and its GUID behind in a stray meta).
 fn move_with_meta(from: &Path, to: &Path) -> Result<(), String> {
+    writable(from)?;
+    writable(to)?;
     std::fs::rename(from, to).map_err(|e| e.to_string())?;
     if let Err(e) = move_meta(from, to) {
         return Err(match std::fs::rename(to, from) {
@@ -140,6 +148,7 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
         (stem, ext)
     };
     let to = unique_path(dir, strip_number(&stem), &ext);
+    writable(&to)?;
     copy_all(from, &to).map_err(|e| e.to_string())?;
     copy_meta(from, &to)?;
     Ok(to)
@@ -151,6 +160,9 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
     // A save still on its way would write the file back at its old place.
     misty_engine::asset_db::saver::flush();
+    for p in paths {
+        writable(p)?;
+    }
     trash::delete_all(with_metas(paths)).map_err(|e| e.to_string())
 }
 
@@ -159,6 +171,9 @@ pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
     // A save still on its way would write the file back at its old place.
     misty_engine::asset_db::saver::flush();
+    for p in paths {
+        writable(p)?;
+    }
     let bin = std::env::temp_dir().join("misty_test_trash");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
     for p in with_metas(paths) {
@@ -340,7 +355,8 @@ pub fn rewrite_references(root: &Path, old: &str, new: &str) -> Result<Vec<Strin
             continue;
         }
         if let Some(updated) = rewrite_text(&text, old, new) {
-            std::fs::write(&path, updated).map_err(|e| format!("{}: {e}", path.display()))?;
+            misty_engine::asset_db::write_asset(&path, updated)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
             changed.push(rel(root, &path));
         }
     }

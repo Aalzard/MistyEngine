@@ -145,7 +145,7 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 ("New Unlit Shader", shader_asset::templates::UNLIT)
             };
             let path = asset_ops::unique_path(&dir, stem, shader_asset::EXTENSION);
-            std::fs::write(&path, text)
+            misty_engine::asset_db::write_asset(&path, text)
                 .map(|_| path)
                 .map_err(|e| e.to_string())
         }

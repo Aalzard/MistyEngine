@@ -364,7 +364,7 @@ fn export_model(state: &mut EditorState, e: Entity) {
     if let Some(dir) = abs.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(err) = std::fs::write(&abs, text) {
+    if let Err(err) = misty_engine::asset_db::write_asset(&abs, text) {
         state.console.warn(format!("Export to Model failed: {err}"));
         return;
     }

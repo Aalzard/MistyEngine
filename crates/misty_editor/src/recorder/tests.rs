@@ -465,7 +465,11 @@ fn the_mix_goes_back_to_real_time_when_the_last_recording_keeping_sound_ends() {
             break;
         }
     }
-    assert_eq!(s.recorder.active.len(), 1, "only the silent recording is left");
+    assert_eq!(
+        s.recorder.active.len(),
+        1,
+        "only the silent recording is left"
+    );
     run_frames(&mut s, 2);
     assert!(s.recorder.recording() && s.play.in_play_mode());
     assert_eq!(

@@ -39,7 +39,8 @@ impl TilePalette {
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, crate::asset_db::embed_json(&text)).map_err(|e| e.to_string())
+        crate::asset_db::write_asset(path, crate::asset_db::embed_json(&text))
+            .map_err(|e| e.to_string())
     }
 
     pub fn get(&self, c: IVec2) -> Option<&str> {

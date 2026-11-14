@@ -416,7 +416,11 @@ fn the_feed_asks_for_a_new_tap_when_a_live_one_closes() {
     assert!(!feed.needs_tap());
     w.write(9600, 48_000.0, &ones);
     let got = feed.pull(0.3);
-    assert_eq!(got.len(), 9600 * 2, "silence up to the new tap, then its sound");
+    assert_eq!(
+        got.len(),
+        9600 * 2,
+        "silence up to the new tap, then its sound"
+    );
     assert_eq!(feed.written(), 14_400, "the new tap lands at its own time");
     assert_eq!(got[got.len() - 1], 1.0);
 }

@@ -266,9 +266,14 @@ impl Audio {
                     }
                     self.backend = Some(b);
                 }
-                Err(e) => self
-                    .logs
-                    .push(format!("Audio: no output device ({e}); playing silently")),
+                Err(e) => {
+                    // Nothing will ever feed the Recorder's waiting taps: close them.
+                    if let Some(c) = self.capture.as_mut() {
+                        c.pending.clear();
+                    }
+                    self.logs
+                        .push(format!("Audio: no output device ({e}); playing silently"))
+                }
             }
         }
         self.backend.as_mut()

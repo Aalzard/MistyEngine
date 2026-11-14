@@ -75,6 +75,12 @@ impl Recording {
         }
     }
 
+    /// Its sound lost the tap that fed it while the game goes on (the mix closed it): the
+    /// editor gives it a new one.
+    pub fn needs_tap(&self) -> bool {
+        self.feed.as_ref().is_some_and(AudioFeed::needs_tap)
+    }
+
     /// A frame was captured at capture-time second `at`: the first one starts the sound.
     pub fn mark_frame(&mut self, at: f64) {
         if let Some(f) = self.feed.as_mut() {

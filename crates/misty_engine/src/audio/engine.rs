@@ -376,6 +376,8 @@ pub struct Engine {
     clock: u64,
     /// Capture time (the Recorder), `None` in real time.
     clocked: Option<Box<Clocked>>,
+    /// The rate `clock` counts in (the device can change rate while it plays).
+    clock_rate: f32,
 }
 
 impl Engine {
@@ -405,6 +407,7 @@ impl Engine {
             taps: Vec::with_capacity(8),
             clock: 0,
             clocked: None,
+            clock_rate: sample_rate,
         }
     }
 
@@ -415,6 +418,7 @@ impl Engine {
     // ---- commands -------------------------------------------------------------------------------
 
     fn poll(&mut self) {
+        self.follow_rate();
         // In capture time the mix catches up at most a second of sound per device block.
         let mut budget = self.sample_rate.max(1.0) as u64;
         loop {
@@ -456,7 +460,28 @@ impl Engine {
         done
     }
 
+    /// The device changed rate (kira hands each block the current one): the sample clock and
+    /// the capture target keep their place in seconds, and taps close, since their reader
+    /// counts samples at the rate of their first block (the Recorder takes new ones).
+    fn follow_rate(&mut self) {
+        let (old, new) = (self.clock_rate, self.sample_rate);
+        if old == new {
+            return;
+        }
+        self.clock_rate = new;
+        if !(old > 0.0 && new > 0.0) {
+            return;
+        }
+        let scale = |n: u64| (n as f64 * new as f64 / old as f64).round() as u64;
+        self.clock = scale(self.clock);
+        if let Some(c) = self.clocked.as_mut() {
+            c.target = scale(c.target);
+        }
+        self.taps.clear();
+    }
+
     pub fn apply(&mut self, cmd: Command) {
+        self.follow_rate();
         let fade = self.fade();
         match cmd {
             Command::Play {

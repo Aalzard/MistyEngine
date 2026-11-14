@@ -454,6 +454,13 @@ fn advance_audio(s: &mut EditorState, active: &mut [Active], dt: f64) {
     let now = s.recorder.capture_time;
     s.recorder.capture_time = now + dt;
     if !active.iter().any(|a| a.recording.wants_audio()) {
+        // The last recording keeping sound ended while others go on: the game is heard in
+        // real time again (its mix stayed in capture time, frozen, so the game went silent).
+        if std::mem::take(&mut s.recorder.audio_on)
+            && let Some(runtime) = s.runtime.as_ref()
+        {
+            runtime.with_audio(|a| a.stop_capture());
+        }
         return;
     }
     let r = &mut s.recorder;
@@ -467,7 +474,8 @@ fn advance_audio(s: &mut EditorState, active: &mut [Active], dt: f64) {
             audio.start_capture(now);
         }
         for a in active.iter_mut().filter(|a| a.recording.wants_audio()) {
-            if a.tapped != Some(r.audio_session) {
+            // A tap of this session the mix closed (the device changed rate): a new one.
+            if a.tapped != Some(r.audio_session) || a.recording.needs_tap() {
                 a.tapped = Some(r.audio_session);
                 a.recording.add_tap(audio.capture_tap());
             }

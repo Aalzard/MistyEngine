@@ -292,7 +292,8 @@ pub fn create_test_file(
                 .replace(' ', "")
         })
         .unwrap_or_else(|| stem.to_owned());
-    std::fs::write(&path, testing::template(mode, &name)).map_err(|e| e.to_string())?;
+    misty_engine::asset_db::write_asset(&path, testing::template(mode, &name))
+        .map_err(|e| e.to_string())?;
     Ok(path)
 }
 
