@@ -190,3 +190,18 @@ Found while building the game; listed so they are not lost.
   `background_busy()` is true; with the Script Graph tab in front that seems never to clear.
 - **Effect here:** no Script Graph window screenshots of the game's graphs, so the generator's
   auto layout has never been looked at in the editor.
+
+### F. Built player: the menu capture timed out twice (not reproduced)
+
+- With the round 66 binaries, `NodeGame.exe --scene .../NodeGameMenu.scene` with
+  `MISTY_SCREENSHOT` did not reach the capture frame twice in a row (40 s and 90 s timeouts)
+  while `cargo test --workspace` was loading the machine; the stage and win scenes captured
+  fine in the same loop. Four later menu runs captured in 3 to 6 s. The menu is the only scene
+  with an Event System `first_selected` button. Not reported: no reliable repro.
+
+## Player build check (2026-11-14, after merging round 66)
+
+`misty --build` of a temp project with the generated game, then the built `NodeGame.exe` with
+`--scene <scene> --size 1100x620` and `MISTY_SCREENSHOT`: menu, the three stages (with the
+"Dash: ready" HUD line) and the win screen render correctly.
+Pictures: `docs/screenshots/r65/node-game-player-{menu,stage1,stage2,stage3,win}.jpg`.
