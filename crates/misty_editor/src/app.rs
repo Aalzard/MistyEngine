@@ -1197,7 +1197,25 @@ impl eframe::App for EditorApp {
             } else {
                 capture.note_loading(busy);
             }
-            capture.hold(crate::panels::timeline::capture_waiting(&self.state) || busy);
+            let timeline = crate::panels::timeline::capture_waiting(&self.state);
+            capture.hold(timeline || busy);
+            if capture.held_long() {
+                // A capture that never shoots: say what keeps it waiting.
+                let q = misty_engine::load_queue::shaders().progress();
+                let i = misty_engine::load_queue::imports().progress();
+                let parts = self
+                    .gpu
+                    .as_ref()
+                    .map(|g| g.renderer.background_pending_parts());
+                eprintln!(
+                    "capture waiting: gpu start {}, shaders {}/{}, imports {}/{}, renderer pending (variants, textures, custom) {parts:?}, timeline {timeline}",
+                    self.gpu_start.is_some(),
+                    q.done,
+                    q.total,
+                    i.done,
+                    i.total,
+                );
+            }
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {

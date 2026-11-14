@@ -1062,6 +1062,15 @@ impl Renderer {
     }
 
     /// Things this renderer is waiting for from the background queues.
+    /// [`Renderer::background_pending`] by kind: (shader variants, textures, custom shaders).
+    pub fn background_pending_parts(&self) -> (usize, usize, usize) {
+        (
+            self.pipelines.variants_pending(),
+            self.textures.pending(),
+            self.custom.as_ref().map_or(0, |c| c.pending()),
+        )
+    }
+
     pub fn background_pending(&self) -> usize {
         self.pipelines.variants_pending()
             + self.textures.pending()
