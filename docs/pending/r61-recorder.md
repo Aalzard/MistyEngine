@@ -103,7 +103,7 @@ should know that (AV1 / WebM is the royalty-free choice).
 
 ## Checks
 
-Release build, target `E:\MistyTargets61-recorder`, commit 755ba415 (+ the GPU test after):
+Release build, target `E:MistyTargets61-recorder`, commit 755ba415 (+ the GPU test after):
 
 - `cargo fmt --all --check`: clean.
 - `cargo clippy --workspace --all-targets --release`: 0 warnings.
