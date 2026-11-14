@@ -33,7 +33,7 @@
     },
     "reflection_intensity": 1.0,
     "skybox": {
-      "atmosphere_thickness": 1.0,
+      "atmosphere_thickness": 1.5,
       "color": [
         0.19,
         0.3,

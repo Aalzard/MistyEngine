@@ -2,7 +2,7 @@
   "seed": 41,
   "height": 26.0,
   "crown_shape": "Round",
-  "crown_width": 0.44,
+  "crown_width": 0.5,
   "crown_base": 0.55,
   "trunk_radius": 0.42,
   "leader": 0.45,
@@ -11,7 +11,7 @@
   "branch_angle": 50.0,
   "branch_curve": 0.35,
   "twigs": 10,
-  "leaf_density": 1.05,
+  "leaf_density": 1.35,
   "leaf_size": 1.1,
   "leaf_color": [
     0.44,
