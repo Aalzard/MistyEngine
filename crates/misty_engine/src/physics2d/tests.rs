@@ -520,3 +520,47 @@ fn polygon_with_nan_or_repeated_points_builds() {
         p.warnings
     );
 }
+
+/// A frictionless body pushed against a wall with the default friction (0.4) falls freely: 2D
+/// friction combines as the geometric mean, not the average (which made it 0.2 and stuck).
+#[test]
+fn a_frictionless_body_slides_down_a_wall_it_is_pushed_against() {
+    let mut scene = Scene::new("t");
+    let wall = object(&mut scene, "Wall", Vec2::new(1.0, 0.0));
+    scene.add(
+        wall,
+        BoxCollider2D {
+            size: Vec2::new(1.0, 40.0),
+            ..Default::default()
+        },
+    );
+    let player = object(&mut scene, "Player", Vec2::new(0.0, 5.0));
+    scene.add(player, Rigidbody2D::default());
+    scene.add(
+        player,
+        BoxCollider2D {
+            common: Collider2DCommon {
+                material: PhysicsMaterial2D {
+                    friction: 0.0,
+                    bounciness: 0.0,
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    );
+    let mut p = build(&scene);
+    for _ in 0..30 {
+        let v = p.velocity(player).unwrap();
+        p.set_velocity(player, Vec2::new(5.0, v.y));
+        p.step();
+        p.sync_out(&mut scene);
+    }
+    let v = p.velocity(player).unwrap();
+    // Half a second of free fall is about -4.9 m/s.
+    assert!(v.y < -4.0, "slides down freely: {v}");
+    assert!(
+        scene.world_position(player).x < 0.55,
+        "stays outside the wall"
+    );
+}

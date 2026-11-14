@@ -261,7 +261,9 @@ pub fn frame(ctx: &egui::Context, s: &mut EditorState, gpu: Option<&mut crate::v
         b.loaded = true;
         b.allowed = load_allowed();
     }
-    match (b.allowed, b.server.is_some()) {
+    // Read-only (another editor has the project): its AI tools keep their info file.
+    let allowed = b.allowed && !s.project_lock.read_only();
+    match (allowed, b.server.is_some()) {
         (true, false) if b.error.is_none() => {
             let wake = ctx.clone();
             match Server::start(&s.project.root, move || wake.request_repaint()) {

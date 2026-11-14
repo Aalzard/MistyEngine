@@ -3,15 +3,33 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 /// Longest side of a preview.
 const SIZE: u32 = 96;
+/// A preview no panel asked for in this long is dropped with its texture (a long session
+/// browsing a big project kept every one it ever showed, and those of deleted files).
+const KEEP: Duration = Duration::from_secs(120);
+/// Decoding time the previews may take per frame (about one frame at 60 Hz) before the rest
+/// wait for the next frames: opening a folder of 4K images decoded them all in one frame.
+const DECODE_BUDGET: Duration = Duration::from_millis(12);
+/// What counts as one frame for the budget.
+const FRAME: Duration = Duration::from_millis(16);
+
+struct Thumb {
+    modified: Option<SystemTime>,
+    /// None = the file could not be decoded (the icon is shown instead).
+    texture: Option<egui::TextureHandle>,
+    used: Instant,
+}
 
 #[derive(Default)]
 pub struct Thumbnails {
-    /// None = the file could not be decoded (the icon is shown instead).
-    cache: HashMap<PathBuf, (Option<SystemTime>, Option<egui::TextureHandle>)>,
+    cache: HashMap<PathBuf, Thumb>,
+    /// When the stale previews were last looked for.
+    swept: Option<Instant>,
+    /// Start of the current budget window and the decoding time spent in it.
+    window: Option<(Instant, Duration)>,
     /// Material thumbnails and the Inspector's preview sphere.
     pub materials: crate::material_preview::MaterialPreviews,
     /// The Terrain Inspector's palette previews (grass tufts, trees, detail meshes, prefabs).
@@ -24,10 +42,23 @@ impl Thumbnails {
         // The background file watch's stamp: a `stat` per visible thumbnail per frame on the
         // main thread froze the editor while the project's disk was busy.
         let modified = misty_engine::file_watch::cached_modified(path);
-        if let Some((m, tex)) = self.cache.get(path)
-            && *m == modified
-        {
-            return tex.clone();
+        let now = Instant::now();
+        self.sweep(now);
+        if let Some(t) = self.cache.get_mut(path) {
+            t.used = now;
+            if t.modified == modified {
+                return t.texture.clone();
+            }
+        }
+        // Over this frame's decoding budget: next frame (the first one always decodes).
+        let (start, spent) = match self.window {
+            Some((start, spent)) if now.duration_since(start) < FRAME => (start, spent),
+            _ => (now, Duration::ZERO),
+        };
+        if spent >= DECODE_BUDGET {
+            ctx.request_repaint();
+            self.window = Some((start, spent));
+            return self.cache.get(path).and_then(|t| t.texture.clone());
         }
         let tex = decode(path).map(|img| {
             ctx.load_texture(
@@ -36,9 +67,29 @@ impl Thumbnails {
                 egui::TextureOptions::LINEAR,
             )
         });
-        self.cache
-            .insert(path.to_path_buf(), (modified, tex.clone()));
+        self.window = Some((start, spent + now.elapsed()));
+        self.cache.insert(
+            path.to_path_buf(),
+            Thumb {
+                modified,
+                texture: tex.clone(),
+                used: now,
+            },
+        );
         tex
+    }
+
+    /// Drop the previews nobody asked for in [`KEEP`] (looked for every few seconds).
+    fn sweep(&mut self, now: Instant) {
+        if self
+            .swept
+            .is_some_and(|t| now.duration_since(t) < Duration::from_secs(5))
+        {
+            return;
+        }
+        self.swept = Some(now);
+        self.cache
+            .retain(|_, t| now.saturating_duration_since(t.used) < KEEP);
     }
 }
 
@@ -59,4 +110,47 @@ fn decode(path: &Path) -> Option<egui::ColorImage> {
         size,
         small.as_raw(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Previews not asked for in a while are dropped (with their textures); ones still shown
+    /// stay. The cache used to keep every preview ever shown.
+    #[test]
+    fn texture_previews_not_shown_for_a_while_are_dropped() {
+        let dir = std::env::temp_dir().join(format!("misty_tex_thumbs_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let paths: Vec<PathBuf> = (0..3).map(|i| dir.join(format!("T{i}.png"))).collect();
+        for p in &paths {
+            misty_engine::image::RgbaImage::from_pixel(
+                8,
+                8,
+                misty_engine::image::Rgba([200, 100, 50, 255]),
+            )
+            .save(p)
+            .unwrap();
+        }
+        let ctx = egui::Context::default();
+        let mut t = Thumbnails::default();
+        for p in &paths {
+            assert!(t.get(&ctx, p).is_some());
+            // A new budget window for each (the test is not about the budget).
+            t.window = None;
+        }
+        assert_eq!(t.cache.len(), 3);
+        // Two of them were last shown long ago; the third is shown again now.
+        let Some(long_ago) = Instant::now().checked_sub(KEEP + Duration::from_secs(1)) else {
+            return;
+        };
+        for p in &paths[..2] {
+            t.cache.get_mut(p).unwrap().used = long_ago;
+        }
+        t.swept = None;
+        assert!(t.get(&ctx, &paths[2]).is_some());
+        assert_eq!(t.cache.len(), 1);
+        assert!(t.cache.contains_key(&paths[2]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

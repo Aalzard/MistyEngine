@@ -384,6 +384,8 @@ pub struct EditorState {
     pub saveloc: crate::saveloc::SaveLocWindows,
     /// Window ▸ Multiplayer ▸ Multiplayer Play Mode and the player windows it opened.
     pub multiplayer: crate::multiplayer::MultiplayerPlayMode,
+    /// The project lock (another editor having the project open makes this one read-only).
+    pub project_lock: crate::project_lock::LockState,
     pub project: ProjectBrowser,
     /// Edit ▸ Project Settings values (saved in the project).
     pub project_settings: ProjectSettings,
@@ -428,6 +430,9 @@ pub struct EditorState {
     pub ui_scale: crate::a11y::UiScale,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
+    /// Autosave, the session marker and the Recover Unsaved Work dialog (off until the editor
+    /// app starts it for the open project).
+    pub autosave: crate::autosave::Autosave,
 }
 
 impl EditorState {
@@ -503,6 +508,7 @@ impl EditorState {
             multiplayer: Default::default(),
             assets: AssetDatabase::open(&project.root),
             inspector_asset: None,
+            project_lock: Default::default(),
             project,
             project_settings: ProjectSettings::default(),
             project_settings_window: ProjectSettingsWindow::default(),
@@ -555,6 +561,7 @@ impl EditorState {
             vcs: Default::default(),
             ui_scale: Default::default(),
             actions: Vec::new(),
+            autosave: Default::default(),
         };
         crate::project_settings::load(&mut s);
         crate::build_settings::load(&mut s);

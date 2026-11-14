@@ -74,11 +74,24 @@ impl LodGroup {
     }
 
     /// The cross-fade band used by the renderer (0 when fading is off).
+    ///
+    /// A level fades in over `fade` × its upper threshold and out over `fade` × its lower
+    /// one; with thresholds closer than that (0.5 and 0.46 at the default 0.1, or any ratio
+    /// under 2 at width 1) the two bands overlapped and three levels drew at once, two of
+    /// them over the same pixels. The band is narrowed so it fits between the thresholds of
+    /// every level that draws at all.
     pub fn fade(&self) -> f32 {
-        match self.fade_mode {
-            LodFadeMode::None => 0.0,
-            LodFadeMode::CrossFade => self.fade_width.clamp(0.0, 1.0),
-        }
+        let width = match self.fade_mode {
+            LodFadeMode::None => return 0.0,
+            LodFadeMode::CrossFade if self.fade_width.is_finite() => {
+                self.fade_width.clamp(0.0, 1.0)
+            }
+            LodFadeMode::CrossFade => return 0.0,
+        };
+        (1..self.lods.len())
+            .map(|i| self.range(i))
+            .filter(|(min, max)| *min > 0.0 && max > min)
+            .fold(width, |w, (min, max)| w.min(max / min - 1.0))
     }
 
     /// Keep thresholds within 0..1 and never above the previous level's.
@@ -137,6 +150,72 @@ mod tests {
         assert!(
             g.lods[1].screen_height <= 1.0 && g.lods[1].screen_height >= g.lods[2].screen_height
         );
+    }
+
+    /// Close thresholds narrow the fade band so a level's fade-in and fade-out bands never
+    /// overlap: at most two levels draw at any height, and their dithers split each pixel
+    /// (exactly one draws it) inside the band.
+    #[test]
+    fn close_thresholds_never_draw_three_levels() {
+        use crate::render::lod::{LodRange, LodState, dithered_out};
+        let level = |screen_height| LodLevel {
+            screen_height,
+            renderers: Vec::new(),
+        };
+        for (width, heights) in [
+            (0.1, vec![0.5, 0.46, 0.1]),
+            (1.0, vec![0.6, 0.4, 0.3, 0.05]),
+            (0.5, vec![0.5, 0.5, 0.2]),
+        ] {
+            let g = LodGroup {
+                fade_width: width,
+                lods: heights.iter().map(|h| level(*h)).collect(),
+                ..Default::default()
+            };
+            assert!(g.fade() > 0.0, "{heights:?}: fading stays on");
+            let ranges: Vec<LodRange> = (0..g.lods.len())
+                .filter(|i| {
+                    let (min, max) = g.range(*i);
+                    max > min
+                })
+                .map(|i| {
+                    let (min, max) = g.range(i);
+                    LodRange {
+                        center: glam::Vec3::ZERO,
+                        size: 1.0,
+                        min,
+                        max,
+                        fade: g.fade(),
+                        virtual_lod: None,
+                    }
+                })
+                .collect();
+            for k in 0..2000 {
+                let h = k as f32 / 1000.0 + 1e-4;
+                let states: Vec<LodState> = ranges
+                    .iter()
+                    .map(|r| r.state(h))
+                    .filter(|s| *s != LodState::Hidden)
+                    .collect();
+                assert!(states.len() <= 2, "{heights:?} at {h}: {states:?}");
+                let culled = h < *heights.last().unwrap() * (1.0 + g.fade());
+                for t in [0.01, 0.25, 0.5, 0.75, 0.99] {
+                    let drawn = states
+                        .iter()
+                        .filter(|s| match s {
+                            LodState::Visible => true,
+                            LodState::Fading(f) => !dithered_out(*f, t),
+                            LodState::Hidden => false,
+                        })
+                        .count();
+                    assert!(drawn <= 1, "{heights:?} at {h}, t {t}: {states:?}");
+                    assert!(
+                        drawn == 1 || culled,
+                        "{heights:?} at {h}, t {t}: {states:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

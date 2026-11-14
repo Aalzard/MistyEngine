@@ -115,6 +115,12 @@ pub fn start(s: &mut EditorState) {
     s.console.info("Entered Play mode.");
 }
 
+/// While playing: the scenes as they were before Play and whether they had unsaved changes
+/// (what autosave backs up; Play-mode changes are thrown away on Stop).
+pub fn edit_scene(s: &EditorState) -> Option<(&Scene, bool)> {
+    s.play_session.as_ref().map(|p| (&p.scene, p.dirty))
+}
+
 /// Leave Play mode: every change made while playing is reverted.
 pub fn stop(s: &mut EditorState) {
     let Some(session) = s.play_session.take() else {

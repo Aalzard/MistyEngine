@@ -378,3 +378,32 @@ fn atomic_writes_replace_whole_files_and_keep_the_old_one_on_failure() {
     assert_eq!(left, ["Folder.scene", "Level.scene"]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A project opened read-only refuses saves of its assets and settings (the other editor's
+/// files stay as it wrote them) but not of its Library caches, nor of other projects.
+#[test]
+fn read_only_projects_refuse_asset_saves() {
+    let root = temp("read_only");
+    let other = temp("read_only_other");
+    std::fs::create_dir_all(root.join("ProjectSettings")).unwrap();
+    std::fs::create_dir_all(root.join("Library")).unwrap();
+    let scene = root.join("Assets/A.scene");
+    write_atomic(&scene, "before").unwrap();
+    set_read_only(&root, true);
+    assert!(is_read_only(&root));
+    let refused = write_atomic(&scene, "after").unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(refused.to_string().contains(READ_ONLY_MESSAGE));
+    assert_eq!(std::fs::read_to_string(&scene).unwrap(), "before");
+    assert!(write_atomic(&root.join("Assets/New.mat"), "{}").is_err());
+    assert!(write_atomic(&root.join("ProjectSettings/X.json"), "{}").is_err());
+    // Spelled another way (a `.` segment; another letter case on Windows).
+    assert!(write_atomic(&root.join("Assets/./B.scene"), "x").is_err());
+    write_atomic(&root.join("Library/Cache.bin"), "cache").unwrap();
+    write_atomic(&other.join("Assets/A.scene"), "other").unwrap();
+    set_read_only(&root, false);
+    write_atomic(&scene, "after").unwrap();
+    assert_eq!(std::fs::read_to_string(&scene).unwrap(), "after");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&other);
+}

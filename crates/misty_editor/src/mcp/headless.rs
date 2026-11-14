@@ -35,9 +35,26 @@ impl Headless {
             ));
         }
         let root = std::path::absolute(root).map_err(|e| e.to_string())?;
+        // As the window does: with another editor on the project, nothing is saved.
+        let lock = crate::project_lock::open(&root);
+        if let crate::project_lock::LockState::ReadOnly { holder, .. } = &lock {
+            eprintln!(
+                "misty: {} is open in another editor{}: opened read-only (nothing is saved)",
+                root.display(),
+                holder
+                    .as_ref()
+                    .map(|h| format!(" (process {})", h.pid))
+                    .unwrap_or_default()
+            );
+        }
         let guids = misty_engine::asset_db::open(&root);
         let mut state = EditorState::new(ProjectBrowser::open(root));
         state.assets.note_guids(guids);
+        state.project_lock = lock;
+        // No one to ask: read-only is the answer.
+        if let crate::project_lock::LockState::ReadOnly { asking, .. } = &mut state.project_lock {
+            *asking = false;
+        }
         crate::scene_files::open_initial(&mut state);
         crate::scene_files::restore_scene_view(&mut state);
         let mut h = Self {

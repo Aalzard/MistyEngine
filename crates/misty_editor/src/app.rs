@@ -56,6 +56,8 @@ impl EditorApp {
         // idle editor still shows files added by other programs (see `ProjectBrowser::poll_disk`).
         let waker = ctx.clone();
         misty_engine::file_watch::set_waker(move || waker.request_repaint());
+        // The project lock first: with another editor on the project, nothing below may save.
+        let project_lock = crate::project_lock::open(&project);
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
         let guids = {
             misty_engine::profile_scope!(
@@ -76,6 +78,7 @@ impl EditorApp {
             EditorState::new(browser)
         };
         state.assets.note_guids(guids);
+        state.project_lock = project_lock;
         {
             misty_engine::profile_scope!(
                 "Editor.OpenInitialScene",
@@ -103,6 +106,11 @@ impl EditorApp {
             );
             crate::capture::apply_env(&mut state, &mut dock);
         }
+        // Autosave, the session marker and backups left by a session that crashed (not in
+        // screenshot runs, which never save).
+        if capture.is_none() {
+            crate::autosave::start(&mut state);
+        }
         crate::tutorials::from_env(&mut state);
         state.ui_scale = crate::a11y::UiScale::load();
         state
@@ -124,6 +132,7 @@ impl EditorApp {
         let adapter = gpu_start.as_ref().map(|g| g.adapter_info());
         match adapter {
             Some(info) => {
+                crate::autosave::crash::set_gpu(format!("{} ({:?})", info.name, info.backend));
                 if capture.is_some() {
                     eprintln!("renderer: {} ({:?})", info.name, info.backend);
                 }
@@ -229,6 +238,10 @@ impl EditorApp {
     fn save_layout(&mut self, force: bool) {
         let dock = self.saved_dock.as_ref().unwrap_or(&self.dock);
         let s = &self.state;
+        // Read-only: the other editor's layouts stay as it saves them.
+        if s.project_lock.read_only() {
+            return;
+        }
         self.layout_autosave
             .tick(&s.project.root, &s.layouts, dock, force);
     }
@@ -814,6 +827,13 @@ impl EditorApp {
             s.push(action);
             ctx.request_repaint();
         }
+        match crate::project_lock::prompt_ui(ctx, &mut s.project_lock) {
+            Some(crate::project_lock::Choice::Cancel) => s.files.open_hub = Some(false),
+            Some(crate::project_lock::Choice::ReadOnly) => s.console.warn(
+                "This project is open in another editor: opened read-only (nothing is saved).",
+            ),
+            None => {}
+        }
         if let Some(action) = scene_files::prompt_ui(ctx, s)
             && scene_files::perform(s, action)
         {
@@ -885,6 +905,17 @@ impl EditorApp {
         }
     }
 
+    /// The editor frame panicked (`launcher` caught it): back up unsaved work and finish the
+    /// crash log before the process exits.
+    pub fn crashed(&mut self, payload: &(dyn std::any::Any + Send)) {
+        let out = crate::autosave::crash::after_panic(&mut self.state, payload);
+        eprintln!(
+            "editor crashed: {} emergency backups, log {:?}",
+            out.backups.len(),
+            out.log
+        );
+    }
+
     /// The user is mid-interaction: a mouse button is down or a text field has focus.
     fn interacting(ctx: &egui::Context) -> bool {
         ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input()
@@ -919,6 +950,9 @@ impl eframe::App for EditorApp {
         }
         // Last: the steps above (editor scripts' exit hooks, the MCP session) may still save.
         misty_engine::asset_db::saver::flush();
+        // A normal exit: this session's backups go, the session marker says "clean".
+        crate::autosave::clean_exit(&mut self.state);
+        crate::project_lock::close(&mut self.state.project_lock);
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.
@@ -1160,6 +1194,13 @@ impl eframe::App for EditorApp {
                 Some(misty_engine::profiler::Category::Others),
             );
             self.scene_file_frame(&ctx);
+        }
+        {
+            let _scope = misty_engine::profiler::Scope::begin_lazy(
+                || "Editor.Autosave",
+                Some(misty_engine::profiler::Category::Others),
+            );
+            crate::autosave::frame(&ctx, &mut self.state);
         }
         if std::mem::take(&mut self.state.live.restart_now) {
             self.restart(&ctx);

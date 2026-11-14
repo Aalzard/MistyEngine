@@ -81,9 +81,21 @@ pub fn demo_scene() -> Option<Scene> {
     Some(scene)
 }
 
+/// How the camera moves on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Pace {
+    /// One step a frame, whatever the loading threads managed meanwhile (a real player).
+    Realtime,
+    /// One step a frame while no cell is on its way in; frames with cells still reading or
+    /// being added keep the camera where it is. The work done (cells loaded, unloaded, frames
+    /// run) is then the same on an idle and a loaded machine: the flight is driven by loading
+    /// progress, not by how fast the loading threads got a core.
+    WaitForCells,
+}
+
 /// Fly from (-1800, -1800) to (1800, 1800) at `speed` m/s, `dt` seconds of game time a frame,
 /// each frame taking at least `pace` of wall time.
-pub fn fly(speed: f32, dt: f32, pace: Duration) -> Flight {
+pub fn fly(speed: f32, dt: f32, pace: Duration, mode: Pace) -> Flight {
     let root = project();
     let mut scene = demo_scene().expect("StreamingDemo scene");
     let cam = super::main_camera(&scene).unwrap();
@@ -137,9 +149,12 @@ pub fn fly(speed: f32, dt: f32, pace: Duration) -> Flight {
     let mut busy = Vec::with_capacity(frames);
     let rate = cpu::work_per_ms();
     let flight_start = cpu::system_times();
-    for i in 0..=frames {
+    let mut step = 0;
+    let mut progress = Instant::now();
+    let mut last = (0, 0);
+    while step <= frames {
         let began = Instant::now();
-        let p = start.lerp(end, (i as f32 / frames as f32).min(1.0));
+        let p = start.lerp(end, (step as f32 / frames as f32).min(1.0));
         place(&mut scene, p);
         time.advance(dt);
         let (work0, system0) = (cpu::thread_work(), cpu::system_times());
@@ -150,10 +165,29 @@ pub fn fly(speed: f32, dt: f32, pace: Duration) -> Flight {
         frame_ms.push(began.elapsed().as_secs_f32() * 1000.0);
         streaming_ms.push(rt.streaming().stats().last_ms);
         let _ = rt.take_logs();
+        let s = rt.streaming().stats();
+        if mode == Pace::Realtime || s.pending() == 0 {
+            step += 1;
+        }
+        let now = (s.loads, s.unloads);
+        if now != last || mode == Pace::Realtime || s.pending() == 0 {
+            last = now;
+            progress = Instant::now();
+        }
+        assert!(
+            progress.elapsed() < STALLED,
+            "flight stopped at step {step}/{frames}: no cell finished loading for {} s ({} reading, {} waiting, {} adding, {} failed)",
+            STALLED.as_secs(),
+            s.reading,
+            s.waiting,
+            s.adding,
+            s.failed
+        );
         if let Some(rest) = pace.checked_sub(began.elapsed()) {
             std::thread::sleep(rest);
         }
     }
+    let run = streaming_ms.len();
     Flight {
         streaming_ms,
         frame_ms,
@@ -161,7 +195,7 @@ pub fn fly(speed: f32, dt: f32, pace: Duration) -> Flight {
         busy,
         flight_busy: cpu::busy_between(flight_start, cpu::system_times()),
         stats: rt.streaming().stats().clone(),
-        frames,
+        frames: run,
     }
 }
 
@@ -219,7 +253,9 @@ pub fn hitches(f: &Flight) -> Vec<Result<String, String>> {
 }
 
 /// Quick flight (6.7 m a frame at 60 fps, frames paced at 4 ms): cells load and unload all the
-/// way, and no frame's streaming work comes near a 16 ms hitch. Wall-clock spikes from a
+/// way, and no frame's streaming work comes near a 16 ms hitch. The camera waits for cells on
+/// their way in ([`Pace::WaitForCells`]), so how many cells load does not depend on how busy the
+/// machine is (a loaded machine used to fly past cells before their files were read). Wall-clock spikes from a
 /// machine busy with other tests are told apart from ours by the main thread's CPU time (see
 /// [`hitches`]); a flight with a real hitch gets two more tries.
 #[test]
@@ -229,7 +265,12 @@ fn streaming_demo_flight_stays_within_budget() {
     }
     let mut found = Vec::new();
     for round in 1..=3 {
-        let f = fly(400.0, 1.0 / 60.0, Duration::from_millis(4));
+        let f = fly(
+            400.0,
+            1.0 / 60.0,
+            Duration::from_millis(4),
+            Pace::WaitForCells,
+        );
         report(&format!("StreamingDemo quick flight {round}"), &f);
         assert!(f.stats.loads >= 20, "{} loads", f.stats.loads);
         assert!(f.stats.unloads >= 10, "{} unloads", f.stats.unloads);
@@ -286,7 +327,12 @@ fn slow_streaming_frames_are_excused_only_on_a_loaded_machine() {
 #[test]
 #[ignore = "bench: about a minute; run on purpose"]
 fn streaming_demo_flythrough_bench() {
-    let f = fly(120.0, 1.0 / 60.0, Duration::from_micros(16_667));
+    let f = fly(
+        120.0,
+        1.0 / 60.0,
+        Duration::from_micros(16_667),
+        Pace::Realtime,
+    );
     report("StreamingDemo flythrough (120 m/s)", &f);
     let s = summary(&f.streaming_ms);
     assert!(s.max < 16.0, "worst streaming frame {:.2} ms", s.max);

@@ -57,6 +57,78 @@ pub fn open_built(root: &Path) {
     });
 }
 
+/// Project folders opened read-only (another editor has the project open, see the editor's
+/// `project_lock`): saves of their assets and settings are refused. Their `Library` (caches,
+/// generated clips) stays writable: it is rebuilt from the assets and loses nothing.
+static READ_ONLY: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
+
+/// Open (`true`) or stop opening (`false`) the project at `root` read-only.
+pub fn set_read_only(root: &Path, read_only: bool) {
+    let mut list = READ_ONLY.write().unwrap_or_else(|e| e.into_inner());
+    let key = folder_key(root);
+    list.retain(|r| *r != key);
+    if read_only {
+        list.push(key);
+    }
+}
+
+/// Whether the project at `root` is open read-only.
+pub fn is_read_only(root: &Path) -> bool {
+    let key = folder_key(root);
+    READ_ONLY
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&key)
+}
+
+/// A folder spelled the same way however it was given (canonical when it exists; lower case
+/// on Windows, whose file names ignore case).
+fn folder_key(p: &Path) -> PathBuf {
+    let p = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    if cfg!(windows) {
+        PathBuf::from(p.to_string_lossy().to_lowercase())
+    } else {
+        p
+    }
+}
+
+/// The error a save into a read-only project gets.
+pub const READ_ONLY_MESSAGE: &str =
+    "the project is open read-only (another Misty editor has it open)";
+
+/// `Err` when `path` is an asset or setting of a project opened read-only.
+pub fn check_writable(path: &Path) -> std::io::Result<()> {
+    let list = READ_ONLY.read().unwrap_or_else(|e| e.into_inner());
+    if list.is_empty() {
+        return Ok(());
+    }
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        crate::assets::absolute(&path.to_string_lossy())
+    };
+    // The folder holding the file (the file itself may not exist yet).
+    let folder = abs
+        .parent()
+        .map(folder_key)
+        .unwrap_or_else(|| folder_key(&abs));
+    for root in list.iter() {
+        if let Ok(rest) = folder.strip_prefix(root) {
+            let library = rest
+                .components()
+                .next()
+                .is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("library"));
+            if !library {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("{}: {READ_ONLY_MESSAGE}", path.display()),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Write a file so a crash, a full disk or a failed write never leaves it half written: the
 /// bytes go to a hidden temp file next to it (`.<name>.<pid>.<n>.tmp`, skipped by the
 /// asset scan and the Project window), which then replaces the file in one rename. If the
@@ -67,6 +139,7 @@ pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()>
     use std::io::Write;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    check_writable(path)?;
     let bytes = bytes.as_ref();
     let name = path
         .file_name()
