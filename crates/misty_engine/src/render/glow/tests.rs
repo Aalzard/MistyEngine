@@ -345,12 +345,14 @@ fn directional_flares_follow_the_sun_height_and_set_at_night() {
         g
     };
     let under = Vec3::new(0.0, -10f32.to_radians().sin(), 10f32.to_radians().cos());
-    let mut env = Environment::default();
-    env.sun = Some(crate::render::environment::Sun {
-        direction: under,
-        color: [1.0; 3],
-        intensity: 2.0,
-    });
+    let mut env = Environment {
+        sun: Some(crate::render::environment::Sun {
+            direction: under,
+            color: [1.0; 3],
+            intensity: 2.0,
+        }),
+        ..Default::default()
+    };
     // Light from the sun (travelling -under), and one from in front of the camera.
     env.glows = vec![flare_of(-under)];
     let f = frame(&cam, &env, PostSettings::default());
