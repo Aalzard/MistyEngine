@@ -255,8 +255,8 @@
           "auto_exposure": {
             "active": true,
             "adaptation": "Progressive",
-            "compensation": -0.3,
-            "histogram_high": 88.0,
+            "compensation": 0.0,
+            "histogram_high": 85.0,
             "histogram_low": 40.0,
             "limit_max": 0.0,
             "limit_min": -3.0,
