@@ -4852,3 +4852,7 @@ Fixes for the node and visual-scripting bugs the round 65 game agent reports whi
 - **2D physics**: native typed nodes for Physics2D queries and Rigidbody 2D; friction combines
   as the geometric mean (a frictionless player slides along walls), bounciness as the maximum.
 - **MCP**: `graph.*` tools create and edit Script Graphs; `scene.add_component` attaches them.
+- **Editor captures finish again**: screenshot runs waited forever for shader variants that
+  had finished compiling but that no redraw picked up (the glowless variants queued as a scene
+  went idle). Only work still running counts as busy now; a stuck capture says what it waits
+  for.
