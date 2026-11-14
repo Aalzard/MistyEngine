@@ -26,7 +26,7 @@ const PACKAGES: [(&str, &str, &str); 2] = [
         RECORDER,
         "Recorder",
         "Record the Scene Viewer, a camera or the Editor Scene to MP4, GIF, or PNG / JPG \
-         sequences at a fixed frame rate, by hand or from a Timeline.",
+         sequences at a fixed frame rate, with the game's sound, by hand or from a Timeline.",
     ),
     (
         BEHAVIOUR_TREES,
