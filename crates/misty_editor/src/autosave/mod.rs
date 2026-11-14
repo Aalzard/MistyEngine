@@ -235,6 +235,8 @@ pub struct Autosave {
     pub restored_dirs: Vec<PathBuf>,
     /// Last input seen (for the idle wait).
     last_input: Option<Instant>,
+    /// When autosave started for this project (the `MISTY_CRASH_TEST` countdown).
+    started_at: Option<Instant>,
 }
 
 impl Autosave {
@@ -291,6 +293,7 @@ pub fn begin(s: &mut EditorState, prefs: Prefs, started: Result<session::Started
 
 /// Once a frame (after the panels): the recovery dialog, and the autosave when it is due.
 pub fn frame(ctx: &egui::Context, s: &mut EditorState) {
+    crash_test(s);
     if s.autosave.recovery.is_some() {
         recovery::dialog_ui(ctx, s);
     }
@@ -549,4 +552,27 @@ pub fn preferences_ui(ui: &mut egui::Ui, a: &mut Autosave, console: &mut crate::
             t.last = Instant::now();
         }
     }
+}
+
+/// `MISTY_CRASH_TEST=<seconds>`: that long after the project opened, add an object to the scene
+/// (so there is unsaved work) and panic, to try the crash path on a test project: the crash
+/// log, the emergency backup and, on the next open, the Recover Unsaved Work dialog.
+fn crash_test(s: &mut EditorState) {
+    if !s.autosave.active {
+        return;
+    }
+    let Some(secs) = std::env::var("MISTY_CRASH_TEST")
+        .ok()
+        .and_then(|v| v.trim().parse::<f32>().ok())
+    else {
+        return;
+    };
+    let started = *s.autosave.started_at.get_or_insert_with(Instant::now);
+    if started.elapsed().as_secs_f32() < secs || crate::prefab_mode::active(s) {
+        return;
+    }
+    s.scene.spawn("Crash Test Object", None);
+    s.scene_dirty = true;
+    s.files.dirty = crate::scene_files::dirty_now(s);
+    panic!("MISTY_CRASH_TEST: simulated editor crash");
 }
