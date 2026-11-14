@@ -5060,3 +5060,42 @@ merge advice and the checklist: `docs/pending/r63-behaviour-trees.md`.
 - Still differs: no moss or staining at the outcrops' feet (they use the shared sample rock
   materials; a NoonValley variant would be needed); the far meadow is still a darker olive
   than the photo's; the forest floor between the carpets is bare litter.
+
+## Round 67 — Bug hunt 7: test hygiene, round 60's open items, the new features, soak (branch r67-qa7)
+
+One commit per bug, each with a regression test; the running list is `docs/pending/r67-qa7.md`.
+
+### Test suite
+- Full test runs no longer leave `Crate_Metal.mat`, `Crate_Metal_Normal.png` and
+  `Crate_Wood.mat` in `SampleProject`: model imports extract materials into their own project
+  instead of whatever project the shared "current project" named at that moment, and the
+  sample tests that set it play a temp copy of the sample. The theme panel tests (merged this
+  round) opened the repo's sample in the editor, which also rewrote `packages-lock.json`; they
+  use the copy too, and a test now scans the sources for any test opening the repo's sample.
+  Checked with a watcher over a whole run: nothing in the repo changes but the ignored caches.
+
+### Fixes
+- **GPU errors**: a GPU validation error no longer aborts the editor or the player; it is
+  shown once in the Console (the player's log) and the program keeps running.
+- **LOD cross-fade**: Unlit, Fade / Transparent and custom-shader levels switch at the middle of
+  the fade band instead of drawing both levels at once.
+- **Material previews** no longer wait for (and redraw during) every background load of the
+  scene, only their own.
+- **Lens flares**: a sun's flare follows Intensity from Sun Height and sets with the sun.
+- **2D physics**: NaN from scripts or Script Graph nodes no longer turns a body and its
+  Transform into NaN, and NaN queries find nothing.
+- **Recorder**: recordings started while the renderer is still starting no longer begin with
+  black frames (recording and game wait for it); removing the package mid-recording ends the
+  recording for scripts too; a read-only editor no longer writes the package manifest or the
+  Recorder settings.
+
+### Checked by hand
+Real recordings from Lumo's Leap (PNG sequence, GIF, MP4, an MP4 stopped early: right frame
+counts), the crash test and recovery, two editors on one project (read-only second editor,
+autosave in the first), Lumo's Leap played to the win screen by its Autopilot headless and in
+a built player.
+
+### Long session
+Fifteen minutes (83 cycles: Lumo's Leap stages, the Behaviour Tree demo, a GIF every other
+cycle, autosave every minute): no Console warnings or errors, GPU memory and handles flat,
+private memory up about 1 MB a cycle (left open).

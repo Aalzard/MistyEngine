@@ -60,7 +60,8 @@ impl Physics2D {
         mask: u32,
     ) -> Vec<RaycastHit2D> {
         let dir = direction.normalize_or_zero();
-        if dir == Vec2::ZERO || distance.is_nan() || distance < 0.0 {
+        // A NaN origin "hit" the first collider at distance 0.
+        if dir == Vec2::ZERO || !origin.is_finite() || distance.is_nan() || distance < 0.0 {
             return Vec::new();
         }
         let test = in_mask(mask);
@@ -106,6 +107,9 @@ impl Physics2D {
 
     /// Objects of colliders overlapping a shape placed at `center` rotated by `degrees`.
     fn overlap(&self, shape: &dyn rp::Shape, center: Vec2, degrees: f32, mask: u32) -> Vec<Entity> {
+        if !center.is_finite() || !degrees.is_finite() {
+            return Vec::new();
+        }
         let test = in_mask(mask);
         self.world
             .intersect_shape(
@@ -136,6 +140,10 @@ impl Physics2D {
     }
 
     pub fn overlap_point_all(&self, point: Vec2, mask: u32) -> Vec<Entity> {
+        // A NaN point was "inside" the first collider.
+        if !point.is_finite() {
+            return Vec::new();
+        }
         let test = in_mask(mask);
         self.world
             .intersect_point(rv(point), self.filter(&test))

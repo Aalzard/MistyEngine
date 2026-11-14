@@ -160,7 +160,7 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     if let Some(runtime) = s.runtime.as_mut() {
         runtime.set_audio_state(muted, paused);
     }
-    if !run {
+    if !run || crate::recorder::holds_game(s) {
         return;
     }
     // A single step advances one nominal frame.

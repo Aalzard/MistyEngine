@@ -169,3 +169,81 @@ fn finished_variants_are_not_pending_before_a_view_picks_them_up() {
     assert!(r.pipelines.take_built_variants() > 0);
     assert_eq!(r.background_pending(), 0);
 }
+
+/// A draw is only waiting for its own loads: a material preview (which shares the editor's
+/// renderer) counted every texture and variant the Scene view had queued as its own, so
+/// during a long import no thumbnail was ever marked done and several were redrawn every
+/// frame.
+#[test]
+fn a_draw_waits_only_for_its_own_background_loads() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("misty_bg_own_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = dir.join("other.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([40, 200, 40, 255]))
+        .save(&png)
+        .unwrap();
+    let png = png.to_string_lossy().into_owned();
+
+    let mut r = Renderer::with_queue(&device, &queue);
+    let plain = super::gpu_tests::draw(
+        crate::scene::PrimitiveMesh::Sphere,
+        glam::Mat4::IDENTITY,
+        &MaterialParams::default(),
+    );
+    // Rendered without background loads: everything the plain draw needs is there.
+    let camera = camera();
+    let environment = Environment::default();
+    let meshes = [plain.clone()];
+    let frame = Frame {
+        camera: &camera,
+        grid: None,
+        skybox: false,
+        background: [0.1; 3],
+        environment: &environment,
+        post: PostSettings::default(),
+        lines: &[],
+        overlay: &[],
+        meshes: &meshes,
+        particles: &[],
+        terrains: &[],
+        shaded: true,
+        lights: &[],
+        water: &[],
+    };
+    let target = r.create_target(&device, 64, 64);
+    r.render(&device, &queue, &target, &frame);
+    assert!(!r.waiting_for(&plain));
+
+    // Another view queues a texture and a variant of its own.
+    r.set_background_loads(true);
+    let layout = r.pipelines.material_layout.clone();
+    let set = super::texture::TextureSet::pair(Some(&png), None);
+    r.textures.prepare_set(&device, &queue, &layout, &set);
+    let unlit = surface::PipelineKey {
+        unlit: true,
+        double_sided: true,
+        ..r_key(&plain)
+    };
+    r.pipelines.ensure_mesh(&device, unlit);
+    assert!(r.background_pending() > 0);
+    assert!(!r.waiting_for(&plain), "the plain draw has all it needs");
+    let mut textured = plain.clone();
+    textured.material.albedo_map = Some(png.clone());
+    assert!(r.waiting_for(&textured));
+    let mut other = plain.clone();
+    other.material.unlit = true;
+    other.material.double_sided = true;
+    assert!(r.waiting_for(&other));
+    r.set_background_loads(false);
+    assert!(crate::load_queue::imports().wait_idle(WAIT));
+    assert!(crate::load_queue::shaders().wait_idle(WAIT));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn r_key(d: &MeshDraw) -> surface::PipelineKey {
+    d.material.pipeline_key()
+}

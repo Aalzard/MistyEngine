@@ -315,6 +315,16 @@ impl Pipelines {
         })
     }
 
+    /// The main-pass variant of `key` as [`Self::mesh_variant`] picks it (glowless or not) is
+    /// queued on the shader queue and not picked up yet (its draws use a stand-in or are left
+    /// out).
+    pub(super) fn mesh_variant_waiting(&self, key: PipelineKey) -> bool {
+        let glowless = self.variants.glowless;
+        let key = PipelineKey { glowless, ..key };
+        !self.variants.mesh.contains_key(&key)
+            && self.variants.pending.contains(&VariantKey::Mesh(key))
+    }
+
     /// The main-pass variant of `key` exists (no stand-in).
     pub(super) fn has_mesh_variant(&self, key: PipelineKey) -> bool {
         self.variants.mesh.contains_key(&key)

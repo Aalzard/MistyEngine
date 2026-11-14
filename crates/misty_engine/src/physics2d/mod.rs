@@ -268,6 +268,10 @@ impl Physics2D {
     }
 
     pub fn set_velocity(&mut self, e: Entity, v: Vec2) {
+        // Non-finite values (scripts, Script Graph nodes) are ignored: they made the body NaN.
+        if !v.is_finite() {
+            return;
+        }
         if let Some(b) = self.body_mut(e) {
             b.set_linvel(rv(v), true);
         }
@@ -279,6 +283,9 @@ impl Physics2D {
     }
 
     pub fn set_angular_velocity(&mut self, e: Entity, degrees: f32) {
+        if !degrees.is_finite() {
+            return;
+        }
         if let Some(b) = self.body_mut(e) {
             b.set_angvel(degrees.to_radians(), true);
         }
@@ -343,6 +350,10 @@ impl Physics2D {
     /// Rigidbody2D.MovePosition / MoveRotation (degrees): kinematic bodies sweep there during
     /// the next step, pushing what they meet; other bodies are placed there.
     pub fn move_body(&mut self, e: Entity, position: Option<Vec2>, degrees: Option<f32>) {
+        // A NaN target (MovePosition / MoveRotation from a script or a Script Graph node) made
+        // the body's pose and its Transform NaN for good: ignored.
+        let position = position.filter(|p| p.is_finite());
+        let degrees = degrees.filter(|d| d.is_finite());
         let Some((p, a)) = self.body_pose(e) else {
             return;
         };

@@ -86,6 +86,8 @@ impl Gfx {
             ..Default::default()
         }))
         .map_err(|e| format!("graphics device: {e}"))?;
+        // A GPU validation error is logged instead of aborting the game (render/gpu_errors.rs).
+        misty_engine::render::gpu_errors::install(&device);
 
         let mut config = surface
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))

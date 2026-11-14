@@ -676,6 +676,9 @@ impl EditorApp {
             for w in gpu.ui.take_warnings() {
                 s.console.warn(w);
             }
+            for e in misty_engine::render::gpu_errors::take_new() {
+                s.console.log(LogLevel::Error, e);
+            }
         }
         drop(reload_scope);
         if !s.play.in_play_mode() {
@@ -1092,6 +1095,7 @@ impl eframe::App for EditorApp {
                 || "Editor.Recorder",
                 Some(misty_engine::profiler::Category::Others),
             );
+            self.state.recorder.gpu_starting = self.gpu.is_none() && self.gpu_start.is_some();
             if crate::recorder::gpu_frame(self.gpu.as_mut(), &mut self.state) {
                 ctx.request_repaint();
             }

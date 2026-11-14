@@ -327,6 +327,21 @@ pub fn night_lights(lights: &[LightData], env: &Environment) -> Option<Vec<Light
     Some(out)
 }
 
+/// How much of the sun is left for a Directional Light shining along `direction` (its glow
+/// and lens flare): 1 for any light but the sun, and by day; at night the sun fades out just
+/// below the horizon as [`night_lights`] fades its light (then the light is the moon's).
+pub fn sun_glow_scale(env: &Environment, direction: Vec3) -> f32 {
+    let s = &env.settings;
+    let Some(sun) = env.sun else {
+        return 1.0;
+    };
+    let is_sun = direction.normalize_or_zero().dot(-sun.direction) > 0.9999;
+    if !is_sun || !s.moon.enabled || s.skybox.kind == SkyboxKind::SolidColor {
+        return 1.0;
+    }
+    moon::sun_fade(sun.direction.y)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -551,6 +551,14 @@ impl TextureCache {
         self.pending.len()
     }
 
+    /// One of these textures is queued for decoding (its draws use the 1×1 default until the
+    /// next frame picks it up).
+    pub fn waiting_for<'a>(&self, paths: impl IntoIterator<Item = &'a str>) -> bool {
+        paths
+            .into_iter()
+            .any(|p| self.pending.iter().any(|(rel, _)| rel == p))
+    }
+
     /// Textures still decoding (decoded ones waiting for a view to pick them up don't count;
     /// see `Pipelines::variants_compiling`).
     pub fn decoding(&self) -> usize {

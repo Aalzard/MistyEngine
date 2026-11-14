@@ -37,8 +37,10 @@ const SCENES: [&str; 5] = [
 
 const SCREEN: glam::Vec2 = glam::Vec2::new(1280.0, 720.0);
 
+/// The tests play a copy of the sample: they set the global project root, and the repo's own
+/// sample must never be it (see `test_sample`).
 fn project() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
+    crate::test_sample::shared_copy()
 }
 
 fn scene_path(name: &str) -> String {

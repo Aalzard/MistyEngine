@@ -564,3 +564,40 @@ fn a_frictionless_body_slides_down_a_wall_it_is_pushed_against() {
         "stays outside the wall"
     );
 }
+
+/// NaN or infinite numbers from scripts and Script Graph nodes (velocity, MovePosition /
+/// MoveRotation targets, query origins) leave bodies and Transforms finite and find nothing: a
+/// NaN MovePosition made the body and its Transform NaN for good, a NaN raycast origin hit the
+/// first collider at distance 0 and a NaN point was inside it.
+#[test]
+fn non_finite_script_numbers_leave_bodies_finite_and_find_nothing() {
+    let mut scene = Scene::new("t");
+    ground(&mut scene, -1.0);
+    let a = crate_box(&mut scene, Vec2::new(0.0, 3.0));
+    let b = crate_box(&mut scene, Vec2::new(2.0, 3.0));
+    let c = crate_box(&mut scene, Vec2::new(4.0, 3.0));
+    let mut p = build(&scene);
+    run(&mut p, &mut scene, 2);
+    p.set_velocity(a, Vec2::new(f32::NAN, 1.0));
+    p.set_angular_velocity(b, f32::INFINITY);
+    p.move_body(c, Some(Vec2::new(f32::NAN, 0.0)), Some(f32::NAN));
+    run(&mut p, &mut scene, 30);
+    for e in [a, b, c] {
+        let (pos, angle) = p.body_pose(e).unwrap();
+        assert!(pos.is_finite() && angle.is_finite(), "{pos} {angle}");
+        let t = scene.transform(e);
+        assert!(t.position.is_finite() && t.rotation.is_finite(), "{t:?}");
+    }
+    assert!(p.overlap_point_all(Vec2::NAN, u32::MAX).is_empty());
+    assert!(p.overlap_circle_all(Vec2::NAN, 1.0, u32::MAX).is_empty());
+    assert!(
+        p.overlap_box_all(Vec2::ZERO, Vec2::ONE, f32::NAN, u32::MAX)
+            .is_empty()
+    );
+    assert!(p.raycast(Vec2::NAN, Vec2::X, 10.0, u32::MAX).is_none());
+    // Finite queries still work.
+    assert!(
+        !p.overlap_point_all(Vec2::new(0.0, -1.0), u32::MAX)
+            .is_empty()
+    );
+}

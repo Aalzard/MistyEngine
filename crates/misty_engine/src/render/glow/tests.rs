@@ -302,3 +302,62 @@ fn rectangle_spread_behind_an_orthographic_camera_is_not_drawn() {
     assert!(spread_instance(&f, &light(8.0), 16.0 / 9.0, 3.0).is_some());
     assert!(spread_instance(&f, &light(-8.0), 16.0 / 9.0, 3.0).is_none());
 }
+
+/// A Directional Light's lens flare shines with the light the scene gets: dimmer (and warmer)
+/// for a low sun with Intensity from Sun Height, and gone at night once the sun has set (its
+/// light is the moon's then). It used the light's raw intensity: a full-strength sun flare at
+/// dusk and under the horizon.
+#[test]
+fn directional_flares_follow_the_sun_height_and_set_at_night() {
+    let mut s = Scene::new("t");
+    let sun = s.spawn("Sun", None);
+    s.add(
+        sun,
+        Light {
+            kind: LightType::Directional,
+            intensity: 2.0,
+            intensity_from_sun_height: true,
+            ..Default::default()
+        },
+    );
+    s.add(sun, LensFlare::default());
+    // Shining along +Z and 3° down: the sun 3° above the horizon.
+    let low = Quat::from_rotation_x(3f32.to_radians());
+    let mut t = s.transform(sun);
+    t.set_rotation(low);
+    s.set_transform(sun, t);
+    let list = crate::render_scene::glow_sources(&s);
+    let (_, expected) = crate::scene::sun_height::apply([1.0; 3], 2.0, low * Vec3::Z);
+    assert!(expected < 1.0, "{expected}");
+    assert!(
+        (list[0].intensity - expected).abs() < 1e-5,
+        "{}",
+        list[0].intensity
+    );
+
+    // At night (the sun 10° under the horizon) the sun's flare is gone; a flare on another
+    // directional light stays.
+    let cam = camera();
+    let flare_of = |direction: Vec3| {
+        let mut g = source(LightType::Directional, Vec3::ZERO, direction);
+        g.halo = None;
+        g.flare = Some(LensFlare::default());
+        g
+    };
+    let under = Vec3::new(0.0, -10f32.to_radians().sin(), 10f32.to_radians().cos());
+    let mut env = Environment {
+        sun: Some(crate::render::environment::Sun {
+            direction: under,
+            color: [1.0; 3],
+            intensity: 2.0,
+        }),
+        ..Default::default()
+    };
+    // Light from the sun (travelling -under), and one from in front of the camera.
+    env.glows = vec![flare_of(-under)];
+    let f = frame(&cam, &env, PostSettings::default());
+    assert!(instances::build(&f, 1.6, true, 3.6).flares.is_empty());
+    env.glows = vec![flare_of(Vec3::NEG_Z)];
+    let f = frame(&cam, &env, PostSettings::default());
+    assert!(!instances::build(&f, 1.6, true, 3.6).flares.is_empty());
+}

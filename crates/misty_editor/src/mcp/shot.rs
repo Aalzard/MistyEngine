@@ -76,6 +76,7 @@ impl HeadlessGpu {
                 };
                 let (device, queue) = pollster::block_on(adapter.request_device(&desc))
                     .map_err(|e| format!("no GPU device for screenshots: {e}"))?;
+                misty_engine::render::gpu_errors::install(&device);
                 // Complete first frames: grass is built in the frame that needs it.
                 misty_engine::render::set_grass_streaming(false);
                 let renderer = Renderer::new(&device);

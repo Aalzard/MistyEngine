@@ -54,13 +54,25 @@ pub(super) fn lod_states(
             None => LodState::Visible,
             Some(l) => {
                 let h = screen_height(frame.camera, l.center, l.size, bias);
-                match l.virtual_lod {
+                let state = match l.virtual_lod {
                     Some(v) if groups.get(&v.group) == Some(&true) => l.virtual_state(v, h),
                     _ => l.state(h),
-                }
+                };
+                if dithers(d) { state } else { state.switched() }
             }
         })
         .collect()
+}
+
+/// The draw's main pass can dither a LOD cross-fade: lit Opaque (drawn with the cutout
+/// variant while it fades) and lit Cutout surfaces. Unlit, Fade / Transparent and `.shader`
+/// materials have no dithered variant: their levels switch at the band's centre instead of
+/// both drawing whole over the same pixels.
+pub(super) fn dithers(d: &MeshDraw) -> bool {
+    let m = &d.material;
+    m.custom.is_none()
+        && !m.unlit
+        && matches!(m.mode, RenderingMode::Opaque | RenderingMode::Cutout)
 }
 
 /// The main pass variant of a draw: cross-fading opaque levels clip like Cutout.

@@ -422,7 +422,8 @@ fn platformer_2d_plays() {
     use misty_engine::scripting::{Input, LogKind};
     use misty_engine::settings::ProjectSettings;
 
-    let root = project();
+    // A copy: the global project root never names the repo's sample (see test_sample).
+    let root = crate::test_sample::shared_copy();
     misty_engine::assets::set_project_root(&root);
     let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
     let (audio, _) = Audio::null(root.clone());

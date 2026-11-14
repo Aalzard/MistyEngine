@@ -722,6 +722,7 @@ struct Demo {
 impl Demo {
     fn open() -> Self {
         let root = project();
+        // (Only the ignored comparison renders use this: they read the repo's sample on purpose.)
         misty_engine::assets::set_project_root(&root);
         let data = terrain_data();
         // `MISTY_GFX_CALM=1`: no wind (to tell flicker from blade motion).

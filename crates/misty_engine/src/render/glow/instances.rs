@@ -180,6 +180,17 @@ pub(super) fn flare(
     if fade <= 0.0 {
         return;
     }
+    // A directional flare is the sun's: gone with it at night (render/moon.rs).
+    let sun = match s.kind {
+        LightType::Directional => {
+            crate::render::moon::sun_glow_scale(frame.environment, s.direction)
+        }
+        _ => 1.0,
+    };
+    let fade = fade * sun;
+    if fade <= 0.0 {
+        return;
+    }
     let base = light_color(s) * Vec3::from(srgb_to_linear(f.tint)) * f.intensity * fade;
     let base = base * FLARE_GAIN;
     let bias = match s.kind {

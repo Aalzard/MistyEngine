@@ -196,13 +196,16 @@ pub fn glow_sources(scene: &Scene) -> Vec<GlowSource> {
             }
             let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
             let l = light.unwrap_or_default();
+            // The colour and intensity the light shines with (a low sun is dimmer and warmer,
+            // so is its lens flare).
+            let (color, intensity) = sun_height_light(&l, rot * Vec3::Z);
             Some(GlowSource {
                 kind: l.kind,
                 position: pos,
                 direction: rot * Vec3::Z,
                 spot_angle: l.spot_angle,
-                color: l.color,
-                intensity: l.intensity,
+                color,
+                intensity,
                 glow: l.glow,
                 halo,
                 flare,

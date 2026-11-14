@@ -67,8 +67,9 @@ fn unreadable_text(shapes: &[ClippedShape], p: &Palette) -> Vec<String> {
 }
 
 fn sample_state() -> crate::state::EditorState {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    // A copy: opening the repo's sample imports it (extracting `Crate.fbx`'s materials) and the
+    // Package Manager resolves it (rewriting `packages-lock.json`).
+    let root = crate::test_sample::shared_copy();
     let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root));
     let cube = s.scene.spawn("Cube", None);
     s.selection.set(cube);

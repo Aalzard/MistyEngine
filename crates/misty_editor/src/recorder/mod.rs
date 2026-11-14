@@ -68,7 +68,9 @@ impl RecorderList {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())? + "\n";
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+        // Refused in a project open read-only (another editor holds its lock).
+        misty_engine::asset_db::write_atomic(&path, text)
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 
@@ -126,6 +128,9 @@ pub struct RecorderState {
     pub status: Option<(bool, String, Option<PathBuf>)>,
     /// "Not installed" was said once for scripts.
     warned_missing: bool,
+    /// The editor's renderer is still being made (the first seconds of a project). Recordings
+    /// wait for it, and so does the game: frames captured without it came out black.
+    pub gpu_starting: bool,
 }
 
 impl RecorderState {
@@ -152,8 +157,13 @@ pub fn installed(s: &EditorState) -> bool {
 /// recording stops.
 pub fn package_changed(s: &mut EditorState) {
     if !installed(s) {
-        for a in std::mem::take(&mut s.recorder.active) {
-            finish(&mut s.recorder, a, None);
+        if !s.recorder.active.is_empty() {
+            for a in std::mem::take(&mut s.recorder.active) {
+                finish(&mut s.recorder, a, None);
+            }
+            // Scripts saw `Recorder.isRecording` true for good after the package went
+            // mid-recording.
+            misty_engine::recorder::set_recording(false);
         }
         s.recorder.list = None;
         s.recorder.pending.clear();
@@ -162,6 +172,12 @@ pub fn package_changed(s: &mut EditorState) {
             crate::layout::Tab::Recorder,
         ));
     }
+}
+
+/// A recording is waiting for the editor's renderer: Play mode holds the game meanwhile, so no
+/// frame goes by uncaptured (or captured black).
+pub fn holds_game(s: &EditorState) -> bool {
+    s.recorder.gpu_starting && !s.recorder.active.is_empty()
 }
 
 /// Seconds the next Play-mode frame advances: one frame of the fastest recording while any
@@ -566,6 +582,11 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
     } else if play_needed && (s.recorder.play_seen || !s.recorder.started_play) {
         s.recorder.started_play = false;
         stop_all(s, gpu.as_deref());
+        return true;
+    }
+    if gpu.is_none() && s.recorder.gpu_starting {
+        // The renderer isn't there yet: nothing advanced (see `holds_game`), nothing to capture.
+        s.recorder.ticked = false;
         return true;
     }
     let ticked = std::mem::take(&mut s.recorder.ticked) || (!play_needed && !s.play.in_play_mode());

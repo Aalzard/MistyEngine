@@ -39,8 +39,8 @@ use crate::render::mesh::{self, MeshData};
 use crate::scene::MeshRef;
 
 pub use extract::{
-    animation_asset_path, extract_animations, extract_materials, material_asset_path,
-    refresh_animations,
+    animation_asset_path, extract_animations, extract_animations_in, extract_materials,
+    extract_materials_in, material_asset_path, refresh_animations,
 };
 pub use gltf_anim::SAMPLE_RATE;
 pub use settings::{AxisConversion, ClipSettings, LodSetting, ModelImporter, VectorSource};

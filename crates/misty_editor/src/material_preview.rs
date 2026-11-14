@@ -234,17 +234,10 @@ fn frame_parts(
     (camera, lights, model, mesh)
 }
 
-fn draw(
-    gpu: &mut Gpu,
-    target: &RenderTarget,
-    m: &Material,
-    yaw: f32,
-    pitch: f32,
-    shape: PreviewShape,
-) {
-    let (camera, lights, model, mesh) = frame_parts(yaw, pitch, shape);
-    let environment = Environment::new(Default::default(), &lights);
-    let meshes = [MeshDraw {
+/// The preview's one draw: `m` on the shape.
+fn preview_draw(m: &Material, yaw: f32, pitch: f32, shape: PreviewShape) -> MeshDraw {
+    let (_, _, model, mesh) = frame_parts(yaw, pitch, shape);
+    MeshDraw {
         mesh: mesh.into(),
         model,
         material: m.params(),
@@ -253,7 +246,20 @@ fn draw(
         outline: false,
         sorting: Default::default(),
         lod: None,
-    }];
+    }
+}
+
+fn draw(
+    gpu: &mut Gpu,
+    target: &RenderTarget,
+    m: &Material,
+    yaw: f32,
+    pitch: f32,
+    shape: PreviewShape,
+) {
+    let (camera, lights, _, _) = frame_parts(yaw, pitch, shape);
+    let environment = Environment::new(Default::default(), &lights);
+    let meshes = [preview_draw(m, yaw, pitch, shape)];
     let frame = Frame {
         camera: &camera,
         grid: None,
@@ -279,10 +285,12 @@ fn draw(
     gpu.renderer.set_background_loads(false);
 }
 
-/// True when the last [`draw`] left something to load in the background (its image is
-/// incomplete: a stand-in shader or a 1×1 texture).
-fn incomplete(gpu: &Gpu) -> bool {
-    gpu.renderer.background_pending() > 0
+/// True when the last [`draw`] of `m` left something of it to load in the background (its
+/// image is incomplete: a stand-in shader or a 1×1 texture). Other loads (the Scene view's,
+/// other previews') don't count: they kept every thumbnail redrawing during a long import.
+fn incomplete(gpu: &Gpu, m: &Material) -> bool {
+    gpu.renderer
+        .waiting_for(&preview_draw(m, 0.0, 0.0, PreviewShape::Sphere))
 }
 
 /// Render the previews panels asked for this frame.
@@ -322,7 +330,7 @@ pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
             continue;
         };
         draw(gpu, target, &m, 0.0, 0.0, PreviewShape::Sphere);
-        if incomplete(gpu) {
+        if incomplete(gpu, &m) {
             // Its textures or shader are still loading: keep the old thumbnail (if any)
             // and try again on a later frame.
             continue;
@@ -400,7 +408,7 @@ fn render_slot(gpu: &mut Gpu, wanted: Option<&InspectorKey>, slot: &mut Slot) {
         want.pitch,
         want.shape,
     );
-    if incomplete(gpu) {
+    if incomplete(gpu, &want.material) {
         // Something it shows is still loading: mark the slot stale so it is drawn again.
         if let Some((key, _, _)) = slot.as_mut() {
             key.frame = u64::MAX;
