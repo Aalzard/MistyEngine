@@ -255,7 +255,7 @@
           "auto_exposure": {
             "active": true,
             "adaptation": "Progressive",
-            "compensation": 0.0,
+            "compensation": -0.3,
             "histogram_high": 70.0,
             "histogram_low": 40.0,
             "limit_max": 0.0,
@@ -10816,6 +10816,1680 @@
           "active": true,
           "component_order": [
             "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (19)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                192
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                193
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                194
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                195
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            -1.5099103,
+            163.29616,
+            -9.824191
+          ],
+          "position": [
+            277.48267,
+            222.60797,
+            335.57617
+          ],
+          "rotation": [
+            -0.08661863,
+            0.9855113,
+            0.0005519362,
+            0.14582302
+          ],
+          "scale": [
+            10.119707,
+            10.119707,
+            10.119707
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 191
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 191
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 191
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 191
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (20)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                197
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                198
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                199
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                200
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            -10.43707,
+            -8.610966,
+            11.540184
+          ],
+          "position": [
+            172.64124,
+            169.93553,
+            572.1035
+          ],
+          "rotation": [
+            0.09775496,
+            0.06526567,
+            -0.09304394,
+            -0.9886998
+          ],
+          "scale": [
+            13.65361,
+            13.65361,
+            13.65361
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 196
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 196
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 196
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 196
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (21)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                202
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                203
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                204
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                205
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            -24.155876,
+            57.4215,
+            12.8593
+          ],
+          "position": [
+            161.8761,
+            147.17778,
+            460.4762
+          ],
+          "rotation": [
+            -0.12975815,
+            0.48735026,
+            0.19592656,
+            0.8409907
+          ],
+          "scale": [
+            12.014044,
+            12.014044,
+            12.014044
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 201
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 201
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 201
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 201
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (22)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                207
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                208
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                209
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                210
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            24.16575,
+            -131.29503,
+            7.9589767
+          ],
+          "position": [
+            356.188,
+            279.87146,
+            660.97485
+          ],
+          "rotation": [
+            -0.024283506,
+            0.8946853,
+            -0.2182247,
+            -0.38900715
+          ],
+          "scale": [
+            14.577362,
+            14.577362,
+            14.577362
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 206
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 206
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 206
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 206
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (23)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                212
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                213
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                214
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                215
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            25.340246,
+            -61.20051,
+            15.929238
+          ],
+          "position": [
+            283.3883,
+            250.58469,
+            717.66406
+          ],
+          "rotation": [
+            -0.11815482,
+            0.5180181,
+            -0.22693692,
+            -0.8162085
+          ],
+          "scale": [
+            14.526901,
+            14.526901,
+            14.526901
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 211
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 211
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 211
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 211
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "LOD Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Outcrop Layered (24)",
+          "tag": "Untagged"
+        },
+        "LOD Group": {
+          "enabled": true,
+          "fade_mode": "CrossFade",
+          "fade_width": 0.1,
+          "lods": [
+            {
+              "renderers": [
+                217
+              ],
+              "screen_height": 0.25
+            },
+            {
+              "renderers": [
+                218
+              ],
+              "screen_height": 0.08
+            },
+            {
+              "renderers": [
+                219
+              ],
+              "screen_height": 0.025
+            },
+            {
+              "renderers": [
+                220
+              ],
+              "screen_height": 0.002
+            }
+          ]
+        },
+        "Prefab": {
+          "path": "Assets/Rocks/Prefabs/Outcrop Layered.prefab"
+        },
+        "Transform": {
+          "euler_hint": [
+            15.548546,
+            -24.575989,
+            16.021032
+          ],
+          "position": [
+            318.29028,
+            277.64026,
+            763.48804
+          ],
+          "rotation": [
+            -0.101496324,
+            0.22723073,
+            -0.16341892,
+            -0.95465124
+          ],
+          "scale": [
+            13.830513,
+            13.830513,
+            13.830513
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD0",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 216
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 216
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD2",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#1"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 216
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "LOD3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Rocks/Meshes/Outcrop Layered LODs.glb#2"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Rocks/Materials/Outcrop Layered.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 216
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
             "Scripts"
           ],
           "is_static": false,
@@ -10914,7 +12588,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -10969,7 +12643,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11007,7 +12681,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11045,7 +12719,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11083,7 +12757,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11121,7 +12795,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11159,7 +12833,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     },
     {
       "components": {
@@ -11197,7 +12871,7 @@
           ]
         }
       },
-      "parent": 191
+      "parent": 221
     }
   ],
   "version": 1,

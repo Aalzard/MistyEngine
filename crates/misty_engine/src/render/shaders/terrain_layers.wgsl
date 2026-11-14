@@ -405,7 +405,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
             let past = smoothstep(0.55, 1.6, dist / terrain.grass_lush.w);
             let field = grass * vec3<f32>(0.92, 1.0, 1.0) * terrain.chunks.z * tufts * detail
                 * (1.0 - terrain.chunks.w * past);
-            s.albedo = mix(s.albedo, field, wf);
+            // (A little more saturated than the blades' mean: the haze greys it at a distance
+            // as much as it greys the blades, and the field must keep their green.)
+            let field_sat = max(mix(vec3<f32>(dot(field, luma)), field, 1.2), vec3<f32>(0.0));
+            s.albedo = mix(s.albedo, field_sat, wf);
             s.smoothness *= 1.0 - wf;
             // Tufts: a fine octave (faded out where one pixel covers it, so it never
             // shimmers) and clumps of a few metres.
