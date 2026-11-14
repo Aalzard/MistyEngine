@@ -71,7 +71,7 @@ impl H264 {
             )))
             .max_frame_rate(FrameRate::from_hz(fps as f32))
             .rate_control_mode(RateControlMode::Bitrate)
-            .usage_type(UsageType::CameraVideoNonRealTime)
+            .usage_type(UsageType::CameraVideoRealTime)
             .skip_frames(false)
             .intra_frame_period(IntraFramePeriod::from_num_frames(fps * 2))
             .vui(VuiConfig::bt601());
