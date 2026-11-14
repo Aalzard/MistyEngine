@@ -4875,12 +4875,19 @@ the issue list are `docs/pending/r65-node-game.md`.
   Puff, the Brute takes two dashes, gaps jumped, stage 2 loads and starts); the menu and the
   win screen.
 
-### Issues found (reported to the fixer, round 66)
-1. 2D triggers and collisions never reach Script Graphs (`dispatch_2d` calls only Lua).
-2. A UI Button's On Click cannot run a Script Graph's Custom Event.
-3. API nodes of variadic Lua functions (`Physics2D: Raycast`, `Rigidbody2D: AddForce`...) have
-   no input pins.
-4. No typed 2D physics nodes (raycast results are opaque Lua tables).
-- Also: PlayMode `yield(seconds)` never ends when the game loads scenes; 2D friction is
-  averaged so a frictionless player sticks to walls; capture windows open maximised; the MCP
-  bridge has no Script Graph tools; captures never fire with a Script Graph tab in front.
+- Tests: the menu's Play button is clicked with the mouse (its On Click runs the graph's
+  Custom Event); Enter presses the selected button.
+
+### Issues found, fixed in round 66, and the game moved onto the fixes
+1. 2D triggers and collisions never reached Script Graphs: Enemy Touch and Goal now use On
+   Trigger Enter / Exit 2D (they used distance checks).
+2. A UI Button's On Click could not run a graph's Custom Event: the menu uses real button
+   clicks (it read Enter and the mouse with Input nodes).
+3. API nodes of variadic Lua functions had no input pins.
+4. No typed 2D physics nodes: the game uses the native Physics2D Raycast (Hit) and
+   OverlapCircleAll and the typed Rigidbody 2D velocity (raycast results were opaque Lua
+   tables tested against nothing).
+- Also fixed: PlayMode `yield(seconds)` across game-side scene loads; 2D friction combines as
+  the geometric mean (the ground and walls are back to Friction 0.4); capture window size; MCP
+  Script Graph tools. Still open on main: editor screenshot captures do not finish (being
+  investigated), so the round's pictures come from the built player.

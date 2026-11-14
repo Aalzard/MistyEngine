@@ -75,7 +75,7 @@ code. The point is to prove the nodes a real game needs, and to list what is bro
 
 Issues 1 to 3 (batch 1) and issue 4 with findings A to D and the `MISTY_SCRIPTGRAPH` capture
 problem (batch 2) were reported to the coordinator and given to the fixer (branch
-`r66-node-fixes`). **Nothing is merged yet.**
+`r66-node-fixes`). All are merged on main (round 66) and merged into this branch (2026-11-14); findings B (friction) and E/C (captures) were fixed there too.
 
 ## Issues
 
@@ -95,7 +95,7 @@ merged.
   `self.graphs.contact(...)` first, the 2D one never does. A 2D game cannot use the four contact
   events at all.
 - **Workaround used:** distance checks and `Physics2D.OverlapCircleAll` each frame.
-- **Status:** reported.
+- **Status:** fixed in round 66 (On Trigger / Collision Enter / Stay / Exit 2D nodes); Enemy Touch and Goal now use On Trigger Enter / Exit 2D.
 
 ### 2. A UI Button's On Click cannot run a Script Graph
 
@@ -108,7 +108,7 @@ merged.
   Changed and On End Edit of the other widgets. There is no node to listen to a button either
   (`button.onClick:AddListener` needs a Lua function).
 - **Workaround used:** the menu reads keys and the mouse with `Input` nodes.
-- **Status:** reported.
+- **Status:** fixed in round 66; the menu's Play button (selected first, so Enter presses it) runs the Menu graph's Custom Event *Play*. Tested with a mouse click.
 
 ### 3. API nodes of variadic Lua functions have no input pins
 
@@ -120,7 +120,7 @@ merged.
   node can only be used after typing names into Graph Properties ▸ Arguments, which nothing
   hints at.
 - **Workaround used:** `args` typed by hand (`origin, direction, distance, mask`).
-- **Status:** reported.
+- **Status:** fixed in round 66 (documented signatures, optional pins).
 
 ### 4. No typed 2D physics nodes (missing nodes)
 
@@ -138,7 +138,7 @@ merged.
   `Point`, `Normal`, `Distance`, `Collider` (GameObject); `Rigidbody2D: Get / Set velocity` as
   Vector3; the overlap queries pure, returning GameObject / List.
 - **Workaround used:** the Lua-binding nodes above (they work).
-- **Status:** reported.
+- **Status:** fixed in round 66; the game uses the native Physics2D Raycast (Hit) and OverlapCircleAll and the typed Rigidbody2D velocity.
 
 ## Other findings (not node bugs)
 
