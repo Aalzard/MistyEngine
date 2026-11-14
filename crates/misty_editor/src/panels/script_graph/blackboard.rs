@@ -199,24 +199,32 @@ fn row(
         }
     });
     ui.horizontal(|ui| {
-        let mut scope = v.scope;
+        // (scope, linked to the graph the macro is in): "Outer" only inside a macro.
+        let mut scope = (v.scope, v.outer);
+        let in_macro = !s.script_graph.at_root();
         egui::ComboBox::from_id_salt("scope")
             .width(70.0)
             .selected_text(match scope {
-                VarScope::Graph => "Graph",
-                VarScope::Object => "Object",
+                (_, true) => "Outer",
+                (VarScope::Graph, _) => "Graph",
+                (VarScope::Object, _) => "Object",
             })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut scope, VarScope::Graph, "Graph")
+                ui.selectable_value(&mut scope, (VarScope::Graph, false), "Graph")
                     .on_hover_text("Private to this graph on each object");
-                ui.selectable_value(&mut scope, VarScope::Object, "Object").on_hover_text(
+                ui.selectable_value(&mut scope, (VarScope::Object, false), "Object").on_hover_text(
                     "Stored on the object: set per object in the Properties panel, shared with its other graphs and Lua (GetVariable)",
                 );
+                if in_macro || v.outer {
+                    ui.selectable_value(&mut scope, (v.scope, true), "Outer").on_hover_text(
+                        "The variable of the same name in the graph this macro is in: the macro reads and writes that one",
+                    );
+                }
             });
-        if scope != v.scope {
+        if scope != (v.scope, v.outer) {
             s.script_graph.edit("Change Variable Scope", false, |g| {
                 if let Some(x) = g.variables.get_mut(i) {
-                    x.scope = scope;
+                    (x.scope, x.outer) = scope;
                 }
             });
         }

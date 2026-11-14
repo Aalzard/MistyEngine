@@ -507,7 +507,24 @@ impl ScriptGraphWindow {
                 .filter(|c| ids.contains(&c.from) && ids.contains(&c.to))
                 .cloned()
                 .collect(),
-            variables: view.variables.clone(),
+            // The variables the nodes use stay the graph's: linked (`outer`), not copied. A
+            // copy is private to each use of the macro, so the collapsed nodes silently
+            // stopped reading and writing the graph's variable.
+            variables: view
+                .variables
+                .iter()
+                .filter(|v| {
+                    view.nodes.iter().any(|n| {
+                        ids.contains(&n.id)
+                            && matches!(n.kind.as_str(), "GetVariable" | "SetVariable")
+                            && n.param("name") == v.name
+                    })
+                })
+                .map(|v| visual_script::Variable {
+                    outer: true,
+                    ..v.clone()
+                })
+                .collect(),
             ..Default::default()
         };
         let left = inner

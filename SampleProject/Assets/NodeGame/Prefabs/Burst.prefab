@@ -1,0 +1,175 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": true,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [
+              {
+                "time": 0.0,
+                "count": 26,
+                "cycles": 1,
+                "interval": 0.01,
+                "probability": 1.0
+              }
+            ],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 1.0,
+            "gravity_modifier": 0.6,
+            "looping": false,
+            "max_particles": 200,
+            "play_on_awake": true,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                0.75,
+                0.45,
+                1.0
+              ],
+              "b": [
+                1.0,
+                0.75,
+                0.45,
+                1.0
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 0.35,
+              "b": 0.7,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.18,
+              "b": 0.42,
+              "random": true
+            },
+            "start_speed": {
+              "a": 2.0,
+              "b": 5.0,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 2.5,
+            "texture": null
+          },
+          "seed": 0,
+          "shape": {
+            "angle": 25.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.25,
+            "shape": "Sphere"
+          },
+          "size_over_lifetime": {
+            "enabled": true,
+            "end": 0.1,
+            "start": 1.0
+          }
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "After": 1.2
+              },
+              "path": "Assets/NodeGame/Graphs/Vanish.vgraph"
+            }
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Burst",
+          "tag": "Untagged"
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

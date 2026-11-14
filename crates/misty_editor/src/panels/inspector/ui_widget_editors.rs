@@ -12,6 +12,7 @@ use misty_engine::scene::{
     VerticalLayoutGroup,
 };
 
+use super::super::call_methods::{CallTargets, method_field};
 use super::{alignment, color, edit_copy, grid, vec2};
 use crate::state::EditorState;
 use crate::theme;
@@ -112,10 +113,11 @@ fn objects(state: &EditorState) -> Objects {
 
 pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool {
     let objs = objects(state);
+    let targets = CallTargets::new(state);
     let textures = state.assets.textures.clone();
     match name {
         "Raw Image" => edit_copy::<UiRawImage>(state, e, |c| raw_image(ui, c, &textures)),
-        "Toggle" => edit_copy::<UiToggle>(state, e, |c| toggle(ui, c, &objs)),
+        "Toggle" => edit_copy::<UiToggle>(state, e, |c| toggle(ui, c, &objs, &targets)),
         "Toggle Group" => edit_copy::<UiToggleGroup>(state, e, |c| {
             grid(ui, "ui_toggle_group", |ui| {
                 ui.label("Allow Switch Off");
@@ -124,10 +126,12 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
                 ch
             })
         }),
-        "Slider" => edit_copy::<UiSlider>(state, e, |c| slider(ui, c, &objs)),
-        "Scrollbar" => edit_copy::<UiScrollbar>(state, e, |c| scrollbar(ui, c, &objs)),
-        "Input Field" => edit_copy::<UiInputField>(state, e, |c| input_field(ui, c, &objs)),
-        "Dropdown" => edit_copy::<UiDropdown>(state, e, |c| dropdown(ui, c, &objs)),
+        "Slider" => edit_copy::<UiSlider>(state, e, |c| slider(ui, c, &objs, &targets)),
+        "Scrollbar" => edit_copy::<UiScrollbar>(state, e, |c| scrollbar(ui, c, &objs, &targets)),
+        "Input Field" => {
+            edit_copy::<UiInputField>(state, e, |c| input_field(ui, c, &objs, &targets))
+        }
+        "Dropdown" => edit_copy::<UiDropdown>(state, e, |c| dropdown(ui, c, &objs, &targets)),
         "Scroll Rect" => edit_copy::<UiScrollRect>(state, e, |c| scroll_rect(ui, c, &objs)),
         "Mask" => edit_copy::<UiMask>(state, e, |c| {
             grid(ui, "ui_mask", |ui| {
@@ -250,7 +254,14 @@ fn selectable(ui: &mut Ui, id: &str, s: &mut Selectable, objs: &Objects) -> bool
 }
 
 /// A persistent call list ("On Value Changed (Single)" …).
-fn calls(ui: &mut Ui, id: &str, title: &str, list: &mut Vec<ButtonCall>, objs: &Objects) -> bool {
+fn calls(
+    ui: &mut Ui,
+    id: &str,
+    title: &str,
+    list: &mut Vec<ButtonCall>,
+    objs: &Objects,
+    targets: &CallTargets,
+) -> bool {
     let mut ch = false;
     ui.add_space(4.0);
     ui.label(title);
@@ -262,13 +273,7 @@ fn calls(ui: &mut Ui, id: &str, title: &str, list: &mut Vec<ButtonCall>, objs: &
         for (i, call) in list.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ch |= object_field(ui, &format!("{id}_{i}"), &mut call.target, objs);
-                ch |= ui
-                    .add(
-                        egui::TextEdit::singleline(&mut call.method)
-                            .hint_text("Method")
-                            .desired_width(100.0),
-                    )
-                    .changed();
+                ch |= method_field(ui, &mut call.method, call.target, targets);
                 if ui.small_button("−").on_hover_text("Remove").clicked() {
                     remove = Some(i);
                 }
@@ -312,7 +317,7 @@ fn raw_image(ui: &mut Ui, img: &mut UiRawImage, textures: &[String]) -> bool {
     })
 }
 
-fn toggle(ui: &mut Ui, t: &mut UiToggle, objs: &Objects) -> bool {
+fn toggle(ui: &mut Ui, t: &mut UiToggle, objs: &Objects, targets: &CallTargets) -> bool {
     let mut ch = grid(ui, "ui_toggle", |ui| {
         let mut c = selectable(ui, "toggle", &mut t.selectable, objs);
         ui.label("Is On");
@@ -332,6 +337,7 @@ fn toggle(ui: &mut Ui, t: &mut UiToggle, objs: &Objects) -> bool {
         "On Value Changed (Boolean)",
         &mut t.on_value_changed,
         objs,
+        targets,
     );
     ch
 }
@@ -340,7 +346,7 @@ fn direction(ui: &mut Ui, id: &str, d: &mut SliderDirection) -> bool {
     combo(ui, id, d, &SliderDirection::ALL, SliderDirection::label)
 }
 
-fn slider(ui: &mut Ui, s: &mut UiSlider, objs: &Objects) -> bool {
+fn slider(ui: &mut Ui, s: &mut UiSlider, objs: &Objects, targets: &CallTargets) -> bool {
     let mut ch = grid(ui, "ui_slider", |ui| {
         let mut c = selectable(ui, "slider", &mut s.selectable, objs);
         ui.label("Fill Rect");
@@ -377,11 +383,12 @@ fn slider(ui: &mut Ui, s: &mut UiSlider, objs: &Objects) -> bool {
         "On Value Changed (Single)",
         &mut s.on_value_changed,
         objs,
+        targets,
     );
     ch
 }
 
-fn scrollbar(ui: &mut Ui, s: &mut UiScrollbar, objs: &Objects) -> bool {
+fn scrollbar(ui: &mut Ui, s: &mut UiScrollbar, objs: &Objects, targets: &CallTargets) -> bool {
     let mut ch = grid(ui, "ui_scrollbar", |ui| {
         let mut c = selectable(ui, "scrollbar", &mut s.selectable, objs);
         ui.label("Handle Rect");
@@ -409,11 +416,12 @@ fn scrollbar(ui: &mut Ui, s: &mut UiScrollbar, objs: &Objects) -> bool {
         "On Value Changed (Single)",
         &mut s.on_value_changed,
         objs,
+        targets,
     );
     ch
 }
 
-fn input_field(ui: &mut Ui, f: &mut UiInputField, objs: &Objects) -> bool {
+fn input_field(ui: &mut Ui, f: &mut UiInputField, objs: &Objects, targets: &CallTargets) -> bool {
     let mut ch = grid(ui, "ui_input_field", |ui| {
         let mut c = selectable(ui, "input", &mut f.selectable, objs);
         ui.label("Text Component");
@@ -477,6 +485,7 @@ fn input_field(ui: &mut Ui, f: &mut UiInputField, objs: &Objects) -> bool {
         "On Value Changed (String)",
         &mut f.on_value_changed,
         objs,
+        targets,
     );
     ch |= calls(
         ui,
@@ -484,11 +493,12 @@ fn input_field(ui: &mut Ui, f: &mut UiInputField, objs: &Objects) -> bool {
         "On End Edit (String)",
         &mut f.on_end_edit,
         objs,
+        targets,
     );
     ch
 }
 
-fn dropdown(ui: &mut Ui, d: &mut UiDropdown, objs: &Objects) -> bool {
+fn dropdown(ui: &mut Ui, d: &mut UiDropdown, objs: &Objects, targets: &CallTargets) -> bool {
     let mut ch = grid(ui, "ui_dropdown", |ui| {
         let mut c = selectable(ui, "dropdown", &mut d.selectable, objs);
         ui.label("Template");
@@ -539,6 +549,7 @@ fn dropdown(ui: &mut Ui, d: &mut UiDropdown, objs: &Objects) -> bool {
         "On Value Changed (Int32)",
         &mut d.on_value_changed,
         objs,
+        targets,
     );
     ch
 }

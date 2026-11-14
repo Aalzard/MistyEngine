@@ -123,7 +123,8 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
                 .into_iter()
                 .map(|(o, _)| (o, state.scene.name(o)))
                 .collect();
-            edit_copy::<UiButton>(state, e, |c| button(ui, c, &objects))
+            let targets = super::call_methods::CallTargets::new(state);
+            edit_copy::<UiButton>(state, e, |c| button(ui, c, &objects, &targets))
         }
         other => widgets::edit(ui, state, e, other),
     }
@@ -725,7 +726,12 @@ pub(super) fn alignment(ui: &mut Ui, a: &mut TextAnchor) -> bool {
     ch
 }
 
-fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
+fn button(
+    ui: &mut Ui,
+    b: &mut UiButton,
+    objects: &[(Entity, String)],
+    targets: &super::call_methods::CallTargets,
+) -> bool {
     let mut ch = grid(ui, "ui_button_grid", |ui| {
         let mut c = false;
         ui.label("Interactable");
@@ -765,13 +771,7 @@ fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
         for (i, call) in b.on_click.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ch |= target_field(ui, i, call, objects);
-                ch |= ui
-                    .add(
-                        egui::TextEdit::singleline(&mut call.method)
-                            .hint_text("Method")
-                            .desired_width(100.0),
-                    )
-                    .changed();
+                ch |= super::call_methods::method_field(ui, &mut call.method, call.target, targets);
                 if ui.small_button("−").on_hover_text("Remove").clicked() {
                     remove = Some(i);
                 }

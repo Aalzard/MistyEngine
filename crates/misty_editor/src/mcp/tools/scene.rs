@@ -63,7 +63,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "scene.add_component",
         title: "Add component",
-        description: "Add a built-in component by name (see scene.component_types) or a Lua script by its path (\"Assets/Scripts/Spin.lua\"). One undo step.",
+        description: "Add a built-in component by name (see scene.component_types) or a Lua script or Script Graph by its path (\"Assets/Scripts/Spin.lua\", \"Assets/Graphs/Door.vgraph\"). One undo step.",
         kind: Kind::Edit,
         idempotent: false,
         schema: component_schema,
@@ -339,14 +339,18 @@ fn component_info(name: &str) -> Result<&'static ComponentInfo, String> {
     })
 }
 
+/// A Lua script or a Script Graph by path.
 fn is_script_ref(name: &str) -> bool {
-    name.ends_with(".lua")
+    name.ends_with(".lua") || misty_engine::visual_script::is_graph_path(name)
 }
 
 /// The slot of the script `name` (a path or a script name) on `e`.
 fn script_slot(s: &EditorState, e: Entity, name: &str) -> Option<usize> {
     let scripts = s.scene.world.get::<&Scripts>(e).ok()?;
-    let stem = name.strip_suffix(".lua").unwrap_or(name);
+    let stem = name
+        .strip_suffix(".lua")
+        .or_else(|| name.strip_suffix(".vgraph"))
+        .unwrap_or(name);
     let stem = stem.rsplit('/').next().unwrap_or(stem);
     scripts
         .list

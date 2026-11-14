@@ -312,6 +312,9 @@ fn grass() -> details::DetailSettings {
         gust_scale: 22.0,
         turbulence: 0.3,
         depth_shading: 0.65,
+        // Past the blades the ground keeps the grass's look: no line where they end.
+        far_field: 1.0,
+        far_field_brightness: 0.28,
     }
 }
 
@@ -403,10 +406,11 @@ fn forest_herbs(d: &TerrainData) -> DetailLayer {
         .collect();
     DetailLayer {
         name: "Forest Herbs".into(),
-        density: 45.0,
-        height: [0.08, 0.2],
-        width: 0.15,
-        bend: 1.4,
+        // (Broad, low leaves rather than tufts: wide short blades, fewer of them.)
+        density: 28.0,
+        height: [0.06, 0.15],
+        width: 0.3,
+        bend: 1.5,
         dryness: 0.0,
         tint: -0.65,
         seed_heads: 0.0,
@@ -533,7 +537,8 @@ fn limestone() -> [RgbaImage; 3] {
             let moss = smooth(0.68, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.95, bed);
             // (Grey, about half as bright as fresh limestone: weathered faces seen from the
             // meadow read mid-grey through the haze, not white.)
-            let mut c = [0.038, 0.032, 0.02].map(|k| {
+            // (Warmer and a little brighter than before: tan limestone in the sun, not grey-green.)
+            let mut c = [0.05, 0.041, 0.026].map(|k| {
                 k * (0.84 + 0.22 * bed_tone)
                     * (0.78 + 0.4 * blocks)
                     * (0.9 + 0.2 * lumps)
@@ -546,12 +551,12 @@ fn limestone() -> [RgbaImage; 3] {
             // (Stains, lichen and moss darker than the rock or near it: never paler, which
             // reads yellow-green from the meadow.)
             let oc = [0.037, 0.028, 0.016];
-            let lc = [0.029, 0.031, 0.025];
+            let lc = [0.032, 0.029, 0.022];
             let mc = [0.014, 0.02, 0.007];
             for i in 0..3 {
                 c[i] += (oc[i] - c[i]) * stain * 0.3;
                 c[i] += (lc[i] - c[i]) * lichen * 0.4;
-                c[i] += (mc[i] - c[i]) * moss * 0.7;
+                c[i] += (mc[i] - c[i]) * moss * 0.35;
             }
             color[y * n + x] = c;
             height[y * n + x] = (0.5 + 0.28 * blocks + 0.12 * lumps + 0.04 * grain
@@ -565,31 +570,77 @@ fn limestone() -> [RgbaImage; 3] {
     maps(n, &color, &height, 6.0)
 }
 
-/// Dense turf seen from above, the ground of the meadow: dark green tufts and their shade,
-/// a few straw-coloured dead blades, darker hollows (3 m tile). Albedo (sRGB), height, normal.
+/// Dense turf seen from above, the ground of the meadow (3 m tile, 2048²): tens of thousands
+/// of short blades in every direction, lighter towards their tips, over the dark shade
+/// between them; clumps a few decimetres across, some yellower, some deeper green, and a few
+/// straw-coloured dead blades. The blades stand up in the height map, so the normal map
+/// catches the sun as the grass does. Albedo (sRGB), height, normal.
 fn meadow_turf() -> [RgbaImage; 3] {
-    let n = TEX / 2;
+    let n = TEX;
+    let ni = n as i32;
     let mut color = vec![[0.0f32; 3]; n * n];
     let mut height = vec![0.0f32; n * n];
+    // The shade deep in the turf between the blades.
     for y in 0..n {
         for x in 0..n {
             let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
-            let tufts = tile_fbm(u, v, 24, 3, 201);
-            let blades = tile_noise(u, v * 0.35, 260, 202);
-            let hollows = smooth(0.38, 0.2, tile_fbm(u, v, 6, 3, 203));
-            let straw = smooth(0.7, 0.85, tile_fbm(u, v, 40, 2, 204)) * 0.5;
-            let lit = (0.55 + 0.6 * tufts) * (0.85 + 0.3 * blades) * (1.0 - 0.45 * hollows);
-            let green = [0.045, 0.062, 0.022];
-            let dead = [0.11, 0.1, 0.055];
-            let mut c = [0.0; 3];
-            for i in 0..3 {
-                c[i] = (green[i] + (dead[i] - green[i]) * straw) * lit;
-            }
-            color[y * n + x] = c;
-            height[y * n + x] = (0.3 + 0.5 * tufts + 0.15 * blades - 0.3 * hollows).clamp(0.0, 1.0);
+            let k = 0.7 + 0.5 * tile_fbm(u, v, 16, 3, 201);
+            color[y * n + x] = [0.016 * k, 0.024 * k, 0.008 * k];
+            height[y * n + x] = 0.1 * k;
         }
     }
-    maps(n, &color, &height, 4.0)
+    let green = [0.05, 0.072, 0.024];
+    let yellow = [0.085, 0.09, 0.032];
+    let deep = [0.03, 0.05, 0.016];
+    let dead = [0.12, 0.105, 0.058];
+    let blades = 110_000;
+    for b in 0..blades {
+        let r = |salt: i32| noise::hash(b, salt, 0x7a11);
+        let (x0, y0) = (r(1) * n as f32, r(2) * n as f32);
+        let (u, v) = (x0 / n as f32, y0 / n as f32);
+        // Clumps: yellower or deeper green, a few decimetres across (within the tile; the
+        // terrain's own patches vary the field over metres).
+        let clump = tile_fbm(u, v, 6, 3, 205);
+        let tone = tile_fbm(u, v, 10, 2, 206);
+        let mut c = [0.0f32; 3];
+        let yell = smooth(0.45, 0.75, tone);
+        let dark = smooth(0.45, 0.2, tone);
+        for i in 0..3 {
+            c[i] = green[i] + (yellow[i] - green[i]) * yell + (deep[i] - green[i]) * dark;
+        }
+        if r(3) < 0.04 + 0.08 * smooth(0.6, 0.8, clump) {
+            c = dead;
+        }
+        let bright = (0.75 + 0.5 * r(4)) * (0.8 + 0.4 * clump);
+        let angle = r(5) * std::f32::consts::TAU;
+        let len = 10.0 + 22.0 * r(6);
+        let top = 0.45 + 0.55 * r(7) * (0.6 + 0.4 * clump);
+        let (dx, dy) = (angle.cos(), angle.sin());
+        let wide = r(8) < 0.5;
+        let steps = len as i32;
+        for k in 0..=steps {
+            let t = k as f32 / len;
+            // The blade rises from its root and is lit more towards its tip.
+            let h = top * (0.35 + 0.65 * t);
+            let lit = bright * (0.6 + 0.55 * t);
+            let (px, py) = (
+                (x0 + dx * k as f32).round() as i32,
+                (y0 + dy * k as f32).round() as i32,
+            );
+            let mut put = |px: i32, py: i32| {
+                let at = py.rem_euclid(ni) as usize * n + px.rem_euclid(ni) as usize;
+                if h > height[at] {
+                    height[at] = h;
+                    color[at] = c.map(|v| v * lit);
+                }
+            };
+            put(px, py);
+            if wide && t < 0.7 {
+                put(px + dy.round() as i32, py - dx.round() as i32);
+            }
+        }
+    }
+    maps(n, &color, &height, 3.0)
 }
 
 fn tree_path(name: &str) -> String {
@@ -822,7 +873,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 10,
                 leaf_density: 1.05,
                 leaf_size: 1.1,
-                leaf_color: [0.72, 0.8, 0.56],
+                leaf_color: [0.6, 0.66, 0.44],
+                leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.5,
                 ..TreeAsset::oak()
@@ -839,7 +891,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 leader: 0.7,
                 leaf_density: 1.0,
                 leaf_size: 1.0,
-                leaf_color: [0.74, 0.82, 0.58],
+                leaf_color: [0.62, 0.67, 0.45],
+                leaf_variation: 0.5,
                 crown_shading: 0.6,
                 clumping: 0.45,
                 ..TreeAsset::linden()
@@ -860,7 +913,8 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 twigs: 5,
                 leaf_density: 0.9,
                 leaf_size: 0.8,
-                leaf_color: [0.76, 0.84, 0.6],
+                leaf_color: [0.62, 0.68, 0.46],
+                leaf_variation: 0.5,
                 crown_shading: 0.4,
                 clumping: 0.3,
                 ..TreeAsset::linden()
@@ -1183,7 +1237,8 @@ fn terrain_data() -> TerrainData {
             diffuse: Some(LIMESTONE.into()),
             normal_map: Some(LIMESTONE_NORMAL.into()),
             height_map: Some(LIMESTONE_HEIGHT.into()),
-            normal_scale: 1.2,
+            // (Deep relief: the beds' partings and joints throw shadows.)
+            normal_scale: 1.8,
             tile_size: [36.0, 36.0],
             smoothness: 0.15,
             rules: rules([48.0, 90.0], 2),
@@ -1268,6 +1323,9 @@ fn terrain_data() -> TerrainData {
     // (impostors in the far one), which keeps a walk inside the wood real-time.
     d.trees.billboard_start = 80.0;
     d.trees.shadow_detail = 0.34;
+    // Ferns and ground cover shade the floor only near the camera (their shadows were most of
+    // the inside view's shadow-map cost).
+    d.trees.plant_shadow_distance = 12.0;
     // Placed on the heights as stored (16 bits), so the file and the generator agree.
     let stored = TerrainData {
         heights: d
@@ -1396,15 +1454,17 @@ fn volume() -> PostProcessVolume {
     cs.sample_count = 6;
     // Past the shadow maps (150 m on High) the forests keep their shade.
     cs.far_shadows = 1.0;
-    // Fair-weather cumulus: big soft heaps with small ones scattered between.
+    // Fair-weather cumulus: a few big soft heaps.
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.325;
+    c.coverage = 0.34;
     c.density = 0.7;
-    c.shape = 0.6;
+    c.shape = 0.45;
     c.altitude = 1400.0;
-    c.thickness = 1100.0;
+    c.thickness = 1500.0;
+    c.size = 2.4;
+    c.softness = 0.5;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
@@ -1417,7 +1477,8 @@ fn volume() -> PostProcessVolume {
     f.attenuation_distance = 1900.0;
     f.base_height = 60.0;
     f.maximum_height = 260.0;
-    f.albedo = [0.58, 0.72, 0.9];
+    // (Grey-blue: the photo's far hills and sky are greyer than a clear blue.)
+    f.albedo = [0.62, 0.69, 0.8];
     f.anisotropy = 0.2;
     f.sky_haze = 0.9;
     f.volumetric_distance = 300.0;
@@ -1463,7 +1524,9 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
     // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.16, 0.24, 0.36];
+    rs.skybox.sky_tint = [0.18, 0.24, 0.32];
+    // (Darker overhead, as in the photo; the meadow keeps its own exposure.)
+    rs.skybox.exposure = 0.75;
     // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
     // the Forest Floor layer's Occlusion sets the shade instead.)
     rs.realtime_gi = false;

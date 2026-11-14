@@ -39,6 +39,7 @@ mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
+pub mod recorder_api;
 pub mod render_settings_api;
 pub mod rigging_api;
 pub mod save_api;
@@ -1047,17 +1048,31 @@ impl ScriptHost {
     }
 
     /// `OnCollision*2D(collision)` / `OnTrigger*2D(other)` for 2D contacts.
+    /// Script Graphs hear them on the matching On Trigger/Collision … 2D nodes (Other; plus
+    /// Point, Normal and Relative Velocity for collisions).
     fn dispatch_2d(&mut self, contacts: &[Contact2D]) {
+        use crate::visual_script::compile::EventKind;
+        use crate::visual_script::value::Value as GValue;
         for c in contacts {
-            let base = match (c.trigger, c.phase) {
-                (true, Phase::Enter) => "OnTriggerEnter2D",
-                (true, Phase::Stay) => "OnTriggerStay2D",
-                (true, Phase::Exit) => "OnTriggerExit2D",
-                (false, Phase::Enter) => "OnCollisionEnter2D",
-                (false, Phase::Stay) => "OnCollisionStay2D",
-                (false, Phase::Exit) => "OnCollisionExit2D",
+            let (base, kind) = match (c.trigger, c.phase) {
+                (true, Phase::Enter) => ("OnTriggerEnter2D", EventKind::TriggerEnter2D),
+                (true, Phase::Stay) => ("OnTriggerStay2D", EventKind::TriggerStay2D),
+                (true, Phase::Exit) => ("OnTriggerExit2D", EventKind::TriggerExit2D),
+                (false, Phase::Enter) => ("OnCollisionEnter2D", EventKind::CollisionEnter2D),
+                (false, Phase::Stay) => ("OnCollisionStay2D", EventKind::CollisionStay2D),
+                (false, Phase::Exit) => ("OnCollisionExit2D", EventKind::CollisionExit2D),
             };
             for (me, other) in [(c.a, c.b), (c.b, c.a)] {
+                // Same frame as the Lua collision table: normals point away from `other`.
+                let sign = if c.a == me { 1.0 } else { -1.0 };
+                let v3 = |v: glam::Vec2| GValue::Vec3(glam::Vec3::new(v.x, v.y, 0.0));
+                let args = [
+                    GValue::Object(other),
+                    v3(c.point),
+                    v3(-c.normal * sign),
+                    v3(c.relative_velocity * sign),
+                ];
+                self.graphs.contact_with(&self.lua, me, &kind, &args);
                 for i in 0..self.instances.len() {
                     if self.instances[i].entity != me || !self.runnable(&self.instances[i]) {
                         continue;
@@ -1397,14 +1412,27 @@ impl ScriptHost {
         }
     }
 
-    /// Call `method` on every running script of `target` that defines it.
+    /// Call `method` on every running script of `target` that defines it, and run the Custom
+    /// Event nodes named `method` in its Script Graphs.
     pub fn send_message(&mut self, target: Entity, method: &str) {
         self.send_message_with(target, method, None, "SendMessage");
     }
 
-    /// Like [`ScriptHost::send_message`] with an argument; `what` names the caller in warnings.
+    /// Like [`ScriptHost::send_message`] with an argument (a graph's Custom Event gets it as its
+    /// first argument); `what` names the caller in warnings (On Click, On Value Changed, Signal…).
     fn send_message_with(&mut self, target: Entity, method: &str, arg: Option<Value>, what: &str) {
-        let mut found = false;
+        let ev = crate::visual_script::runtime::CustomEvent {
+            target: Some(target),
+            name: std::rc::Rc::from(method),
+            args: arg
+                .iter()
+                .map(|v| crate::visual_script::lua_bridge::from_lua(&self.lua, v.clone()))
+                .collect(),
+        };
+        let mut found = self.graphs.custom(&self.lua, &ev);
+        if found {
+            self.flush_spawned();
+        }
         for i in 0..self.instances.len() {
             let inst = &self.instances[i];
             if inst.entity != target || !self.runnable(inst) {

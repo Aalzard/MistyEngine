@@ -411,13 +411,19 @@ function yieldFrames(n)
     coroutine.yield(n)
 end
 
+-- The test's game time: like Time.time, but it keeps counting when the game loads a scene
+-- (which restarts Time.time at 0). Set by the runner before each resume.
+local function now()
+    return M.clock or Time.time
+end
+
 -- Wait `seconds` of game time (at least one frame).
 function yield(seconds)
     need_play("yield")
-    local target = Time.time + (seconds or 0)
+    local target = now() + (seconds or 0)
     repeat
         coroutine.yield(1)
-    until Time.time >= target - 1e-6
+    until now() >= target - 1e-6
 end
 
 -- Wait until `cond()` is true; fails after `timeout` seconds of game time (10 by default).
@@ -427,9 +433,9 @@ function waitUntil(cond, timeout)
         error("waitUntil(fn, timeout) needs a function", 2)
     end
     timeout = timeout or 10
-    local start = Time.time
+    local start = now()
     while not cond() do
-        if Time.time - start >= timeout then
+        if now() - start >= timeout then
             error("waitUntil: the condition was not met within " .. timeout .. " s", 2)
         end
         coroutine.yield(1)

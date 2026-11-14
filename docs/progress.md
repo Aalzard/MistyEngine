@@ -4764,6 +4764,207 @@ Console errors. No leak found.
   where they are private, so collapsed nodes stop seeing the outer variable. Shared or private
   macro variables needs a decision.
 - No project lock: two editors can open the same project.
+## Round 59 — NoonValley: no line where the grass ends (branch r59-noon2)
+
+Details, measurements and the later rounds: `docs/pending/r59-noon2.md`. Before / after:
+`docs/screenshots/r59/fade_*.jpg`.
+
+- **Grass far field** (new terrain grass setting, Grass & Details ▸ Far Field / Far Field
+  Brightness; off by default and left out of files when off, so existing terrains and the
+  golden scenes are unchanged): where grass grows, from a few metres on and all of it past the
+  blades, the ground takes the grass's look instead of the bare turf texture: the grass's own
+  colours and patches at the lit blades' brightness, blade-scale detail from the ground
+  texture, tufts in the normal that catch the sun (lit as upright blades, not as the slope
+  under them), and the canopy's self-shade. It fades in as the blades thin out, so the
+  blades end without a line.
+- **Meadow turf** regenerated at 2048²: about 110 000 short blades in every direction with
+  lighter tips over dark shade, yellower and deeper-green clumps, a few straw blades; the
+  height and normal maps come from the blades.
+- **Measured** with the grass drawn and not drawn (same terrain shading, eye adaptation off):
+  the grass's luminance over the terrain's under it, just inside the grass's far edge, in four
+  views: 0.91 / 1.03 / 0.92 / 1.11 (1.00 = no step). Before, the far meadow past the blades read
+  as a pale, smooth band (the grass mass 25–50 % darker at the edge).
+- **Also in this commit, not used by any scene yet** (all default off and left out of files at
+  their defaults): Volumetric Clouds ▸ Size and Softness (bigger, fewer heaps; smoother edges),
+  and Tree Rendering ▸ Plant Shadow Distance (small plants cast sun shadows only near the
+  camera). NoonValley takes them up in the next rounds.
+- Checks: fmt clean, clippy 0 warnings, tests 936 editor (with `noon_valley_matches_its_generator`)
+  + 1588 engine + the rest passed, golden 20 / 20 unchanged.
+
+## Round 60 — Bug hunt 6: test hygiene, the v0.4.0 features, project lock, macro variables, NoonValley soak (branch r60-qa6)
+
+One commit per bug, each with a regression test; the running list with a status per bug is
+`docs/pending/r60-qa6.md`.
+
+### Test suite
+- A full test run no longer writes into `SampleProject`: tests that open the sample in the
+  editor (which imports it, extracting `Crate.fbx`'s materials and writing meta files) use one
+  temp copy per run.
+- The streaming flight test waits for cells on their way in instead of flying past them, so a
+  busy machine no longer makes it fail on the number of loads.
+
+### v0.4.0 features
+- **Light ▸ Glow**: a point or spot light's Glow Spread no longer flashes white as the camera
+  walks into the light; halos past the Spread cap keep their whole glow; NaN or infinite glow
+  numbers from a file can't turn bloom NaN.
+- **LOD cross-fade**: close thresholds no longer draw three levels at once (the band narrows to
+  fit), and a level that never draws no longer shows in its fade band.
+- **Weather audio**: Pause now holds rain, wind and thunder; a generated clip cut short is made
+  again; far scripted strikes no longer pile up pending thunder.
+- **Previews**: a broken `.mat` in view is read once, not every frame; texture previews are
+  dropped when unused and decode a few per frame.
+
+### Decisions
+- **Macro variables**: a macro's variable can be an **Outer** link to the graph's variable of
+  the same name; Collapse To Macro links the variables the collapsed nodes used, so they keep
+  reading and writing the graph's values. Own macro variables stay private per use.
+- **Project lock**: an editor locks `Library/ProjectLock` while the project is open. A second
+  editor opens it read-only (nothing of the project is saved) and asks Open Read-Only or
+  Cancel; a crash releases the lock.
+
+### Long session
+Fifteen minutes in NoonValley through the MCP bridge (52 Play / weather / camera / Stop
+cycles): memory and GPU memory level off after the first cycles, no Console warnings or
+errors.
+
+## Round 66 — Script Graph fixes from the node-only platformer (branch r66-node-fixes)
+
+Fixes for the node and visual-scripting bugs the round 65 game agent reports while building a
+2D platformer from Script Graph nodes only. Running list: `docs/pending/r66-node-fixes.md`.
+
+### Batch 1
+- **2D physics events in graphs**: new On Trigger Enter / Stay / Exit 2D and On Collision Enter /
+  Stay / Exit 2D nodes, named like the Lua callbacks. Collisions also give Point, Normal (away
+  from Other) and Relative Velocity. The 3D trigger and collision nodes stay 3D only.
+- **UI calls reach graphs**: Button On Click, On Value Changed, On End Edit and Timeline signals
+  run the target's Custom Event named by the Method (the value is its first argument) as well as
+  Lua functions. The Inspector's ▾ next to Method lists both.
+- **Variadic API functions get pins**: Physics2D.Raycast, Rigidbody2D AddForce / MovePosition,
+  Input.GetButton and the Tilemap cell functions have documented signatures. Optional arguments
+  are optional pins, left out of the call while unset.
+
+### Batch 2
+- **Capture windows**: `MISTY_WINDOW_SIZE` gives a normal window of that size again (eframe
+  restored the user's saved, maximised editor window over it).
+- **PlayMode tests and game-side scene loads**: `yield(seconds)`, `waitUntil` and the timeout
+  count the test's game time across `SceneManager.LoadScene`; a wall-clock limit stops tests
+  of paused games.
+- **2D physics**: native typed nodes for Physics2D queries and Rigidbody 2D; friction combines
+  as the geometric mean (a frictionless player slides along walls), bounciness as the maximum.
+- **MCP**: `graph.*` tools create and edit Script Graphs; `scene.add_component` attaches them.
+## Round 62 — Autosave and crash recovery (branch r62-autosave)
+
+The PC lost power and hit memory bugchecks several times: unsaved scene work must survive that.
+
+### Autosave
+- Every 5 minutes by default (Edit ▸ Preferences ▸ Autosave: on/off, 1 to 60 minutes, per user)
+  the editor backs up each open document with unsaved changes: open scenes (also never-saved
+  ones), Prefab Mode's prefab and what it was opened from, the scenes from before Play while
+  playing, the open Script / Shader / Effect Graph and Code Editor scripts. Animator
+  controllers, Timelines, clips and terrain are already written after each edit.
+- Backups go to `Library/Autosave/<session>/<document>/`, the last 3 per document, through the
+  background saver (temp file, flush, rename); the real files are never written. Each backup is
+  a JSON header line plus the document as its file would hold it.
+- Main-thread cost: a scene is copied and its JSON written on a worker. NoonValley: 4.3 ms of
+  main-thread time per autosave (the JSON, 9.7 ms, is off the main thread); StressDemo (5.3 MB):
+  20 ms, so its autosave waits for a 2 s pause in the work. Autosaves also wait while a mouse
+  button is down or a text field has focus. The status bar says "Autosaved 14:32".
+
+### Crash recovery
+- `Library/session.lock` records the editor process and whether it closed cleanly. A clean exit
+  deletes its backups; what is left belongs to a crash, a power cut or "Decide Later".
+- **Recover Unsaved Work** on the next open lists each document whose backup is newer than its
+  file (backup time, file time): Restore All / Restore Selected / Discard / Decide Later.
+  Restoring opens the backup as a changed document (`*`); the user saves it.
+- A panic of the UI thread writes `Library/Logs/crash-<time>.txt` (message, backtrace, version,
+  GPU, recent Console lines) and an emergency backup, then exits; the next open offers the
+  backups and "Open crash log folder". Nothing is sent anywhere.
+- A read-only editor (round 60's project lock held by another editor) neither backs up nor
+  offers recovery. `MISTY_CRASH_TEST=<seconds>` tries the crash path on a test project.
+- Tried end to end on a First Person project copy: crash → backup + log → dialog → restore →
+  Save → clean exit with no backups left.
+- User Guide chapter 9 (English, Arabic); Turkish and Arabic UI strings. 14 new tests.
+### Round 59.2 — eye-level grass edge, clouds, sky, first forest and cliff changes
+
+- **Grass edge at eye level**: with the far field on, the blades now shrink away over a
+  wider band (from 55 % of the grass distance instead of 80 %); past the blades the far field
+  darkens with distance (`FAR_SHADE` 0.35, the blades seen more and more edge-on) and is a
+  touch less red; its tufts are lit as upright blades (0.85 towards +Y). Brightness 0.28.
+  Eye-level view, sRGB just past the crest / grass mass before it: main 82/91/48 / 57/66/27,
+  round 1 78/84/41 / 57/66/24, now 78/84/43 / 77/87/35 (the same brightness; the far side is
+  still a little greyer). `docs/screenshots/r59/fade_graze_crest_main_r1_r2.jpg`.
+- **Clouds**: Size 2.4, Softness 0.5, coverage 0.34, thickness 1500 m: a few big soft heaps.
+- **Sky**: skybox exposure 0.75, greyer tint and haze albedo: sky top 126/143/182 → 79/95/128
+  (photo 76/90/112).
+- **Forest**: Plant Shadow Distance 12 m; wood crowns darker olive with more leaf variation;
+  Forest Herbs broader and lower (28 /m², 0.3 m wide). Inside view GPU 19.4 → 14.3 ms (parts
+  14.7 → 13.8; shadow maps 3.5 → 2.9 ms), still above the 12.7 ms target.
+- **Cliffs**: Limestone warmer and a little brighter, less moss, normal scale 1.8.
+- Views: `docs/screenshots/r59/level_*.jpg`. Hero 11.9 ms GPU (parts 11.5).
+- Checks: fmt clean, clippy 0 warnings, tests 945 editor + 1606 engine + 13 passed, golden
+  20 / 20 unchanged.
+
+## Round 65 — A game made only with nodes: "Lumo's Leap" (branch r65-node-game)
+
+A short 2D platformer whose behaviour is all Script Graphs (no Lua, no Rust gameplay code), to
+prove the nodes a real game needs and to list what is broken or missing. The running notes and
+the issue list are `docs/pending/r65-node-game.md`.
+
+### The game
+- `SampleProject/Assets/NodeGame`: 13 graphs, 5 scenes (menu, three stages, win screen, all in
+  Build Settings), a burst prefab. Written by `python tools/node_game/node_game.py <project>`
+  (graph builder with auto layout, stages drawn as text maps); `--demo` puts the Autopilot
+  graph on the player, which beats all three stages by itself.
+- Run and jump with coyote time, a jump buffer and variable height; an E dash that glows white,
+  leaves a particle trail and shows its cooldown on the HUD ("Dash: ready" / "Dash: ...");
+  hearts, pits, stage restart; a Brute that takes two hits (flash, knock back, burst) and a Puff
+  that is pushed away and fades; enemies patrol between ledges and walls; the flag loads the
+  next stage; sounds from the project's audio; a smoothed follow camera.
+- User Guide chapter 9, "A game made only with nodes", in English and Arabic.
+- Tests (`crates/misty_editor/src/sample_node_game.rs`): the game is only Script Graphs that
+  compile and are all used; stage 1 played headlessly with simulated keys (run, dash kills a
+  Puff, the Brute takes two dashes, gaps jumped, stage 2 loads and starts); the menu and the
+  win screen.
+
+- Tests: the menu's Play button is clicked with the mouse (its On Click runs the graph's
+  Custom Event); Enter presses the selected button.
+
+### Issues found, fixed in round 66, and the game moved onto the fixes
+1. 2D triggers and collisions never reached Script Graphs: Enemy Touch and Goal now use On
+   Trigger Enter / Exit 2D (they used distance checks).
+2. A UI Button's On Click could not run a graph's Custom Event: the menu uses real button
+   clicks (it read Enter and the mouse with Input nodes).
+3. API nodes of variadic Lua functions had no input pins.
+4. No typed 2D physics nodes: the game uses the native Physics2D Raycast (Hit) and
+   OverlapCircleAll and the typed Rigidbody 2D velocity (raycast results were opaque Lua
+   tables tested against nothing).
+- Also fixed: PlayMode `yield(seconds)` across game-side scene loads; 2D friction combines as
+  the geometric mean (the ground and walls are back to Friction 0.4); capture window size; MCP
+  Script Graph tools. Still open on main: editor screenshot captures do not finish (being
+  investigated), so the round's pictures come from the built player.
+## Round 61 — The Recorder package: video, GIF and image sequences in capture time (branch r61-recorder)
+
+Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
+
+- **Optional built-in packages**: the Package Manager's Built-in list ends with packages that
+  ship with the editor but are not installed by default (marked Optional). Install adds them
+  to `Packages/manifest.json` (locked as `builtin`, nothing copied); Remove takes them out with
+  their settings file. New projects, templates and existing projects don't get them.
+- **Recorder** (`com.misty.recorder`, Window ▸ General ▸ Recorder once installed): a list of
+  recorders, each with a source (Scene Viewer, a camera, the Editor Scene), an output (MP4
+  H.264, WebM AV1, GIF, PNG or JPG sequence), resolution (match the view or custom), frame
+  rate, start / stop (manual, frame range, time range, Timeline clip), output folder, file
+  name with wildcards (`<Scene>_<Take>_<Frame>` ...) and an auto-incrementing take.
+- **Capture time**: while recording, every Play-mode frame advances exactly one frame of the
+  recording, so slow machines record smooth files. Frames are rendered into the recorder's
+  own target, copied back through a 4-buffer staging ring and encoded on worker threads;
+  bounded queues make capture wait rather than drop frames.
+- **Encoders built in** (new crate `misty_recorder`, editor only): OpenH264 compiled from
+  source (BSD-2) with our own MP4 writer, rav1e (BSD-2, pure Rust) with our own WebM writer,
+  GIF / PNG / JPG through `image`. Videos are silent for now.
+- **Timeline Recorder track**: a clip records while its timeline plays it in Play mode.
+- **Lua**: `Recorder.Start([name])`, `Recorder.Stop()`, `Recorder.isRecording`.
+- **Docs**: User Guide chapter 9 (English and Arabic), Turkish and Arabic UI strings.
 
 ## Round 64 — Light mode, custom colour themes, custom fonts (branch r64-themes)
 

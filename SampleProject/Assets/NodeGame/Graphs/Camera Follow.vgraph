@@ -1,0 +1,458 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 4,
+      "type": "OnLateUpdate",
+      "position": [
+        0.0,
+        337.5
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Api",
+      "position": [
+        -340.0,
+        717.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 6,
+      "type": "BreakVector3",
+      "position": [
+        -90.0,
+        622.5
+      ]
+    },
+    {
+      "id": 7,
+      "type": "GetVariable",
+      "position": [
+        -840.0,
+        1097.5
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        -590.0,
+        1002.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 9,
+      "type": "BreakVector3",
+      "position": [
+        -340.0,
+        907.5
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        -590.0,
+        1572.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "deltaTime",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 11,
+      "type": "MultiplyFloat",
+      "position": [
+        -340.0,
+        1477.5
+      ],
+      "values": {
+        "B": {
+          "Float": 6.0
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Clamp01",
+      "position": [
+        -90.0,
+        1382.5
+      ]
+    },
+    {
+      "id": 13,
+      "type": "GetVariable",
+      "position": [
+        -340.0,
+        1192.5
+      ],
+      "params": {
+        "name": "Min X"
+      }
+    },
+    {
+      "id": 14,
+      "type": "GetVariable",
+      "position": [
+        -340.0,
+        1287.5
+      ],
+      "params": {
+        "name": "Max X"
+      }
+    },
+    {
+      "id": 15,
+      "type": "ClampFloat",
+      "position": [
+        -90.0,
+        812.5
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Lerp",
+      "position": [
+        160.0,
+        527.5
+      ]
+    },
+    {
+      "id": 17,
+      "type": "GetVariable",
+      "position": [
+        -340.0,
+        1857.5
+      ],
+      "params": {
+        "name": "Height"
+      }
+    },
+    {
+      "id": 18,
+      "type": "SubtractFloat",
+      "position": [
+        -340.0,
+        1952.5
+      ],
+      "values": {
+        "B": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "MaxFloat",
+      "position": [
+        -90.0,
+        1762.5
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Lerp",
+      "position": [
+        160.0,
+        1667.5
+      ]
+    },
+    {
+      "id": 21,
+      "type": "GetVariable",
+      "position": [
+        -170.0,
+        527.5
+      ],
+      "params": {
+        "name": "Target"
+      }
+    },
+    {
+      "id": 22,
+      "type": "IsValid",
+      "position": [
+        80.0,
+        432.5
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Branch",
+      "position": [
+        330.0,
+        337.5
+      ]
+    },
+    {
+      "id": 24,
+      "type": "MakeVector3",
+      "position": [
+        410.0,
+        432.5
+      ]
+    },
+    {
+      "id": 25,
+      "type": "Api",
+      "position": [
+        660.0,
+        337.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "set"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "Value",
+      "to": 6,
+      "input": "Vector"
+    },
+    {
+      "from": 7,
+      "output": "Value",
+      "to": 8,
+      "input": "Target"
+    },
+    {
+      "from": 8,
+      "output": "Value",
+      "to": 9,
+      "input": "Vector"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 12,
+      "input": "Value"
+    },
+    {
+      "from": 9,
+      "output": "X",
+      "to": 15,
+      "input": "Value"
+    },
+    {
+      "from": 13,
+      "output": "Value",
+      "to": 15,
+      "input": "Min"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "Max"
+    },
+    {
+      "from": 6,
+      "output": "X",
+      "to": 16,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 16,
+      "input": "T"
+    },
+    {
+      "from": 9,
+      "output": "Y",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Value",
+      "to": 19,
+      "input": "A"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "B"
+    },
+    {
+      "from": 6,
+      "output": "Y",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Result",
+      "to": 20,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 20,
+      "input": "T"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 22,
+      "input": "Object"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 23,
+      "input": "Condition"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 23,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 24,
+      "input": "X"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 24,
+      "input": "Y"
+    },
+    {
+      "from": 6,
+      "output": "Z",
+      "to": 24,
+      "input": "Z"
+    },
+    {
+      "from": 24,
+      "output": "Vector",
+      "to": 25,
+      "input": "Value"
+    },
+    {
+      "from": 23,
+      "output": "True",
+      "to": 25,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Min X",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Max X",
+      "type": "float",
+      "value": {
+        "Float": 30.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Height",
+      "type": "float",
+      "value": {
+        "Float": 3.5
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Target",
+      "type": "gameobject",
+      "value": "None"
+    }
+  ]
+}

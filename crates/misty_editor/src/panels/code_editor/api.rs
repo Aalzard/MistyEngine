@@ -27,6 +27,7 @@ const TABLE: &str = r#"
 |Water||Water surface heights (buoyancy, wading)
 |Weather||Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeatherChanged)
 |Accessibility||UI text scale and colour-blind filter (for options menus)
+|Recorder||Record videos, GIFs and image sequences (in the editor, with the Recorder package)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
 |print|print(...)|Same as Debug.Log
@@ -37,6 +38,9 @@ Input|GetMouseButton|GetMouseButton(button)|True while a mouse button is held (0
 Input|GetMouseButtonDown|GetMouseButtonDown(button)|True on the frame a mouse button was pressed
 Input|GetMouseButtonUp|GetMouseButtonUp(button)|True on the frame a mouse button was released
 Input|GetAxis|GetAxis(name)|"Horizontal", "Vertical", "Mouse X", "Mouse Y" (-1..1)
+Input|GetButton|GetButton(name)|True while a virtual button of the Input Manager is held ("Jump", "Fire1", …)
+Input|GetButtonDown|GetButtonDown(name)|True on the frame a virtual button was pressed
+Input|GetButtonUp|GetButtonUp(name)|True on the frame a virtual button was released
 Time|deltaTime|deltaTime|Seconds since the last frame (scaled)
 Time|time|time|Seconds since Play started
 Time|frameCount|frameCount|Frames since Play started
@@ -51,6 +55,8 @@ Physics|DefaultRaycastLayers|DefaultRaycastLayers|Every layer but Ignore Raycast
 Physics|AllLayers|AllLayers|Every layer
 Physics|IgnoreRaycastLayer|IgnoreRaycastLayer|The Ignore Raycast layer mask
 Physics|gravity|gravity|World gravity (Vector3, settable while playing)
+Physics2D|Raycast|Raycast(origin, direction [, distance [, layerMask]])|Nearest 2D hit or nil (point, normal, distance, gameObject, …); z is ignored
+Physics2D|RaycastAll|RaycastAll(origin, direction [, distance [, layerMask]])|Every 2D hit, nearest first
 Vector3|new|new(x, y, z)|A new vector
 Vector3|zero|zero|(0, 0, 0)
 Vector3|one|one|(1, 1, 1)
@@ -211,6 +217,9 @@ Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as desig
 Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
 Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)
 Accessibility|simulate|simulate|Show how colour-blind players see the game instead of correcting it
+Recorder|Start|Start([recorderName])|Start every enabled recorder, or the one with this name
+Recorder|Stop|Stop()|Stop recording; the files are written in the background
+Recorder|isRecording|isRecording|True while a recording runs
 Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #self|gameObject|gameObject|The GameObject this script is attached to
 #self|transform|transform|This object's Transform
@@ -246,6 +255,13 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #Rigidbody|AddTorque|AddTorque(v [, mode])|Apply a torque
 #Rigidbody|MovePosition|MovePosition(v)|Move a kinematic body
 #Rigidbody|MoveRotation|MoveRotation(eulerDegrees)|Rotate a kinematic body
+#Rigidbody2D|AddForce|AddForce(force [, mode])|Apply a 2D force (mode "Force" by default, or "Impulse")
+#Rigidbody2D|MovePosition|MovePosition(position)|Move a kinematic 2D body there in the next physics step
+#Tilemap|SetTile|SetTile(cell, tile)|Put a tile (asset path) in a cell (Vector3 or x, y); nil clears it
+#Tilemap|GetTile|GetTile(cell)|The tile in a cell, or nil
+#Tilemap|HasTile|HasTile(cell)|True when a cell has a tile
+#Tilemap|CellToWorld|CellToWorld(cell)|World position of a cell's lower-left corner
+#Tilemap|GetCellCenterWorld|GetCellCenterWorld(cell)|World position of a cell's centre
 #CharacterController|Move|Move(motion)|Move by a world displacement, sliding along walls
 #CharacterController|SimpleMove|SimpleMove(speed)|Move at a speed with gravity; returns isGrounded
 #CharacterController|isGrounded|isGrounded|Touching the ground after the last move

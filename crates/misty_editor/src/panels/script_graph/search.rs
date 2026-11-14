@@ -110,19 +110,28 @@ pub fn project_subgraphs(root: &std::path::Path, current: Option<&str>) -> Vec<(
     out
 }
 
-/// `Input.GetKey(name)` → `["name"]`; optional `[, x]` and `...` are dropped.
+/// `Input.GetKey(name)` → `["name"]`; optional arguments (`[, x]` or `[x]`) come back as
+/// `"[x]"` (optional pins) and `...` is dropped.
 fn signature_args(sig: &str) -> Vec<String> {
     let Some(open) = sig.find('(') else {
         return Vec::new();
     };
     let close = sig.rfind(')').unwrap_or(sig.len());
-    sig[open + 1..close]
-        .split(',')
-        .map(|a| a.replace(['[', ']'], "").trim().to_owned())
-        .filter(|a| {
-            !a.is_empty() && a != "..." && a.chars().all(|c| c.is_alphanumeric() || c == '_')
-        })
-        .collect()
+    let mut depth = 0i32;
+    let mut out = Vec::new();
+    for piece in sig[open + 1..close].split(',') {
+        let optional = depth > 0 || piece.trim_start().starts_with('[');
+        depth += piece.matches('[').count() as i32 - piece.matches(']').count() as i32;
+        let name = piece.replace(['[', ']'], "").trim().to_owned();
+        if name.is_empty()
+            || name == "..."
+            || !name.chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            continue;
+        }
+        out.push(if optional { format!("[{name}]") } else { name });
+    }
+    out
 }
 
 /// Lua globals that aren't game API (Inspector attributes of Lua script classes).

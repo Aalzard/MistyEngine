@@ -202,3 +202,103 @@ fn scenes_gather_halos_and_flares() {
     assert!(list[1].halo.is_none() && list[1].flare.is_some());
     assert_eq!(list[1].color, [1.0; 3], "a flare without a light is white");
 }
+
+/// A point light's Glow Spread halo stays about as bright as its sprite when the camera walks
+/// up to the light, and fades out with the sprite (it used to put the sprite's whole bloom
+/// share, which grows with the sprite's screen area, into Gaussians around one point: about
+/// 10^4 times brighter at 0.1 m than at 10 m, a white flash over the screen).
+#[test]
+fn halo_spread_stays_bounded_as_the_camera_walks_into_the_light() {
+    use super::spread::{HaloSprite, halo_spread};
+    use crate::scene::LightGlow;
+    let cam = camera();
+    let env = Environment::default();
+    let f = frame(&cam, &env, PostSettings::default());
+    let glow = LightGlow {
+        spread: 0.5,
+        ..Default::default()
+    };
+    let peak = |d: f32| {
+        let sprite = HaloSprite {
+            position: cam.position + cam.forward() * d,
+            radius: 1.0,
+            color: Vec3::ONE,
+            falloff: 0.5,
+        };
+        halo_spread(&f, &sprite, &glow, 16.0 / 9.0, 3.0).map(|s| s.weight[0])
+    };
+    let far = peak(10.0).expect("a spread halo at 10 m");
+    let near = peak(1.5).expect("a spread halo at 1.5 m");
+    assert!(far.is_finite() && far > 0.0, "{far}");
+    assert!(near < far * 4.0, "near {near} vs far {far}");
+    assert_eq!(peak(0.1), None, "faded out with the sprite inside it");
+    assert_eq!(peak(0.25), None);
+}
+
+/// Every halo that hands a share of its bloom to Glow Spread has a spread halo drawn for it:
+/// past the spread cap the halos keep their whole bloom (they used to lose the share).
+#[test]
+fn halos_past_the_spread_cap_keep_their_bloom() {
+    use crate::scene::LightGlow;
+    let cam = camera();
+    let glows: Vec<GlowSource> = (0..100)
+        .map(|i| {
+            let mut s = source(
+                LightType::Point,
+                Vec3::new((i % 10) as f32 - 5.0, (i / 10) as f32 * 0.5, 5.0),
+                Vec3::Z,
+            );
+            s.glow = LightGlow {
+                spread: 0.5,
+                ..Default::default()
+            };
+            s
+        })
+        .collect();
+    let env = Environment {
+        glows,
+        ..Default::default()
+    };
+    let f = frame(&cam, &env, PostSettings::default());
+    let list = instances::build(&f, 16.0 / 9.0, false, 3.0);
+    assert!(list.halos.len() > list.spreads.len(), "the cap is reached");
+    let sharing = list.halos.iter().filter(|h| h.shape[2] > 0.0).count();
+    assert_eq!(sharing, list.spreads.len());
+}
+
+/// A two-sided Rectangle light behind an orthographic camera gets no Glow Spread halo (the
+/// clip w of an orthographic camera is 1 everywhere, so it used to pass); in front it does.
+#[test]
+fn rectangle_spread_behind_an_orthographic_camera_is_not_drawn() {
+    use super::spread::spread_instance;
+    use crate::render::{AreaShape, LightData};
+    use crate::scene::LightGlow;
+    let mut cam = camera();
+    cam.projection = Projection::Orthographic { size: 5.0 };
+    let env = Environment::default();
+    let f = frame(&cam, &env, PostSettings::default());
+    let light = |z: f32| LightData {
+        kind: LightType::Rectangle,
+        position: cam.position + cam.forward() * z,
+        direction: Vec3::NEG_Z,
+        color: [1.0; 3],
+        intensity: 20.0,
+        range: 10.0,
+        spot_angle: 45.0,
+        shadows: Default::default(),
+        shadow: Default::default(),
+        volumetric: Default::default(),
+        contact_shadows: false,
+        area: AreaShape {
+            two_sided: true,
+            show_emitter: true,
+            glow: LightGlow {
+                spread: 0.5,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    };
+    assert!(spread_instance(&f, &light(8.0), 16.0 / 9.0, 3.0).is_some());
+    assert!(spread_instance(&f, &light(-8.0), 16.0 / 9.0, 3.0).is_none());
+}

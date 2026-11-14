@@ -87,6 +87,14 @@ fn add_menu(ui: &mut Ui, s: &mut EditorState, asset: &TimelineAsset, path: &str)
             ops::add_track(s, path, kind, g);
             ui.close();
         }
+        // The Recorder package brings its own track.
+        if kind == TrackKind::Signal
+            && s.optional_packages.has(crate::packages::optional::RECORDER)
+            && ui.button(TrackKind::Recorder.label()).clicked()
+        {
+            ops::add_track(s, path, TrackKind::Recorder, group.as_deref());
+            ui.close();
+        }
     }
 }
 

@@ -983,6 +983,7 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let (ui_scale, console) = (&mut s.ui_scale, &mut s.console);
     let updater = &mut s.updater;
     let appearance = &mut s.appearance;
+    let autosave = &mut s.autosave;
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -1018,6 +1019,7 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
             }
             ui.separator();
             crate::theme::editor::appearance_section(ui, appearance, console);
+            crate::autosave::preferences_ui(ui, autosave, console);
             ui.separator();
             ui.strong(tr!("External Tools"));
             ui.horizontal(|ui| {

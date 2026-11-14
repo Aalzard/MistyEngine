@@ -304,6 +304,7 @@ pub fn kind_color(kind: TrackKind) -> Color32 {
         TrackKind::Group => crate::theme::shade(Color32::from_rgb(96, 96, 96)),
         TrackKind::Camera => crate::theme::shade(Color32::from_rgb(178, 82, 82)),
         TrackKind::Control => crate::theme::shade(Color32::from_rgb(64, 140, 150)),
+        TrackKind::Recorder => crate::theme::shade(Color32::from_rgb(190, 60, 70)),
     }
 }
 

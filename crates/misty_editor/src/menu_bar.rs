@@ -585,6 +585,16 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
     }
 }
 
+/// Window ▸ General after the layout tabs: the Test Runner, and the Recorder when its package
+/// is installed.
+pub fn general_extra_tabs(s: &EditorState) -> Vec<Tab> {
+    let mut tabs = vec![Tab::TestRunner];
+    if crate::recorder::installed(s) {
+        tabs.push(Tab::Recorder);
+    }
+    tabs
+}
+
 fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     sub(ui, "Layouts", |ui| layouts_menu(ui, s));
     ui.separator();
@@ -592,8 +602,9 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         for tab in Tab::ALL.into_iter().filter(|t| *t != Tab::Animation) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
-        let tab = Tab::TestRunner;
-        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        for tab in general_extra_tabs(s) {
+            item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        }
         ui.separator();
         if ui.button(tr!("Save Data")).clicked() {
             crate::saveloc::save_data::open(s);

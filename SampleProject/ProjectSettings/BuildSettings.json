@@ -11,6 +11,26 @@
     {
       "path": "Assets/Scenes/MultiSceneLighting.scene",
       "enabled": true
+    },
+    {
+      "path": "Assets/NodeGame/Scenes/NodeGameMenu.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/NodeGame/Scenes/NodeGameStage1.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/NodeGame/Scenes/NodeGameStage2.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/NodeGame/Scenes/NodeGameStage3.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/NodeGame/Scenes/NodeGameWin.scene",
+      "enabled": true
     }
   ],
   "product_name": "Misty Sample",
