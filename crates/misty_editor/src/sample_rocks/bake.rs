@@ -335,6 +335,28 @@ pub struct Baked {
 /// Per texel: (triangle, barycentrics) of the dense mesh, or none.
 type Coverage = Vec<Option<(u32, [f32; 3])>>;
 
+/// Object-space point and normal under every texel of an `n`² map of `data` (None where no
+/// triangle covers it): what a bake shades, for retouching a baked map afterwards.
+pub fn texel_points(data: &MeshData, n: usize) -> Vec<Option<(Vec3, Vec3)>> {
+    let (cover, _) = rasterise(data, n);
+    cover
+        .into_iter()
+        .map(|c| {
+            let (tri, w) = c?;
+            let t = &data.indices[tri as usize * 3..tri as usize * 3 + 3];
+            let v = |k: usize| data.vertices[t[k] as usize];
+            let p = Vec3::from(v(0).position) * w[0]
+                + Vec3::from(v(1).position) * w[1]
+                + Vec3::from(v(2).position) * w[2];
+            let nrm = (Vec3::from(v(0).normal) * w[0]
+                + Vec3::from(v(1).normal) * w[1]
+                + Vec3::from(v(2).normal) * w[2])
+                .normalize_or(Vec3::Y);
+            Some((p, nrm))
+        })
+        .collect()
+}
+
 fn rasterise(data: &MeshData, n: usize) -> (Coverage, Vec<f32>) {
     let mut cover: Coverage = vec![None; n * n];
     // Metres per texel of each triangle.
