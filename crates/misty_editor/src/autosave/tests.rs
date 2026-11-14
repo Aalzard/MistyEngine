@@ -974,3 +974,49 @@ fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Main-thread cost of an autosave of a big scene, frame by frame (round 72's measure; run
+/// with `MISTY_BENCH_PROJECT=<a copy of SampleProject>` and `--ignored --nocapture`).
+#[test]
+#[ignore = "bench: needs MISTY_BENCH_PROJECT"]
+fn autosave_frame_cost_bench() {
+    let Some(root) = std::env::var_os("MISTY_BENCH_PROJECT").map(PathBuf::from) else {
+        return;
+    };
+    let scenes = std::env::var("MISTY_BENCH_SCENES")
+        .unwrap_or_else(|_| "NoonValley,MeadowDemo".to_owned());
+    for name in scenes.split(',') {
+        let rel = format!("Assets/Scenes/{name}.scene");
+        let mut s = state(&root);
+        assert!(crate::scene_files::load(&mut s, &rel), "open {rel}");
+        begin_session(&mut s, DEAD_PID_A, Duration::ZERO);
+        for round in 0..5 {
+            // A change each round, so every run writes the scene again.
+            s.scene.spawn(&format!("bench change {round}"), None);
+            s.scene_dirty = true;
+            crate::scene_files::refresh_dirty(&mut s);
+            request_now(&mut s);
+            let start = Instant::now();
+            let mut frames = Vec::new();
+            loop {
+                let t0 = Instant::now();
+                tick(&mut s, Instant::now(), false, Duration::from_secs(10));
+                frames.push(t0.elapsed().as_secs_f64() * 1000.0);
+                if s.autosave.run.is_none() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(4));
+            }
+            let worst = frames.iter().cloned().fold(0.0, f64::max);
+            let total: f64 = frames.iter().sum();
+            eprintln!(
+                "{name} run {round}: {} frames, worst frame {worst:.2} ms, main-thread total {total:.2} ms, done after {:.1} ms, {} bytes",
+                frames.len(),
+                start.elapsed().as_secs_f64() * 1000.0,
+                s.autosave.last.bytes
+            );
+        }
+        misty_engine::asset_db::saver::flush();
+        clean_exit(&mut s);
+    }
+}
