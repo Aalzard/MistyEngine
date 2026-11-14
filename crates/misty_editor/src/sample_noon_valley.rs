@@ -1285,9 +1285,10 @@ fn terrain_data() -> TerrainData {
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         // Patches of moss over the litter in the woods (the dark turf, no grass on it).
         if out[3] > 0 {
-            let moss = (0.3 + 0.5 * smooth(-0.2, 0.3, noise::fbm(x, z, 11.0, 3, 91)))
-                * (0.6 + 0.4 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
-            let moved = (out[3] as f32 * moss * 0.7).round() as u8;
+            // (Patches nearly all moss: the litter's height map wins any even blend.)
+            let moss = smooth(-0.1, 0.2, noise::fbm(x, z, 11.0, 3, 91))
+                * (0.7 + 0.3 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
+            let moved = (out[3] as f32 * moss * 0.92).round() as u8;
             out[3] -= moved;
             out[1] = out[1].saturating_add(moved);
         }
@@ -1321,8 +1322,8 @@ fn terrain_data() -> TerrainData {
         ..d.clone()
     };
     d.trees.instances = trees(&stored);
-    // Dark mossy turf round the feet of the cliff sites' slabs (the rock meets green, not a
-    // bare limestone apron).
+    // Dark litter and mossy turf round the feet of the cliff sites' slabs (the rock meets a
+    // dark, green apron, not bare limestone).
     let texel = SIZE.x / n as f32;
     for p in rocks(&d)
         .iter()
@@ -1345,7 +1346,7 @@ fn terrain_data() -> TerrainData {
                 let keep = 1.0 - 0.75 * k;
                 out[0] = (w[0] as f32 * keep) as u8;
                 out[2] = (w[2] as f32 * keep) as u8;
-                out[3] = (w[3] as f32 * keep) as u8;
+                out[3] = (w[3] as f32 * keep + 255.0 * 0.45 * k).min(255.0) as u8;
                 out[1] = 255u32.saturating_sub(out[0] as u32 + out[2] as u32 + out[3] as u32) as u8;
                 d.set_layer_weights(t, &out);
             }
