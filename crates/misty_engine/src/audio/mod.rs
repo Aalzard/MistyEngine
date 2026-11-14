@@ -19,6 +19,7 @@ pub mod mixer_state;
 mod routing;
 pub mod spatial;
 pub mod stream;
+pub mod tap;
 mod video_voices;
 pub mod wav;
 
@@ -37,6 +38,7 @@ pub use mixer_state::MixerState;
 use routing::{Ctx, Route};
 pub use routing::{output_ref, split_output};
 pub use spatial::VoiceParams;
+pub use tap::{MixTap, TapWriter};
 
 /// File extensions treated as audio clips.
 pub const CLIP_EXTENSIONS: [&str; 3] = ["wav", "ogg", "mp3"];
@@ -122,6 +124,16 @@ pub struct Audio {
     logs: Vec<String>,
     /// Clips / outputs that already failed (warn once each).
     bad_clips: HashSet<String>,
+    /// Capture time (the Recorder), `None` in real time.
+    capture: Option<Capture>,
+}
+
+/// The Recorder's hold on the mix: capture time and the taps not yet handed to the graph (the
+/// sound device opens on the first sound).
+struct Capture {
+    /// Capture-time seconds reached.
+    now: f64,
+    pending: Vec<TapWriter>,
 }
 
 impl Audio {
@@ -158,6 +170,59 @@ impl Audio {
         self.backend.as_mut()?.render(frames)
     }
 
+    // ---- capture time (the Recorder) ----------------------------------------------------------
+
+    /// Run the mix in capture time from second `at`: from now on it renders only as far as
+    /// [`Audio::advance_capture`] says, so recorded sound keeps pace with recorded frames
+    /// however fast the game really runs. Doesn't open the sound device.
+    pub fn start_capture(&mut self, at: f64) {
+        self.capture = Some(Capture {
+            now: at,
+            pending: Vec::new(),
+        });
+        if let Some(b) = self.backend.as_mut() {
+            b.set_clock(Some(at));
+        }
+    }
+
+    /// Capture time reached second `until`: mix the sound up to there.
+    pub fn advance_capture(&mut self, until: f64) {
+        let Some(c) = self.capture.as_mut() else {
+            return;
+        };
+        c.now = c.now.max(until);
+        if let Some(b) = self.backend.as_mut() {
+            b.advance_clock(until);
+        }
+    }
+
+    /// Back to real time; taps stay until their readers drop them.
+    pub fn stop_capture(&mut self) {
+        if self.capture.take().is_some()
+            && let Some(b) = self.backend.as_mut()
+        {
+            b.set_clock(None);
+        }
+    }
+
+    /// In capture time.
+    pub fn capturing(&self) -> bool {
+        self.capture.is_some()
+    }
+
+    /// A copy of the final mix from now on (see [`tap`]). In capture time its sample clock
+    /// counts capture-time samples.
+    pub fn capture_tap(&mut self) -> MixTap {
+        let (w, r) = tap::tap_for_recording();
+        match (self.backend.as_mut(), self.capture.as_mut()) {
+            (Some(b), _) => b.add_tap(w),
+            // Handed over when the device opens.
+            (None, Some(c)) if self.factory.is_some() => c.pending.push(w),
+            _ => drop(w),
+        }
+        r
+    }
+
     /// Silent audio whose calls are recorded in the returned log.
     pub fn null(root: PathBuf) -> (Self, std::sync::Arc<std::sync::Mutex<NullLog>>) {
         let backend = NullBackend::default();
@@ -182,6 +247,7 @@ impl Audio {
             paused: false,
             logs: Vec::new(),
             bad_clips: HashSet::new(),
+            capture: None,
         }
     }
 
@@ -190,7 +256,16 @@ impl Audio {
             && let Some(open) = self.factory.take()
         {
             match open() {
-                Ok(b) => self.backend = Some(b),
+                Ok(mut b) => {
+                    // Opened while recording: the mix joins capture time where it stands.
+                    if let Some(c) = self.capture.as_mut() {
+                        b.set_clock(Some(c.now));
+                        for t in c.pending.drain(..) {
+                            b.add_tap(t);
+                        }
+                    }
+                    self.backend = Some(b);
+                }
                 Err(e) => self
                     .logs
                     .push(format!("Audio: no output device ({e}); playing silently")),
@@ -770,5 +845,7 @@ mod graph_tests;
 mod mixer_tests;
 #[cfg(test)]
 mod render_tests;
+#[cfg(test)]
+mod tap_tests;
 #[cfg(test)]
 mod tests;

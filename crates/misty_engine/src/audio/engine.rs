@@ -29,6 +29,7 @@ use super::dsp::{BLOCK, Frame, Ramp, fade_samples};
 use super::effects::{EffectKind, EffectSpec, db_to_amplitude};
 use super::spatial::VoiceParams;
 use super::stream::{Pull, StreamReader};
+use super::tap::TapWriter;
 
 /// A clip's audio.
 pub enum Source {
@@ -144,6 +145,51 @@ pub enum Command {
         parent: Option<TrackId>,
     },
     RemoveTrack(TrackId),
+    /// Copy the final mix into a tap from now on (dropped when its reader goes).
+    AddTap(TapWriter),
+    /// Run in capture time from the given point (`None`: back to real time). See
+    /// [`ClockStart`].
+    Clock(Option<ClockStart>),
+    /// Capture time reached this many seconds: render the mix up to there.
+    Advance(f64),
+}
+
+/// Entering capture time: the mix is rendered only as far as the game advanced ([`Command::Advance`])
+/// instead of as fast as the device plays. What it renders goes to the taps and, through a
+/// short buffer, to the device (silence while the game is behind real time, the newest sound
+/// when it runs ahead). Buffers are made here, on the main thread.
+pub struct ClockStart {
+    /// Capture-time seconds at the start (later `Advance` targets count from 0 as well).
+    pub at: f64,
+    played: std::collections::VecDeque<Frame>,
+    buf: Vec<Frame>,
+}
+
+impl ClockStart {
+    /// Seconds of rendered sound the device may lag behind.
+    pub const PLAYBACK_SECONDS: f32 = 0.25;
+
+    pub fn new(at: f64, sample_rate: f32) -> Self {
+        let cap = (sample_rate.max(8000.0) * Self::PLAYBACK_SECONDS) as usize;
+        Self {
+            at,
+            played: std::collections::VecDeque::with_capacity(cap),
+            buf: vec![Frame::ZERO; BLOCK],
+        }
+    }
+}
+
+/// The graph in capture time.
+struct Clocked {
+    /// Sample clock the mix has to reach.
+    target: u64,
+    played: std::collections::VecDeque<Frame>,
+    buf: Vec<Frame>,
+}
+
+/// Sample `n` of capture time: second `n / rate`.
+fn clock_at(seconds: f64, rate: f32) -> u64 {
+    (seconds.max(0.0) * rate as f64).round() as u64
 }
 
 /// Audio thread → main thread.
@@ -324,6 +370,12 @@ pub struct Engine {
     frames: u64,
     /// Offline: wait for stream workers instead of playing silence (deterministic renders).
     pub wait_for_streams: bool,
+    /// Copies of the final mix (the Recorder); empty almost always.
+    taps: Vec<TapWriter>,
+    /// The mix's sample clock: frames rendered, or in capture time, capture-time samples.
+    clock: u64,
+    /// Capture time (the Recorder), `None` in real time.
+    clocked: Option<Box<Clocked>>,
 }
 
 impl Engine {
@@ -350,6 +402,9 @@ impl Engine {
             underruns: 0,
             frames: 0,
             wait_for_streams: false,
+            taps: Vec::with_capacity(8),
+            clock: 0,
+            clocked: None,
         }
     }
 
@@ -360,9 +415,45 @@ impl Engine {
     // ---- commands -------------------------------------------------------------------------------
 
     fn poll(&mut self) {
-        while let Some(cmd) = self.rx.as_mut().and_then(|rx| rx.pop().ok()) {
+        // In capture time the mix catches up at most a second of sound per device block.
+        let mut budget = self.sample_rate.max(1.0) as u64;
+        loop {
+            if self.clocked.is_some() {
+                budget -= self.run_clock(budget);
+                if self.clocked.as_ref().is_some_and(|c| c.target > self.clock) {
+                    // Commands after this point belong to later sound: they wait.
+                    break;
+                }
+            }
+            let Some(cmd) = self.rx.as_mut().and_then(|rx| rx.pop().ok()) else {
+                break;
+            };
             self.apply(cmd);
         }
+    }
+
+    /// Capture time: render towards the target, `budget` frames at most, into the taps and the
+    /// device buffer. Returns the frames rendered.
+    fn run_clock(&mut self, budget: u64) -> u64 {
+        let Some(mut c) = self.clocked.take() else {
+            return 0;
+        };
+        let mut done = 0;
+        let mut buf = std::mem::take(&mut c.buf);
+        while done < budget && self.clock < c.target {
+            let n = (c.target - self.clock).min(budget - done).min(BLOCK as u64) as usize;
+            self.block(&mut buf[..n]);
+            for f in &buf[..n] {
+                if c.played.len() == c.played.capacity() {
+                    c.played.pop_front();
+                }
+                c.played.push_back(*f);
+            }
+            done += n as u64;
+        }
+        c.buf = buf;
+        self.clocked = Some(c);
+        done
     }
 
     pub fn apply(&mut self, cmd: Command) {
@@ -527,6 +618,26 @@ impl Engine {
                     }
                 }
             }
+            Command::AddTap(t) => self.taps.push(t),
+            Command::Clock(Some(start)) => {
+                self.clock = clock_at(start.at, self.sample_rate);
+                self.clocked = Some(Box::new(Clocked {
+                    target: self.clock,
+                    played: start.played,
+                    buf: start.buf,
+                }));
+            }
+            Command::Clock(None) => self.clocked = None,
+            Command::Advance(until) => {
+                let rate = self.sample_rate;
+                if let Some(c) = self.clocked.as_mut() {
+                    c.target = c.target.max(clock_at(until, rate));
+                }
+                // Offline there is no device to wait for: render right away.
+                if self.rx.is_none() {
+                    self.run_clock(u64::MAX);
+                }
+            }
         }
     }
 
@@ -540,8 +651,18 @@ impl Engine {
     pub fn render(&mut self, out: &mut [Frame]) {
         let started = crate::profiler::enabled().then(std::time::Instant::now);
         self.poll();
-        for chunk in out.chunks_mut(BLOCK) {
-            self.block(chunk);
+        match self.clocked.as_mut() {
+            // Capture time: the device plays what the game's advance rendered.
+            Some(c) => {
+                for f in out.iter_mut() {
+                    *f = c.played.pop_front().unwrap_or(Frame::ZERO);
+                }
+            }
+            None => {
+                for chunk in out.chunks_mut(BLOCK) {
+                    self.block(chunk);
+                }
+            }
         }
         let underruns = self.underruns;
         self.publish();
@@ -583,6 +704,14 @@ impl Engine {
         }
         self.order = order;
         out.copy_from_slice(&self.master[..n]);
+        if !self.taps.is_empty() {
+            self.taps.retain(|t| !t.abandoned());
+            let rate = self.sample_rate;
+            for t in &mut self.taps {
+                t.write(self.clock, rate, out);
+            }
+        }
+        self.clock += n as u64;
         // Tracks that finished fading out.
         let before = self.tracks.len();
         self.tracks
@@ -761,6 +890,11 @@ impl Engine {
         }
         s.underruns += std::mem::take(&mut self.underruns);
         s.frames = self.frames;
+    }
+
+    /// Taps on the final mix (the Recorder).
+    pub fn tap_count(&self) -> usize {
+        self.taps.len()
     }
 
     /// Voices currently in the graph.

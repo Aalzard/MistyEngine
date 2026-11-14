@@ -14,9 +14,10 @@ use super::backend::{AudioBackend, TrackId, VoiceId};
 use super::clip::{AudioImporter, LoadType};
 use super::dsp::Frame;
 use super::effects::EffectSpec;
-use super::engine::{Command, Engine, EngineSound, Slot, Source, Status};
+use super::engine::{ClockStart, Command, Engine, EngineSound, Slot, Source, Status};
 use super::spatial::VoiceParams;
 use super::stream::{StreamInput, StreamReader};
+use super::tap::TapWriter;
 
 /// A clip as its load type keeps it.
 #[derive(Clone)]
@@ -403,5 +404,19 @@ impl AudioBackend for GraphBackend {
         e.render(&mut out);
         self.sync();
         Some(out)
+    }
+
+    fn add_tap(&mut self, tap: TapWriter) {
+        self.send(Command::AddTap(tap));
+    }
+
+    fn set_clock(&mut self, at: Option<f64>) {
+        let start = at.map(|at| ClockStart::new(at, self.sample_rate()));
+        self.send(Command::Clock(start));
+    }
+
+    fn advance_clock(&mut self, until: f64) {
+        self.send(Command::Advance(until));
+        self.sync();
     }
 }
