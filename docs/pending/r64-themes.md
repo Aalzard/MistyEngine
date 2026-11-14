@@ -72,8 +72,38 @@ from the installed fonts with a size scale and a silent fallback, everything liv
 
 ## Tests
 
-`theme/tests.rs`, `theme/panel_tests.rs` (see Checks).
+- `theme/tests.rs`: every token resolves in every preset; Dark keeps the original values and
+  `shade` is the identity under Dark; `shade` maps onto Light; custom theme file round-trip;
+  store save / rename / delete; import / export (hand-written file, missing and unknown tokens,
+  bad colours); hex parsing; contrast warning; theme choice settings; missing font falls back
+  without a panic (and the note is taken once); font enumeration on a fake fonts folder
+  (nested, mixed-case extensions, a broken file, a non-font); text size scale; Theme editor
+  actions (editing a preset copies it, duplicate, rename, reset, delete, Hub light / dark sync).
+- `theme/panel_tests.rs`: every panel tab (`Tab::ALL` + `Tab::ON_DEMAND`) plus Preferences and
+  the Theme editor drawn under each preset; a check walks the painted shapes and fails on text
+  whose contrast with the filled rectangle under it is below 1.8:1 (Dark is drawn but not
+  judged: it is the original). It found white selected-row text, axis-green labels, file
+  icons, guide note titles and High Contrast's yellow selection under white text; all fixed.
 
-## Checks
+## Screenshots (not committed)
 
-(filled in at the end)
+`E:\MistyTargets	mp64\shots\`: `light.png`, `light_prefs.png`, `light_theme_editor.png`,
+`light_inspector.png`, `custom_rose.png` (a custom theme from a `.mistytheme` with the Theme
+editor open), `dark.png`, `high_contrast.png`, `warm_dark.png`, `midnight.png`. Captured with
+`MISTY_THEME=<id>`, `MISTY_THEME_EDITOR=1`, `MISTY_PREFERENCES=1` and a temp `MISTY_HUB_CONFIG`.
+Looked at each: text readable everywhere; on Light the Project window's folder icons are drawn
+in the text colour (dark), heavier than on Dark but readable.
+
+## Merge with main (97cc0dff)
+
+Autosave, node game, Recorder and round 66 merged in. The Recorder window and autosave
+recovery dialog already used the theme constants (renamed to tokens); the Recorder track colour
+goes through `shade`; the project lock dialog has no colours. The chapter is
+`13-themes-and-fonts` (12 is kept for Behaviour Trees).
+
+## Checks (after the merge)
+
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets --release`: 0 warnings.
+- `cargo test --workspace --release --no-fail-fast`: 2643 passed, 0 failed.
+- Golden (`golden_shots`, GPU lock): see below.

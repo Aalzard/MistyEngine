@@ -4968,7 +4968,7 @@ Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
 
 ## Round 64 — Light mode, custom colour themes, custom fonts (branch r64-themes)
 
-Notes: `docs/pending/r64-themes.md`. User Guide: chapter 9, "Themes and fonts" (English and
+Notes: `docs/pending/r64-themes.md`. User Guide: chapter 13, "Themes and fonts" (English and
 Arabic).
 
 - **Presets**: Dark (the original look, value for value), Light, High Contrast, Warm Dark and
