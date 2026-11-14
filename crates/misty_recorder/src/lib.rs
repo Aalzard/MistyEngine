@@ -25,6 +25,8 @@ pub mod webm;
 pub mod writer;
 
 #[cfg(test)]
+mod gpu_tests;
+#[cfg(test)]
 mod tests;
 
 use std::path::{Path, PathBuf};

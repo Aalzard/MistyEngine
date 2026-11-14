@@ -17,3 +17,8 @@ openh264 = { version = "0.9", default-features = false, features = ["source"] }
 # WebM (AV1): rav1e (BSD-2-Clause, pure Rust; its assembly needs nasm, so it is left out).
 # Our own WebM writer boxes it.
 rav1e = { version = "0.8", default-features = false, features = ["threading"] }
+
+[dev-dependencies]
+# The readback ring test on a real GPU.
+pollster = "0.4"
+glam.workspace = true
