@@ -213,9 +213,11 @@ fn a_frame_range_records_exactly_its_frames_in_capture_time() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     files.sort();
-    assert_eq!(files.len(), 10, "{files:?}");
-    assert_eq!(files[0], "Shots_001_0005.png");
-    assert_eq!(files[9], "Shots_001_0014.png");
+    // Ten pictures and the sound beside them (Record Audio is on by default).
+    assert_eq!(files.len(), 11, "{files:?}");
+    assert_eq!(files[0], "Shots_001.wav");
+    assert_eq!(files[1], "Shots_001_0005.png");
+    assert_eq!(files[10], "Shots_001_0014.png");
     // The take moved on, and the next recording doesn't overwrite this one.
     assert_eq!(s.recorder.list(&root).recorders[0].take, 2);
     let _ = std::fs::remove_dir_all(&root);
@@ -363,5 +365,63 @@ fn recordings_and_the_game_wait_for_the_renderer() {
         std::fs::read_dir(root.join("Recordings")).unwrap().count(),
         5
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Whether the game's mix is in capture time.
+fn mix_captures(s: &EditorState) -> Option<bool> {
+    s.runtime.as_ref().map(|r| r.with_audio(|a| a.capturing()))
+}
+
+#[test]
+fn a_video_keeps_the_games_sound_in_capture_time() {
+    let _turn = serial();
+    let root = project("sound");
+    let mut s = state(&root);
+    install(&mut s);
+    let settings = |audio: bool| RecorderSettings {
+        name: if audio { "Loud" } else { "Mute" }.into(),
+        format: OutputFormat::Mp4,
+        range: RangeMode::FrameRange,
+        start_frame: 0,
+        end_frame: 44,
+        fps: 30,
+        match_game: false,
+        width: 16,
+        height: 16,
+        record_audio: audio,
+        pattern: "<Recorder>".into(),
+        ..Default::default()
+    };
+    // Off: the mix is never touched.
+    *s.recorder.list(&root) = RecorderList {
+        recorders: vec![settings(false)],
+    };
+    request_start(&mut s, None);
+    run_frames(&mut s, 3);
+    assert_eq!(mix_captures(&s), Some(false), "no recording keeps sound");
+    run_frames(&mut s, 200);
+    wait_all(&mut s, None);
+    let mute = misty_recorder::mp4::read_audio(&root.join("Recordings/Mute.mp4")).unwrap();
+    assert!(mute.is_none());
+    // On (the default): the mix runs in capture time while recording, real time after.
+    *s.recorder.list(&root) = RecorderList {
+        recorders: vec![settings(true)],
+    };
+    request_start(&mut s, None);
+    run_frames(&mut s, 3);
+    assert_eq!(mix_captures(&s), Some(true));
+    run_frames(&mut s, 200);
+    wait_all(&mut s, None);
+    assert!(!s.play.in_play_mode());
+    let path = root.join("Recordings/Loud.mp4");
+    let video = misty_recorder::mp4::read_samples(&path).unwrap();
+    assert_eq!(video.samples.len(), 45);
+    let audio = misty_recorder::mp4::read_audio(&path)
+        .unwrap()
+        .expect("a sound track");
+    assert_eq!(audio.codec, "Opus");
+    // 45 frames at 30 fps: 1.5 s of sound, exactly.
+    assert_eq!(audio.samples, 72_000);
     let _ = std::fs::remove_dir_all(&root);
 }
