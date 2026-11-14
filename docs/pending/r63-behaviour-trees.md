@@ -1,7 +1,7 @@
 # r63-behaviour-trees: Behaviour Trees package
 
-Branch `r63-behaviour-trees` from main b88e54c9. Target `E:\MistyTargets\r63-bt`
-(`CARGO_INCREMENTAL=0`), TMP `C:\MistyTry\r63tmp`, editor runs under `C:\MistyTry\r63\`.
+Branch `r63-behaviour-trees` (main merged up to c6159e41). Target `E:MistyTargets63-bt`
+(`CARGO_INCREMENTAL=0`), TMP and logs `E:MistyTargets	mp63`.
 
 ## Status
 
@@ -81,4 +81,4 @@ SampleProject's manifest does **not** install the package (the scene plays witho
 - [x] Regenerate docs/api
 - [x] Merged main c6159e41 (themes): editor colours use the graph tokens / theme::shade
 - [x] fmt clean, clippy 0 warnings, full workspace tests green (editor 1004 passed / 88 ignored, engine 1649 / 111, others green)
-- [ ] Editor smoke run on a copy under C:\MistyTry\r63\
+- [ ] Editor smoke run by hand (not done; covered by the kittest UI tests and the demo play test)
