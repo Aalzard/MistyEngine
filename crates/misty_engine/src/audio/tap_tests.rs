@@ -169,7 +169,11 @@ fn the_device_thread_catches_up_and_keeps_command_order() {
     engine.render(&mut out);
     let mut heard = out.clone();
     let got = drain(&mut r);
-    assert_eq!(got.len(), 4800, "six 60 Hz frames rendered in one device block");
+    assert_eq!(
+        got.len(),
+        4800,
+        "six 60 Hz frames rendered in one device block"
+    );
     let first = got.iter().position(loud).unwrap();
     assert!(
         (2400..2410).contains(&first),
@@ -180,7 +184,11 @@ fn the_device_thread_catches_up_and_keeps_command_order() {
         engine.render(&mut out);
         heard.extend_from_slice(&out);
     }
-    assert_eq!(heard.iter().position(loud), Some(first), "the device hears the same mix");
+    assert_eq!(
+        heard.iter().position(loud),
+        Some(first),
+        "the device hears the same mix"
+    );
     assert!(!out.iter().any(loud), "game paused: the device is silent");
     assert_eq!(drain(&mut r).len(), 0);
 }
@@ -216,5 +224,8 @@ fn leaving_capture_time_returns_to_real_time() {
     audio.stop_capture();
     assert!(!audio.capturing());
     let out = audio.render(4800).unwrap();
-    assert!(out.iter().any(loud), "real time again: the mix renders on demand");
+    assert!(
+        out.iter().any(loud),
+        "real time again: the mix renders on demand"
+    );
 }

@@ -521,7 +521,8 @@ pub fn read_audio(path: &Path) -> Result<Option<Mp4Audio>, String> {
         for i in 0..count {
             let size = be32(&d, zs + 12 + i * 4).ok_or_else(bad)? as usize;
             let off = be64(&d, os + 8 + i * 8).ok_or_else(bad)? as usize;
-            a.packets.push(d.get(off..off + size).ok_or_else(bad)?.to_vec());
+            a.packets
+                .push(d.get(off..off + size).ok_or_else(bad)?.to_vec());
         }
         return Ok(Some(a));
     }

@@ -392,7 +392,9 @@ impl WavWriter {
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
         let data = self.bytes.min(u32::MAX as u64 - 36) as u32;
         self.file.seek(SeekFrom::Start(4)).map_err(err)?;
-        self.file.write_all(&(data + 36).to_le_bytes()).map_err(err)?;
+        self.file
+            .write_all(&(data + 36).to_le_bytes())
+            .map_err(err)?;
         self.file.seek(SeekFrom::Start(40)).map_err(err)?;
         self.file.write_all(&data.to_le_bytes()).map_err(err)?;
         self.file.flush().map_err(err)?;

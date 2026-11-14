@@ -12,9 +12,7 @@ use misty_engine::audio::{Audio, wav};
 use crate::audio::{AudioFeed, OpusStream, RATE, Resampler, decode_opus};
 use crate::schedule::Step;
 use crate::session::Recording;
-use crate::{
-    Frame, Output, OutputFormat, PatternContext, RangeMode, RecorderSettings, mp4, webm,
-};
+use crate::{Frame, Output, OutputFormat, PatternContext, RangeMode, RecorderSettings, mp4, webm};
 
 fn temp(tag: &str) -> PathBuf {
     let n = std::time::SystemTime::now()
@@ -38,7 +36,10 @@ fn tone(n: usize, hz: f32, rate: f32) -> Vec<Sample> {
 /// Rising zero crossings a second of the left channel.
 fn frequency(interleaved: &[f32]) -> f32 {
     let left: Vec<f32> = interleaved.iter().step_by(2).copied().collect();
-    let ups = left.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+    let ups = left
+        .windows(2)
+        .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+        .count();
     ups as f32 / (left.len() as f32 / RATE as f32)
 }
 
@@ -147,7 +148,9 @@ fn opus_round_trips_in_step() {
             })
             .sum()
     };
-    let best = (-40..=40).max_by(|a, b| score(*a).total_cmp(&score(*b))).unwrap();
+    let best = (-40..=40)
+        .max_by(|a, b| score(*a).total_cmp(&score(*b)))
+        .unwrap();
     assert!(best.abs() <= 1, "decoded sound is {best} samples off");
     let head = enc.head();
     assert_eq!(&head[..8], b"OpusHead");
@@ -231,10 +234,7 @@ fn click_errors(pcm: &[f32], seconds: u32, every: u32) -> Vec<i64> {
 }
 
 fn check_sync(errors: &[i64]) {
-    let (lo, hi) = (
-        *errors.iter().min().unwrap(),
-        *errors.iter().max().unwrap(),
-    );
+    let (lo, hi) = (*errors.iter().min().unwrap(), *errors.iter().max().unwrap());
     // Every click within 2 ms of its frame, and no drift from the first to the last.
     assert!(lo >= -96 && hi <= 96, "click offsets {errors:?} (samples)");
     assert!(hi - lo <= 24, "drift over the clip: {errors:?} (samples)");
@@ -250,7 +250,11 @@ fn mp4_sound_stays_on_its_frames_over_three_minutes() {
     let a = mp4::read_audio(&path).unwrap().expect("an audio track");
     assert_eq!(a.codec, "Opus");
     assert_eq!((a.channels, a.sample_rate), (2, 48_000));
-    assert_eq!(a.samples, (seconds * RATE) as u64, "exactly the video's length");
+    assert_eq!(
+        a.samples,
+        (seconds * RATE) as u64,
+        "exactly the video's length"
+    );
     let pcm = decode_opus(&a.packets, a.pre_skip as usize).unwrap();
     assert!(pcm.len() / 2 >= a.samples as usize);
     check_sync(&click_errors(&pcm, seconds, 10));
