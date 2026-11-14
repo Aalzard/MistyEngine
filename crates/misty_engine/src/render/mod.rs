@@ -1076,6 +1076,38 @@ impl Renderer {
         )
     }
 
+    /// The last render drew `d` incomplete: its shader variant, `.shader` compile or one of
+    /// its textures is still on the background queues (a stand-in pipeline or a 1×1 texture
+    /// was used, or it was left out). Unlike [`Renderer::background_pending`], loads for
+    /// other views and other draws don't count (a material preview sharing the editor's
+    /// renderer counted every load of the scene as its own).
+    pub fn waiting_for(&self, d: &MeshDraw) -> bool {
+        let m = &d.material;
+        if let Some(c) = &m.custom {
+            let textures = c.values.values().filter_map(|v| match v {
+                crate::shader_asset::PropertyValue::Texture(t) => t.as_deref(),
+                _ => None,
+            });
+            return self.custom.as_ref().is_some_and(|s| s.waiting_for(c))
+                || self.textures.waiting_for(textures);
+        }
+        let set = m.textures();
+        let mut paths: Vec<&str> = [&set.albedo, &set.normal, &set.metallic]
+            .into_iter()
+            .chain([&set.occlusion, &set.emission])
+            .filter_map(|p| p.as_deref())
+            .collect();
+        let lit = m.lit_set();
+        if let Some(l) = &lit {
+            paths.extend(l.maps.iter().filter_map(|p| p.as_deref()));
+        }
+        if self.textures.waiting_for(paths) {
+            return true;
+        }
+        let key = draw_prep::pipeline_key(d, lod::LodState::Visible);
+        self.pipelines.mesh_variant_waiting(key)
+    }
+
     pub fn background_pending(&self) -> usize {
         self.pipelines.variants_pending()
             + self.textures.pending()

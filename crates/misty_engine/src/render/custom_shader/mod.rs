@@ -455,6 +455,12 @@ impl CustomShaders {
         }
     }
 
+    /// `m`'s shader compiles on the shader queue and isn't picked up yet.
+    pub fn waiting_for(&self, m: &CustomMaterial) -> bool {
+        let cache = m.cache_key();
+        self.pending.iter().any(|(c, _)| *c == cache)
+    }
+
     /// Compiles queued and not picked up yet.
     pub fn pending(&self) -> usize {
         self.pending.len()
