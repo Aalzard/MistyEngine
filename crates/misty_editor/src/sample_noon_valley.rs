@@ -1323,10 +1323,12 @@ fn terrain_data() -> TerrainData {
     // A dense forest: billboards a little sooner, and lighter trees in the shadow cascades
     // (impostors in the far one), which keeps a walk inside the wood real-time.
     d.trees.billboard_start = 80.0;
-    d.trees.shadow_detail = 0.34;
+    d.trees.shadow_detail = 0.2;
+    // Full meshes up to 20 m (the lighter mesh beyond reads the same inside the wood).
+    d.trees.lod_distance = 20.0;
     // Ferns and ground cover shade the floor only near the camera (their shadows were most of
     // the inside view's shadow-map cost).
-    d.trees.plant_shadow_distance = 7.0;
+    d.trees.plant_shadow_distance = 4.0;
     // Placed on the heights as stored (16 bits), so the file and the generator agree.
     let stored = TerrainData {
         heights: d
@@ -1378,9 +1380,9 @@ fn rocks(d: &TerrainData) -> Vec<crate::sample_rocks::Placed> {
         (330.0, 600.0, 150.0, 8, &[OUTCROP], [3.0, 5.0]),
         // Big layered slabs in the cliff sites seen from the meadow: real faces and ledges
         // that throw deep shadows (the 4 m height samples can't).
-        (250.0, 320.0, 70.0, 7, &[OUTCROP], [6.0, 10.0]),
-        (190.0, 540.0, 80.0, 7, &[OUTCROP], [7.0, 11.0]),
-        (340.0, 700.0, 80.0, 6, &[OUTCROP], [7.0, 11.0]),
+        (250.0, 320.0, 80.0, 7, &[OUTCROP], [10.0, 16.0]),
+        (190.0, 540.0, 90.0, 7, &[OUTCROP], [12.0, 18.0]),
+        (340.0, 700.0, 90.0, 6, &[OUTCROP], [12.0, 18.0]),
     ];
     let mut n = 0u32;
     for &(right, ahead, spread, count, kinds, scale) in groups {
