@@ -1805,10 +1805,14 @@ fn forest_floor_toned(root: &std::path::Path) -> image::RgbImage {
             ((c + 0.055) / 1.055).powf(2.4)
         }
     };
-    let k = [0.5, 0.43, 0.34];
+    // Darker, warmer and more saturated (the tone curve's shoulder flattens bright litter to
+    // white; colour survives it).
+    let k = [0.55, 0.44, 0.3];
     for px in img.pixels_mut() {
+        let c = [lin(px[0]), lin(px[1]), lin(px[2])];
+        let luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
         for i in 0..3 {
-            px[i] = srgb(lin(px[i]) * k[i]);
+            px[i] = srgb((luma + (c[i] - luma) * 1.7).max(0.0) * k[i]);
         }
     }
     img
