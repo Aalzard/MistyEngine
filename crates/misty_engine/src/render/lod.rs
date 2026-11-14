@@ -109,6 +109,21 @@ pub enum LodState {
     Fading(f32),
 }
 
+impl LodState {
+    /// Without dithering: a fading level is drawn whole while it covers more than half of
+    /// the pixels and not at all below that. The outgoing level (`Fading(k)`, covers `k`) and
+    /// the incoming one (`Fading(k - 1)`, covers `1 - k`) then swap at the band's centre, one
+    /// of them drawn at every height.
+    pub fn switched(self) -> LodState {
+        match self {
+            LodState::Fading(f) if f >= 0.5 => LodState::Visible,
+            LodState::Fading(f) if f < 0.0 && -f > 0.5 => LodState::Visible,
+            LodState::Fading(_) => LodState::Hidden,
+            s => s,
+        }
+    }
+}
+
 /// Height of a box of `size` at `center` as a fraction of the screen height (× `bias`).
 pub fn screen_height(camera: &Camera, center: Vec3, size: f32, bias: f32) -> f32 {
     let h = match camera.projection {
@@ -232,6 +247,37 @@ mod tests {
         assert_eq!(f1.state(0.65), LodState::Hidden);
         // The last level fades out to nothing above its cull height.
         assert!(matches!(f1.state(0.11), LodState::Fading(k) if k > 0.0 && k < 1.0));
+    }
+
+    #[test]
+    fn switched_levels_draw_exactly_one_across_the_band() {
+        let lod0 = LodRange {
+            center: Vec3::ZERO,
+            size: 1.0,
+            min: 0.5,
+            max: f32::INFINITY,
+            fade: 0.2,
+            virtual_lod: None,
+        };
+        let lod1 = LodRange {
+            min: 0.0,
+            max: 0.5,
+            ..lod0
+        };
+        for k in 0..=400 {
+            let h = 0.4 + k as f32 * 0.0005;
+            let drawn = [lod0.state(h), lod1.state(h)]
+                .into_iter()
+                .map(LodState::switched)
+                .filter(|s| *s == LodState::Visible)
+                .count();
+            assert_eq!(drawn, 1, "at {h}");
+            for s in [lod0.state(h), lod1.state(h)] {
+                assert!(!matches!(s.switched(), LodState::Fading(_)));
+            }
+        }
+        assert_eq!(lod0.state(0.54).switched(), LodState::Hidden);
+        assert_eq!(lod0.state(0.56).switched(), LodState::Visible);
     }
 
     #[test]

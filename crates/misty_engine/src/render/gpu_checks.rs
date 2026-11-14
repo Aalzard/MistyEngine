@@ -410,6 +410,62 @@ fn lod_levels_switch_with_distance_and_cross_fade() {
     );
 }
 
+/// Unlit and Fade materials have no dithered variant: inside the fade band exactly one level
+/// draws (they swap at the band's centre), never both whole over the same pixels.
+#[test]
+fn lod_levels_without_a_dither_never_draw_both_in_the_fade_band() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let unlit = MaterialParams {
+        unlit: true,
+        color: [0.9, 0.3, 0.2, 1.0],
+        ..Default::default()
+    };
+    let fade = MaterialParams {
+        mode: RenderingMode::Fade,
+        color: [0.2, 0.5, 0.9, 0.5],
+        ..Default::default()
+    };
+    let lights = sun(Shadows::Hard);
+    let mut renderer = Renderer::with_queue(&device, &queue);
+    let tan = 25f32.to_radians().tan();
+    for m in [unlit, fade] {
+        let level = |mesh, min, max| MeshDraw {
+            lod: Some(LodRange {
+                center: Vec3::new(0.0, 1.0, 0.0),
+                size: 2.0,
+                min,
+                max,
+                fade: 0.2,
+                virtual_lod: None,
+            }),
+            ..draw(mesh, Mat4::from_translation(Vec3::Y), m.clone())
+        };
+        let group = vec![
+            level(PrimitiveMesh::Cube, 0.5, f32::INFINITY),
+            level(PrimitiveMesh::Sphere, 0.0, 0.5),
+        ];
+        let only = |mesh| vec![draw(mesh, Mat4::from_translation(Vec3::Y), m.clone())];
+        let mut shot = |cam: &Camera, meshes: &[MeshDraw]| {
+            render(&device, &queue, &mut renderer, cam, meshes, &lights, 1).0
+        };
+        // Screen heights inside the band 0.5..0.6: the coarser level below its centre (0.55),
+        // the finer one above.
+        for (h, mesh) in [(0.52, PrimitiveMesh::Sphere), (0.58, PrimitiveMesh::Cube)] {
+            let cam = camera(Vec3::new(0.0, 1.0, -2.0 / (2.0 * h * tan)), 0.0);
+            assert_eq!(
+                shot(&cam, &group),
+                shot(&cam, &only(mesh)),
+                "{:?} unlit {} at {h}",
+                m.mode,
+                m.unlit
+            );
+        }
+    }
+}
+
 /// A camera dolly across a LOD switch (a red cube for LOD 0, the same cube in blue for LOD 1):
 /// with a cross-fade the object's colour changes over many small steps, never all at once,
 /// and at every step its silhouette is covered completely (the two dithers are complements:
