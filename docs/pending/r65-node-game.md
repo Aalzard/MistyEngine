@@ -3,7 +3,22 @@
 A short 2D platformer ("Lumo's Leap") built with Script Graphs only: no Lua, no Rust gameplay
 code. The point is to prove the nodes a real game needs, and to list what is broken or missing.
 
-## Handover (work stopped part-way; branch `r65-node-game`, from main b88e54c9, never pushed)
+## Status (2026-11-14): done; branch `r65-node-game`, main merged in (round 66), never pushed
+
+- All checks green after the round 66 merge: `cargo fmt --all --check`, clippy (`--workspace
+  --all-targets --release`) 0 warnings, `cargo test --workspace --release --no-fail-fast`: one
+  failure, `panels::project::dock_tests::right_click_on_empty_space_opens_the_folder_menu_everywhere`
+  ("Create ⏵" not found), which passes alone: a flake under load, not this branch.
+- The game uses the round 66 fixes: On Trigger Enter / Exit 2D (Enemy Touch, Goal), the menu
+  through the buttons' On Click (mouse click tested; Enter presses the selected Play button),
+  native Physics2D Raycast / OverlapCircleAll, Friction 0.4 on the ground again.
+- Added this session: a dash cooldown line on the HUD ("Dash: ready" / "Dash: ..."), the
+  Round 65 section of `docs/progress.md`, built player screenshots. The test file compiled
+  and passes (the stage test needed the project root set for tile colliders and short hops).
+- Sounds (jump, dash, hit, hurt, win) and a smoothed camera were already in.
+
+### History (first handover)
+
 
 ### Done
 
@@ -34,7 +49,7 @@ code. The point is to prove the nodes a real game needs, and to list what is bro
   (editor Play captures; stages and dash from the Autopilot demo). The stage 2, stage 3 and
   win pictures were saved without being looked at.
 
-### Left to do
+### Left to do (first handover; all done now)
 
 1. Get a build slot; `cargo test --release -p misty_editor sample_node_game` and
    `... guide`; fix what does not compile or pass (the test file has never been built; the
