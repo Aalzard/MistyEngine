@@ -4884,3 +4884,22 @@ The PC lost power and hit memory bugchecks several times: unsaved scene work mus
 - Tried end to end on a First Person project copy: crash → backup + log → dialog → restore →
   Save → clean exit with no backups left.
 - User Guide chapter 9 (English, Arabic); Turkish and Arabic UI strings. 14 new tests.
+### Round 59.2 — eye-level grass edge, clouds, sky, first forest and cliff changes
+
+- **Grass edge at eye level**: with the far field on, the blades now shrink away over a
+  wider band (from 55 % of the grass distance instead of 80 %); past the blades the far field
+  darkens with distance (`FAR_SHADE` 0.35, the blades seen more and more edge-on) and is a
+  touch less red; its tufts are lit as upright blades (0.85 towards +Y). Brightness 0.28.
+  Eye-level view, sRGB just past the crest / grass mass before it: main 82/91/48 / 57/66/27,
+  round 1 78/84/41 / 57/66/24, now 78/84/43 / 77/87/35 (the same brightness; the far side is
+  still a little greyer). `docs/screenshots/r59/fade_graze_crest_main_r1_r2.jpg`.
+- **Clouds**: Size 2.4, Softness 0.5, coverage 0.34, thickness 1500 m: a few big soft heaps.
+- **Sky**: skybox exposure 0.75, greyer tint and haze albedo: sky top 126/143/182 → 79/95/128
+  (photo 76/90/112).
+- **Forest**: Plant Shadow Distance 12 m; wood crowns darker olive with more leaf variation;
+  Forest Herbs broader and lower (28 /m², 0.3 m wide). Inside view GPU 19.4 → 14.3 ms (parts
+  14.7 → 13.8; shadow maps 3.5 → 2.9 ms), still above the 12.7 ms target.
+- **Cliffs**: Limestone warmer and a little brighter, less moss, normal scale 1.8.
+- Views: `docs/screenshots/r59/level_*.jpg`. Hero 11.9 ms GPU (parts 11.5).
+- Checks: fmt clean, clippy 0 warnings, tests 945 editor + 1606 engine + 13 passed, golden
+  20 / 20 unchanged.

@@ -35,7 +35,7 @@ struct TerrainParams {
     ground_tint: vec4<f32>,
     ground_front: vec4<f32>,
     // x = chunks per side (`chunk_layers`, terrain_layers.wgsl), y = grass far field (0 = off),
-    // z = its brightness.
+    // z = its brightness, w = how much darker it grows past the blades.
     chunks: vec4<f32>,
 };
 

@@ -68,6 +68,21 @@ const GROUND_COVER: [f32; 4] = [0.5, 0.8, 2.0, 7.0];
 const GROUND_TINT: [f32; 4] = [0.78, 0.75, 0.6, 0.0];
 const GROUND_FRONT: [f32; 4] = [1.35, 1.3, 1.2, 0.0];
 
+/// Grass far field: how much darker it grows from the blades' fade to well past them (the
+/// blades seen ever more edge-on and shading each other; tests: `MISTY_FAR_SHADE`).
+const FAR_SHADE: f32 = 0.35;
+
+fn far_shade() -> f32 {
+    #[cfg(test)]
+    if let Some(v) = std::env::var("MISTY_FAR_SHADE")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+    {
+        return v;
+    }
+    FAR_SHADE
+}
+
 /// The ground cover values (tests can try others: `MISTY_GROUND_COVER` = 10 numbers).
 fn ground_cover_values() -> [[f32; 4]; 3] {
     #[cfg(test)]
@@ -1923,6 +1938,7 @@ fn params(
         p.grass_healthy = [hr, hg, hb, g.ground_tint.clamp(0.0, 1.0)];
         p.chunks[1] = g.far_field.clamp(0.0, 1.0);
         p.chunks[2] = g.far_field_brightness.clamp(0.2, 2.0);
+        p.chunks[3] = far_shade();
         p.grass_dry = [dr, dg, db, g.patch_scale.max(0.5)];
         p.grass_lush = [lr, lg, lb, g.draw_distance.max(1.0)];
         p.grass_amounts = [

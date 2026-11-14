@@ -2460,7 +2460,9 @@ impl GrassParams {
         Self {
             origin: [origin.x, origin.y, origin.z, time],
             healthy: [hr, hg, hb, far],
-            dry: [dr, dg, db, far * 0.8],
+            // (With the far field on, the blades shrink away over a wider band: the ground
+            // that takes their place blends in over more of the view.)
+            dry: [dr, dg, db, far * (0.8 - 0.25 * s.far_field.clamp(0.0, 1.0))],
             wind: [strength, speed, dx, dz],
             seed: [sr, sg, sb, s.translucency.clamp(0.0, 2.0)],
             look: [

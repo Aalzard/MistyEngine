@@ -45,6 +45,38 @@ Checks for round 1 (tree with the cloud and plant-shadow engine controls too): f
 clippy `--workspace --all-targets --release` 0 warnings, `cargo test --workspace --release
 --no-fail-fast` 936 editor + 1588 engine + 11 + 3 passed, 0 failed; golden 20 / 20 ok.
 
+## Round 2: eye-level grass edge, clouds, sky, forest and cliff first pass
+
+Engine: wider blade fade with the far field on (`terrain_grass.rs`: fade from
+`far × (0.8 − 0.25 × far_field)`); far field darkens past the blades
+(`terrain.rs FAR_SHADE` 0.35, `MISTY_FAR_SHADE` in tests; shader `past` = smoothstep(0.55,
+1.6, dist / draw)), × (0.92, 1, 1) colour, upright 0.85.
+
+Eye-level grazing view (`fade.sh` graze, eye adaptation on, sRGB, rows 560–585 far meadow,
+600–615 just past the crest, 630–660 grass mass, columns 300–1000):
+
+| run | far | past crest | grass |
+|---|---|---|---|
+| main | 107/119/87 | 82/91/48 | 57/66/27 |
+| round 1 (r4) | 101/109/74 | 78/84/41 | 57/66/24 |
+| far shade 0.25 (s1/s2 0.5) | – | – | – |
+| far shade 0.35 (s3) | 83/93/68 | 70/78/40 | 56/65/24 |
+| far shade 0.5 (s4) | 76/85/66 | 69/77/40 | 56/65/24 |
+| round 2 (r5, with the darker sky: higher exposure) | 71/78/55 | 78/84/43 | 77/87/35 |
+
+Measured on/off (16–60 rows inside the edge) r5: measuring pose 1.17, hero 1.07, away 0.96,
+left 1.13. The "trend" metric (grass-side row trend carried past the edge) is too noisy on
+rolling ground to use (0.74–1.50).
+
+Timings r5 (High 1920×1080, after main's round 57 perf merge): hero GPU 11.91 ms (parts
+11.49), CPU 4.15; inside GPU 14.32 ms (parts 13.76; shadow maps 2.88, trees 2.07, grass
+0.44 + 0.72), CPU 3.04. r54 end: hero 13.5, inside 19.4 (parts 14.7, shadow maps 3.53).
+
+Still differs after round 2: far meadow greyer than the grass mass just before the crest;
+meadow brighter than the photo (the darker sky raised the eye adaptation); herbs still read as
+pale sprouts; `inside2` crowns still light; inside 1.6 ms over target; cliffs still smooth
+from the meadow (no rock meshes yet).
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at

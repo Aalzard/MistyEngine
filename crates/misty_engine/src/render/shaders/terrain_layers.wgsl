@@ -397,7 +397,14 @@ fn terrain_surface(in: MeshOut) -> Surface {
             }
             let detail = clamp(soil / max(dot(mean, luma), 1e-3), 0.3, 2.5);
             let tufts = mix(1.0, 0.72 + 0.56 * mottle, smoothstep(8.0, 40.0, dist));
-            let field = grass * terrain.chunks.z * tufts * detail;
+            // Past the blades' fade the field darkens a little more with distance: the blades
+            // are seen ever more edge-on and shade each other (it does not jump lighter where
+            // the blades end, and the far meadow keeps the grass mass's depth).
+            // (A touch less red than the blades' far tint: seen edge-on the blades show their
+            // green sides more than their dry tips.)
+            let past = smoothstep(0.55, 1.6, dist / terrain.grass_lush.w);
+            let field = grass * vec3<f32>(0.92, 1.0, 1.0) * terrain.chunks.z * tufts * detail
+                * (1.0 - terrain.chunks.w * past);
             s.albedo = mix(s.albedo, field, wf);
             s.smoothness *= 1.0 - wf;
             // Tufts: a fine octave (faded out where one pixel covers it, so it never
@@ -408,7 +415,7 @@ fn terrain_surface(in: MeshOut) -> Surface {
             let tilt = g1.yz * (0.3 * fine) + g2.yz * 0.35;
             // Blades grow upright whatever the slope: they are lit more like level ground
             // than the slope under them.
-            let upright = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), 0.6));
+            let upright = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), 0.85));
             let tufted = normalize(upright - vec3<f32>(tilt.x, 0.0, tilt.y));
             s.normal = normalize(mix(s.normal, tufted, wf));
             // The blades shade each other: less sky light deep in the canopy.
