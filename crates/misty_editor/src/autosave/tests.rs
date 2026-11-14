@@ -810,3 +810,167 @@ fn a_read_only_editor_neither_backs_up_nor_recovers() {
     crate::project_lock::close(&mut holder.project_lock);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Round 70: a document whose unsaved text matches an earlier backup, but whose file was saved
+/// after that backup, is backed up again. (It was skipped as "unchanged since its last backup",
+/// so after a crash the only backup was older than the file: treated as stale and deleted, and
+/// the unsaved work was lost.)
+#[test]
+fn a_backup_older_than_a_later_save_is_written_again() {
+    let root = project("resave");
+    std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+    let rel = "Assets/Scripts/Mover.lua";
+    std::fs::write(root.join(rel), "-- saved\n").unwrap();
+    let mut a = state(&root);
+    begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
+    a.code_editor.open(rel, None).unwrap();
+    // Edit 1, backed up.
+    a.code_editor.docs[0].editor.reload("-- version one\n");
+    autosave_now(&mut a);
+    misty_engine::asset_db::saver::flush();
+    std::thread::sleep(Duration::from_millis(50));
+    // Edit 2, saved (the file is newer than the backup of edit 1).
+    a.code_editor.docs[0].editor.reload("-- version two\n");
+    a.code_editor.save(0).unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+    // Back to edit 1's text, unsaved: this must be backed up again.
+    a.code_editor.docs[0].editor.reload("-- version one\n");
+    assert_eq!(docs::dirty_docs(&a).len(), 1);
+    autosave_now(&mut a);
+    misty_engine::asset_db::saver::flush();
+    drop(a); // the editor crashes
+
+    let mut b = state(&root);
+    begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
+    let dialog = b
+        .autosave
+        .recovery
+        .as_ref()
+        .expect("the unsaved script is offered back");
+    assert_eq!(dialog.items.len(), 1);
+    assert_eq!(dialog.items[0].header.path.as_deref(), Some(rel));
+    let bytes = std::fs::read(&dialog.items[0].backup).unwrap();
+    assert_eq!(docs::parse_backup(&bytes).unwrap().1, "-- version one\n");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Round 70: the Script Graph window holds one graph. Restoring the backups of two graphs
+/// opened the second over the first, whose recovered changes were silently dropped (and its
+/// backup deleted at the next clean exit). The second now stays in the list with a note.
+#[test]
+fn restoring_two_graphs_keeps_the_second_until_the_first_is_saved() {
+    use misty_engine::visual_script::{Literal, PinType, ScriptGraph, Variable};
+    let root = project("two_graphs");
+    std::fs::create_dir_all(root.join("Assets/Graphs")).unwrap();
+    let saved = ScriptGraph::default();
+    let changed = |var: &str| {
+        let mut g = ScriptGraph::default();
+        g.variables
+            .push(Variable::new(var, PinType::Bool, Literal::Bool(true)));
+        g.to_json()
+    };
+    let (a_json, b_json) = (changed("Recovered A"), changed("Recovered B"));
+    let now = session::now_ms();
+    let old = format!("{}-{DEAD_PID_A}", now - 600_000);
+    for (name, body, t) in [("A", &a_json, 5_000), ("B", &b_json, 4_000)] {
+        let rel = format!("Assets/Graphs/{name}.vgraph");
+        saved.save(&root.join(&rel)).unwrap();
+        let snap = DocSnapshot::new(
+            DocKind::ScriptGraph,
+            Some(rel),
+            format!("{name}.vgraph"),
+            body.clone(),
+        );
+        plant_backup(&root, &old, &snap, now + t);
+    }
+
+    let mut s = state(&root);
+    begin_session(&mut s, DEAD_PID_B, Duration::ZERO);
+    assert_eq!(s.autosave.recovery.as_ref().unwrap().items.len(), 2);
+    recovery::restore_items(&mut s, true);
+    // One graph is open with its recovered changes.
+    let open = s.script_graph.path.clone().expect("a graph restored");
+    assert!(s.script_graph.dirty());
+    let held = &s.script_graph.graph.variables;
+    assert_eq!(held.len(), 1);
+    // The other is still offered, with the reason, and its backup is not queued for deletion.
+    let d = s
+        .autosave
+        .recovery
+        .as_ref()
+        .expect("the second graph is still offered");
+    assert_eq!(d.items.len(), 1, "{:?}", d.items);
+    let left = &d.items[0];
+    assert_ne!(left.header.path.as_deref(), Some(open.as_str()));
+    assert!(left.error.is_some());
+    assert!(
+        left.dirs
+            .iter()
+            .all(|dir| !s.autosave.restored_dirs.contains(dir))
+    );
+    // Once the first graph is saved, the second restores.
+    let file = root.join(&open);
+    s.script_graph.save(&file).unwrap();
+    recovery::restore_items(&mut s, true);
+    assert!(s.autosave.recovery.is_none());
+    assert_eq!(s.script_graph.path.as_deref(), left_path(&root, &open));
+    assert!(s.script_graph.dirty());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn left_path(_root: &Path, open: &str) -> Option<&'static str> {
+    if open.ends_with("A.vgraph") {
+        Some("Assets/Graphs/B.vgraph")
+    } else {
+        Some("Assets/Graphs/A.vgraph")
+    }
+}
+
+/// Round 70: unsaved Behaviour Tree edits were neither autosaved nor in the emergency backup
+/// (the tree window was not one of the documents), so a crash lost them.
+#[test]
+fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
+    use misty_engine::behaviour_tree::BehaviourTree;
+    use misty_engine::behaviour_tree::asset::NodeKind;
+    let root = project("btree");
+    let rel = "Assets/AI/Guard.btree";
+    BehaviourTree::new_default().save(&root.join(rel)).unwrap();
+    let mut a = state(&root);
+    begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
+    crate::panels::behaviour_tree::open(&mut a, rel);
+    let wait = a.behaviour_tree.add_node(
+        NodeKind::Wait {
+            seconds: 2.5,
+            random: 0.0,
+        },
+        [300.0, 80.0],
+        Some(2),
+    );
+    assert_eq!(docs::dirty_docs(&a), [docs::DocRef::BehaviourTree]);
+    autosave_now(&mut a);
+    misty_engine::asset_db::saver::flush();
+    let edited = a.behaviour_tree.tree.clone();
+    drop(a); // the editor crashes
+
+    let mut b = state(&root);
+    begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
+    let d = b
+        .autosave
+        .recovery
+        .as_ref()
+        .expect("the tree is offered back");
+    assert_eq!(d.items.len(), 1);
+    assert_eq!(d.items[0].header.kind, DocKind::BehaviourTree);
+    recovery::restore_items(&mut b, true);
+    assert!(b.autosave.recovery.is_none(), "{:?}", b.console.last());
+    assert_eq!(b.behaviour_tree.path.as_deref(), Some(rel));
+    assert!(b.behaviour_tree.dirty(), "restored as unsaved");
+    assert_eq!(b.behaviour_tree.tree, edited);
+    assert!(b.behaviour_tree.tree.node(wait).is_some());
+    assert_eq!(
+        BehaviourTree::load(&root.join(rel)).unwrap(),
+        BehaviourTree::new_default(),
+        "the file is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

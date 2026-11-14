@@ -73,7 +73,7 @@ impl ProbeData {
         }
         out.extend_from_slice(&(packed.len() as u64).to_le_bytes());
         out.extend_from_slice(&packed);
-        std::fs::write(path, out).map_err(err)
+        crate::asset_db::write_asset(path, out).map_err(err)
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {

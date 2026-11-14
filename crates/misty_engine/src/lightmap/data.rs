@@ -69,7 +69,7 @@ impl LightmapData {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(err)?;
         }
-        std::fs::write(path, self.to_bytes()).map_err(err)
+        crate::asset_db::write_asset(path, self.to_bytes()).map_err(err)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {

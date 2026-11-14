@@ -316,7 +316,7 @@ impl InputActionAsset {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, self.to_json() + "\n").map_err(|e| e.to_string())
+        crate::asset_db::write_asset(path, self.to_json() + "\n").map_err(|e| e.to_string())
     }
 
     /// Give every map, action, binding and part without an id a stable one (derived from its

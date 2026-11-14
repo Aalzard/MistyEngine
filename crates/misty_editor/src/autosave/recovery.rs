@@ -195,6 +195,12 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::ScriptGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::visual_script::ScriptGraph::from_json(body)?;
+            busy_window(
+                s.script_graph.dirty(),
+                s.script_graph.path.as_deref(),
+                rel,
+                "Script Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.script_graph;
             w.open(&file, rel);
@@ -207,6 +213,12 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::ShaderGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::shader_graph::ShaderGraph::from_json(body)?;
+            busy_window(
+                s.shader_graph.dirty(),
+                s.shader_graph.path.as_deref(),
+                rel,
+                "Shader Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.shader_graph;
             w.open(&file, rel);
@@ -219,12 +231,36 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::EffectGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::vfx::EffectGraph::from_json(body)?;
+            busy_window(
+                s.effect_graph.dirty(),
+                s.effect_graph.path.as_deref(),
+                rel,
+                "Effect Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.effect_graph;
             w.open(&file, rel);
             w.edit("Restore Autosave", false, |g| *g = graph);
             s.push(crate::actions::Action::FocusTab(
                 crate::layout::Tab::EffectGraph,
+            ));
+            Ok(())
+        }
+        DocKind::BehaviourTree => {
+            let rel = header.path.as_deref().ok_or("no path")?;
+            busy_window(
+                s.behaviour_tree.dirty(),
+                s.behaviour_tree.path.as_deref(),
+                rel,
+                "Behaviour Tree",
+            )?;
+            let tree = misty_engine::behaviour_tree::BehaviourTree::from_json(body)?;
+            let file = s.assets.absolute(rel);
+            let w = &mut s.behaviour_tree;
+            w.open(&file, rel);
+            w.edit("Restore Autosave", false, |t| *t = tree);
+            s.push(crate::actions::Action::FocusTab(
+                crate::layout::Tab::BehaviourTree,
             ));
             Ok(())
         }
@@ -245,6 +281,20 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
             ));
             Ok(())
         }
+    }
+}
+
+/// A window that holds one document (the graph windows) already has another one with unsaved
+/// changes, a restored one among them: opening the backup there would drop them. The backup
+/// stays in the list until that one is saved.
+fn busy_window(dirty: bool, open: Option<&str>, rel: &str, window: &str) -> Result<(), String> {
+    match open {
+        Some(other) if dirty && other != rel => Err(tr!(
+            "The {window} window has unsaved changes to {other}: save them, then restore this one.",
+            window = window,
+            other = other
+        )),
+        _ => Ok(()),
     }
 }
 

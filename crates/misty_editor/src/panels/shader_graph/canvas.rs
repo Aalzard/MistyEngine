@@ -625,7 +625,8 @@ fn node_ui(
             header.right_center() - vec2(14.0 * z, 0.0),
             vec2(16.0, 16.0) * z,
         );
-        painter.circle_filled(badge.center(), 8.0 * z, super::ERROR);
+        // A fully rounded rect (a circle) the readability checks see as the badge's fill.
+        painter.rect_filled(badge, 8.0 * z, super::ERROR);
         painter.text(
             badge.center(),
             Align2::CENTER_CENTER,
@@ -1373,11 +1374,8 @@ fn notes(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, 
             6.0 * z,
             Color32::from_black_alpha(60),
         );
-        painter.rect_filled(
-            r,
-            6.0 * z,
-            crate::theme::shade(Color32::from_rgb(228, 208, 120)),
-        );
+        let fill = crate::theme::shade(Color32::from_rgb(228, 208, 120));
+        painter.rect_filled(r, 6.0 * z, fill);
         let strip = Rect::from_min_size(r.min, vec2(r.width(), 14.0 * z));
         let resp = ui.interact(strip, ui.id().with(("sg_note", i)), Sense::click_and_drag());
         let w = &mut s.shader_graph;
@@ -1417,7 +1415,13 @@ fn notes(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, 
         ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
             let st = ui.style_mut();
             st.override_font_id = Some(FontId::proportional(12.0 * z));
-            st.visuals.override_text_color = Some(Color32::from_rgb(50, 44, 20));
+            // Dark brown on the yellow note; light on the darker note the Light theme makes.
+            st.visuals.override_text_color =
+                Some(if crate::theme::text_on(fill) == Color32::WHITE {
+                    Color32::from_rgb(250, 244, 220)
+                } else {
+                    Color32::from_rgb(50, 44, 20)
+                });
             st.visuals.extreme_bg_color = Color32::TRANSPARENT;
             st.visuals.widgets.inactive.bg_stroke = Stroke::NONE;
             st.visuals.widgets.hovered.bg_stroke = Stroke::NONE;

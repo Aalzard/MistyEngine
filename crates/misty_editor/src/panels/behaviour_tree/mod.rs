@@ -459,6 +459,9 @@ impl BehaviourTreeWindow {
 
 /// Open a tree in the window and bring the tab forward.
 pub fn open(s: &mut EditorState, rel: &str) {
+    if crate::graph_prompt::ask_before_open(s, crate::graph_prompt::Kind::BehaviourTree, rel) {
+        return;
+    }
     if s.behaviour_tree.path.as_deref() != Some(rel) {
         let file = s.assets.absolute(rel);
         s.behaviour_tree.open(&file, rel);
@@ -466,7 +469,8 @@ pub fn open(s: &mut EditorState, rel: &str) {
     s.push(crate::actions::Action::FocusTab(Tab::BehaviourTree));
 }
 
-fn save(s: &mut EditorState) {
+/// Save Asset; false when it failed (the Console says why).
+pub(crate) fn save(s: &mut EditorState) -> bool {
     let file = s
         .assets
         .absolute(s.behaviour_tree.path.as_deref().unwrap_or_default());
@@ -475,10 +479,13 @@ fn save(s: &mut EditorState) {
             let rel = s.behaviour_tree.path.clone().unwrap_or_default();
             s.console.info(tr!("Saved {path}", path = rel));
             s.refresh_assets();
+            true
         }
-        Err(e) => s
-            .console
-            .warn(tr!("Could not save the Behaviour Tree: {error}", error = e)),
+        Err(e) => {
+            s.console
+                .warn(tr!("Could not save the Behaviour Tree: {error}", error = e));
+            false
+        }
     }
 }
 

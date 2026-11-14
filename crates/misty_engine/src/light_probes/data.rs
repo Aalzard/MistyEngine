@@ -75,7 +75,7 @@ impl LightProbeData {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(err)?;
         }
-        std::fs::write(path, self.to_json()).map_err(err)
+        crate::asset_db::write_asset(path, self.to_json()).map_err(err)
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {

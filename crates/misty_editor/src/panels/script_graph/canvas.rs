@@ -559,7 +559,7 @@ fn node_ui(
         Align2::LEFT_CENTER,
         &l.title,
         FontId::proportional(12.5 * z),
-        Color32::WHITE,
+        crate::theme::text_on(hc),
     );
     if breakpoint {
         painter.circle_filled(

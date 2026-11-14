@@ -153,7 +153,7 @@ impl Preset {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         // Values naming assets (a material's textures, a sprite) get the GUID table.
         let text = crate::asset_db::embed_json(&text);
-        std::fs::write(path, text + "\n").map_err(|e| e.to_string())
+        crate::asset_db::write_asset(path, text + "\n").map_err(|e| e.to_string())
     }
 }
 

@@ -311,6 +311,19 @@ pub fn readable(c: Color32) -> Color32 {
     out
 }
 
+/// Text drawn on a coloured fill (a node header, a sticky note): white while it reads (3:1, so
+/// the Dark look is unchanged), else white or near-black, whichever reads better. Fixed white
+/// was unreadable on the headers the Light theme lightens.
+pub fn text_on(fill: Color32) -> Color32 {
+    let dark = Color32::from_rgb(24, 24, 28);
+    let white = contrast(Color32::WHITE, fill);
+    if white >= 3.0 || white >= contrast(dark, fill) {
+        Color32::WHITE
+    } else {
+        dark
+    }
+}
+
 /// The built-in Arabic font's name in the font definitions.
 pub(crate) const ARABIC_FONT: &str = "arabic";
 

@@ -712,6 +712,9 @@ impl ScriptGraphWindow {
 
 /// Open a graph in the window and bring the tab forward.
 pub fn open(s: &mut EditorState, rel: &str) {
+    if crate::graph_prompt::ask_before_open(s, crate::graph_prompt::Kind::ScriptGraph, rel) {
+        return;
+    }
     if s.script_graph.path.as_deref() != Some(rel) {
         let file = s.assets.absolute(rel);
         s.script_graph.open(&file, rel);
@@ -719,7 +722,8 @@ pub fn open(s: &mut EditorState, rel: &str) {
     s.push(crate::actions::Action::FocusTab(Tab::ScriptGraph));
 }
 
-fn save(s: &mut EditorState) {
+/// Save Asset; false when it failed (the Console says why).
+pub(crate) fn save(s: &mut EditorState) -> bool {
     let file = s
         .assets
         .absolute(s.script_graph.path.as_deref().unwrap_or_default());
@@ -728,10 +732,13 @@ fn save(s: &mut EditorState) {
             let rel = s.script_graph.path.clone().unwrap_or_default();
             s.console.info(format!("Saved {rel}"));
             s.refresh_assets();
+            true
         }
-        Err(e) => s
-            .console
-            .warn(format!("Could not save the Script Graph: {e}")),
+        Err(e) => {
+            s.console
+                .warn(format!("Could not save the Script Graph: {e}"));
+            false
+        }
     }
 }
 
