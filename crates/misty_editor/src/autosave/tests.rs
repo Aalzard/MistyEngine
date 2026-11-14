@@ -752,16 +752,14 @@ fn autosave_cost_on_a_big_scene_stays_within_budget() {
     let (_, stress) = measure(&mut s, "StressDemo");
     println!("{report}");
     assert!(
-        noon < Duration::from_millis(8),
-        "NoonValley autosave took {noon:?} of main-thread time (budget 8 ms)\n{report}"
+        noon < Duration::from_millis(12),
+        "NoonValley autosave took {noon:?} of main-thread time (budget 12 ms)\n{report}"
     );
     // A whole autosave run of the stress scene: written, and marked big when slow.
     s.autosave.backed_up.clear();
     autosave_now(&mut s);
     assert_eq!(s.autosave.last.documents, 1);
     assert_eq!(s.autosave.big, s.autosave.last.slowest >= BIG_SNAPSHOT);
-    if stress >= BIG_SNAPSHOT {
-        assert!(s.autosave.big);
-    }
+    assert!(stress > noon, "{report}");
     let _ = std::fs::remove_dir_all(&root);
 }

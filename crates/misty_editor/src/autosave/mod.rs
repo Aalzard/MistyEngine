@@ -5,7 +5,8 @@
 //! scenes, the prefab open in Prefab Mode (and the scenes or prefabs it was opened from), the
 //! Script, Shader and Effect Graphs and the scripts open in the Code Editor. Backups go to
 //! `Library/Autosave/<session>/<document>/<slot>.autosave`, never over the real files. The main
-//! thread only takes the snapshot (serialises the document, see [`docs`]); the writes go
+//! thread only takes the snapshot (a copy of a scene, whose JSON is written on a worker thread;
+//! small documents are serialised at once, see [`docs`]); the writes go
 //! through the background saver (`asset_db::saver`), each one atomic (temp file, flush to the
 //! device, rename). Each document keeps its last [`KEEP`] backups in rotating slots. The status
 //! bar says "Autosaved 14:32".
