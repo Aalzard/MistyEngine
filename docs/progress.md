@@ -5050,8 +5050,10 @@ One commit per bug, each with a regression test; the running list is `docs/pendi
 - Full test runs no longer leave `Crate_Metal.mat`, `Crate_Metal_Normal.png` and
   `Crate_Wood.mat` in `SampleProject`: model imports extract materials into their own project
   instead of whatever project the shared "current project" named at that moment, and the
-  sample tests that set it play a temp copy of the sample. Checked with a watcher over a whole
-  run: nothing in the repo changes but the ignored caches.
+  sample tests that set it play a temp copy of the sample. The theme panel tests (merged this
+  round) opened the repo's sample in the editor, which also rewrote `packages-lock.json`; they
+  use the copy too, and a test now scans the sources for any test opening the repo's sample.
+  Checked with a watcher over a whole run: nothing in the repo changes but the ignored caches.
 
 ### Fixes
 - **GPU errors**: a GPU validation error no longer aborts the editor or the player; it is
