@@ -94,3 +94,21 @@ backup format, `session.rs` marker and local time, `recovery.rs` scan + restore 
 
 Before moving the JSON to a worker, NoonValley cost 9.5 ms of main-thread time per autosave.
 Test: `autosave_cost_on_a_big_scene_stays_within_budget` (NoonValley < 12 ms main thread).
+
+## Manual crash run (First Person project copy, C:\MistyTry\r62\proj)
+
+`MISTY_CRASH_TEST=25 misty --new "First Person" …`: exit 101, crash log written (message,
+version, GPU "NVIDIA GeForce RTX 4060 (Vulkan)", Console lines; backtrace frames show as
+`<unknown>` without the .pdb next to the exe), emergency backup of Main.scene with the added
+object, marker `crashed: true`. Reopened: Recover Unsaved Work listed Main (Scene) with ⚠,
+backup 05:59 vs file 05:58, and Open crash log folder. Restore All: title `Main*`, the object
+back, Main.scene on disk unchanged, a backup in the new session at once. Close → save prompt →
+Save: the file has the object; clean exit removed both sessions' backups, marker
+`clean_exit: true`.
+
+## Status (green)
+
+- Merged main e21f65b8 (round 60). `cargo fmt --all --check` clean;
+  `cargo clippy --workspace --all-targets --release` 0 warnings;
+  `cargo test --workspace --release --no-fail-fast`: engine 1616 passed, editor 964 passed,
+  0 failed (i18n and guide tests included).
