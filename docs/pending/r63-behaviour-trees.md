@@ -1,7 +1,9 @@
 # r63-behaviour-trees: Behaviour Trees package
 
-Branch `r63-behaviour-trees` (main merged up to c6159e41). Target `E:MistyTargets63-bt`
-(`CARGO_INCREMENTAL=0`), TMP and logs `E:MistyTargets	mp63`.
+Branch `r63-behaviour-trees` (main merged up to c6159e41). Target `E:\MistyTargets\r63-bt`
+(`CARGO_INCREMENTAL=0`), TMP and logs `E:\MistyTargets\tmp\r63`.
+(`CARGO_INCREMENTAL=0`), TMP and logs `E:MistyTargets	mp
+63`.
 
 ## Status
 
