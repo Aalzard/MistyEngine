@@ -130,14 +130,18 @@ impl AssetDatabase {
     /// New models get their materials extracted (once) as `.mat` files next to them.
     /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
+        misty_engine::profile_scope!("Assets.Refresh");
         // The files are read back below: saves still on their way go first.
         misty_engine::asset_db::saver::flush();
         // Keep the GUID map in step: new assets get meta files, copies get new GUIDs. Only this
         // project's map: another project's open database is left alone.
+        let rescan = misty_engine::profiler::Scope::begin_lazy(|| "Assets.Refresh.Rescan", None);
         if let Some(report) = misty_engine::asset_db::rescan(&self.root) {
             self.imported.extend(report.created.iter().cloned());
             self.note_guids(report);
         }
+        drop(rescan);
+        let walk = misty_engine::profiler::Scope::begin_lazy(|| "Assets.Refresh.Walk", None);
         self.materials.clear();
         self.presets.clear();
         self.clips.clear();
@@ -242,6 +246,8 @@ impl AssetDatabase {
         self.textures.sort();
         self.shaders.sort();
         self.hdris.sort();
+        drop(walk);
+        misty_engine::profile_scope!("Assets.Refresh.Models");
         let messages = &mut self.messages;
         for rel in model_files {
             let entry = models::model(&rel).map(|m| {

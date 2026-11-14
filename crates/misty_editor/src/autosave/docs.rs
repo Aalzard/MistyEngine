@@ -118,6 +118,9 @@ pub struct DocSnapshot {
     pub name: String,
     pub body: String,
     pub emergency: bool,
+    /// Hash of `body`, worked out where the snapshot is made (a worker thread for scenes): a
+    /// big scene's text takes milliseconds to hash, which the main thread did in `write_backup`.
+    hash: u64,
 }
 
 fn hash_of(text: &str) -> u64 {
@@ -137,6 +140,7 @@ impl DocSnapshot {
             kind,
             path,
             name,
+            hash: hash_of(&body),
             body,
             emergency: false,
         }
@@ -149,7 +153,7 @@ impl DocSnapshot {
     }
 
     pub fn content_hash(&self) -> u64 {
-        hash_of(&self.body)
+        self.hash
     }
 
     /// The backup file: the header line, then the document.

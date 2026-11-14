@@ -419,12 +419,22 @@ impl Scene {
 
     /// Write one scene to disk.
     pub fn save_scene(&self, id: SceneId, path: &std::path::Path) -> Result<(), String> {
+        self.save_scene_text(id, path).map(|_| ())
+    }
+
+    /// [`Self::save_scene`], returning [`Self::scene_to_json`]'s text as written (before the
+    /// GUID table goes in), so a caller that keeps a hash of the saved contents doesn't have to
+    /// serialise the scene a second time.
+    pub fn save_scene_text(&self, id: SceneId, path: &std::path::Path) -> Result<String, String> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         // With a project open, the asset GUID table goes in too (like `Scene::save`).
-        let text = crate::asset_db::embed_json(&self.scene_to_json(id));
-        crate::asset_db::write_atomic(path, text).map_err(|e| format!("{}: {e}", path.display()))
+        let json = self.scene_to_json(id);
+        let text = crate::asset_db::embed_json(&json);
+        crate::asset_db::write_atomic(path, text)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(json)
     }
 
     /// References from objects of `id` to objects in other scenes (not allowed: they are
