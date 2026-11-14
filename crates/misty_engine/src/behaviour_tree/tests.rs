@@ -196,6 +196,9 @@ fn decorator(kind: NodeKind, leaf: &str) -> BehaviourTree {
 
 use Status::{Failure as F, Running as R, Success as S};
 
+/// (kind, leaves, results over the ticks, leaf calls of the first tick).
+type CompositeCase = (NodeKind, Vec<&'static str>, Vec<Status>, Vec<&'static str>);
+
 #[test]
 fn composite_semantics_table() {
     let par_all = NodeKind::Parallel {
@@ -205,7 +208,7 @@ fn composite_semantics_table() {
         policy: ParallelPolicy::RequireOne,
     };
     // (kind, leaves, results over the ticks, leaf calls of the first tick)
-    let cases: Vec<(NodeKind, Vec<&str>, Vec<Status>, Vec<&str>)> = vec![
+    let cases: Vec<CompositeCase> = vec![
         (NodeKind::Sequence, vec!["S", "S"], vec![S], vec!["S", "S"]),
         (
             NodeKind::Sequence,
