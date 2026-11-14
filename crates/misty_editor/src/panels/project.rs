@@ -142,7 +142,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         let entries = if browser.search.is_empty() {
             browser.entries.clone()
         } else {
-            browser.cached_search_results()
+            browser.cached_search_shared()
         };
         let mut open = None;
         egui::ScrollArea::vertical()
@@ -396,11 +396,26 @@ fn grid_view(
     req: &mut Requests,
 ) {
     let cell = 48.0 + browser.icon_size * 80.0;
+    // While something is dragged every tile stays a widget (the dragged one keeps its drag).
+    let dragging = ui.ctx().dragged_id().is_some();
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
         for e in entries {
-            let (rect, resp) =
-                ui.allocate_exact_size(egui::vec2(cell, cell + 18.0), Sense::click_and_drag());
+            let size = egui::vec2(cell, cell + 18.0);
+            // Tiles scrolled out of view only take their place: nothing can point at them, so
+            // the per-tile work below (interaction, menus, drag, hold-to-rename, paths) is
+            // skipped. A folder of 3000 files spent 5 ms a frame on it.
+            // (The tile goes on this row or, wrapped, the next one: both rows are checked.)
+            if !dragging && !is_renaming(browser, e) {
+                let clip = ui.clip_rect();
+                let top = ui.cursor().min.y;
+                let bottom = top + 2.0 * (size.y + 8.0);
+                if bottom < clip.top() || top > clip.bottom() {
+                    ui.allocate_space(size);
+                    continue;
+                }
+            }
+            let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
             let label = if is_renaming(browser, e) { "" } else { &e.name };
             resp.widget_info(|| {
                 egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, false, label)

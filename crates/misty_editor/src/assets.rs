@@ -166,7 +166,7 @@ impl AssetDatabase {
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if crate::project::entry_is_dir(&entry, &path) {
                     stack.push(path);
                 } else if path.extension().is_some_and(|e| e == "mat")
                     && let Ok(m) = Material::load(&path)
