@@ -27,13 +27,16 @@ backup format, `session.rs` marker and local time, `recovery.rs` scan + restore 
   the document exactly as its file would hold it (scene JSON with the GUID table, prefab JSON,
   graph JSON, script text). Self-describing, so a write cut short can't be paired with the wrong
   document. An unchanged document (same content hash as its last backup) isn't written again.
-- **Threads.** The main thread only snapshots (`docs::snapshot`: `scene_to_json` + GUID table;
-  `record_overrides` first, like File ▸ Save). Bytes go to `asset_db::saver::save_later` (round
-  40's writer thread; `write_atomic` = temp file, `sync_all`, rename). Spread: a run snapshots
-  documents until 6 ms of the frame are used, the rest on the next frames. Skip/defer: a due
+- **Threads.** The main thread only takes the snapshot: for a scene, `record_overrides` (like
+  File ▸ Save) and a `Scene::clone`; the scene JSON + GUID table is written on a short-lived
+  worker thread (`docs::start_snapshot`), the result picked up on a later frame. Small documents
+  (graphs, scripts, prefabs) are serialised at once. Bytes go to `asset_db::saver::save_later`
+  (round 40's writer thread; `write_atomic` = temp file, `sync_all`, rename). Spread: a run
+  starts snapshots until 6 ms of the frame are used, the rest on the next frames. Defer: a due
   autosave waits while a mouse button is down or a text field has focus (max 60 s); when the
-  last run's slowest snapshot took > 20 ms (`big`), the next one waits until the user has been
-  idle for 2 s (max one more interval).
+  last run's slowest main-thread step took > 20 ms (`big`), the next one waits until the user
+  has been idle for 2 s (max one more interval). The idle editor wakes when the next autosave
+  is due (not on a fixed tick).
 - **Status bar.** "Autosaved 14:32" (local time, weak, rightmost); hover: document count, cost.
 - **Session marker.** `Library/session.lock` JSON: pid, started_ms, session id, clean_exit,
   crashed, version, crash_log. Written on project open; `clean_exit: true` on a normal exit
@@ -65,29 +68,29 @@ backup format, `session.rs` marker and local time, `recovery.rs` scan + restore 
   then `process::exit(101)`. Next start: the dialog (or a "closed unexpectedly" notice when
   nothing needs recovering) offers **Open crash log folder**. Nothing is sent anywhere.
 
-## Coordination with r60-qa6 (project lock)
+- **`MISTY_CRASH_TEST=<seconds>`**: that long after the project opens, adds "Crash Test Object"
+  to the scene and panics (to try the crash path on a test project). Off unless set.
 
-r60 adds an OS lock on `Library/ProjectLock` + `Library/ProjectLock.json`, and opens a second
-editor read-only (asset saves through `write_atomic` refused). Overlap / merge notes:
+## Project lock (round 60, merged from main e21f65b8)
 
 - Separate files: `Library/session.lock` (this) vs `Library/ProjectLock*` (r60). No shared code.
-- A read-only second editor: this branch already sees the first editor's live marker and turns
-  autosave off in the second one (`Started::other_editor`). After merging, it may be cleaner to
-  key that off r60's read-only flag instead of the pid check (keep the pid check as fallback).
-- If r60's read-only mode refuses `write_atomic` for every path under the project, check that
-  `Library/Autosave`, `Library/Logs` and `Library/session.lock` stay writable for the *first*
-  editor (r60 says Library caches stay writable).
+- A read-only editor (another editor holds the lock: `project_lock.read_only()` or
+  `asset_db::is_read_only(root)`) starts no autosave, writes no marker and shows no recovery
+  dialog (`autosave::start`). The live-pid check in `session::start_as` stays as a fallback
+  for when the lock couldn't be taken (`LockState::None`).
+- The lock holder's writes (`Library/Autosave` through the saver, `Library/Logs`, the marker)
+  go through `write_atomic`, which only refuses in a read-only project: they work. `on_exit`
+  writes the clean marker before releasing the lock.
+- Test: `a_read_only_editor_neither_backs_up_nor_recovers`.
 - r60 open item: a validation error on a rayon worker aborts the process; the panic hook doesn't
   run then, so no crash log / emergency backup for that case (the 5-minute backups remain).
 
-## Cost
+## Cost (release, this machine, other builds running)
 
-(see the Measurements section; `autosave::tests::autosave_cost_on_a_big_scene_stays_within_budget`
-prints it)
+| Scene | JSON (worker) | Main thread per autosave |
+|---|---|---|
+| NoonValley (235 KB) | 9.7 ms | 4.3 ms (clone 1.2 ms + prefab override records) |
+| StressDemo (5.3 MB) | 95–118 ms | 20 ms (clone): counts as big, waits for an idle moment |
 
-## Status
-
-- [x] Code, tests, locales (tr, ar), User Guide chapter 9.
-- [ ] Build + tests + clippy + fmt (in progress)
-- [ ] Measurements on NoonValley / StressDemo
-- [ ] Manual run on a temp project copy (crash simulation)
+Before moving the JSON to a worker, NoonValley cost 9.5 ms of main-thread time per autosave.
+Test: `autosave_cost_on_a_big_scene_stays_within_budget` (NoonValley < 12 ms main thread).
