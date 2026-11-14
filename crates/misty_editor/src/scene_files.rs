@@ -241,7 +241,7 @@ pub struct SceneFiles {
     /// = on the New Project page).
     pub open_hub: Option<bool>,
     /// Hash of each loaded scene's JSON when it was last loaded or saved.
-    pub saved: HashMap<SceneId, u64>,
+    pub saved: HashMap<SceneId, SavedHash>,
     /// Scenes with unsaved changes (refreshed each frame by [`refresh_dirty`]).
     pub dirty: Vec<SceneId>,
     /// When `dirty` was last worked out by comparing scene contents.
@@ -292,10 +292,70 @@ fn hash(text: &str) -> u64 {
     h.finish()
 }
 
+/// Hash of a scene's JSON as last loaded or saved. After a save it is known at once (the text
+/// was just written); after a load it is worked out on a worker thread from a copy of the scene
+/// (writing a big scene's JSON takes ~100 ms for 5000 objects, which opening a scene and
+/// reloading it spent on the main thread), and asking for it waits for the worker.
+#[derive(Clone, Debug)]
+pub struct SavedHash(std::sync::Arc<std::sync::OnceLock<u64>>);
+
+impl SavedHash {
+    pub fn ready(h: u64) -> Self {
+        Self(std::sync::Arc::new(std::sync::OnceLock::from(h)))
+    }
+
+    /// The hash (waits for the worker when it is still writing the JSON).
+    pub fn get(&self) -> u64 {
+        *self.0.wait()
+    }
+
+    /// Hashes of scenes `ids` of `scene` as they are now, worked out on one worker thread.
+    fn later(scene: &Scene, ids: &[SceneId]) -> Vec<(SceneId, SavedHash)> {
+        type Cell = std::sync::Arc<std::sync::OnceLock<u64>>;
+        fn fill(scene: &Scene, jobs: &[(SceneId, Cell)]) {
+            for (id, cell) in jobs {
+                // A panic leaves a value that matches no real hash (the scene counts as
+                // changed) instead of a wait that never ends.
+                let h = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    hash(&scene.scene_to_json(*id))
+                }))
+                .unwrap_or(0);
+                let _ = cell.set(h);
+            }
+        }
+        let out: Vec<(SceneId, SavedHash)> = ids
+            .iter()
+            .map(|id| (*id, Self(Cell::default())))
+            .collect();
+        let jobs = || -> Vec<(SceneId, Cell)> { out.iter().map(|(id, h)| (*id, h.0.clone())).collect() };
+        let (copy, worker_jobs) = (scene.clone(), jobs());
+        let spawned = std::thread::Builder::new()
+            .name("misty scene hash".into())
+            .spawn(move || fill(&copy, &worker_jobs));
+        if spawned.is_err() {
+            // No thread: here, as before.
+            fill(scene, &jobs());
+        }
+        out
+    }
+}
+
 /// Remember `id`'s current contents as saved.
 pub(crate) fn mark_saved(s: &mut EditorState, id: SceneId) {
-    let h = hash(&s.scene.scene_to_json(id));
-    s.files.saved.insert(id, h);
+    mark_saved_all(s, &[id]);
+}
+
+/// [`mark_saved`] for several scenes (one copy of the world, one worker).
+pub(crate) fn mark_saved_all(s: &mut EditorState, ids: &[SceneId]) {
+    for (id, h) in SavedHash::later(&s.scene, ids) {
+        s.files.saved.insert(id, h);
+        s.files.dirty.retain(|d| *d != id);
+    }
+}
+
+/// Remember `id`'s contents as saved, from the JSON just written.
+fn mark_saved_text(s: &mut EditorState, id: SceneId, json: &str) {
+    s.files.saved.insert(id, SavedHash::ready(hash(json)));
     s.files.dirty.retain(|d| *d != id);
 }
 
@@ -311,7 +371,9 @@ pub fn dirty_now(s: &EditorState) -> Vec<SceneId> {
     }
     loaded
         .into_iter()
-        .filter(|id| s.files.saved.get(id) != Some(&hash(&s.scene.scene_to_json(*id))))
+        .filter(|id| {
+            s.files.saved.get(id).map(SavedHash::get) != Some(hash(&s.scene.scene_to_json(*id)))
+        })
         .collect()
 }
 
@@ -323,7 +385,7 @@ pub(crate) fn recheck_dirty(s: &mut EditorState) {
     let changed = scene
         .loaded_scenes()
         .into_iter()
-        .any(|id| saved.get(&id) != Some(&hash(&scene.scene_to_json(id))));
+        .any(|id| saved.get(&id).map(SavedHash::get) != Some(hash(&scene.scene_to_json(id))));
     s.scene_dirty = s.scene_dirty && changed;
     s.files.dirty = dirty_now(s);
 }
@@ -450,9 +512,8 @@ pub(crate) fn reset_after_load(s: &mut EditorState) {
     s.files.dirty.clear();
     // World Partition cells of the old scene are forgotten.
     s.world_partition.streamer.reset();
-    for id in s.scene.loaded_scenes() {
-        mark_saved(s, id);
-    }
+    let loaded = s.scene.loaded_scenes();
+    mark_saved_all(s, &loaded);
 }
 
 /// Load a scene file into the editor, replacing every open scene. Returns false (and logs)
@@ -586,9 +647,9 @@ pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
     }
     // Each prefab instance's overrides go into the file, so it can follow its prefab later.
     crate::prefabs::record_overrides(&mut s.scene, &mut s.assets, Some(id));
-    match s.scene.save_scene(id, &path) {
-        Ok(()) => {
-            mark_saved(s, id);
+    match s.scene.save_scene_text(id, &path) {
+        Ok(json) => {
+            mark_saved_text(s, id, &json);
             // Clean once no other loaded scene has changes left.
             let one = s.scene.loaded_scenes().len() == 1;
             if one || dirty_now(s).is_empty() {

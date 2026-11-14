@@ -58,7 +58,7 @@ struct Stash {
     inspector_targets: Vec<Entity>,
     inspector_asset: Option<String>,
     camera: SceneCamera,
-    saved: std::collections::HashMap<SceneId, u64>,
+    saved: std::collections::HashMap<SceneId, crate::scene_files::SavedHash>,
     dirty: Vec<SceneId>,
 }
 
