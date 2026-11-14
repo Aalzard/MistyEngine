@@ -17,6 +17,8 @@ pub mod lod_group;
 pub mod multi_scene;
 pub mod occlusion_area;
 mod order;
+#[cfg(test)]
+mod bench_tests;
 pub mod physics2d_components;
 pub mod physics_components;
 pub mod playable_director;
@@ -165,7 +167,7 @@ impl Clone for Scene {
             match next.next_if(|e| e.id() == id) {
                 Some(&e) => {
                     let mut b = EntityBuilder::new();
-                    for info in registry::components() {
+                    for info in registry::present(&self.world, e) {
                         (info.clone_into)(&self.world, e, &mut b);
                     }
                     world.spawn_at(e, b.build());
@@ -571,7 +573,7 @@ impl Scene {
         map: &mut std::collections::HashMap<Entity, Entity>,
     ) -> Entity {
         let mut b = EntityBuilder::new();
-        for info in registry::components() {
+        for info in registry::present(&self.world, e) {
             (info.clone_into)(&self.world, e, &mut b);
         }
         let copy = self.world.spawn(b.build());

@@ -330,8 +330,8 @@ impl Scene {
             .iter()
             .map(|e| ObjectEntry {
                 parent: self.parent(*e).and_then(|p| index.get(&p).copied()),
-                components: registry::components()
-                    .iter()
+                components: registry::present(&self.world, *e)
+                    .into_iter()
                     .filter(|info| info.name != Node::NAME)
                     .filter_map(|info| {
                         (info.to_json)(&self.world, *e).map(|v| (info.name.to_owned(), v))
