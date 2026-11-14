@@ -5140,3 +5140,19 @@ private memory up about 1 MB a cycle (left open).
   ours running) read 12.6 / 12.4 ms in total with the same parts (11.77 / 10.72).
 - Checks: fmt clean, clippy 0 warnings, tests 1009 editor + 1655 engine + the rest passed,
   golden 20 / 20 (with this round's engine change).
+
+### Round 59.7 — canopy sun gaps, haze, slab feet
+
+- **Canopy**: the walk-in wood's crowns a little wider and denser (Wood Oak 0.47 / 1.2, Wood
+  Beech 0.45 / 1.15) and sun gaps rarer (fbm > 0.66). `inside` lower half above 0.3 luminance:
+  30 % → 23 % (photo 20 %); p75 0.145 (0.163), p95 0.73 (0.76). Tries: 0.5 / 1.35 with gaps at
+  0.7 gave 14 %, 0.5 / 1.25 at 0.66 gave 8 % (the gaps' pattern moves with each change).
+  `forest_canopy_r6_r7.jpg`.
+- **Haze and horizon**: aerial haze 1900 → 1300 m, skybox atmosphere 1.5: the far slopes and
+  hills paler and bluer (far hills region 33/42/41 → 41/51/53), sky top 75/90/119 (photo
+  76/90/112). `hero_r6_r7.jpg`, `cliffs_haze_r6_r7.jpg`.
+- **Slab feet**: a "Foot Shrub" tree prototype; 7 dark shrubs round each cliff slab's foot,
+  placed after the rocks (the rocks ignore them, so they stay put).
+- Timings: hero 12.0 ms GPU (parts 11.8), inside 11.1 ms (parts 10.8). Checks: fmt clean,
+  clippy 0 warnings, editor tests 1009 passed (with `noon_valley_matches_its_generator`),
+  workspace tests passed on the round's first state; no engine change since round 6's golden.

@@ -140,7 +140,7 @@ than the photo; inside GPU ~0.7 ms over 12.7.
 - First view sRGB vs photo: sky top 73/88/120 (76/90/112), meadow mid 78/93/36 (76/87/43),
   near 62/81/25 (59/76/18). Eye level far / past crest / grass: 84/94/55, 81/89/41, 77/88/33.
 
-## Round 7 (paused, not checked)
+## Round 7 (done)
 
 Committed as WIP: wood crowns wider and denser (Wood Oak 0.5 / 1.35, Wood Beech 0.48 / 1.3),
 gap cells rarer (fbm > 0.7), skybox atmosphere 1.5, a "Foot Shrub" tree prototype (index 12,
@@ -152,9 +152,10 @@ lower-half median 0.015 (photo 0.028), p95 0.72; first view unchanged (sky top 7
 Timings unreliable then (another program loading the GPU: hero parts 15.1 / GPU 12.4 ms, inside
 parts 10.9 / GPU 14.8 ms).
 
-The haze change was regenerated (`b420f95f`) but its views were stopped mid-render by the pause.
-Next: views and timings (`fade.sh` + `round.sh`), maybe gaps a touch more open (sunlit 14 %),
-then fmt / clippy / tests (no engine change since round 6's golden).
+After the pause: crowns Wood Oak 0.47 / 1.2, Wood Beech 0.45 / 1.15, gaps at fbm > 0.66:
+`inside` sunlit (lum > 0.3, lower half) 23 % (photo 20 %), median 0.019 (0.028). Hero 12.0 ms
+GPU (11.8 parts), inside 11.1 (10.8). Eye level far / past crest / grass 86/97/63, 81/90/45,
+77/89/35. fmt, clippy 0, editor tests 1009 passed; workspace tests passed earlier this round.
 
 ## Later rounds
 
