@@ -5263,3 +5263,39 @@ across Play / Stop and scene loads (agents follow entity ids; prefab instances r
 Object overrides), optional package remove / reinstall (assets and Behaviour Tree Agent
 components stay; agents still run), custom themes with a missing font (default font and a
 note), the node game's headless tests.
+## Round 71 — Bug hunt 10: Recorder sound, read-only saves, graph prompts (branch r71-qa10)
+- **The game went silent after a recording with sound ended**: with two recordings running (a
+  Timeline clip, a second recorder) where only one kept sound, the mix stayed in capture time
+  once that one ended, with nothing advancing its clock, so the game played silence until the
+  last recording stopped. The mix goes back to real time as soon as no recording keeps sound
+  (a later one with sound starts a new capture session).
+- **The sound device changing rate mid-recording** (another default output device, 48 kHz to
+  44.1 kHz): the capture clock counted samples at the old rate but its targets were worked out
+  at the new one, so the mix stopped for seconds (or rendered a burst), and the tap went on
+  labelled with the old rate: the sound drifted off the picture. The engine now keeps the
+  clock's place in seconds across a rate change and closes the old taps; a recording whose
+  live tap closed takes a new one, whose start and rate are right.
+- **No sound device** (headless, missing driver): a recording's tap waited for a device that
+  had failed to open; it was never closed, so every recording sat out the 300 ms finish wait
+  and the tap's 1.5 MB ring stayed allocated. A failed open closes the waiting taps.
+- **Read-only projects, the saves Round 70 missed**: `ProjectSettings/ProjectSettings.json`
+  (Edit ▸ Project Settings), Timelines, tiles and tile palettes, trees, biomes and camera blend
+  lists still wrote with `std::fs::write`, past the project lock's read-only check. New scripts,
+  shaders, test scripts, Mesh Builder model exports and the editor-script `CreateAsset` too.
+  They go through `asset_db::write_asset` now.
+- **Read-only projects, file operations**: the Project window could still rename, move,
+  duplicate and delete assets of a project open read-only, and a rename rewrote the paths in
+  other scenes and prefabs under the first editor's feet. They are refused now.
+
+### Checked
+Each new test fails without its fix. Read through and found sound: Play stopped mid-recording
+(the game recording ends; a Scene Viewer recording continues in silence and the next Play joins
+capture time), scene swaps (each game session gets its own tap, placed by its sample clock),
+Record Audio off and GIFs (the mix is never touched), Timeline Recorder clips, zero-length
+recordings, the MP4 `dOps` / edit list and WebM CodecDelay, memory of long recordings (tap ring
+fixed at 4 s, MP4 index 12 bytes a packet, WebM queues bounded by the 2 s lag), a panic
+(the editor exits, so the speakers are released), `Recorder.json` and the packages manifest
+(already atomic and checked), the graph save prompt with Save failing (read-only: the prompt
+closes, Don't Save still works), a load failure on Don't Save (the window is left clean, so
+quitting doesn't loop), the MCP graph tools (they refuse while the window has unsaved edits),
+`theme::text_on` (all its fills are opaque).
