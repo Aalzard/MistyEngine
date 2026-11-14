@@ -561,3 +561,63 @@ fn templates_list_their_tests() {
     assert_eq!(create_dir(&root, &sub), sub);
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// A game that keeps loading scenes restarts `Time.time` at 0 each time: `yield(seconds)`,
+/// `waitUntil` and the timeout still count the test's game time, so the tests end.
+#[test]
+fn play_mode_waits_and_timeouts_survive_game_side_scene_loads() {
+    let root = project(
+        "reload",
+        &[
+            (
+                "Assets/Scripts/Restart.lua",
+                "local R = {}\nfunction R:Update()\n  if Time.time > 0.25 then SceneManager.LoadScene(\"Loop\") end\nend\nreturn R\n",
+            ),
+            (
+                "Assets/Tests/Reload.playtest.lua",
+                r#"
+it("yields across reloads", function()
+    loadScene("Loop")
+    yield(2)
+    local t = 0
+    waitUntil(function() t = t + 1; return t > 90 end, 5)
+end)
+it("times out across reloads", function()
+    setTimeout(1)
+    loadScene("Loop")
+    yield(10)
+end)
+"#,
+            ),
+        ],
+    );
+    let mut lp = Scene::new("Loop");
+    let e = lp.spawn("Restarter", None);
+    lp.add(
+        e,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/Restart.lua".into(),
+                enabled: true,
+                fields: Default::default(),
+            }],
+        },
+    );
+    lp.save(&root.join("Assets/Scenes/Loop.scene")).unwrap();
+    let mut cx = context(&root);
+    cx.build.add("Assets/Scenes/Loop.scene");
+    let files = discover(&root);
+    let started = std::time::Instant::now();
+    let mut run = TestRun::new(cx, &files, |_| true);
+    run.run_to_end();
+    let results = run.results().to_vec();
+    let ok = result(&results, "yields across reloads");
+    assert_eq!(ok.status, Status::Passed, "{ok:?}");
+    let slow = result(&results, "times out across reloads");
+    assert_eq!(slow.status, Status::Failed);
+    let msg = &slow.failure.as_ref().unwrap().message;
+    assert!(msg.contains("timed out after 1.0 s of game time"), "{msg}");
+    assert!(started.elapsed().as_secs() < 60);
+    assert!(run::wall_limit(30.0) >= 120.0);
+    let _ = std::fs::remove_dir_all(root);
+}

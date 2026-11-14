@@ -4826,3 +4826,29 @@ One commit per bug, each with a regression test; the running list with a status 
 Fifteen minutes in NoonValley through the MCP bridge (52 Play / weather / camera / Stop
 cycles): memory and GPU memory level off after the first cycles, no Console warnings or
 errors.
+
+## Round 66 — Script Graph fixes from the node-only platformer (branch r66-node-fixes)
+
+Fixes for the node and visual-scripting bugs the round 65 game agent reports while building a
+2D platformer from Script Graph nodes only. Running list: `docs/pending/r66-node-fixes.md`.
+
+### Batch 1
+- **2D physics events in graphs**: new On Trigger Enter / Stay / Exit 2D and On Collision Enter /
+  Stay / Exit 2D nodes, named like the Lua callbacks. Collisions also give Point, Normal (away
+  from Other) and Relative Velocity. The 3D trigger and collision nodes stay 3D only.
+- **UI calls reach graphs**: Button On Click, On Value Changed, On End Edit and Timeline signals
+  run the target's Custom Event named by the Method (the value is its first argument) as well as
+  Lua functions. The Inspector's ▾ next to Method lists both.
+- **Variadic API functions get pins**: Physics2D.Raycast, Rigidbody2D AddForce / MovePosition,
+  Input.GetButton and the Tilemap cell functions have documented signatures. Optional arguments
+  are optional pins, left out of the call while unset.
+
+### Batch 2
+- **Capture windows**: `MISTY_WINDOW_SIZE` gives a normal window of that size again (eframe
+  restored the user's saved, maximised editor window over it).
+- **PlayMode tests and game-side scene loads**: `yield(seconds)`, `waitUntil` and the timeout
+  count the test's game time across `SceneManager.LoadScene`; a wall-clock limit stops tests
+  of paused games.
+- **2D physics**: native typed nodes for Physics2D queries and Rigidbody 2D; friction combines
+  as the geometric mean (a frictionless player slides along walls), bounciness as the maximum.
+- **MCP**: `graph.*` tools create and edit Script Graphs; `scene.add_component` attaches them.

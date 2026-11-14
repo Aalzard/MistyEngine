@@ -469,17 +469,20 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Input.GetAxisRaw(name)</div>
 <div class="meta">function · source: <code>input_api.rs</code></div>
 </div>
-<div class="entry" data-key="input.getbutton(...) ">
-<div class="sig">Input.GetButton(...)</div>
+<div class="entry" data-key="input.getbutton(name) true while a virtual button of the input manager is held (&quot;jump&quot;, &quot;fire1&quot;, …)">
+<div class="sig">Input.GetButton(name)</div>
 <div class="meta">function · source: <code>input_api.rs</code></div>
+<p>True while a virtual button of the Input Manager is held (&quot;Jump&quot;, &quot;Fire1&quot;, …)</p>
 </div>
-<div class="entry" data-key="input.getbuttondown(...) ">
-<div class="sig">Input.GetButtonDown(...)</div>
+<div class="entry" data-key="input.getbuttondown(name) true on the frame a virtual button was pressed">
+<div class="sig">Input.GetButtonDown(name)</div>
 <div class="meta">function · source: <code>input_api.rs</code></div>
+<p>True on the frame a virtual button was pressed</p>
 </div>
-<div class="entry" data-key="input.getbuttonup(...) ">
-<div class="sig">Input.GetButtonUp(...)</div>
+<div class="entry" data-key="input.getbuttonup(name) true on the frame a virtual button was released">
+<div class="sig">Input.GetButtonUp(name)</div>
 <div class="meta">function · source: <code>input_api.rs</code></div>
+<p>True on the frame a virtual button was released</p>
 </div>
 <div class="entry" data-key="input.getjoysticknames() ">
 <div class="sig">Input.GetJoystickNames()</div>
@@ -894,13 +897,15 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Physics2D.OverlapPoint(p, [m])</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
 </div>
-<div class="entry" data-key="physics2d.raycast(...) ">
-<div class="sig">Physics2D.Raycast(...)</div>
+<div class="entry" data-key="physics2d.raycast(origin, direction [, distance [, layermask]]) nearest 2d hit or nil (point, normal, distance, gameobject, …); z is ignored">
+<div class="sig">Physics2D.Raycast(origin, direction [, distance [, layerMask]])</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
+<p>Nearest 2D hit or nil (point, normal, distance, gameObject, …); z is ignored</p>
 </div>
-<div class="entry" data-key="physics2d.raycastall(...) ">
-<div class="sig">Physics2D.RaycastAll(...)</div>
+<div class="entry" data-key="physics2d.raycastall(origin, direction [, distance [, layermask]]) every 2d hit, nearest first">
+<div class="sig">Physics2D.RaycastAll(origin, direction [, distance [, layerMask]])</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
+<p>Every 2D hit, nearest first</p>
 </div>
 <div class="entry" data-key="physics2d.alllayers ">
 <div class="sig">Physics2D.AllLayers</div>
@@ -3561,18 +3566,20 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-rigidbody2d">
 <h2>Rigidbody2D (object)</h2>
-<div class="entry" data-key="rigidbody2d:addforce(...) ">
-<div class="sig">rigidbody2D:AddForce(...)</div>
+<div class="entry" data-key="rigidbody2d:addforce(force [, mode]) apply a 2d force (mode &quot;force&quot; by default, or &quot;impulse&quot;)">
+<div class="sig">rigidbody2D:AddForce(force [, mode])</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
+<p>Apply a 2D force (mode &quot;Force&quot; by default, or &quot;Impulse&quot;)</p>
 </div>
 <div class="entry" data-key="rigidbody2d:addtorque(torque, [mode]) ">
 <div class="sig">rigidbody2D:AddTorque(torque, [mode])</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
 <p class="notes">AddTorque(degrees-ish torque [, mode]): counter-clockwise positive.</p>
 </div>
-<div class="entry" data-key="rigidbody2d:moveposition(...) ">
-<div class="sig">rigidbody2D:MovePosition(...)</div>
+<div class="entry" data-key="rigidbody2d:moveposition(position) move a kinematic 2d body there in the next physics step">
+<div class="sig">rigidbody2D:MovePosition(position)</div>
 <div class="meta">function · source: <code>physics2d_api.rs</code></div>
+<p>Move a kinematic 2D body there in the next physics step</p>
 </div>
 <div class="entry" data-key="rigidbody2d:moverotation(degrees) ">
 <div class="sig">rigidbody2D:MoveRotation(degrees)</div>
@@ -4017,34 +4024,39 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-tilemap">
 <h2>Tilemap (object)</h2>
-<div class="entry" data-key="tilemap:celltoworld(...) ">
-<div class="sig">tilemap:CellToWorld(...)</div>
+<div class="entry" data-key="tilemap:celltoworld(cell) world position of a cell's lower-left corner">
+<div class="sig">tilemap:CellToWorld(cell)</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p>World position of a cell's lower-left corner</p>
 <p class="notes">The cell's lower-left corner, like the reference API (the centre is GetCellCenterWorld).</p>
 </div>
 <div class="entry" data-key="tilemap:clearalltiles() ">
 <div class="sig">tilemap:ClearAllTiles()</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
 </div>
-<div class="entry" data-key="tilemap:getcellcenterworld(...) ">
-<div class="sig">tilemap:GetCellCenterWorld(...)</div>
+<div class="entry" data-key="tilemap:getcellcenterworld(cell) world position of a cell's centre">
+<div class="sig">tilemap:GetCellCenterWorld(cell)</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p>World position of a cell's centre</p>
 </div>
-<div class="entry" data-key="tilemap:gettile(...) ">
-<div class="sig">tilemap:GetTile(...)</div>
+<div class="entry" data-key="tilemap:gettile(cell) the tile in a cell, or nil">
+<div class="sig">tilemap:GetTile(cell)</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p>The tile in a cell, or nil</p>
 </div>
 <div class="entry" data-key="tilemap:getusedtilescount() ">
 <div class="sig">tilemap:GetUsedTilesCount()</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
 </div>
-<div class="entry" data-key="tilemap:hastile(...) ">
-<div class="sig">tilemap:HasTile(...)</div>
+<div class="entry" data-key="tilemap:hastile(cell) true when a cell has a tile">
+<div class="sig">tilemap:HasTile(cell)</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p>True when a cell has a tile</p>
 </div>
-<div class="entry" data-key="tilemap:settile(...) ">
-<div class="sig">tilemap:SetTile(...)</div>
+<div class="entry" data-key="tilemap:settile(cell, tile) put a tile (asset path) in a cell (vector3 or x, y); nil clears it">
+<div class="sig">tilemap:SetTile(cell, tile)</div>
 <div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p>Put a tile (asset path) in a cell (Vector3 or x, y); nil clears it</p>
 </div>
 <div class="entry" data-key="tilemap:worldtocell(p) ">
 <div class="sig">tilemap:WorldToCell(p)</div>

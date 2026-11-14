@@ -16,6 +16,9 @@ pub struct Pin {
     pub ty: PinType,
     /// Value of an unconnected input.
     pub default: Literal,
+    /// An optional Lua argument (`[distance]` in an API node's arguments): left out of the
+    /// call while unconnected and unset.
+    pub optional: bool,
 }
 
 impl Pin {
@@ -24,6 +27,7 @@ impl Pin {
             name: name.to_owned(),
             ty: PinType::Exec,
             default: Literal::None,
+            optional: false,
         }
     }
 
@@ -32,6 +36,7 @@ impl Pin {
             name: name.to_owned(),
             ty,
             default: ty.default_literal(),
+            optional: false,
         }
     }
 
@@ -40,7 +45,14 @@ impl Pin {
             name: name.to_owned(),
             ty,
             default,
+            optional: false,
         }
+    }
+
+    /// The same pin marked optional.
+    pub fn optional(mut self) -> Self {
+        self.optional = true;
+        self
     }
 }
 
@@ -86,7 +98,7 @@ pub struct Special {
 }
 
 /// Event node types (no exec input; the runtime starts flows from them).
-pub const EVENTS: [&str; 14] = [
+pub const EVENTS: [&str; 20] = [
     "OnStart",
     "OnUpdate",
     "OnFixedUpdate",
@@ -95,6 +107,12 @@ pub const EVENTS: [&str; 14] = [
     "OnTriggerExit",
     "OnCollisionEnter",
     "OnCollisionExit",
+    "OnTriggerEnter2D",
+    "OnTriggerStay2D",
+    "OnTriggerExit2D",
+    "OnCollisionEnter2D",
+    "OnCollisionStay2D",
+    "OnCollisionExit2D",
     "OnInputAction",
     "OnCustomEvent",
     "OnTimer",
@@ -128,21 +146,62 @@ pub static SPECIAL: &[Special] = &[
         "OnTriggerEnter",
         "On Trigger Enter",
         "Events",
-        "overlap begin physics"
+        "overlap begin physics 3d"
     ),
     special!(
         "OnTriggerExit",
         "On Trigger Exit",
         "Events",
-        "overlap end physics"
+        "overlap end physics 3d"
     ),
     special!(
         "OnCollisionEnter",
         "On Collision Enter",
         "Events",
-        "hit physics"
+        "hit physics 3d"
     ),
-    special!("OnCollisionExit", "On Collision Exit", "Events", "physics"),
+    special!(
+        "OnCollisionExit",
+        "On Collision Exit",
+        "Events",
+        "physics 3d"
+    ),
+    special!(
+        "OnTriggerEnter2D",
+        "On Trigger Enter 2D",
+        "Events",
+        "overlap begin physics 2d rigidbody2d collider2d"
+    ),
+    special!(
+        "OnTriggerStay2D",
+        "On Trigger Stay 2D",
+        "Events",
+        "overlap inside every step physics 2d rigidbody2d collider2d"
+    ),
+    special!(
+        "OnTriggerExit2D",
+        "On Trigger Exit 2D",
+        "Events",
+        "overlap end physics 2d rigidbody2d collider2d"
+    ),
+    special!(
+        "OnCollisionEnter2D",
+        "On Collision Enter 2D",
+        "Events",
+        "hit land touch physics 2d rigidbody2d collider2d"
+    ),
+    special!(
+        "OnCollisionStay2D",
+        "On Collision Stay 2D",
+        "Events",
+        "touching every step physics 2d rigidbody2d collider2d"
+    ),
+    special!(
+        "OnCollisionExit2D",
+        "On Collision Exit 2D",
+        "Events",
+        "leave physics 2d rigidbody2d collider2d"
+    ),
     special!(
         "OnInputAction",
         "On Input Action",
@@ -361,9 +420,19 @@ pub fn ports(node: &Node, g: &ScriptGraph, files: &dyn Resolver) -> Ports {
             exec_out(&mut p, "Out");
             p.outputs.push(Pin::data("Delta Time", Float));
         }
-        "OnTriggerEnter" | "OnTriggerExit" | "OnCollisionEnter" | "OnCollisionExit" => {
+        "OnTriggerEnter" | "OnTriggerExit" | "OnCollisionEnter" | "OnCollisionExit"
+        | "OnTriggerEnter2D" | "OnTriggerStay2D" | "OnTriggerExit2D" => {
             exec_out(&mut p, "Out");
             p.outputs.push(Pin::data("Other", GameObject));
+        }
+        "OnCollisionEnter2D" | "OnCollisionStay2D" | "OnCollisionExit2D" => {
+            exec_out(&mut p, "Out");
+            p.outputs.push(Pin::data("Other", GameObject));
+            // Like the Lua collision's contacts[1] and relativeVelocity (z = 0); the normal
+            // points away from Other, towards this object (up when landing on the ground).
+            p.outputs.push(Pin::data("Point", Vector3));
+            p.outputs.push(Pin::data("Normal", Vector3));
+            p.outputs.push(Pin::data("Relative Velocity", Vector3));
         }
         "OnInputAction" => {
             exec_out(&mut p, "Out");

@@ -1948,3 +1948,239 @@ fn long_exec_chains_still_run_in_order() {
     let want: Vec<String> = (0..200).map(|i| i.to_string()).collect();
     assert_eq!(p.infos(), want);
 }
+
+/// 2D contacts reach the On Trigger/Collision … 2D nodes (with Other, and Normal for
+/// collisions); the 3D nodes stay quiet for 2D bodies.
+#[test]
+fn trigger_and_collision_2d_events_reach_graphs() {
+    use crate::scene::{BoxCollider2D, CircleCollider2D, Collider2DCommon, Rigidbody2D};
+    use glam::Vec2;
+    let root = project("physics2d");
+    let mut g = G::new();
+    g.ovar("Stay", PinType::Int, Literal::Int(0));
+    g.ovar(
+        "Normal",
+        PinType::Vector3,
+        Literal::Vector3([0.0, 0.0, 0.0]),
+    );
+    for (event, word) in [
+        ("OnTriggerEnter2D", "enter "),
+        ("OnTriggerExit2D", "exit "),
+        ("OnCollisionEnter2D", "landed on "),
+        ("OnTriggerEnter", "3d trigger "),
+        ("OnCollisionEnter", "3d collision "),
+    ] {
+        let ev = g.n(event);
+        let name = g.api("#GameObject", "name", "get");
+        g.w(ev, "Other", name, "Target");
+        let text = g.n("Append");
+        g.v(text, "A", Literal::String(word.into()));
+        g.w(name, "Value", text, "B");
+        let log = g.log();
+        g.w(text, "Result", log, "Message");
+        g.w(ev, "Out", log, "In");
+        if event == "OnCollisionEnter2D" {
+            let s = g.set("Normal");
+            g.w(ev, "Normal", s, "Value");
+            g.w(log, "Out", s, "In");
+        }
+    }
+    let stay = g.n("OnTriggerStay2D");
+    let inc = g.increment("Stay");
+    g.w(stay, "Out", inc, "In");
+    g.0.save(&root.join(GRAPH)).unwrap();
+
+    let mut scene = Scene::new("t");
+    let at = |scene: &mut Scene, name: &str, y: f32| {
+        let e = scene.spawn(name, None);
+        scene.set_transform(e, Transform::from_position(Vec3::new(0.0, y, 0.0)));
+        e
+    };
+    let ground = at(&mut scene, "Ground", -3.0);
+    scene.add(
+        ground,
+        BoxCollider2D {
+            size: Vec2::new(40.0, 1.0),
+            ..Default::default()
+        },
+    );
+    let coin = at(&mut scene, "Coin", -0.9);
+    scene.add(
+        coin,
+        CircleCollider2D {
+            common: Collider2DCommon {
+                is_trigger: true,
+                ..Default::default()
+            },
+            radius: 0.3,
+        },
+    );
+    let player = at(&mut scene, "Player", 0.0);
+    scene.add(player, Rigidbody2D::default());
+    scene.add(player, BoxCollider2D::default());
+    attach(&mut scene, player, GRAPH, &[]);
+    let mut p = Play::start(root, scene);
+    p.frames(90);
+    p.no_errors();
+    let logs = p.infos();
+    assert_eq!(
+        logs.iter()
+            .filter(|l| !l.starts_with("landed"))
+            .collect::<Vec<_>>(),
+        ["enter Coin", "exit Coin"],
+        "{logs:?}"
+    );
+    assert!(logs.contains(&"landed on Ground".to_owned()), "{logs:?}");
+    assert!(p.ovar(player, "Stay").as_int() >= 1);
+    let n = p.ovar(player, "Normal");
+    let Value::Vec3(n) = n else {
+        panic!("normal {n:?}")
+    };
+    assert!(n.y > 0.9, "normal points up, away from the ground: {n}");
+}
+
+/// An API node of a variadic Lua function (Physics2D.RaycastAll) with its optional pins left
+/// unset calls it without them; a set optional pin is passed.
+#[test]
+fn optional_api_pins_are_left_out_while_unset() {
+    use crate::scene::BoxCollider2D;
+    use glam::Vec2;
+    let mut g = G::new();
+    g.ovar("Hit", PinType::Any, Literal::None);
+    g.ovar("Short", PinType::Any, Literal::None);
+    let update = g.n("OnUpdate");
+    let origin = g.n("MakeVector3");
+    let down = g.n("MakeVector3");
+    g.f(down, "Y", -1.0);
+    let args = "origin, direction, [distance], [layerMask]";
+    let ray = g.api_args("Physics2D", "RaycastAll", args);
+    g.w(origin, "Vector", ray, "origin");
+    g.w(down, "Vector", ray, "direction");
+    let set = g.set("Hit");
+    g.w(ray, "Result", set, "Value");
+    // The ground is 2.5 below: a 1-unit ray misses.
+    let short = g.api_args("Physics2D", "RaycastAll", args);
+    g.w(origin, "Vector", short, "origin");
+    g.w(down, "Vector", short, "direction");
+    g.v(short, "distance", Literal::Float(1.0));
+    let set2 = g.set("Short");
+    g.w(short, "Result", set2, "Value");
+    chain(&mut g, update, "Out", &[ray, set, short, set2]);
+    let node = g.0.nodes.iter().find(|n| n.id == ray).unwrap();
+    let ports = nodes::ports(node, &g.0, &NoFiles);
+    assert!(ports.input("distance").is_some_and(|p| p.optional));
+    assert!(ports.input("origin").is_some_and(|p| !p.optional));
+    let root = project("optional_pins");
+    g.0.save(&root.join(GRAPH)).unwrap();
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(ground, Transform::from_position(Vec3::new(0.0, -3.0, 0.0)));
+    scene.add(
+        ground,
+        BoxCollider2D {
+            size: Vec2::new(10.0, 1.0),
+            ..Default::default()
+        },
+    );
+    let e = scene.spawn("Caster", None);
+    attach(&mut scene, e, GRAPH, &[]);
+    let mut p = Play::start(root, scene);
+    p.frames(5);
+    p.no_errors();
+    let hits = |v: Value| match v {
+        Value::List(l) => l.len(),
+        _ => 0,
+    };
+    assert_eq!(hits(p.ovar(e, "Hit")), 1, "the full ray hits");
+    assert_eq!(hits(p.ovar(e, "Short")), 0, "distance 1 misses");
+}
+
+/// Native 2D physics nodes: Physics2D Raycast / Overlap* with typed pins, Rigidbody 2D
+/// velocity, AddForce and MovePosition.
+#[test]
+fn native_2d_physics_nodes_have_typed_pins_and_work() {
+    use crate::scene::{BoxCollider2D, Rigidbody2D};
+    use glam::Vec2;
+    let mut g = G::new();
+    g.ovar("Hit", PinType::Bool, Literal::Bool(false));
+    g.ovar("Dist", PinType::Float, Literal::Float(0.0));
+    g.ovar("NormalY", PinType::Float, Literal::Float(0.0));
+    g.ovar("Under", PinType::GameObject, Literal::None);
+    g.ovar("Count", PinType::Int, Literal::Int(0));
+    g.ovar("Vel", PinType::Vector3, Literal::Vector3([0.0, 0.0, 0.0]));
+    let start = g.n("OnStart");
+    // Down from the body's start (0, 0) to the ground's top at y = -2.5.
+    let ray = g.api("Physics2D", "Raycast", "call");
+    g.v(ray, "Origin", Literal::Vector3([0.0, -0.6, 0.0]));
+    g.v(ray, "Direction", Literal::Vector3([0.0, -1.0, 0.0]));
+    let s_hit = g.set("Hit");
+    g.w(ray, "Hit", s_hit, "Value");
+    let s_dist = g.set("Dist");
+    g.w(ray, "Distance", s_dist, "Value");
+    let brk = g.n("BreakVector3");
+    g.w(ray, "Normal", brk, "Vector");
+    let s_ny = g.set("NormalY");
+    g.w(brk, "Y", s_ny, "Value");
+    let point = g.api("Physics2D", "OverlapPoint", "call");
+    g.v(point, "Point", Literal::Vector3([0.0, -3.0, 0.0]));
+    let s_under = g.set("Under");
+    g.w(point, "Result", s_under, "Value");
+    let all = g.api("Physics2D", "OverlapCircleAll", "call");
+    g.v(all, "Center", Literal::Vector3([0.0, -3.0, 0.0]));
+    g.f(all, "Radius", 1.0);
+    let count = g.n("ListLength");
+    g.w(all, "Result", count, "List");
+    let s_count = g.set("Count");
+    g.w(count, "Result", s_count, "Value");
+    // Off the ground, sideways: Set velocity (5, 0).
+    let set_v = g.api("#Rigidbody2D", "velocity", "set");
+    g.v(set_v, "Value", Literal::Vector3([5.0, 0.0, 0.0]));
+    chain(
+        &mut g,
+        start,
+        "Out",
+        &[s_hit, s_dist, s_ny, s_under, s_count, set_v],
+    );
+    let update = g.n("OnUpdate");
+    let get_v = g.api("#Rigidbody2D", "velocity", "get");
+    let s_vel = g.set("Vel");
+    g.w(get_v, "Value", s_vel, "Value");
+    g.w(update, "Out", s_vel, "In");
+    for (n, pin, ty) in [
+        (ray, "Hit", PinType::Bool),
+        (ray, "Collider", PinType::GameObject),
+        (all, "Result", PinType::List),
+    ] {
+        let node = g.0.nodes.iter().find(|x| x.id == n).unwrap();
+        let ports = nodes::ports(node, &g.0, &NoFiles);
+        assert_eq!(ports.output(pin).map(|p| p.ty), Some(ty), "{pin}");
+    }
+    let root = project("native2d");
+    g.0.save(&root.join(GRAPH)).unwrap();
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(ground, Transform::from_position(Vec3::new(0.0, -3.0, 0.0)));
+    scene.add(
+        ground,
+        BoxCollider2D {
+            size: Vec2::new(40.0, 1.0),
+            ..Default::default()
+        },
+    );
+    let e = scene.spawn("Body", None);
+    scene.add(e, Rigidbody2D::default());
+    scene.add(e, BoxCollider2D::default());
+    attach(&mut scene, e, GRAPH, &[]);
+    let mut p = Play::start(root, scene);
+    p.frames(3);
+    p.no_errors();
+    assert!(p.ovar(e, "Hit").as_bool());
+    assert!((p.ovar(e, "Dist").as_float() - 1.9).abs() < 0.05);
+    assert!(p.ovar(e, "NormalY").as_float() > 0.99);
+    assert!(matches!(p.ovar(e, "Under"), Value::Object(g) if g == ground));
+    assert_eq!(p.ovar(e, "Count").as_int(), 1);
+    let Value::Vec3(v) = p.ovar(e, "Vel") else {
+        panic!("velocity")
+    };
+    assert!((v.x - 5.0).abs() < 0.1, "{v}");
+}

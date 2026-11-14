@@ -820,7 +820,7 @@ that uses the full game API on the running game:
 | | |
 |---|---|
 | `loadScene(name)` | Restart the session on a scene (name in Build Settings, any `<name>.scene` under Assets, or a path); its `Awake` runs at once, `Start` on the next frame, then the test goes on |
-| `yield(seconds)` | Let the game run for that much game time (at least one frame) |
+| `yield(seconds)` | Let the game run for that much game time (at least one frame). The test's game time keeps counting when the game loads scenes itself (`SceneManager.LoadScene` restarts `Time.time` at 0) |
 | `yieldFrames(n)` | Let the game run `n` frames (1 by default) |
 | `waitUntil(fn [, timeout])` | Run frames until `fn()` is true; fails after `timeout` s of game time (10) |
 | `Input.simulateKeyDown(key)` / `simulateKeyUp(key)` | Hold / release a key from the next frame (`GetKey`, `GetKeyDown`, `GetAxis` see it) |
@@ -828,7 +828,7 @@ that uses the full game API on the running game:
 | `Input.simulateMouseDown([button])` / `simulateMouseUp` / `simulateMousePosition(x, y)` | Mouse buttons and pointer (game-image pixels, 1280×720) |
 | `Input.simulateMouseDelta(dx, dy)` | Mouse movement for the next frame (pixels, up positive: the Mouse X / Mouse Y axes and `Input.mouseDelta` see it) |
 | `Input.simulateReset()` | Release everything |
-| `setTimeout(seconds)` | Longest game time the test may take (30 s by default) |
+| `setTimeout(seconds)` | Longest game time the test may take (30 s by default); a test also stops after four times that in real time (at least 2 minutes), for games paused with `Time.timeScale = 0` |
 | `ignoreErrorLogs()` | Errors logged by the game or the test (`Debug.LogError`, script errors) fail a PlayMode or EditMode test unless it calls this |
 
 ```lua

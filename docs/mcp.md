@@ -118,7 +118,7 @@ unknown or mistyped arguments are refused with the list of expected ones. Client
 | `scene.create_object` | Create an empty object, primitive, light, camera, audio source, particle system… with name, parent, position, rotation, scale and extra components |
 | `scene.instantiate_prefab` | Place a `.prefab` or a model (`.glb`, `.gltf`, `.obj`) |
 | `scene.set_field` | Set a component field (`"intensity"`, a dotted path like `"color.0"`, `GameObject` name/active/tag/layer, Transform `euler`, a script's public field) |
-| `scene.add_component` / `scene.remove_component` | By component name, or a Lua script by path |
+| `scene.add_component` / `scene.remove_component` | By component name, or a Lua script or Script Graph (`.vgraph`) by path |
 | `scene.set_parent` | Re-parent (keeps the world position), or move to the root |
 | `scene.delete_objects` | Delete objects and their children |
 | `scene.select` | Set the Scene Tree selection |
@@ -136,6 +136,21 @@ unknown or mistyped arguments are refused with the list of expected ones. Client
 | `asset.create_material` | A `.mat` with a color and any other material fields |
 | `asset.import` | Copy a file from elsewhere on the computer into an `Assets/` folder (never overwrites) |
 | `asset.delete` | Move an asset to the Recycle Bin / Trash |
+
+### Script Graphs
+
+| Tool | What it does |
+|---|---|
+| `graph.create` | A `.vgraph` under `Assets/` (On Start and On Update, or `empty`); `overwrite` replaces a file |
+| `graph.read` | Nodes (id, kind, title, settings, input values, pins with types), wires, Blackboard variables and compile problems |
+| `graph.add_node` | A node by kind (`Api` with `owner` / `member` / `mode` for an engine member), with settings, position and input values; returns its id and pins |
+| `graph.remove_node` | A node and its wires |
+| `graph.connect` / `graph.disconnect` | Wire an output to an input (types checked) / remove a pin's wires |
+| `graph.set_value` | The value an unconnected input uses (boolean, number, string, `[x, y, z]`) |
+| `graph.add_variable` | A Blackboard variable, Graph or Object scope |
+
+Graph edits are written to the file at once (no undo). A graph open in the Script Graph window
+reloads; one with unsaved changes there is refused.
 
 ### Editor
 

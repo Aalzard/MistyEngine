@@ -1454,3 +1454,11 @@
 "How strongly the light's visible shape glows, independent of how much it lights the scene." = "Işığın görünen şeklinin ne kadar güçlü parladığı; sahneyi ne kadar aydınlattığından bağımsızdır."
 "0 = tight, 1 = wide and soft: the same glow over a wider, smoother falloff, so its core is less harsh. Adds no brightness." = "0 = dar, 1 = geniş ve yumuşak: aynı ışıltı daha geniş ve daha yumuşak bir azalmaya yayılır, böylece merkezi daha az serttir. Parlaklık eklemez."
 "Tones down the blown-out white core of the light's visible shape. Its glow stays." = "Işığın görünen şeklinin patlamış beyaz merkezini yumuşatır. Işıltısı aynı kalır."
+
+[ui_calls]
+"Method" = "Yöntem"
+"Custom Event" = "Özel Olay"
+"Lua" = "Lua"
+"No Lua functions or Script Graph Custom Events on the target" = "Hedefte Lua işlevi veya Betik Grafiği Özel Olayı yok"
+"Lua functions and Script Graph Custom Events of the target" = "Hedefin Lua işlevleri ve Betik Grafiği Özel Olayları"
+"{name} ({kind}, optional: left out while unset)" = "{name} ({kind}, isteğe bağlı: ayarlanmadıkça atlanır)"

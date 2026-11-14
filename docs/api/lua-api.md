@@ -511,17 +511,23 @@ Keyboard, mouse and axes (the Scene Viewer must have focus)
 
 *function* · source: `input_api.rs`
 
-### `Input.GetButton(...)`
+### `Input.GetButton(name)`
 
 *function* · source: `input_api.rs`
 
-### `Input.GetButtonDown(...)`
+True while a virtual button of the Input Manager is held ("Jump", "Fire1", …)
+
+### `Input.GetButtonDown(name)`
 
 *function* · source: `input_api.rs`
 
-### `Input.GetButtonUp(...)`
+True on the frame a virtual button was pressed
+
+### `Input.GetButtonUp(name)`
 
 *function* · source: `input_api.rs`
+
+True on the frame a virtual button was released
 
 ### `Input.GetJoystickNames()`
 
@@ -1003,13 +1009,17 @@ World gravity (Vector3, settable while playing)
 
 *function* · source: `physics2d_api.rs`
 
-### `Physics2D.Raycast(...)`
+### `Physics2D.Raycast(origin, direction [, distance [, layerMask]])`
 
 *function* · source: `physics2d_api.rs`
 
-### `Physics2D.RaycastAll(...)`
+Nearest 2D hit or nil (point, normal, distance, gameObject, …); z is ignored
+
+### `Physics2D.RaycastAll(origin, direction [, distance [, layerMask]])`
 
 *function* · source: `physics2d_api.rs`
+
+Every 2D hit, nearest first
 
 ### `Physics2D.AllLayers`
 
@@ -4058,9 +4068,11 @@ Linear velocity
 
 ## Rigidbody2D (object)
 
-### `rigidbody2D:AddForce(...)`
+### `rigidbody2D:AddForce(force [, mode])`
 
 *function* · source: `physics2d_api.rs`
+
+Apply a 2D force (mode "Force" by default, or "Impulse")
 
 ### `rigidbody2D:AddTorque(torque, [mode])`
 
@@ -4068,9 +4080,11 @@ Linear velocity
 
 > AddTorque(degrees-ish torque [, mode]): counter-clockwise positive.
 
-### `rigidbody2D:MovePosition(...)`
+### `rigidbody2D:MovePosition(position)`
 
 *function* · source: `physics2d_api.rs`
+
+Move a kinematic 2D body there in the next physics step
 
 ### `rigidbody2D:MoveRotation(degrees)`
 
@@ -4572,9 +4586,11 @@ Shown text
 
 ## Tilemap (object)
 
-### `tilemap:CellToWorld(...)`
+### `tilemap:CellToWorld(cell)`
 
 *function* · source: `tilemap_api.rs`
+
+World position of a cell's lower-left corner
 
 > The cell's lower-left corner, like the reference API (the centre is GetCellCenterWorld).
 
@@ -4582,25 +4598,33 @@ Shown text
 
 *function* · source: `tilemap_api.rs`
 
-### `tilemap:GetCellCenterWorld(...)`
+### `tilemap:GetCellCenterWorld(cell)`
 
 *function* · source: `tilemap_api.rs`
 
-### `tilemap:GetTile(...)`
+World position of a cell's centre
+
+### `tilemap:GetTile(cell)`
 
 *function* · source: `tilemap_api.rs`
+
+The tile in a cell, or nil
 
 ### `tilemap:GetUsedTilesCount()`
 
 *function* · source: `tilemap_api.rs`
 
-### `tilemap:HasTile(...)`
+### `tilemap:HasTile(cell)`
 
 *function* · source: `tilemap_api.rs`
 
-### `tilemap:SetTile(...)`
+True when a cell has a tile
+
+### `tilemap:SetTile(cell, tile)`
 
 *function* · source: `tilemap_api.rs`
+
+Put a tile (asset path) in a cell (Vector3 or x, y); nil clears it
 
 ### `tilemap:WorldToCell(p)`
 
