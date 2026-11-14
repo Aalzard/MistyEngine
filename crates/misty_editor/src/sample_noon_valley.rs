@@ -1471,9 +1471,9 @@ fn volume() -> PostProcessVolume {
     ae.limit_max = 0.0;
     // Metered without the brightest tenth (sky through the canopy) but with the sun flecks:
     // metering only the shade blew the sun patches on the forest floor out to white.
-    ae.histogram_high = 88.0;
-    // (A touch under: the darker sky would otherwise lift the meadow above the photo's.)
-    ae.compensation = -0.3;
+    ae.histogram_high = 85.0;
+    // (With the sun flecks metered the image no longer needs to sit under.)
+    ae.compensation = 0.0;
     ae.speed_dark_to_light = 1.5;
     ae.speed_light_to_dark = 1.2;
     v.ambient_occlusion.active = true;
