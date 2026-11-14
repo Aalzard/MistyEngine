@@ -1016,7 +1016,8 @@ fn wood_cell(
     }
     // Carpets of low broad-leaved plants over most of the floor: flat (a third of a metre
     // high, 1.5 m across), overlapping; scattered plants between them.
-    for k in 0..(carpet * (14.0 + 6.0 * r(8))) as u32 + 2 + (r(9) * 3.0) as u32 {
+    // (Fewer since round 59: the carpets were most of the inside view's cost.)
+    for k in 0..(carpet * (10.0 + 5.0 * r(8))) as u32 + 1 + (r(9) * 2.0) as u32 {
         plant(k, 0x6c07, 8, [0.3, 0.55], [1.0, 1.5]);
     }
     if gap || r(1) > 0.7 {
