@@ -669,6 +669,9 @@ impl EditorApp {
             for w in gpu.ui.take_warnings() {
                 s.console.warn(w);
             }
+            for e in misty_engine::render::gpu_errors::take_new() {
+                s.console.log(LogLevel::Error, e);
+            }
         }
         drop(reload_scope);
         if !s.play.in_play_mode() {

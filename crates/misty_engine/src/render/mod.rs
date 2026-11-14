@@ -20,6 +20,7 @@ mod frame_lists;
 mod glow;
 mod glowless;
 mod gpu_culling;
+pub mod gpu_errors;
 mod gpu_timer;
 mod grass_cull;
 mod grass_near_shadow;

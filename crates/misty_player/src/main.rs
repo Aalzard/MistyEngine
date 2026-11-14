@@ -293,6 +293,9 @@ impl Player {
         for w in gfx.take_warnings() {
             self.log.write(LogKind::Warning, &w);
         }
+        for e in misty_engine::render::gpu_errors::take_new() {
+            self.log.write(LogKind::Error, &e);
+        }
         if misty_engine::profiler::enabled() {
             misty_engine::profiler::set_memory(misty_engine::profiler::MemoryStats {
                 entities: self.game.scene.world.len() as usize,

@@ -66,6 +66,9 @@ pub struct GpuStart {
 
 impl GpuStart {
     pub fn spawn(state: egui_wgpu::RenderState) -> Self {
+        // A GPU validation error (in a frame part finished on a worker thread, too) goes to
+        // the Console instead of aborting the editor (render/gpu_errors.rs).
+        misty_engine::render::gpu_errors::install(&state.device);
         misty_engine::render::cache_shader_modules(&state.device);
         // Compiled pipelines from earlier launches (Vulkan): a new build of the editor starts
         // with the driver's own cache empty.
