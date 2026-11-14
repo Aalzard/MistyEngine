@@ -44,6 +44,13 @@ const TURF_GROUND_NORMAL: &str = "Assets/NoonValley/Textures/MeadowTurfNormal.pn
 const TURF_GROUND_HEIGHT: &str = "Assets/NoonValley/Textures/MeadowTurfHeight.png";
 const FOREST_FLOOR_NORMAL: &str = "Assets/NoonValley/Textures/ForestFloorNormal.png";
 const FOREST_FLOOR_HEIGHT: &str = "Assets/NoonValley/Textures/ForestFloorHeight.png";
+// The cliff sites' outcrops: the sample's layered outcrop with moss, damp and water stains
+// at its foot (its own albedo and material; the sample rock is untouched).
+const NOON_OUTCROP_ALBEDO: &str = "Assets/NoonValley/Rocks/NoonOutcrop_Albedo.jpg";
+const NOON_OUTCROP_MATERIAL: &str = "Assets/NoonValley/Rocks/NoonOutcrop.mat";
+const NOON_OUTCROP_PREFAB: &str = "Assets/NoonValley/Rocks/NoonOutcrop.prefab";
+/// Outcrops bigger than this (scale) are the cliff sites' slabs (NoonValley's variant).
+const CLIFF_SLAB: f32 = 6.0;
 
 fn nv_texture(name: &str) -> String {
     format!("{DIR}/Textures/{name}.png")
@@ -281,7 +288,7 @@ fn grass() -> details::DetailSettings {
         // (Fewer, wider cards than MeadowDemo's 800 of 4 cm: the blades are 2.5 times taller,
         // so they cover the ground as well at under half the cost; past 130 m the turf
         // texture reads the same.)
-        density: 360.0,
+        density: 330.0,
         draw_distance: 130.0,
         height: [0.2, 0.62],
         width: 0.058,
@@ -1276,6 +1283,15 @@ fn terrain_data() -> TerrainData {
         out[0] = soft(w[0]);
         out[1] = soft(w[1]);
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
+        // Patches of moss over the litter in the woods (the dark turf, no grass on it).
+        if out[3] > 0 {
+            // (Patches nearly all moss: the litter's height map wins any even blend.)
+            let moss = smooth(-0.1, 0.2, noise::fbm(x, z, 11.0, 3, 91))
+                * (0.7 + 0.3 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
+            let moved = (out[3] as f32 * moss * 0.92).round() as u8;
+            out[3] -= moved;
+            out[1] = out[1].saturating_add(moved);
+        }
         d.set_layer_weights(t, &out);
     }
     // (No herb layer since round 59: from the floor its blades read as pale sprouts, and the
@@ -1306,6 +1322,36 @@ fn terrain_data() -> TerrainData {
         ..d.clone()
     };
     d.trees.instances = trees(&stored);
+    // Dark litter and mossy turf round the feet of the cliff sites' slabs (the rock meets a
+    // dark, green apron, not bare limestone).
+    let texel = SIZE.x / n as f32;
+    for p in rocks(&d)
+        .iter()
+        .filter(|p| p.rock == crate::sample_rocks::OUTCROP && p.scale > CLIFF_SLAB)
+    {
+        let c = Vec2::new(p.position.x - CORNER.x, p.position.z - CORNER.z);
+        let r = 2.2 * p.scale;
+        let reach = (r / texel).ceil() as i32 + 1;
+        let (cx, cz) = ((c.x / texel) as i32, (c.y / texel) as i32);
+        for tz in (cz - reach).max(0)..=(cz + reach).min(n as i32 - 1) {
+            for tx in (cx - reach).max(0)..=(cx + reach).min(n as i32 - 1) {
+                let q = Vec2::new((tx as f32 + 0.5) * texel, (tz as f32 + 0.5) * texel);
+                let k = smooth(r, 0.6 * r, q.distance(c));
+                if k <= 0.0 {
+                    continue;
+                }
+                let t = tz as usize * n + tx as usize;
+                let w = d.layer_weights(t);
+                let mut out = [0u8; MAX_LAYERS];
+                let keep = 1.0 - 0.75 * k;
+                out[0] = (w[0] as f32 * keep) as u8;
+                out[2] = (w[2] as f32 * keep) as u8;
+                out[3] = (w[3] as f32 * keep + 255.0 * 0.45 * k).min(255.0) as u8;
+                out[1] = 255u32.saturating_sub(out[0] as u32 + out[2] as u32 + out[3] as u32) as u8;
+                d.set_layer_weights(t, &out);
+            }
+        }
+    }
     d
 }
 
@@ -1583,7 +1629,24 @@ fn demo_scene(d: &TerrainData) -> Scene {
     if let Some(cam) = s.find_by_name("Main Camera") {
         s.game_object_mut(cam).active = false;
     }
-    crate::sample_rocks::add_to_scene(&mut s, &rocks(d));
+    let (slabs, rest): (Vec<_>, Vec<_>) = rocks(d)
+        .into_iter()
+        .partition(|p| p.rock == crate::sample_rocks::OUTCROP && p.scale > CLIFF_SLAB);
+    crate::sample_rocks::add_to_scene(&mut s, &rest);
+    // The cliff sites' slabs: NoonValley's outcrop (moss and stains at the foot).
+    let slab = misty_engine::scene::prefab::Prefab::load(&project().join(NOON_OUTCROP_PREFAB))
+        .expect("NoonOutcrop prefab (run write_noon_valley)");
+    let parent = s.spawn("Cliff Rocks", None);
+    for p in &slabs {
+        let e = s.instantiate_prefab(&slab, Some(NOON_OUTCROP_PREFAB), Some(parent));
+        let mut t = Transform {
+            position: p.position,
+            scale: Vec3::splat(p.scale),
+            ..Default::default()
+        };
+        t.set_rotation(p.rotation);
+        s.set_transform(e, t);
+    }
     // The meadow's insects and birds in the open, the forest's birds from the woods.
     crate::sample_ambience::add(
         &mut s,
@@ -1647,6 +1710,89 @@ fn write_metas(root: &std::path::Path) {
     }
 }
 
+/// NoonValley's outcrop: the sample's baked albedo retouched where the slab meets the slope
+/// (damp moss and darker soil up its foot, patches of moss on its ledges, water stains running
+/// down its faces), with its own material and prefab over the sample's meshes.
+fn write_noon_outcrop(root: &std::path::Path) {
+    use crate::sample_rocks::{OUTCROP, bake, ensure_meta, refresh_guids, rocks, shape};
+    let rock = &rocks()[OUTCROP];
+    std::fs::create_dir_all(root.join(DIR).join("Rocks")).unwrap();
+    let src = image::open(root.join(rock.albedo_path()))
+        .unwrap()
+        .to_rgb8();
+    let n = src.width() as usize;
+    let mesh = shape::build(&rock.stones, &rock.subdivisions);
+    let points = bake::texel_points(&mesh.data, n);
+    let (lo, hi) = points
+        .iter()
+        .flatten()
+        .fold((f32::MAX, f32::MIN), |(a, b), (p, _)| {
+            (a.min(p.y), b.max(p.y))
+        });
+    let lin = |v: u8| {
+        let c = v as f32 / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let mut out = src.clone();
+    for (i, pt) in points.iter().enumerate() {
+        let Some((p, nrm)) = pt else { continue };
+        let (x, y) = ((i % n) as u32, (i / n) as u32);
+        let px = src.get_pixel(x, y);
+        let mut c = Vec3::new(lin(px[0]), lin(px[1]), lin(px[2]));
+        let h = (p.y - lo) / (hi - lo).max(1e-3);
+        let around = p.x.atan2(p.z) * 3.0;
+        // The foot: damp, mossy, darker towards the soil.
+        let ragged = 0.08 * noise::fbm(around, p.y * 4.0, 0.7, 3, 501);
+        let foot = 1.0 - smooth(0.0, 0.42, h + ragged);
+        let patch = 0.6 + 0.4 * smooth(-0.3, 0.3, noise::fbm(p.x * 6.0, p.z * 6.0, 1.0, 3, 503));
+        let moss = Vec3::new(0.035, 0.05, 0.014);
+        c = c.lerp(
+            c * Vec3::new(0.5, 0.6, 0.36) + moss * 0.4,
+            foot * patch * 0.85,
+        );
+        c = c.lerp(Vec3::new(0.03, 0.026, 0.018), foot * foot * 0.4);
+        // Moss on the ledges (faces turned up).
+        let ledge = smooth(0.55, 0.9, nrm.y)
+            * smooth(0.0, 0.5, noise::fbm(p.x * 4.0, p.z * 4.0, 1.0, 3, 507));
+        c = c.lerp(moss, ledge * 0.55);
+        // Water stains down the faces, from the ledges to the foot.
+        let streak = smooth(0.25, 0.6, noise::fbm(around * 2.5, p.y * 0.6, 0.35, 3, 509))
+            * smooth(0.75, 0.2, nrm.y)
+            * (0.5 + 0.5 * (1.0 - h));
+        c *= Vec3::ONE - Vec3::new(0.32, 0.3, 0.26) * streak;
+        out.put_pixel(x, y, image::Rgb([srgb(c.x), srgb(c.y), srgb(c.z)]));
+    }
+    let mut file = std::fs::File::create(root.join(NOON_OUTCROP_ALBEDO)).unwrap();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 92)
+        .encode_image(&out)
+        .unwrap();
+    ensure_meta(root, &format!("{DIR}/Rocks"));
+    ensure_meta(root, NOON_OUTCROP_ALBEDO);
+    refresh_guids(root);
+    noon_outcrop_material(root)
+        .save(&root.join(NOON_OUTCROP_MATERIAL))
+        .unwrap();
+    ensure_meta(root, NOON_OUTCROP_MATERIAL);
+    refresh_guids(root);
+    crate::sample_rocks::prefab_with(rock, NOON_OUTCROP_MATERIAL)
+        .save(&root.join(NOON_OUTCROP_PREFAB))
+        .unwrap();
+    ensure_meta(root, NOON_OUTCROP_PREFAB);
+    refresh_guids(root);
+}
+
+/// The sample outcrop's material with NoonValley's retouched albedo.
+fn noon_outcrop_material(root: &std::path::Path) -> misty_engine::assets::Material {
+    let rock = &crate::sample_rocks::rocks()[crate::sample_rocks::OUTCROP];
+    let mut m = misty_engine::assets::Material::load(&root.join(rock.material_path())).unwrap();
+    m.albedo_map = Some(NOON_OUTCROP_ALBEDO.into());
+    m
+}
+
 #[test]
 #[ignore = "writes into SampleProject; run on purpose to regenerate"]
 fn write_noon_valley() {
@@ -1663,6 +1809,7 @@ fn write_noon_valley() {
     for (rel, tree) in tree_assets() {
         tree.save(&root.join(rel)).unwrap();
     }
+    write_noon_outcrop(&root);
     let d = terrain_data();
     eprintln!("{} trees", d.trees.instances.len());
     d.save(&root.join(DATA)).unwrap();
@@ -1687,9 +1834,16 @@ fn noon_valley_matches_its_generator() {
         FOREST_FLOOR,
         FOREST_FLOOR_NORMAL,
         FOREST_FLOOR_HEIGHT,
+        NOON_OUTCROP_ALBEDO,
+        NOON_OUTCROP_PREFAB,
     ] {
         assert!(root.join(rel).exists(), "{rel}");
     }
+    crate::test_util::assert_close(
+        &misty_engine::assets::Material::load(&root.join(NOON_OUTCROP_MATERIAL)).unwrap(),
+        &noon_outcrop_material(&root),
+        NOON_OUTCROP_MATERIAL,
+    );
     for (rel, tree) in tree_assets() {
         assert_eq!(TreeAsset::load(&root.join(&rel)).unwrap(), tree, "{rel}");
     }

@@ -322,6 +322,11 @@ pub fn material(rock: &Rock, tint: [f32; 3]) -> Material {
 
 /// The rock's prefab: a LOD Group over LOD 0 (the dense, virtual mesh) and LOD 1–3.
 pub fn prefab(rock: &Rock) -> Prefab {
+    prefab_with(rock, &rock.material_path())
+}
+
+/// [`prefab`] with another material (a scene's own variant of the rock).
+pub fn prefab_with(rock: &Rock, material: &str) -> Prefab {
     let mut s = Scene::new("Prefab");
     let root = s.spawn(rock.name, None);
     let mut group = LodGroup {
@@ -343,7 +348,7 @@ pub fn prefab(rock: &Rock) -> Prefab {
         s.add(
             e,
             MeshRenderer {
-                material: Some(rock.material_path()),
+                material: Some(material.to_owned()),
                 ..Default::default()
             },
         );
@@ -360,7 +365,7 @@ pub fn prefab(rock: &Rock) -> Prefab {
 }
 
 /// Give `rel` a meta file with a GUID when it has none.
-fn ensure_meta(root: &Path, rel: &str) {
+pub(crate) fn ensure_meta(root: &Path, rel: &str) {
     let abs = root.join(rel);
     if misty_engine::asset_db::meta::read_guid(&abs).is_none() {
         misty_engine::asset_db::meta::write_guid(&abs, misty_engine::asset_db::Guid::new())
@@ -369,7 +374,7 @@ fn ensure_meta(root: &Path, rel: &str) {
 }
 
 /// Re-read the project's GUIDs (so saved JSON assets list the GUIDs of what they reference).
-fn refresh_guids(root: &Path) {
+pub(crate) fn refresh_guids(root: &Path) {
     misty_engine::asset_db::install(misty_engine::asset_db::GuidDatabase::read(root));
 }
 

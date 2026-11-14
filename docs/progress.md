@@ -5099,3 +5099,24 @@ a built player.
 Fifteen minutes (83 cycles: Lumo's Leap stages, the Behaviour Tree demo, a GIF every other
 cycle, autosave every minute): no Console warnings or errors, GPU memory and handles flat,
 private memory up about 1 MB a cycle (left open).
+### Round 59.5 — outcrop feet, lighter far meadow, mossy forest floor, hero cost
+
+- **Outcrops**: NoonValley's own outcrop (`Assets/NoonValley/Rocks/NoonOutcrop.*`): the
+  sample's baked albedo retouched texel by texel from the mesh (`sample_rocks::bake::
+  texel_points`): damp moss and darker soil up its foot, moss on its ledges, water stains down
+  its faces; its own material and prefab over the sample's meshes (MeadowDemo's rocks are
+  untouched). The terrain round each slab's foot gets a dark apron of litter and mossy turf.
+  `cliffs_outcrops_r4_r5.jpg`.
+- **Far meadow**: `FAR_SHADE` 0.15 → 0.08: far 65/73/44 → 67/76/45 sRGB at eye level, the
+  crest band still matching the grass (66/73/33 against 64/74/26).
+- **Forest floor**: patches of moss (the dark turf) over the litter, strong enough to win the
+  height blend (the litter's height map hid an even mix). `forest_floor_r4_r5.jpg`.
+- **Hero cost**: grass 360 → 330 blades/m²: hero 11.8 ms GPU (parts 11.9), inside 10.7 ms
+  (parts 10.7).
+- Checks: fmt clean, clippy 0 warnings, tests 1004 editor (with
+  `noon_valley_matches_its_generator`, now also checking the outcrop material) + 1649 engine +
+  the rest passed, golden 20 / 20 (on this round's engine; later builds changed only the
+  generator).
+- Still differs: the outcrops' feet read mostly through the darker apron from the meadow (the
+  retouched foot is small at that distance and half sunk); the far meadow is still darker than
+  the photo's; the slabs are paler and smoother than the photo's tan limestone.

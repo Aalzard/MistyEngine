@@ -109,6 +109,24 @@ than the photo; inside GPU ~0.7 ms over 12.7.
   would need NoonValley material variants and prefab overrides, or terrain paint around each
   outcrop computed in `terrain_data`).
 
+## Round 5: outcrop feet, far meadow, forest moss, hero cost
+
+- `write_noon_outcrop` (in `write_noon_valley`): the sample's `Outcrop Layered` albedo
+  (1024²) retouched using `sample_rocks::bake::texel_points` (object point and normal per
+  texel of the mesh rebuilt with `shape::build`): foot band (lower 42 % of the height, ragged),
+  ledge moss (normal.y > 0.55), stains down the faces. Material = the sample's material with
+  the new albedo (`noon_outcrop_material`, checked by `noon_valley_matches_its_generator`);
+  prefab `sample_rocks::prefab_with` over the sample's meshes. Slabs with scale > 6 use it
+  ("Cliff Rocks" in the scene); the rest keep the sample prefabs.
+- Terrain apron round each slab (radius 2.2 × scale): 75 % of the weights moved to litter
+  (0.45 k) and turf (the rest).
+- Forest moss: turf patches over the litter, `smooth(-0.1, 0.2, fbm 11 m) × (0.7..1)`,
+  0.92 of the litter moved: an even mix lost to the litter's height map (the first try, 30–56 %
+  turf, did not show at all).
+- `FAR_SHADE` 0.08. Grass density 330.
+- Eye level sRGB far / past crest / grass: 67/76/45, 66/73/33, 64/74/26. Timings: hero 11.84
+  GPU (parts 11.88), inside 10.70 (10.73).
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
