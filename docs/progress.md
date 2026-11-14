@@ -4987,3 +4987,17 @@ Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
   checked on the first round-3 build; the second only changed the generator). One editor UI
   test (`right_click_on_empty_space_opens_the_folder_menu_everywhere`, from main) failed once
   under load and passed 3 / 3 alone and in the next full editor run.
+
+### Round 59.4 — lighter far meadow, no herbs, darker wood crowns, outcrops up the slope
+
+- **Far meadow**: the far field's extra shade is strongest just past the blades and eases off
+  far away; `FAR_SHADE` 0.35 → 0.15. Eye level sRGB (far meadow / just past the crest / grass
+  mass): round 3 58/65/43 / 65/71/32 / 64/74/25, now 65/73/44 / 66/73/33 / 64/74/25: lighter
+  olive far away and the crest band matches the grass.
+- **Herbs cut**: the Forest Herbs layer is gone (its blades read as pale sprouts in the sun;
+  the broad-leaved carpets and ferns stay). Inside view GPU 13.4 → 10.8 ms (parts 12.3 →
+  10.6), hero 12.7 ms (parts 12.3).
+- **`inside2`** crowns darker olive: lower-half luminance median 0.038 → 0.024 (photo 0.028).
+- **Cliffs**: outcrops (14–24 m) in the three farther sites up the slope, so the bare patch on
+  the left of the first view shows rock faces; big slabs follow the slope (0.85) and sink a
+  quarter of their footprint into it. `cliffs_outcrops_r4.jpg`.
