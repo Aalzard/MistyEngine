@@ -148,3 +148,23 @@ fn warm_up_makes_the_post_effect_pipelines() {
     r.warm_up(&device, &queue);
     assert!(r.postfx.pipelines_made());
 }
+
+/// Variants that finished compiling don't count as pending while no view renders to pick them
+/// up: an idle editor (or a screenshot run waiting for "background loads") never redraws its
+/// views, and the capture waited for good on variants queued by the last frames.
+#[test]
+fn finished_variants_are_not_pending_before_a_view_picks_them_up() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_background_loads(true);
+    r.warm_common_pipelines(&device);
+    assert!(crate::load_queue::shaders().wait_idle(WAIT));
+    // No frame rendered: nothing took the built variants, yet nothing is still compiling.
+    assert_eq!(r.background_pending(), 0);
+    // A later frame picks them up as before.
+    assert!(r.pipelines.take_built_variants() > 0);
+    assert_eq!(r.pipelines.variants_pending(), 0);
+}

@@ -455,9 +455,17 @@ impl CustomShaders {
         }
     }
 
-    /// Compiles still running on the shader queue.
+    /// Compiles still running on the shader queue (finished ones waiting for a view to pick
+    /// them up don't count; see `Pipelines::variants_pending`).
     pub fn pending(&self) -> usize {
-        self.pending.len()
+        let built = self
+            .built
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|b| self.pending.contains(&(b.cache.clone(), b.generation)))
+            .count();
+        self.pending.len().saturating_sub(built)
     }
 
     /// Take the compiles the shader queue finished (a failed one draws with the error shader
