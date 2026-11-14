@@ -198,7 +198,7 @@ impl Readback {
 
 /// The views' alpha is whatever the last pass left; recordings are opaque.
 pub fn opaque(rgba: &mut [u8]) {
-    for p in rgba.chunks_exact_mut(4) {
+    for p in rgba.as_chunks_mut::<4>().0 {
         p[3] = 255;
     }
 }

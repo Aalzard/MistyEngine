@@ -215,7 +215,7 @@ pub struct TimelineClip {
     pub control: ControlOptions,
     /// Recorder clips: what the clip records (its range is the clip).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub recorder: Option<crate::recorder::RecorderSettings>,
+    pub recorder: Option<Box<crate::recorder::RecorderSettings>>,
 }
 
 impl Default for TimelineClip {

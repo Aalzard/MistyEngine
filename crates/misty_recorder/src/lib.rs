@@ -62,7 +62,7 @@ impl Frame {
     /// RGB8 copy (encoders without alpha).
     pub fn rgb(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.rgba.len() / 4 * 3);
-        for p in self.rgba.chunks_exact(4) {
+        for p in self.rgba.as_chunks::<4>().0 {
             out.extend_from_slice(&p[..3]);
         }
         out

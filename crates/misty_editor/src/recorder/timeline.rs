@@ -20,11 +20,11 @@ pub fn new_clip(time: f32) -> TimelineClip {
         name: "Recorder Clip".into(),
         start: time.max(0.0),
         duration: CLIP_LEN,
-        recorder: Some(RecorderSettings {
+        recorder: Some(Box::new(RecorderSettings {
             name: "Recorder Clip".into(),
             range: RangeMode::TimelineClip,
             ..Default::default()
-        }),
+        })),
         ..Default::default()
     }
 }
@@ -40,9 +40,11 @@ pub fn clip_inspector(ui: &mut egui::Ui, s: &mut EditorState, clip: &mut Timelin
         return;
     }
     let cameras = super::camera_names(&s.scene);
-    let settings = clip.recorder.get_or_insert_with(|| RecorderSettings {
-        range: RangeMode::TimelineClip,
-        ..Default::default()
+    let settings = clip.recorder.get_or_insert_with(|| {
+        Box::new(RecorderSettings {
+            range: RangeMode::TimelineClip,
+            ..Default::default()
+        })
     });
     super::window::settings_ui(ui, &cameras, settings, "tl_rec_clip", true);
     ui.weak(tr!(
@@ -84,7 +86,7 @@ fn live_clips(s: &mut EditorState) -> Vec<(Entity, String, usize, RecorderSettin
             for (i, c) in track.clips.iter().enumerate() {
                 let inside = t >= c.start as f64 && t < c.end() as f64;
                 if inside {
-                    let mut settings = c.recorder.clone().unwrap_or_default();
+                    let mut settings = c.recorder.as_deref().cloned().unwrap_or_default();
                     settings.range = RangeMode::Manual;
                     if settings.name.trim().is_empty() {
                         settings.name = c.name.clone();
