@@ -4808,3 +4808,5 @@ Details, measurements and the later rounds: `docs/pending/r59-noon2.md`. Before 
   14.7 → 13.8; shadow maps 3.5 → 2.9 ms), still above the 12.7 ms target.
 - **Cliffs**: Limestone warmer and a little brighter, less moss, normal scale 1.8.
 - Views: `docs/screenshots/r59/level_*.jpg`. Hero 11.9 ms GPU (parts 11.5).
+- Checks: fmt clean, clippy 0 warnings, tests 945 editor + 1606 engine + 13 passed, golden
+  20 / 20 unchanged.
