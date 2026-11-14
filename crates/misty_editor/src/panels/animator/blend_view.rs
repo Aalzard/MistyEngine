@@ -83,11 +83,11 @@ pub fn diagram(
     let resp = ui.interact(rect, ui.id().with("blend_diagram"), Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, DIAGRAM_LABEL));
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 3.0, PLOT_BG);
+    painter.rect_filled(rect, 3.0, crate::theme::shade(PLOT_BG));
     painter.rect_stroke(
         rect,
         3.0,
-        Stroke::new(1.0, Color32::from_gray(70)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_gray(70))),
         egui::StrokeKind::Inside,
     );
     let weights = tree.weights_at(value[0], value[1], param);
@@ -110,16 +110,16 @@ pub fn diagram(
                     pos2(rect.left() + 90.0, top + row * 0.25),
                     vec2(rect.width() - 100.0, row * 0.5),
                 );
-                painter.rect_filled(track, 2.0, Color32::from_gray(50));
+                painter.rect_filled(track, 2.0, crate::theme::shade(Color32::from_gray(50)));
                 let mut bar = track;
                 bar.set_width(track.width() * w.clamp(0.0, 1.0));
-                painter.rect_filled(bar, 2.0, MOTION_BLUE);
+                painter.rect_filled(bar, 2.0, crate::theme::shade(MOTION_BLUE));
                 painter.text(
                     pos2(rect.left() + 6.0, top + row * 0.5),
                     Align2::LEFT_CENTER,
                     name(i),
                     font.clone(),
-                    Color32::from_gray(210),
+                    crate::theme::shade(Color32::from_gray(210)),
                 );
             }
         }
@@ -141,25 +141,29 @@ pub fn diagram(
                 let right = order.get(k + 1).map_or(t, |&n| tree.children[n].threshold);
                 let peak = pos2(to_x(t), rect.top() + 14.0);
                 let fill = if Some(i) == selected {
-                    MOTION_BLUE.gamma_multiply(0.55)
+                    crate::theme::shade(MOTION_BLUE).gamma_multiply(0.55)
                 } else {
-                    MOTION_BLUE.gamma_multiply(0.25)
+                    crate::theme::shade(MOTION_BLUE).gamma_multiply(0.25)
                 };
                 painter.add(egui::Shape::convex_polygon(
                     vec![pos2(to_x(left), base), peak, pos2(to_x(right), base)],
                     fill,
-                    Stroke::new(1.0, MOTION_BLUE),
+                    Stroke::new(1.0, crate::theme::shade(MOTION_BLUE)),
                 ));
                 painter.text(
                     pos2(peak.x, base + 2.0),
                     Align2::CENTER_TOP,
                     format!("{} ({:.0}%)", name(i), weights[i] * 100.0),
                     font.clone(),
-                    Color32::from_gray(210),
+                    crate::theme::shade(Color32::from_gray(210)),
                 );
             }
             let x = to_x(value[0]);
-            painter.vline(x, rect.top()..=base, Stroke::new(2.0, PREVIEW_RED));
+            painter.vline(
+                x,
+                rect.top()..=base,
+                Stroke::new(2.0, crate::theme::shade(PREVIEW_RED)),
+            );
             if let Some(p) = resp.interact_pointer_pos()
                 && (resp.dragged() || resp.clicked())
             {
@@ -193,14 +197,14 @@ pub fn diagram(
                             painter.rect_filled(
                                 Rect::from_min_size(min, cell + Vec2::splat(0.5)),
                                 0.0,
-                                MOTION_BLUE.gamma_multiply(w * 0.6),
+                                crate::theme::shade(MOTION_BLUE).gamma_multiply(w * 0.6),
                             );
                         }
                     }
                 }
             }
             let origin = to_screen([0.0, 0.0]);
-            let axis = Stroke::new(1.0, Color32::from_gray(64));
+            let axis = Stroke::new(1.0, crate::theme::shade(Color32::from_gray(64)));
             painter.hline(rect.x_range(), origin.y, axis);
             painter.vline(origin.x, rect.y_range(), axis);
             for (i, c) in tree.children.iter().enumerate() {
@@ -210,13 +214,13 @@ pub fn diagram(
                     painter.circle_stroke(
                         p,
                         4.0 + 18.0 * w.sqrt(),
-                        Stroke::new(1.5, MOTION_BLUE.gamma_multiply(0.8)),
+                        Stroke::new(1.5, crate::theme::shade(MOTION_BLUE).gamma_multiply(0.8)),
                     );
                 }
                 let dot = if Some(i) == selected {
                     Color32::WHITE
                 } else {
-                    MOTION_BLUE
+                    crate::theme::shade(MOTION_BLUE)
                 };
                 painter.add(egui::Shape::convex_polygon(
                     vec![
@@ -233,11 +237,11 @@ pub fn diagram(
                     Align2::LEFT_BOTTOM,
                     name(i),
                     font.clone(),
-                    Color32::from_gray(200),
+                    crate::theme::shade(Color32::from_gray(200)),
                 );
             }
             let marker = to_screen(value);
-            painter.circle_filled(marker, 5.0, PREVIEW_RED);
+            painter.circle_filled(marker, 5.0, crate::theme::shade(PREVIEW_RED));
             painter.circle_stroke(marker, 5.0, Stroke::new(1.0, Color32::WHITE));
             if let Some(p) = resp.interact_pointer_pos()
                 && (resp.dragged() || resp.clicked())
@@ -296,8 +300,11 @@ pub fn show_tree_view(
         s.animator.blend_view = None;
         return;
     };
-    ui.painter()
-        .rect_filled(canvas, 0.0, Color32::from_rgb(38, 38, 38));
+    ui.painter().rect_filled(
+        canvas,
+        0.0,
+        crate::theme::shade(Color32::from_rgb(38, 38, 38)),
+    );
     let busy = interacting(ui.ctx());
     let playing = live.is_some();
     let param = |n: &str| param_value(c, live, n);

@@ -124,7 +124,7 @@ fn edit(ui: &mut Ui, c: &mut WheelCollider, objects: &[(Entity, String)]) -> boo
         grid(ui, "wheel_live", |ui| {
             let row = |ui: &mut Ui, label: &str, value: String| {
                 ui.label(label);
-                ui.label(RichText::new(value).color(theme::TEXT_DIM));
+                ui.label(RichText::new(value).color(theme::text_dim()));
                 ui.end_row();
             };
             row(

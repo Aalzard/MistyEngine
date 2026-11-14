@@ -83,7 +83,7 @@ fn row(
     let text = match on {
         true => RichText::new(format!("● {label}"))
             .strong()
-            .color(theme::PREFAB),
+            .color(theme::prefab()),
         false => RichText::new(label),
     };
     let mut changed = false;

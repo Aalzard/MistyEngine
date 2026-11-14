@@ -109,7 +109,7 @@ pub fn paint(ui: &Ui, rect: Rect, hold: Hold) {
         egui::pos2(rect.left() + rect.width() * t, rect.bottom()),
     );
     ui.painter()
-        .rect_filled(bar, 1.0, crate::theme::OVERRIDE.gamma_multiply(0.85));
+        .rect_filled(bar, 1.0, crate::theme::overridden().gamma_multiply(0.85));
 }
 
 /// For a rename field started by a hold: while the button that started it is still down (and

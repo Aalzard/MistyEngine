@@ -110,7 +110,11 @@ pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
         let latest = frames.iter().find(|f| Some(f.index) == selected);
         module_legend(ui, w, module, legend, latest);
         let painter = ui.painter_at(plot);
-        painter.rect_filled(plot.shrink(1.0), 0.0, Color32::from_gray(28));
+        painter.rect_filled(
+            plot.shrink(1.0),
+            0.0,
+            crate::theme::shade(Color32::from_gray(28)),
+        );
         match module {
             Module::Cpu => cpu_chart(&painter, w, frames, plot),
             Module::Gpu => gpu_chart(&painter, w, frames, plot),
@@ -176,9 +180,9 @@ pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
             painter.vline(x, plot.y_range(), Stroke::new(1.0, Color32::WHITE));
         }
         let border = if w.module == module {
-            Color32::from_gray(150)
+            crate::theme::shade(Color32::from_gray(150))
         } else {
-            Color32::from_gray(60)
+            crate::theme::shade(Color32::from_gray(60))
         };
         ui.painter().rect_stroke(
             plot.shrink(1.0),
@@ -267,7 +271,7 @@ fn module_legend(
                     Align2::LEFT_TOP,
                     format!("GPU {gpu:.2}ms"),
                     FontId::proportional(10.0),
-                    GPU_COLOR,
+                    crate::theme::shade(GPU_COLOR),
                 );
             }
         }
@@ -373,7 +377,7 @@ fn ms_guides(painter: &egui::Painter, plot: Rect, top: f32, guides: &[(f32, &str
                 Align2::LEFT_BOTTOM,
                 *label,
                 FontId::proportional(10.0),
-                Color32::from_gray(170),
+                crate::theme::shade(Color32::from_gray(170)),
             );
         }
     }
@@ -408,7 +412,10 @@ fn cpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
         })
         .collect();
     if points.len() > 1 {
-        painter.add(egui::Shape::line(points, Stroke::new(1.5, GPU_COLOR)));
+        painter.add(egui::Shape::line(
+            points,
+            Stroke::new(1.5, crate::theme::shade(GPU_COLOR)),
+        ));
     }
     ms_guides(
         painter,
@@ -432,7 +439,7 @@ fn gpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
             Align2::CENTER_CENTER,
             "GPU profiling is not supported by this device (no timestamp queries)",
             FontId::proportional(11.0),
-            Color32::from_gray(150),
+            crate::theme::shade(Color32::from_gray(150)),
         );
         return;
     }
@@ -463,7 +470,7 @@ fn gpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
             Align2::RIGHT_TOP,
             "per-pass timings unsupported: whole renders only",
             FontId::proportional(10.0),
-            Color32::from_gray(160),
+            crate::theme::shade(Color32::from_gray(160)),
         );
     }
 }
@@ -479,7 +486,7 @@ fn line_chart(
     let peak = frames.iter().map(|f| value(f).0).fold(0.0, f32::max);
     let top = nice_max(peak * 1.15);
     let col = plot.width() / HISTORY as f32;
-    let color = Color32::from_rgb(110, 170, 230);
+    let color = crate::theme::shade(Color32::from_rgb(110, 170, 230));
     for (i, f) in frames.iter().enumerate() {
         let x1 = plot.right() - (frames.len() - 1 - i) as f32 * col;
         let v = value(f).0;
@@ -495,7 +502,7 @@ fn line_chart(
             Align2::LEFT_TOP,
             value(f).1,
             FontId::proportional(10.0),
-            Color32::from_gray(190),
+            crate::theme::shade(Color32::from_gray(190)),
         );
     }
 }

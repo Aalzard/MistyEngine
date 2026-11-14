@@ -45,6 +45,9 @@ pollster = "0.4"
 toml = { version = "1.1", default-features = false, features = ["std", "parse", "serde"] }
 ar-reshaper = { version = "1.5", default-features = false }
 unicode-bidi = "0.3.18"
+# Preferences ▸ Appearance: reads the names of installed fonts and checks a chosen font file the
+# way egui loads it (the same crate and version egui uses; MIT / Apache-2.0).
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
 
 [build-dependencies]
 # Windows exe icon + version info (compiles a resource script with the SDK's rc.exe).

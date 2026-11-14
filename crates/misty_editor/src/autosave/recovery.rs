@@ -511,7 +511,7 @@ pub fn dialog_ui(ctx: &egui::Context, s: &mut EditorState) {
                         ui.end_row();
                         if let Some(e) = &item.error {
                             ui.label("");
-                            ui.colored_label(crate::theme::WARN, e.as_str());
+                            ui.colored_label(crate::theme::warn(), e.as_str());
                             ui.end_row();
                         }
                     }

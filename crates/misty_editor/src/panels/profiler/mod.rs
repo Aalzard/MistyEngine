@@ -162,28 +162,28 @@ impl ProfilerWindow {
 /// Chart colour of a category.
 pub fn category_color(c: Category) -> Color32 {
     match c {
-        Category::Rendering => Color32::from_rgb(110, 190, 80),
-        Category::Scripts => Color32::from_rgb(70, 140, 230),
-        Category::Physics => Color32::from_rgb(240, 150, 50),
-        Category::Animation => Color32::from_rgb(60, 190, 180),
-        Category::Navigation => Color32::from_rgb(170, 110, 220),
-        Category::Audio => Color32::from_rgb(230, 210, 70),
-        Category::Ui => Color32::from_rgb(230, 100, 150),
-        Category::Others => Color32::from_rgb(120, 120, 120),
+        Category::Rendering => crate::theme::shade(Color32::from_rgb(110, 190, 80)),
+        Category::Scripts => crate::theme::shade(Color32::from_rgb(70, 140, 230)),
+        Category::Physics => crate::theme::shade(Color32::from_rgb(240, 150, 50)),
+        Category::Animation => crate::theme::shade(Color32::from_rgb(60, 190, 180)),
+        Category::Navigation => crate::theme::shade(Color32::from_rgb(170, 110, 220)),
+        Category::Audio => crate::theme::shade(Color32::from_rgb(230, 210, 70)),
+        Category::Ui => crate::theme::shade(Color32::from_rgb(230, 100, 150)),
+        Category::Others => crate::theme::shade(Color32::from_rgb(120, 120, 120)),
     }
 }
 
 /// Chart colour of a GPU pass group.
 pub fn gpu_color(g: GpuGroup) -> Color32 {
     match g {
-        GpuGroup::Shadows => Color32::from_rgb(120, 110, 200),
-        GpuGroup::Depth => Color32::from_rgb(90, 150, 210),
-        GpuGroup::Opaque => Color32::from_rgb(110, 190, 80),
-        GpuGroup::Vegetation => Color32::from_rgb(60, 160, 110),
-        GpuGroup::Transparent => Color32::from_rgb(80, 200, 210),
-        GpuGroup::Lighting => Color32::from_rgb(235, 180, 70),
-        GpuGroup::PostProcess => Color32::from_rgb(220, 110, 150),
-        GpuGroup::Other => Color32::from_rgb(120, 120, 120),
+        GpuGroup::Shadows => crate::theme::shade(Color32::from_rgb(120, 110, 200)),
+        GpuGroup::Depth => crate::theme::shade(Color32::from_rgb(90, 150, 210)),
+        GpuGroup::Opaque => crate::theme::shade(Color32::from_rgb(110, 190, 80)),
+        GpuGroup::Vegetation => crate::theme::shade(Color32::from_rgb(60, 160, 110)),
+        GpuGroup::Transparent => crate::theme::shade(Color32::from_rgb(80, 200, 210)),
+        GpuGroup::Lighting => crate::theme::shade(Color32::from_rgb(235, 180, 70)),
+        GpuGroup::PostProcess => crate::theme::shade(Color32::from_rgb(220, 110, 150)),
+        GpuGroup::Other => crate::theme::shade(Color32::from_rgb(120, 120, 120)),
     }
 }
 
@@ -275,9 +275,9 @@ fn toolbar(ui: &mut Ui, w: &mut ProfilerWindow) {
         ui.add_enabled_ui(live, |ui| {
             let recording = profiler::enabled();
             let label = egui::RichText::new("⏺ Record").color(if recording {
-                Color32::from_rgb(230, 70, 60)
+                crate::theme::shade(Color32::from_rgb(230, 70, 60))
             } else {
-                Color32::from_gray(200)
+                crate::theme::shade(Color32::from_gray(200))
             });
             if toggle_button(ui, recording, label, "Record profiling information").clicked() {
                 profiler::set_enabled(!recording);

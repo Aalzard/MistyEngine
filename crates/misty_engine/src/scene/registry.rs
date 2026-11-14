@@ -184,6 +184,10 @@ impl SceneComponent for Terrain {
     const NAME: &'static str = "Terrain";
     const CATEGORY: &'static str = "Miscellaneous";
 }
+impl SceneComponent for crate::behaviour_tree::BehaviourTreeAgent {
+    const NAME: &'static str = "Behaviour Tree Agent";
+    const CATEGORY: &'static str = "Navigation";
+}
 impl SceneComponent for NavMeshAgent {
     const NAME: &'static str = "Nav Mesh Agent";
     const CATEGORY: &'static str = "Navigation";
@@ -456,6 +460,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::world_partition::AlwaysLoaded>(),
             ComponentInfo::of::<super::WaterSurface>(),
             ComponentInfo::of::<super::Floater>(),
+            ComponentInfo::of::<crate::behaviour_tree::BehaviourTreeAgent>(),
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<crate::navigation::NavMeshSurface>(),

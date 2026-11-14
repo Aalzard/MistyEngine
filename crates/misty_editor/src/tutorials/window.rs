@@ -20,7 +20,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
         .show(ctx, |ui| {
             ui.set_width(400.0);
             ui.label(
-                RichText::new("Learn step by step, right in the editor.").color(theme::TEXT_DIM),
+                RichText::new("Learn step by step, right in the editor.").color(theme::text_dim()),
             );
             ui.add_space(4.0);
             for t in super::list() {
@@ -33,7 +33,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
             ui.label(
                 RichText::new("Each tutorial opens a new, untitled scene.")
                     .small()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     s.tutorials.window_open = open;
@@ -46,7 +46,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
 fn row(ui: &mut egui::Ui, t: &super::TutorialInfo, done: bool) -> bool {
     let mut clicked = false;
     egui::Frame::group(ui.style())
-        .fill(theme::FIELD_BG)
+        .fill(theme::field_bg())
         .corner_radius(6)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -60,11 +60,11 @@ fn row(ui: &mut egui::Ui, t: &super::TutorialInfo, done: bool) -> bool {
                                 .on_hover_text("Finished");
                         }
                     });
-                    ui.label(RichText::new(t.description).color(theme::TEXT));
+                    ui.label(RichText::new(t.description).color(theme::text()));
                     ui.label(
                         RichText::new(format!("⏱ About {} min", t.minutes))
                             .small()
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

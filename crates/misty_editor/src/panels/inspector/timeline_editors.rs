@@ -200,7 +200,7 @@ fn header(ui: &mut Ui, title: &str, kind: &str) {
         ui.label(RichText::new(ICON).size(20.0));
         ui.label(theme::bold(ui.ctx(), title));
         if !kind.is_empty() {
-            ui.label(RichText::new(kind).color(theme::TEXT_DIM));
+            ui.label(RichText::new(kind).color(theme::text_dim()));
         }
     });
     ui.add_space(4.0);
@@ -211,7 +211,7 @@ pub fn timeline_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let asset = match state.anim_clips.timelines.get(rel) {
         Ok(t) => t.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };
@@ -313,7 +313,7 @@ fn clip_editor(
         }
         if let Some(a) = &c.asset {
             ui.label("Source");
-            ui.label(RichText::new(a.as_str()).color(theme::TEXT_DIM));
+            ui.label(RichText::new(a.as_str()).color(theme::text_dim()));
             ui.end_row();
         }
         if kind.clips_reference_objects() {
@@ -397,7 +397,7 @@ fn reference_row(
     };
     ui.label(label);
     let Some((Some(d), _)) = crate::panels::timeline::current(state) else {
-        ui.label(RichText::new("Open it on a director to pick").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Open it on a director to pick").color(theme::text_dim()));
         ui.end_row();
         return;
     };

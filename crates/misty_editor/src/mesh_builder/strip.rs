@@ -49,7 +49,7 @@ pub fn show(ui: &mut Ui, rect: Rect, state: &mut EditorState) {
                 .rect_filled(r, 4.0, v.widgets.inactive.weak_bg_fill);
         }
         let tint = if selected {
-            Color32::from_rgb(255, 170, 60)
+            crate::theme::shade(Color32::from_rgb(255, 170, 60))
         } else {
             v.text_color()
         };

@@ -184,7 +184,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     });
 
     if let Some((err, msg)) = &w.status {
-        let color = if *err { theme::WARN } else { theme::TEXT_DIM };
+        let color = if *err {
+            theme::warn()
+        } else {
+            theme::text_dim()
+        };
         ui.label(RichText::new(msg).color(color));
     }
 
@@ -207,7 +211,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     for d in dups {
                         ui.label(
                             RichText::new(format!("⚠ {} is in {}", d.path, d.bundles.join(", ")))
-                                .color(theme::WARN),
+                                .color(theme::warn()),
                         );
                     }
                 }
@@ -272,7 +276,7 @@ fn groups(ui: &mut Ui, w: &mut AssetGroupsWindow, project: &Path) {
                                 ui.weak(&e.path);
                             }
                             if !e.labels.is_empty() {
-                                ui.label(RichText::new(e.labels.join(", ")).color(theme::PREFAB));
+                                ui.label(RichText::new(e.labels.join(", ")).color(theme::prefab()));
                             }
                             r
                         })
@@ -301,7 +305,7 @@ fn groups(ui: &mut Ui, w: &mut AssetGroupsWindow, project: &Path) {
             ui.painter().rect_stroke(
                 header.header_response.rect,
                 2.0,
-                egui::Stroke::new(1.0, theme::PREFAB),
+                egui::Stroke::new(1.0, theme::prefab()),
                 egui::StrokeKind::Inside,
             );
         }

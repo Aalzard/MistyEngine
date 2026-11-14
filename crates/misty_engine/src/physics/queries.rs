@@ -94,6 +94,41 @@ impl Physics {
         hits
     }
 
+    /// The nearest solid collider (triggers never count) between `from` and `to` that `keep`
+    /// accepts, without allocating (line-of-sight checks run every AI tick).
+    pub fn line_hit(
+        &self,
+        from: Vec3,
+        to: Vec3,
+        mask: u32,
+        keep: impl Fn(&RaycastHit) -> bool,
+    ) -> Option<RaycastHit> {
+        let delta = to - from;
+        let len = delta.length();
+        let dir = delta.normalize_or_zero();
+        if dir == Vec3::ZERO || !len.is_finite() {
+            return None;
+        }
+        let test = in_mask(mask);
+        let filter = rp::QueryFilter::default()
+            .predicate(&test)
+            .exclude_sensors();
+        let ray = rp::Ray::new(rv(from), rv(dir));
+        let mut best: Option<RaycastHit> = None;
+        for (h, _, i) in self.world.intersect_ray(ray, len, true, filter) {
+            let t = i.time_of_impact;
+            if t <= 0.0 || best.is_some_and(|b| b.distance <= t) {
+                continue;
+            }
+            if let Some(hit) = self.hit_from(h, from + dir * t, gv(i.normal), t)
+                && keep(&hit)
+            {
+                best = Some(hit);
+            }
+        }
+        best
+    }
+
     /// The nearest collider along the ray.
     pub fn raycast(
         &self,

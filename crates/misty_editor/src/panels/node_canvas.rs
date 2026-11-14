@@ -123,7 +123,7 @@ pub fn error_badge(
     id: egui::Id,
     message: &str,
 ) {
-    painter.circle_filled(at, 8.0 * z, ERROR);
+    painter.circle_filled(at, 8.0 * z, crate::theme::shade(ERROR));
     painter.text(
         at,
         Align2::CENTER_CENTER,

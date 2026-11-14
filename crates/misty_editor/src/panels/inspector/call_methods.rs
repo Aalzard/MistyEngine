@@ -135,7 +135,7 @@ pub fn method_field(
                     RichText::new(tr!(
                         "No Lua functions or Script Graph Custom Events on the target"
                     ))
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
                 );
             }
             for (name, graph) in list {

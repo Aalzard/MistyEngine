@@ -109,7 +109,8 @@ fn custom_rows(ui: &mut Ui, id: &str, m: &mut Material, texture_row: &mut Textur
     if decal {
         ui.label("");
         ui.label(
-            RichText::new("Decal material: assign it to a Decal Projector").color(theme::TEXT_DIM),
+            RichText::new("Decal material: assign it to a Decal Projector")
+                .color(theme::text_dim()),
         );
         ui.end_row();
     } else if let Err(e) = misty_engine::render::custom_shader::check(&asset.source) {

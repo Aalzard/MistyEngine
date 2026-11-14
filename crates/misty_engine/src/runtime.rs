@@ -534,6 +534,29 @@ impl Runtime {
         self.host.graph_continue(scene, step);
     }
 
+    /// What the Behaviour Tree window shows while playing: the agent on `watch` running the
+    /// tree at `path` (else the first agent running it).
+    pub fn behaviour_debug(
+        &self,
+        path: &str,
+        watch: Option<hecs::Entity>,
+    ) -> Option<crate::behaviour_tree::runtime::DebugView> {
+        self.host.behaviour_debug(path, watch)
+    }
+
+    /// Objects running the tree at `path`.
+    pub fn behaviour_agents(&self, path: &str) -> Vec<hecs::Entity> {
+        self.host.behaviour_agents(path)
+    }
+
+    /// The game's behaviour trees between frames (tests, tools).
+    pub fn with_behaviour<R>(
+        &mut self,
+        f: impl FnOnce(&mut crate::behaviour_tree::BtRuntime) -> R,
+    ) -> R {
+        self.host.with_behaviour(f)
+    }
+
     /// Script Graphs running on objects.
     pub fn graph_instance_count(&self) -> usize {
         self.host.graph_instance_count()

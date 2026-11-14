@@ -193,7 +193,7 @@ pub fn controller_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let ctrl = match state.anim_clips.controllers.get(rel) {
         Ok(c) => c.clone(),
         Err(e) => {
-            ui.colored_label(theme::AXIS_X, e);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), e);
             return;
         }
     };
@@ -817,7 +817,7 @@ fn transition_editor(
     changed |= conditions_editor(ui, c, &mut t.conditions);
     if !t.has_exit_time && t.conditions.is_empty() && !matches!(t.from, Node::Machine(_)) {
         ui.colored_label(
-            egui::Color32::from_rgb(230, 190, 60),
+            crate::theme::shade(egui::Color32::from_rgb(230, 190, 60)),
             "A transition needs at least one condition or an Exit Time.",
         );
     }

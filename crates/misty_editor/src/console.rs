@@ -39,9 +39,9 @@ impl LogLevel {
 
     pub fn color(self) -> egui::Color32 {
         match self {
-            LogLevel::Info => egui::Color32::from_gray(200),
-            LogLevel::Warning => egui::Color32::from_rgb(255, 200, 60),
-            LogLevel::Error => egui::Color32::from_rgb(255, 90, 80),
+            LogLevel::Info => crate::theme::shade(egui::Color32::from_gray(200)),
+            LogLevel::Warning => crate::theme::shade(egui::Color32::from_rgb(255, 200, 60)),
+            LogLevel::Error => crate::theme::shade(egui::Color32::from_rgb(255, 90, 80)),
         }
     }
 

@@ -46,7 +46,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     panel_toolbar(ui, |ui| {
         if recording {
             let stop = egui::Button::new(
-                RichText::new(format!("■ {}", tr!("Stop Recording"))).color(theme::WARN),
+                RichText::new(format!("■ {}", tr!("Stop Recording"))).color(theme::warn()),
             );
             if ui.add(stop).clicked() {
                 request_stop(s);
@@ -77,7 +77,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     });
     if let Some((err, msg, folder)) = s.recorder.status.clone() {
         ui.horizontal(|ui| {
-            let color = if err { theme::WARN } else { theme::TEXT_DIM };
+            let color = if err {
+                theme::warn()
+            } else {
+                theme::text_dim()
+            };
             ui.label(RichText::new(msg).color(color));
             if let Some(f) = folder.filter(|f| f.exists())
                 && ui.small_button(tr!("Show in Explorer")).clicked()
@@ -178,7 +182,7 @@ fn status_line(ui: &mut Ui, s: &EditorState) {
             ),
             None => tr!("Recording: frame {frame}", frame = r.requested()),
         };
-        ui.label(RichText::new(format!("● {text}")).color(theme::WARN));
+        ui.label(RichText::new(format!("● {text}")).color(theme::warn()));
     } else if s.recorder.finishing() > 0 {
         ui.label(tr!("Writing files…"));
     }

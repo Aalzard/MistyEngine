@@ -91,12 +91,14 @@ pub fn tick(state: &mut EditorState) -> bool {
 
 fn phase_color(p: CellPhase) -> Color32 {
     match p {
-        CellPhase::Unloaded => Color32::from_rgb(70, 72, 78),
-        CellPhase::Reading | CellPhase::Waiting => Color32::from_rgb(200, 160, 60),
-        CellPhase::Adding => Color32::from_rgb(140, 190, 80),
-        CellPhase::Loaded => Color32::from_rgb(70, 160, 90),
-        CellPhase::Removing => Color32::from_rgb(170, 110, 70),
-        CellPhase::Failed => Color32::from_rgb(200, 70, 60),
+        CellPhase::Unloaded => crate::theme::shade(Color32::from_rgb(70, 72, 78)),
+        CellPhase::Reading | CellPhase::Waiting => {
+            crate::theme::shade(Color32::from_rgb(200, 160, 60))
+        }
+        CellPhase::Adding => crate::theme::shade(Color32::from_rgb(140, 190, 80)),
+        CellPhase::Loaded => crate::theme::shade(Color32::from_rgb(70, 160, 90)),
+        CellPhase::Removing => crate::theme::shade(Color32::from_rgb(170, 110, 70)),
+        CellPhase::Failed => crate::theme::shade(Color32::from_rgb(200, 70, 60)),
     }
 }
 
@@ -337,7 +339,11 @@ fn minimap(ui: &mut Ui, state: &mut EditorState, wp: &WorldPartition, side: f32)
     let size = vec2(w * cell_px, h * cell_px);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 2.0, Color32::from_rgb(30, 31, 34));
+    painter.rect_filled(
+        rect,
+        2.0,
+        crate::theme::shade(Color32::from_rgb(30, 31, 34)),
+    );
     // North (+z) up.
     let cell_rect = |c: CellCoord| {
         let x = rect.left() + (c.0 - lo.0) as f32 * cell_px;
@@ -353,7 +359,7 @@ fn minimap(ui: &mut Ui, state: &mut EditorState, wp: &WorldPartition, side: f32)
             painter.rect_stroke(
                 r.shrink(1.0),
                 1.0,
-                Stroke::new(1.0, Color32::from_rgb(90, 130, 200)),
+                Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(90, 130, 200))),
                 egui::StrokeKind::Inside,
             );
         }
@@ -371,7 +377,7 @@ fn minimap(ui: &mut Ui, state: &mut EditorState, wp: &WorldPartition, side: f32)
         painter.rect_stroke(
             cell_rect(sel).expand(1.0),
             1.0,
-            Stroke::new(2.0, Color32::from_rgb(255, 170, 40)),
+            Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(255, 170, 40))),
             egui::StrokeKind::Outside,
         );
     }
@@ -388,21 +394,32 @@ fn minimap(ui: &mut Ui, state: &mut EditorState, wp: &WorldPartition, side: f32)
     }
     if !state.play.in_play_mode() {
         let p = state.scene_view.camera.camera().position;
-        painter.circle_filled(to_px(p), 3.5, Color32::from_rgb(120, 200, 255));
+        painter.circle_filled(
+            to_px(p),
+            3.5,
+            crate::theme::shade(Color32::from_rgb(120, 200, 255)),
+        );
     }
     for src in &sources {
         let c = to_px(src.position);
         painter.circle_stroke(
             c,
             src.load_radius / s * cell_px,
-            Stroke::new(1.0, Color32::from_rgb(120, 230, 120)),
+            Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(120, 230, 120))),
         );
         painter.circle_stroke(
             c,
             src.unload_radius / s * cell_px,
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(230, 160, 80, 160)),
+            Stroke::new(
+                1.0,
+                crate::theme::shade(Color32::from_rgba_unmultiplied(230, 160, 80, 160)),
+            ),
         );
-        painter.circle_filled(c, 4.0, Color32::from_rgb(250, 250, 120));
+        painter.circle_filled(
+            c,
+            4.0,
+            crate::theme::shade(Color32::from_rgb(250, 250, 120)),
+        );
     }
     let hovered = response.hover_pos().map(|p| {
         let x = lo.0 + ((p.x - rect.left()) / cell_px).floor() as i32;
@@ -430,7 +447,7 @@ fn minimap(ui: &mut Ui, state: &mut EditorState, wp: &WorldPartition, side: f32)
         Align2::RIGHT_TOP,
         "N",
         FontId::proportional(11.0),
-        Color32::from_gray(160),
+        crate::theme::shade(Color32::from_gray(160)),
     );
 }
 
@@ -486,7 +503,11 @@ fn history_graph(ui: &mut Ui, st: &Streamer, budget: f32) {
     let (rect, _) =
         ui.allocate_exact_size(vec2(ui.available_width().min(320.0), 40.0), Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+    painter.rect_filled(
+        rect,
+        2.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(0, 0, 0, 120)),
+    );
     let times: Vec<f32> = st.history().collect();
     let top = times.iter().copied().fold(budget * 2.0, f32::max).max(0.5);
     let bar_w = rect.width() / 240.0;
@@ -495,9 +516,9 @@ fn history_graph(ui: &mut Ui, st: &Streamer, budget: f32) {
         let h = ms / top * rect.height();
         let x = x0 + i as f32 * bar_w;
         let color = if *ms > budget {
-            Color32::from_rgb(230, 70, 60)
+            crate::theme::shade(Color32::from_rgb(230, 70, 60))
         } else {
-            Color32::from_rgb(110, 190, 120)
+            crate::theme::shade(Color32::from_rgb(110, 190, 120))
         };
         painter.rect_filled(
             Rect::from_min_max(
@@ -511,7 +532,7 @@ fn history_graph(ui: &mut Ui, st: &Streamer, budget: f32) {
     let y = rect.bottom() - budget / top * rect.height();
     painter.line_segment(
         [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-        Stroke::new(1.0, Color32::from_rgb(230, 200, 90)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(230, 200, 90))),
     );
 }
 
@@ -578,7 +599,11 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
     let size = vec2(360.0, 10.0 + lines.len() as f32 * 14.0 + graph_h + 6.0);
     let rect = Rect::from_min_size(view.left_bottom() + vec2(8.0, -size.y - 8.0), size);
     let painter = ui.painter().with_clip_rect(view);
-    painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 200));
+    painter.rect_filled(
+        rect,
+        4.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(20, 20, 20, 200)),
+    );
     for (i, line) in lines.iter().enumerate() {
         painter.text(
             rect.left_top() + vec2(8.0, 5.0 + i as f32 * 14.0),
@@ -592,7 +617,11 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
         rect.left_top() + vec2(8.0, 8.0 + lines.len() as f32 * 14.0),
         vec2(344.0, graph_h),
     );
-    painter.rect_filled(graph, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+    painter.rect_filled(
+        graph,
+        2.0,
+        crate::theme::shade(Color32::from_rgba_unmultiplied(0, 0, 0, 120)),
+    );
     let st = streamer(state);
     let times: Vec<f32> = st.history().collect();
     let budget = s.budget_ms.max(0.1);
@@ -603,9 +632,9 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
         let h = ms / top * graph_h;
         let x = x0 + i as f32 * bar_w;
         let color = if *ms > budget {
-            Color32::from_rgb(230, 70, 60)
+            crate::theme::shade(Color32::from_rgb(230, 70, 60))
         } else {
-            Color32::from_rgb(110, 190, 120)
+            crate::theme::shade(Color32::from_rgb(110, 190, 120))
         };
         painter.rect_filled(
             Rect::from_min_max(
@@ -619,7 +648,7 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
     let y = graph.bottom() - budget / top * graph_h;
     painter.line_segment(
         [Pos2::new(graph.left(), y), Pos2::new(graph.right(), y)],
-        Stroke::new(1.0, Color32::from_rgb(230, 200, 90)),
+        Stroke::new(1.0, crate::theme::shade(Color32::from_rgb(230, 200, 90))),
     );
 }
 

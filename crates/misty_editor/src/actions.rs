@@ -95,6 +95,8 @@ pub enum AssetKind {
     EffectGraph,
     /// Visual Script Graph (`.vgraph`): node-based game logic.
     ScriptGraph,
+    /// Behaviour Tree (`.btree`): AI for enemies and NPCs (the Behaviour Trees package).
+    BehaviourTree,
     /// Visual Effects ▸ Effect Sub-graph (`.vfxoperator`).
     EffectSubgraph,
     /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
@@ -131,6 +133,7 @@ impl AssetKind {
             AssetKind::Material => "Material",
             AssetKind::Script => "Lua Script",
             AssetKind::ScriptGraph => "Visual Script Graph",
+            AssetKind::BehaviourTree => "Behaviour Tree",
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",

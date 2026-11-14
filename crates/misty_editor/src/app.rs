@@ -113,6 +113,7 @@ impl EditorApp {
         }
         crate::tutorials::from_env(&mut state);
         state.ui_scale = crate::a11y::UiScale::load();
+        state.appearance = crate::theme::editor::Appearance::load();
         state
             .console
             .set_capacity(crate::hub::config::console_lines());
@@ -392,7 +393,8 @@ impl EditorApp {
             // The Shader Graph window handles its own Delete, undo/redo, save and duplicate.
             if (self.state.shader_graph.wants_keys()
                 || self.state.effect_graph.wants_keys()
-                || self.state.script_graph.wants_keys())
+                || self.state.script_graph.wants_keys()
+                || self.state.behaviour_tree.wants_keys())
                 && matches!(
                     key,
                     Key::Delete | Key::Z | Key::Y | Key::S | Key::D | Key::G
@@ -422,7 +424,11 @@ impl EditorApp {
             // Editor script menu shortcuts, after the built-in ones.
             crate::editor_scripts::menus::shortcuts(ctx, &mut self.state);
         }
-        if !typing && !self.state.project.focused && !self.state.script_graph.wants_keys() {
+        if !typing
+            && !self.state.project.focused
+            && !self.state.script_graph.wants_keys()
+            && !self.state.behaviour_tree.wants_keys()
+        {
             self.clipboard_shortcuts(ctx);
         }
         if !code_editor
@@ -437,6 +443,7 @@ impl EditorApp {
             && !self.state.shader_graph.wants_keys()
             && !self.state.effect_graph.wants_keys()
             && !self.state.script_graph.wants_keys()
+            && !self.state.behaviour_tree.wants_keys()
         {
             for tool in Tool::ALL {
                 if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(tool.key())) {
@@ -855,10 +862,10 @@ impl EditorApp {
     /// The frameless window's title bar: menus, "Misty Engine — project — scene", window buttons.
     fn title_bar(&mut self, ui: &mut egui::Ui) {
         let style = title_bar::BarStyle {
-            bg: theme::TAB_BAR_BG,
-            text: theme::TEXT,
-            dim: theme::TEXT_DIM,
-            hover: egui::Color32::from_white_alpha(18),
+            bg: theme::tab_bar_bg(),
+            text: theme::text(),
+            dim: theme::text_dim(),
+            hover: theme::shade(egui::Color32::from_white_alpha(18)),
         };
         let (project, scene) = scene_files::title_parts(&self.state);
         // Empty parts are left out, so there is never a "— —" gap.
@@ -971,6 +978,10 @@ impl eframe::App for EditorApp {
         self.poll_gpu_start(&ctx);
         apply_vsync(&mut self.state, frame);
         self.state.ui_scale.apply(&ctx);
+        // The optional Behaviour Trees package shows its menus while installed.
+        crate::panels::behaviour_tree::note_package(&self.state);
+        let s = &mut self.state;
+        s.appearance.sync(&ctx, &mut s.console);
         let s = &mut self.state;
         let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
         s.undo
@@ -999,7 +1010,7 @@ impl eframe::App for EditorApp {
             Some(misty_engine::profiler::Category::Others),
         );
         let bar_frame = egui::Frame::new()
-            .fill(theme::TAB_BAR_BG)
+            .fill(theme::tab_bar_bg())
             .inner_margin(egui::Margin::symmetric(4, 2));
         egui::Panel::top("menu_bar")
             .exact_size(title_bar::HEIGHT)
@@ -1031,10 +1042,10 @@ impl eframe::App for EditorApp {
         let mut style = theme::dock_style(&ctx);
         if self.state.play.in_play_mode() {
             // Play-mode tint, as a reminder that changes will be reverted.
-            style.tab_bar.bg_fill = theme::PLAY_TINT.gamma_multiply(0.45);
+            style.tab_bar.bg_fill = theme::play_tint().gamma_multiply(0.45);
         }
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BORDER))
+            .frame(egui::Frame::new().fill(theme::border()))
             .show(ui, |ui| {
                 misty_engine::profile_scope!("Editor.Panels", misty_engine::profiler::Category::Ui);
                 DockArea::new(&mut self.dock)
@@ -1143,6 +1154,8 @@ impl eframe::App for EditorApp {
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
+        let s = &mut self.state;
+        crate::theme::editor::show_window(&ctx, &mut s.appearance, &mut s.console);
         crate::panels::shader_graph::show_windows(&ctx, &mut self.state);
         crate::editor_scripts::progress_ui(&ctx, &self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.

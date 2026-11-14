@@ -932,7 +932,7 @@ fn shortcuts(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
@@ -986,16 +986,16 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     .unwrap_or_default();
                 let label = format!("{ICON} {name}{}", if dirty { " *" } else { "" });
                 if s.script_graph.at_root() {
-                    ui.label(RichText::new(label).color(theme::TEXT));
+                    ui.label(RichText::new(label).color(theme::text()));
                 } else {
                     if ui.link(label).clicked() {
                         s.script_graph.leave_macro(0);
                     }
                     let path = s.script_graph.macro_path.clone();
                     for (i, m) in path.iter().enumerate() {
-                        ui.label(RichText::new("▸").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("▸").color(theme::text_dim()));
                         if i + 1 == path.len() {
-                            ui.label(RichText::new(format!("Macro: {m}")).color(theme::TEXT));
+                            ui.label(RichText::new(format!("Macro: {m}")).color(theme::text()));
                         } else if ui.link(format!("Macro: {m}")).clicked() {
                             s.script_graph.leave_macro(i + 1);
                         }
@@ -1015,7 +1015,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                         .on_hover_text(&e.message);
                     }
                     None if s.script_graph.live.is_none() => {
-                        ui.label(RichText::new("✔ No problems").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("✔ No problems").color(theme::text_dim()));
                     }
                     None => {}
                 }
@@ -1046,7 +1046,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                                 .map(|n| visual_script::nodes::title(n, &s.script_graph.graph))
                                 .unwrap_or_default();
                             ui.label(
-                                RichText::new(format!("⏸ Paused at {title}")).color(theme::WARN),
+                                RichText::new(format!("⏸ Paused at {title}")).color(theme::warn()),
                             );
                         }
                         let who = live
@@ -1054,7 +1054,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                             .map_or("no object uses this graph".to_owned(), |n| {
                                 format!("Debugging {n}")
                             });
-                        ui.label(RichText::new(who).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(who).color(theme::text_dim()));
                     }
                 });
             });
@@ -1077,7 +1077,7 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 

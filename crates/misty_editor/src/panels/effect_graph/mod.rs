@@ -445,7 +445,7 @@ fn shortcuts(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
-    ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(bar, 0.0, theme::tab_bar_bg());
     let targets = preview_targets(s);
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
@@ -501,7 +501,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                     .unwrap_or_default();
                 ui.label(
                     RichText::new(format!("{ICON} {name}{}", if dirty { " *" } else { "" }))
-                        .color(theme::TEXT),
+                        .color(theme::text()),
                 );
                 match s.effect_graph.errors.first() {
                     Some(e) => {
@@ -512,12 +512,13 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                             String::new()
                         };
                         ui.label(
-                            RichText::new(format!("⚠ {}{more}", short(&e.message))).color(ERROR),
+                            RichText::new(format!("⚠ {}{more}", short(&e.message)))
+                                .color(crate::theme::shade(ERROR)),
                         )
                         .on_hover_text(&e.message);
                     }
                     None => {
-                        ui.label(RichText::new("✔ Compiled").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("✔ Compiled").color(theme::text_dim()));
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -544,7 +545,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                         1 => format!("Previewing {}", s.scene.name(targets[0])),
                         n => format!("Previewing {n} effects"),
                     };
-                    ui.label(RichText::new(label).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(label).color(theme::text_dim()));
                     if let Some(c) = cmd {
                         preview_command(s, &targets, c);
                     }
@@ -589,7 +590,7 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
         Align2::CENTER_CENTER,
         text,
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 }
 

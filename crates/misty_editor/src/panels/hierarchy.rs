@@ -216,9 +216,9 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
     };
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, &label));
     let fill = if resp.hovered() && !dragging {
-        Color32::from_rgb(62, 62, 62)
+        crate::theme::shade(Color32::from_rgb(62, 62, 62))
     } else {
-        Color32::from_rgb(52, 52, 52)
+        crate::theme::shade(Color32::from_rgb(52, 52, 52))
     };
     ui.painter().rect_filled(rect, 0.0, fill);
 
@@ -242,9 +242,9 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
         }
     }
     let color = match (loaded, active) {
-        (false, _) => theme::TEXT_DIM,
-        (true, true) => Color32::WHITE,
-        (true, false) => theme::TEXT,
+        (false, _) => theme::text_dim(),
+        (true, true) => theme::shade(Color32::WHITE),
+        (true, false) => theme::text(),
     };
     let text_pos = pos2(rect.left() + 18.0, rect.center().y);
     let text = format!("🎬 {}", crate::i18n::display(&label));
@@ -284,7 +284,7 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
         Align2::CENTER_CENTER,
         "⋮",
         FontId::proportional(13.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     egui::Popup::menu(&menu).show(|ui| scene_menu(ui, state, id));
     resp.context_menu(|ui| scene_menu(ui, state, id));
@@ -298,7 +298,7 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
             .input(|i| i.pointer.hover_pos())
             .is_some_and(|p| rect.contains(p))
     {
-        let stroke = Stroke::new(2.0, Color32::from_rgb(90, 150, 230));
+        let stroke = Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(90, 150, 230)));
         ui.painter()
             .rect_stroke(rect.shrink(1.0), 2.0, stroke, egui::StrokeKind::Inside);
         return Some(Drop::Scene(id));
@@ -355,9 +355,9 @@ fn scene_menu(ui: &mut Ui, state: &mut EditorState, id: SceneId) {
 /// Foldout triangle colour: brighter under the pointer.
 fn arrow_color(arrow: &egui::Response) -> Color32 {
     if arrow.hovered() {
-        tree_lines::ARROW_HOVER
+        theme::shade(tree_lines::ARROW_HOVER)
     } else {
-        tree_lines::ARROW
+        theme::shade(tree_lines::ARROW)
     }
 }
 
@@ -399,9 +399,9 @@ fn row(
     }
     if selected {
         let fill = if state.hierarchy.focused {
-            theme::SELECTION
+            theme::selection()
         } else {
-            Color32::from_gray(77)
+            crate::theme::shade(Color32::from_gray(77))
         };
         painter.rect_filled(rect, 0.0, fill);
     } else if resp.hovered() && !dragging {
@@ -437,11 +437,11 @@ fn row(
     // Prefab instances (root and children) have blue names; red when the prefab is missing.
     let prefab_color = super::prefab_rows::name_color(prefab, active);
     let color = match (selected && state.hierarchy.focused, active, prefab_color) {
-        (true, _, _) => Color32::WHITE,
+        (true, _, _) => theme::selection_text(),
         (false, _, Some(c)) => c,
-        (false, true, None) if has_children || is_folder => tree_lines::PARENT_TEXT,
-        (false, true, None) => theme::TEXT,
-        (false, false, None) => theme::TEXT_DIM,
+        (false, true, None) if has_children || is_folder => theme::shade(tree_lines::PARENT_TEXT),
+        (false, true, None) => theme::text(),
+        (false, false, None) => theme::text_dim(),
     };
     let renaming = state
         .hierarchy
@@ -533,7 +533,7 @@ fn row(
     }
     // A material or texture dragged over the row: outlined, it lands on this object.
     if resp.contains_pointer() && crate::texture_drop::dragged_onto_objects(ui.ctx()) {
-        let stroke = Stroke::new(2.0, Color32::from_rgb(90, 150, 230));
+        let stroke = Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(90, 150, 230)));
         ui.painter()
             .rect_stroke(rect.shrink(1.0), 2.0, stroke, egui::StrokeKind::Inside);
     }
@@ -561,7 +561,7 @@ fn row(
         } else {
             Drop::Into(e)
         };
-        let stroke = Stroke::new(2.0, Color32::from_rgb(90, 150, 230));
+        let stroke = Stroke::new(2.0, crate::theme::shade(Color32::from_rgb(90, 150, 230)));
         let painter = ui.painter();
         match target {
             Drop::Before(_) => painter.hline(text_x..=rect.right(), rect.top(), stroke),
@@ -892,13 +892,20 @@ pub fn row_with_icon(
         return resp;
     }
     if selected {
-        ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 0.0, theme::selection());
     } else if resp.hovered() {
-        ui.painter()
-            .rect_filled(rect, 0.0, Color32::from_rgb(69, 69, 69));
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            crate::theme::shade(Color32::from_rgb(69, 69, 69)),
+        );
     }
     let mut pos = rect.left_center() + vec2(6.0 + depth as f32 * INDENT, 0.0);
-    let color = if selected { Color32::WHITE } else { color };
+    let color = if selected {
+        theme::selection_text()
+    } else {
+        color
+    };
     if let Some(icon) = icon {
         let slot = Rect::from_min_size(pos2(pos.x, rect.top()), vec2(15.0, ROW_H));
         crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, color);

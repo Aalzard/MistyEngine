@@ -139,9 +139,9 @@ fn header(ui: &mut Ui, v: &mut Vcs, repo: &git::Repo, project: &std::path::Path)
     });
     if let Some((text, error)) = &v.window.note {
         let color = if *error {
-            Color32::from_rgb(230, 110, 100)
+            crate::theme::shade(Color32::from_rgb(230, 110, 100))
         } else {
-            Color32::from_rgb(120, 200, 120)
+            crate::theme::shade(Color32::from_rgb(120, 200, 120))
         };
         ui.colored_label(color, text);
     }
@@ -466,13 +466,13 @@ fn text_diff_ui(ui: &mut Ui, text: &str) {
             break;
         }
         let color = if line.starts_with("+++") || line.starts_with("---") {
-            Color32::from_rgb(170, 170, 170)
+            crate::theme::shade(Color32::from_rgb(170, 170, 170))
         } else if line.starts_with('+') {
-            Color32::from_rgb(120, 200, 120)
+            crate::theme::shade(Color32::from_rgb(120, 200, 120))
         } else if line.starts_with('-') {
-            Color32::from_rgb(230, 110, 100)
+            crate::theme::shade(Color32::from_rgb(230, 110, 100))
         } else if line.starts_with("@@") {
-            Color32::from_rgb(110, 160, 230)
+            crate::theme::shade(Color32::from_rgb(110, 160, 230))
         } else {
             ui.visuals().text_color()
         };
@@ -484,11 +484,11 @@ fn object_diff_ui(ui: &mut Ui, text: &str) {
     for line in text.lines() {
         let trimmed = line.trim_start();
         let color = if trimmed.starts_with("+ ") {
-            Color32::from_rgb(120, 200, 120)
+            crate::theme::shade(Color32::from_rgb(120, 200, 120))
         } else if trimmed.starts_with("- ") {
-            Color32::from_rgb(230, 110, 100)
+            crate::theme::shade(Color32::from_rgb(230, 110, 100))
         } else if line.starts_with("~ ") {
-            Color32::from_rgb(220, 170, 80)
+            crate::theme::shade(Color32::from_rgb(220, 170, 80))
         } else {
             ui.visuals().text_color()
         };

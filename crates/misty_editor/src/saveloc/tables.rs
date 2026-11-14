@@ -448,7 +448,7 @@ fn grid(ui: &mut Ui, s: &mut EditorState) {
                                 .desired_width(170.0)
                                 .hint_text("missing");
                             if empty {
-                                edit = edit.background_color(MISSING);
+                                edit = edit.background_color(crate::theme::shade(MISSING));
                             }
                             if ui.add_sized([180.0, 20.0], edit).changed() {
                                 edits.push(GridEdit::Cell(e.key.clone(), l.clone(), text));

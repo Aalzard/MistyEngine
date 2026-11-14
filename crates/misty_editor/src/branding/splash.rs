@@ -36,7 +36,7 @@ pub fn remember(project: &std::path::Path, ms: u64) {
 pub fn paint(ui: &mut egui::Ui, project: &std::path::Path) {
     let rect = ui.max_rect();
     let painter = ui.painter();
-    painter.rect_filled(rect, 0.0, crate::theme::TAB_BAR_BG);
+    painter.rect_filled(rect, 0.0, crate::theme::tab_bar_bg());
     let logo = super::logo_texture(ui.ctx());
     let side = (rect.height() * 0.28).clamp(96.0, 220.0);
     let center = rect.center() - Vec2::new(0.0, side * 0.25);
@@ -64,7 +64,7 @@ pub fn paint(ui: &mut egui::Ui, project: &std::path::Path) {
         Align2::CENTER_TOP,
         format!("Opening {name}…"),
         FontId::proportional(13.0),
-        crate::theme::TEXT_DIM,
+        crate::theme::text_dim(),
     );
 }
 

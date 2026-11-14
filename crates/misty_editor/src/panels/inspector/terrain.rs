@@ -218,7 +218,7 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let data = store::get(&path).map(|(d, _)| d);
     if data.is_none() && tool != TerrainTool::Settings {
         ui.colored_label(
-            egui::Color32::from_rgb(230, 180, 60),
+            crate::theme::shade(egui::Color32::from_rgb(230, 180, 60)),
             match store::error(&path) {
                 Some(err) if !path.is_empty() => {
                     tr!("Terrain data could not be loaded: {error}", error = err)

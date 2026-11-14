@@ -35,11 +35,11 @@ impl Badge {
 
     pub fn color(self) -> egui::Color32 {
         match self {
-            Badge::Untracked => egui::Color32::from_rgb(140, 140, 150),
-            Badge::Added => egui::Color32::from_rgb(90, 180, 90),
-            Badge::Deleted => egui::Color32::from_rgb(200, 90, 80),
-            Badge::Modified => egui::Color32::from_rgb(220, 160, 60),
-            Badge::Conflicted => egui::Color32::from_rgb(230, 70, 70),
+            Badge::Untracked => crate::theme::shade(egui::Color32::from_rgb(140, 140, 150)),
+            Badge::Added => crate::theme::shade(egui::Color32::from_rgb(90, 180, 90)),
+            Badge::Deleted => crate::theme::shade(egui::Color32::from_rgb(200, 90, 80)),
+            Badge::Modified => crate::theme::shade(egui::Color32::from_rgb(220, 160, 60)),
+            Badge::Conflicted => crate::theme::shade(egui::Color32::from_rgb(230, 70, 70)),
         }
     }
 }
