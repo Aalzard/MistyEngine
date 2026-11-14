@@ -456,13 +456,24 @@ fn read_only_projects_refuse_saves_of_every_asset_kind() {
     }
     set_read_only(&root, true);
     for (name, save) in &saves {
-        assert!(save(&path(name)).is_err(), "{name} saved in a read-only project");
-        assert_eq!(std::fs::read_to_string(path(name)).unwrap(), "before", "{name}");
+        assert!(
+            save(&path(name)).is_err(),
+            "{name} saved in a read-only project"
+        );
+        assert_eq!(
+            std::fs::read_to_string(path(name)).unwrap(),
+            "before",
+            "{name}"
+        );
     }
     set_read_only(&root, false);
     for (name, save) in &saves {
         save(&path(name)).unwrap();
-        assert_ne!(std::fs::read_to_string(path(name)).unwrap(), "before", "{name}");
+        assert_ne!(
+            std::fs::read_to_string(path(name)).unwrap(),
+            "before",
+            "{name}"
+        );
     }
     let _ = std::fs::remove_dir_all(&root);
 }

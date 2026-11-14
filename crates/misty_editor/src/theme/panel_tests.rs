@@ -214,7 +214,9 @@ fn graph_windows_with_a_document_draw_readably_under_light() {
         problems.is_empty(),
         "unreadable text:
 {}",
-        problems.join("
-")
+        problems.join(
+            "
+"
+        )
     );
 }

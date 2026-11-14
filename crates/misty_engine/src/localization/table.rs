@@ -87,7 +87,8 @@ impl StringTable {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        crate::asset_db::write_asset(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
+        crate::asset_db::write_asset(path, self.to_json())
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     pub fn entry(&self, key: &str) -> Option<&StringEntry> {

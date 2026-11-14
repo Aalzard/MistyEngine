@@ -195,7 +195,12 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::ScriptGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::visual_script::ScriptGraph::from_json(body)?;
-            busy_window(s.script_graph.dirty(), s.script_graph.path.as_deref(), rel, "Script Graph")?;
+            busy_window(
+                s.script_graph.dirty(),
+                s.script_graph.path.as_deref(),
+                rel,
+                "Script Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.script_graph;
             w.open(&file, rel);
@@ -208,7 +213,12 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::ShaderGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::shader_graph::ShaderGraph::from_json(body)?;
-            busy_window(s.shader_graph.dirty(), s.shader_graph.path.as_deref(), rel, "Shader Graph")?;
+            busy_window(
+                s.shader_graph.dirty(),
+                s.shader_graph.path.as_deref(),
+                rel,
+                "Shader Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.shader_graph;
             w.open(&file, rel);
@@ -221,7 +231,12 @@ pub fn restore(s: &mut EditorState, item: &Leftover) -> Result<(), String> {
         DocKind::EffectGraph => {
             let rel = header.path.as_deref().ok_or("no path")?;
             let graph = misty_engine::vfx::EffectGraph::from_json(body)?;
-            busy_window(s.effect_graph.dirty(), s.effect_graph.path.as_deref(), rel, "Effect Graph")?;
+            busy_window(
+                s.effect_graph.dirty(),
+                s.effect_graph.path.as_deref(),
+                rel,
+                "Effect Graph",
+            )?;
             let file = s.assets.absolute(rel);
             let w = &mut s.effect_graph;
             w.open(&file, rel);

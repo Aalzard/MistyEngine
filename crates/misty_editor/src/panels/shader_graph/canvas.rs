@@ -1416,11 +1416,12 @@ fn notes(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, 
             let st = ui.style_mut();
             st.override_font_id = Some(FontId::proportional(12.0 * z));
             // Dark brown on the yellow note; light on the darker note the Light theme makes.
-            st.visuals.override_text_color = Some(if crate::theme::text_on(fill) == Color32::WHITE {
-                Color32::from_rgb(250, 244, 220)
-            } else {
-                Color32::from_rgb(50, 44, 20)
-            });
+            st.visuals.override_text_color =
+                Some(if crate::theme::text_on(fill) == Color32::WHITE {
+                    Color32::from_rgb(250, 244, 220)
+                } else {
+                    Color32::from_rgb(50, 44, 20)
+                });
             st.visuals.extreme_bg_color = Color32::TRANSPARENT;
             st.visuals.widgets.inactive.bg_stroke = Stroke::NONE;
             st.visuals.widgets.hovered.bg_stroke = Stroke::NONE;

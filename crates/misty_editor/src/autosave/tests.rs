@@ -934,9 +934,7 @@ fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
     use misty_engine::behaviour_tree::asset::NodeKind;
     let root = project("btree");
     let rel = "Assets/AI/Guard.btree";
-    BehaviourTree::new_default()
-        .save(&root.join(rel))
-        .unwrap();
+    BehaviourTree::new_default().save(&root.join(rel)).unwrap();
     let mut a = state(&root);
     begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
     crate::panels::behaviour_tree::open(&mut a, rel);
@@ -956,7 +954,11 @@ fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
 
     let mut b = state(&root);
     begin_session(&mut b, DEAD_PID_B, Duration::ZERO);
-    let d = b.autosave.recovery.as_ref().expect("the tree is offered back");
+    let d = b
+        .autosave
+        .recovery
+        .as_ref()
+        .expect("the tree is offered back");
     assert_eq!(d.items.len(), 1);
     assert_eq!(d.items[0].header.kind, DocKind::BehaviourTree);
     recovery::restore_items(&mut b, true);

@@ -225,10 +225,11 @@ mod tests {
     fn opening_another_graph_asks_to_save_first() {
         let (mut s, root) = project("open");
         crate::panels::script_graph::open(&mut s, "Assets/AI/A.vgraph");
-        s.script_graph
-            .graph
-            .variables
-            .push(Variable::new("Unsaved", PinType::Bool, Literal::Bool(true)));
+        s.script_graph.graph.variables.push(Variable::new(
+            "Unsaved",
+            PinType::Bool,
+            Literal::Bool(true),
+        ));
         assert!(s.script_graph.dirty());
         crate::panels::script_graph::open(&mut s, "Assets/AI/B.vgraph");
         assert_eq!(
@@ -248,10 +249,11 @@ mod tests {
         let on_disk = ScriptGraph::load(&root.join("Assets/AI/A.vgraph")).unwrap();
         assert_eq!(on_disk.variables.len(), 1, "saved before the switch");
         // Cancel keeps the graph and its changes.
-        s.script_graph
-            .graph
-            .variables
-            .push(Variable::new("Again", PinType::Bool, Literal::Bool(true)));
+        s.script_graph.graph.variables.push(Variable::new(
+            "Again",
+            PinType::Bool,
+            Literal::Bool(true),
+        ));
         crate::panels::script_graph::open(&mut s, "Assets/AI/A.vgraph");
         answer(&mut s, None);
         assert_eq!(s.script_graph.path.as_deref(), Some("Assets/AI/B.vgraph"));
