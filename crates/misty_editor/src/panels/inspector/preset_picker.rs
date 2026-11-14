@@ -17,7 +17,7 @@ use crate::theme;
 /// The small preset icon; `current` is the asset's settings as JSON (unused for components).
 pub fn button(ui: &mut Ui, state: &mut EditorState, target: PickTarget, current: Value) {
     let resp = ui
-        .add(egui::Button::new(RichText::new(PRESET_ICON).color(theme::TEXT_DIM)).frame(false))
+        .add(egui::Button::new(RichText::new(PRESET_ICON).color(theme::text_dim())).frame(false))
         .on_hover_text(format!("Presets for {}", target.kind()));
     let requested = state.preset_picker_request.as_deref() == Some(target.kind());
     if resp.clicked() || requested {
@@ -68,7 +68,7 @@ pub fn window(ctx: &egui::Context, state: &mut EditorState) {
         .default_pos(picker.anchor)
         .default_width(240.0)
         .show(ctx, |ui| {
-            ui.label(RichText::new(format!("{kind} presets")).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("{kind} presets")).color(theme::text_dim()));
             ui.add_space(2.0);
             if ui
                 .selectable_label(picker.chosen.is_none(), "None")

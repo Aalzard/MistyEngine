@@ -36,6 +36,8 @@ see a box like this:
    enemies and three stages, built from Script Graphs alone.
 11. [Recording videos and GIFs](11-recorder.md): the optional Recorder package, MP4, WebM,
    GIF and picture sequences at a fixed frame rate, from the window or a Timeline.
+12. [Themes and fonts](13-themes-and-fonts.md): light and dark themes, your own colours, and
+   the fonts of the interface and the Code Editor.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

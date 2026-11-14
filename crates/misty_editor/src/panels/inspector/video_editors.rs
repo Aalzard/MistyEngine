@@ -339,7 +339,7 @@ fn preview(ui: &mut Ui, key: &str, abs: &std::path::Path) {
         let src = match &p.source {
             Ok(s) => s.clone(),
             Err(e) => {
-                ui.colored_label(theme::WARN, e);
+                ui.colored_label(theme::warn(), e);
                 if ui.small_button("Retry").clicked() {
                     p.source = VideoSource::open_file(abs).map(Arc::new);
                 }
@@ -372,7 +372,7 @@ fn preview(ui: &mut Ui, key: &str, abs: &std::path::Path) {
                     }
                 }
                 Err(e) => {
-                    ui.colored_label(theme::WARN, e);
+                    ui.colored_label(theme::warn(), e);
                 }
             }
             p.shown = Some(frame);
@@ -402,7 +402,7 @@ fn preview(ui: &mut Ui, key: &str, abs: &std::path::Path) {
                     "{:.2} / {:.2} s · frame {}",
                     p.time, info.length, frame
                 ))
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
         });
     });
@@ -436,7 +436,7 @@ pub fn video_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         .map(|e| e.to_string_lossy().into_owned())
         .unwrap_or_default();
     if let Some(msg) = misty_engine::video::unsupported_message(&ext) {
-        ui.colored_label(theme::WARN, msg);
+        ui.colored_label(theme::warn(), msg);
         return;
     }
     let mut imp = VideoImporter::load(&abs);
@@ -447,7 +447,7 @@ pub fn video_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.label(describe(src.info()));
         }
         Err(e) => {
-            ui.colored_label(theme::WARN, e);
+            ui.colored_label(theme::warn(), e);
         }
     }
     grid(ui, "video_import_grid", |ui| {

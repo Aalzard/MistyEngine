@@ -89,9 +89,9 @@ fn lod_bar(ui: &mut Ui, g: &mut LodGroup, selected: &mut usize, camera: Option<f
         let seg = Rect::from_x_y_ranges(x_of(hi)..=x_of(lo), rect.y_range());
         let culled = i == n;
         let mut color = if culled {
-            CULLED
+            crate::theme::shade(CULLED)
         } else {
-            COLORS[i % COLORS.len()]
+            crate::theme::shade(COLORS[i % COLORS.len()])
         };
         if !culled && i == *selected {
             color = color.gamma_multiply(1.35);
@@ -107,7 +107,7 @@ fn lod_bar(ui: &mut Ui, g: &mut LodGroup, selected: &mut usize, camera: Option<f
                 egui::Align2::LEFT_TOP,
                 label,
                 FontId::proportional(10.5),
-                Color32::from_gray(235),
+                crate::theme::shade(Color32::from_gray(235)),
             );
         }
         if !culled {
@@ -133,7 +133,10 @@ fn lod_bar(ui: &mut Ui, g: &mut LodGroup, selected: &mut usize, camera: Option<f
         }
         painter.line_segment(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(if r.hovered() { 2.5 } else { 1.5 }, Color32::from_gray(20)),
+            Stroke::new(
+                if r.hovered() { 2.5 } else { 1.5 },
+                crate::theme::shade(Color32::from_gray(20)),
+            ),
         );
     }
     if let Some(h) = camera {

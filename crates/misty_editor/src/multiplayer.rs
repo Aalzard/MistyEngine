@@ -246,9 +246,9 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
 
 fn dot(ui: &mut Ui, on: bool) {
     let color = if on {
-        Color32::from_rgb(90, 190, 110)
+        crate::theme::shade(Color32::from_rgb(90, 190, 110))
     } else {
-        Color32::from_gray(110)
+        crate::theme::shade(Color32::from_gray(110))
     };
     ui.label(RichText::new("●").color(color));
 }

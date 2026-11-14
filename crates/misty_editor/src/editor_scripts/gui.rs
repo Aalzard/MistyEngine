@@ -267,9 +267,9 @@ pub fn register(lua: &Lua) -> Result<()> {
 
 fn help_box(ui: &mut Ui, text: &str, kind: &str) {
     let (icon, color) = match kind {
-        "warning" => ("⚠", Color32::from_rgb(255, 200, 60)),
-        "error" => ("⛔", Color32::from_rgb(255, 90, 80)),
-        _ => ("ℹ", Color32::from_gray(200)),
+        "warning" => ("⚠", crate::theme::shade(Color32::from_rgb(255, 200, 60))),
+        "error" => ("⛔", crate::theme::shade(Color32::from_rgb(255, 90, 80))),
+        _ => ("ℹ", crate::theme::shade(Color32::from_gray(200))),
     };
     egui::Frame::new()
         .fill(color.gamma_multiply(0.12))

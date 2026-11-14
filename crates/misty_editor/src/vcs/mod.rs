@@ -143,7 +143,7 @@ pub fn paint_badge(ui: &Ui, at: Pos2, badge: Badge, size: f32) {
         Align2::CENTER_CENTER,
         badge.letter(),
         FontId::proportional(size * 0.8),
-        egui::Color32::from_rgb(20, 20, 20),
+        crate::theme::shade(egui::Color32::from_rgb(20, 20, 20)),
     );
 }
 

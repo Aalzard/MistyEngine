@@ -18,7 +18,7 @@ pub fn guid(rel: &str) -> Option<Guid> {
 
 /// An asset Inspector's path line, with the GUID under it.
 pub fn path_label(ui: &mut Ui, rel: &str) {
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    ui.label(RichText::new(rel).color(theme::text_dim()).small());
     guid_row(ui, rel);
 }
 
@@ -29,13 +29,13 @@ pub fn guid_row(ui: &mut Ui, rel: &str) {
     };
     let text = g.to_string();
     ui.horizontal(|ui| {
-        ui.label(RichText::new("GUID").small().color(theme::TEXT_DIM));
+        ui.label(RichText::new("GUID").small().color(theme::text_dim()));
         ui.add(
             egui::Label::new(
                 RichText::new(&text)
                     .small()
                     .monospace()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             )
             .selectable(true),
         );

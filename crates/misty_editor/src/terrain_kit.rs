@@ -567,7 +567,7 @@ pub fn confirm_button(
         ui.weak(tr!("Edit ▸ Undo takes it back."));
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let danger = Color32::from_rgb(200, 70, 60);
+            let danger = crate::theme::shade(Color32::from_rgb(200, 70, 60));
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new(confirm).color(Color32::WHITE))
@@ -1003,11 +1003,14 @@ fn dashed_rect(p: &egui::Painter, r: Rect, stroke: Stroke) {
 pub fn preview_backdrop(ui: &Ui, rect: Rect, radius: f32) {
     let dark = ui.visuals().dark_mode;
     let (top, bottom) = if dark {
-        (Color32::from_rgb(64, 72, 82), Color32::from_rgb(38, 40, 44))
+        (
+            Color32::from_rgb(64, 72, 82),
+            crate::theme::shade(Color32::from_rgb(38, 40, 44)),
+        )
     } else {
         (
-            Color32::from_rgb(214, 226, 238),
-            Color32::from_rgb(178, 184, 190),
+            crate::theme::shade(Color32::from_rgb(214, 226, 238)),
+            crate::theme::shade(Color32::from_rgb(178, 184, 190)),
         )
     };
     let mut mesh = egui::Mesh::default();

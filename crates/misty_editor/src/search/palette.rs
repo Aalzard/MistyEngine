@@ -220,7 +220,7 @@ fn actions_list(ui: &mut Ui, hit: &Hit, i: usize, sel: usize) -> Option<(usize, 
         let color = if n == sel {
             Color32::WHITE
         } else {
-            theme::TEXT
+            theme::text()
         };
         ui.painter().text(
             rect.left_center() + vec2(30.0, 0.0),
@@ -241,13 +241,13 @@ fn group_header(ui: &mut Ui, provider: Provider) {
     ui.label(
         egui::RichText::new(format!("{}  {}", provider.icon(), provider.title()))
             .size(11.0)
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
     );
 }
 
 fn paint_row_bg(ui: &Ui, rect: egui::Rect, selected: bool, hovered: bool) {
     if selected {
-        ui.painter().rect_filled(rect, 3.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 3.0, theme::selection());
     } else if hovered {
         ui.painter()
             .rect_filled(rect, 3.0, Color32::from_white_alpha(10));
@@ -260,12 +260,12 @@ fn label_job(hit: &Hit, selected: bool, max_width: f32) -> LayoutJob {
     let base = if selected {
         Color32::WHITE
     } else {
-        theme::TEXT
+        theme::text()
     };
     let accent = if selected {
-        Color32::from_rgb(255, 214, 110)
+        crate::theme::shade(Color32::from_rgb(255, 214, 110))
     } else {
-        Color32::from_rgb(110, 170, 255)
+        crate::theme::shade(Color32::from_rgb(110, 170, 255))
     };
     let mut job = LayoutJob::default();
     let mut matched = hit.indices.iter().peekable();
@@ -293,9 +293,9 @@ fn row(ui: &mut Ui, hit: &Hit, selected: bool) -> egui::Response {
     let color = if hit.provider == Provider::Project
         && matches!(&hit.target, Target::Asset { rel, .. } if rel.ends_with(".prefab"))
     {
-        theme::PREFAB
+        theme::prefab()
     } else {
-        theme::TEXT
+        theme::text()
     };
     painter.text(
         rect.left_center() + vec2(14.0, 0.0),
@@ -315,9 +315,9 @@ fn row(ui: &mut Ui, hit: &Hit, selected: bool) -> egui::Response {
         Color32::WHITE,
     );
     let dim = if selected {
-        Color32::from_gray(190)
+        crate::theme::shade(Color32::from_gray(190))
     } else {
-        theme::TEXT_DIM
+        theme::text_dim()
     };
     if !hit.detail.is_empty() {
         let mut job =
@@ -349,7 +349,7 @@ fn empty_state(ui: &mut Ui, blank: bool, indexing: bool) {
         "No results"
     };
     ui.add_space(6.0);
-    ui.add(egui::Label::new(egui::RichText::new(text).color(theme::TEXT_DIM)).wrap());
+    ui.add(egui::Label::new(egui::RichText::new(text).color(theme::text_dim())).wrap());
     ui.add_space(6.0);
 }
 
@@ -359,6 +359,6 @@ fn footer(ui: &mut Ui) {
     ui.label(
         egui::RichText::new("↑↓ move    Enter open    Alt+Enter more actions    Esc close")
             .size(11.0)
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
     );
 }

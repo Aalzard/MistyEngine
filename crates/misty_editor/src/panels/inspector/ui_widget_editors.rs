@@ -174,7 +174,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
 /// Linear groups have no header checkbox; show an Enabled row instead.
 fn linear_header(ui: &mut Ui, state: &EditorState, e: Entity, name: &str) {
     if linear_flag(state, e, name) == Some(false) {
-        ui.label(RichText::new("Disabled: children keep their own rects.").color(theme::TEXT_DIM));
+        ui.label(
+            RichText::new("Disabled: children keep their own rects.").color(theme::text_dim()),
+        );
     }
 }
 
@@ -265,7 +267,7 @@ fn calls(
     ui.label(title);
     egui::Frame::group(ui.style()).show(ui, |ui| {
         if list.is_empty() {
-            ui.label(RichText::new("List is Empty").color(theme::TEXT_DIM));
+            ui.label(RichText::new("List is Empty").color(theme::text_dim()));
         }
         let mut remove = None;
         for (i, call) in list.iter_mut().enumerate() {
@@ -446,7 +448,7 @@ fn input_field(ui: &mut Ui, f: &mut UiInputField, objs: &Objects, targets: &Call
         );
         ui.end_row();
         ui.label("Line Type");
-        ui.label(RichText::new("Single Line").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Single Line").color(theme::text_dim()));
         ui.end_row();
         ui.label("Placeholder");
         c |= object_field(ui, "input_placeholder", &mut f.placeholder, objs);

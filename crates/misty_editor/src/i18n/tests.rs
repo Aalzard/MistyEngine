@@ -172,6 +172,13 @@ fn dynamic_keys() -> Vec<String> {
     for c in crate::panels::inspector::translated_components() {
         v.push((*c).into());
     }
+    // Theme editor: token and group names (`theme::editor`).
+    v.extend(crate::theme::TOKENS.iter().map(|t| t.label.to_owned()));
+    v.extend(
+        crate::theme::Group::ALL
+            .iter()
+            .map(|g| g.label().to_owned()),
+    );
     for t in crate::templates::Template::ALL {
         v.push(t.name().into());
         v.push(t.description().into());

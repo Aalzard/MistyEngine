@@ -75,11 +75,15 @@ pub fn highlight(ui: &Ui, rect: Rect, caption: &str) {
         egui::Order::Foreground,
         Id::new("os_drop_highlight"),
     ));
-    painter.rect_filled(rect, 3.0, HIGHLIGHT.gamma_multiply(0.12));
+    painter.rect_filled(
+        rect,
+        3.0,
+        crate::theme::shade(HIGHLIGHT).gamma_multiply(0.12),
+    );
     painter.rect_stroke(
         rect.shrink(1.0),
         3.0,
-        Stroke::new(2.0, HIGHLIGHT),
+        Stroke::new(2.0, crate::theme::shade(HIGHLIGHT)),
         egui::StrokeKind::Inside,
     );
     if !caption.is_empty() {
@@ -90,7 +94,7 @@ pub fn highlight(ui: &Ui, rect: Rect, caption: &str) {
         );
         let at = egui::pos2(rect.center().x - galley.size().x / 2.0, rect.top() + 8.0);
         let bg = Rect::from_min_size(at, galley.size()).expand2(egui::vec2(6.0, 3.0));
-        painter.rect_filled(bg, 4.0, HIGHLIGHT);
+        painter.rect_filled(bg, 4.0, crate::theme::shade(HIGHLIGHT));
         painter.galley(at, galley, Color32::WHITE);
     }
 }

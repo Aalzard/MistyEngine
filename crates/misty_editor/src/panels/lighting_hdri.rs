@@ -69,7 +69,7 @@ pub(super) fn rows(ui: &mut Ui, h: &mut HdriSettings, cx: &HdriContext) -> HdriE
     }
     if let Some(e) = &cx.error {
         ui.label("");
-        ui.colored_label(crate::theme::AXIS_X, e);
+        ui.colored_label(crate::theme::shade(crate::theme::AXIS_X), e);
         ui.end_row();
     }
     edit.changed |= row(ui, "Rotation", |ui| {

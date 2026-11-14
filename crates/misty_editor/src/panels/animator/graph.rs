@@ -24,14 +24,18 @@ use crate::state::EditorState;
 /// Selection outline, live progress and the transition being played.
 pub const LIVE_BLUE: Color32 = Color32::from_rgb(70, 150, 245);
 const NODE_SIZE: Vec2 = vec2(170.0, 38.0);
-const STATE_FILL: Color32 = Color32::from_rgb(92, 92, 92);
+fn state_fill() -> Color32 {
+    crate::theme::near(|p| p.graph_node, Color32::from_rgb(92, 92, 92))
+}
 const DEFAULT_FILL: Color32 = Color32::from_rgb(196, 110, 36);
 const ENTRY_FILL: Color32 = Color32::from_rgb(54, 128, 60);
 const ANY_FILL: Color32 = Color32::from_rgb(52, 130, 140);
 const EXIT_FILL: Color32 = Color32::from_rgb(160, 48, 48);
 const MACHINE_FILL: Color32 = Color32::from_rgb(74, 74, 82);
 const ARROW: Color32 = Color32::from_gray(205);
-const CANVAS_BG: Color32 = Color32::from_rgb(38, 38, 38);
+fn canvas_bg() -> Color32 {
+    crate::theme::near(|p| p.graph_canvas, Color32::from_rgb(38, 38, 38))
+}
 
 /// Graph ↔ screen mapping: screen = centre + (graph + pan) × zoom.
 #[derive(Clone, Copy)]
@@ -212,7 +216,7 @@ pub fn show(
         Sense::click_and_drag(),
     );
     let painter = ui.painter_at(canvas);
-    painter.rect_filled(canvas, 0.0, CANVAS_BG);
+    painter.rect_filled(canvas, 0.0, canvas_bg());
     navigate(ui, s, canvas, &canvas_resp);
     let view = View {
         centre: canvas.center(),
@@ -234,7 +238,13 @@ pub fn show(
         .and_then(|n| node_pos(m, &at, &n))
     {
         let entry = view.screen(m.nodes_of(&at).entry);
-        arrow(&painter, entry, view.screen(d), view.zoom, DEFAULT_FILL);
+        arrow(
+            &painter,
+            entry,
+            view.screen(d),
+            view.zoom,
+            crate::theme::shade(DEFAULT_FILL),
+        );
     }
     let playing = live.and_then(|l| {
         Some((
@@ -249,13 +259,13 @@ pub fn show(
             (t.from == Node::state(from) || t.from == Node::AnyState) && t.to == Node::state(to)
         });
         let color = if selected || active {
-            LIVE_BLUE
+            crate::theme::shade(LIVE_BLUE)
         } else if hovered_transition == Some(i) {
             Color32::WHITE
         } else if t.mute {
-            Color32::from_rgb(200, 70, 70)
+            crate::theme::shade(Color32::from_rgb(200, 70, 70))
         } else {
-            ARROW
+            crate::theme::shade(ARROW)
         };
         arrow(&painter, a, b, view.zoom, color);
     }
@@ -430,12 +440,12 @@ fn draw_node(
 ) {
     let is_default = matches!(node, Node::State(n) if m.default_of(at) == Some(n.as_str()));
     let fill = match node {
-        Node::Entry => ENTRY_FILL,
-        Node::AnyState => ANY_FILL,
-        Node::Exit => EXIT_FILL,
-        Node::Up | Node::Machine(_) => MACHINE_FILL,
-        Node::State(_) if is_default => DEFAULT_FILL,
-        Node::State(_) => STATE_FILL,
+        Node::Entry => crate::theme::shade(ENTRY_FILL),
+        Node::AnyState => crate::theme::shade(ANY_FILL),
+        Node::Exit => crate::theme::shade(EXIT_FILL),
+        Node::Up | Node::Machine(_) => crate::theme::shade(MACHINE_FILL),
+        Node::State(_) if is_default => crate::theme::shade(DEFAULT_FILL),
+        Node::State(_) => state_fill(),
     };
     let round = CornerRadius::same((5.0 * zoom).round().clamp(1.0, 12.0) as u8);
     painter.rect_filled(
@@ -457,7 +467,7 @@ fn draw_node(
     painter.rect_filled(rect, round, fill);
     let selected = s.animator.selected.as_ref() == Some(&GraphItem::Node(node.clone()));
     let outline = if selected {
-        Stroke::new(2.5, LIVE_BLUE)
+        Stroke::new(2.5, crate::theme::shade(LIVE_BLUE))
     } else {
         Stroke::new(1.0, Color32::from_black_alpha(160))
     };
@@ -480,7 +490,7 @@ fn draw_node(
             painter.rect_stroke(
                 rect,
                 round,
-                Stroke::new(2.0, LIVE_BLUE),
+                Stroke::new(2.0, crate::theme::shade(LIVE_BLUE)),
                 StrokeKind::Outside,
             );
         }
@@ -508,11 +518,15 @@ fn draw_node(
         );
         let track = Rect::from_min_size(bar.min, vec2(rect.width() - 8.0 * zoom, 4.0 * zoom));
         painter.rect_filled(track, 1.0, Color32::from_black_alpha(120));
-        painter.rect_filled(bar, 1.0, LIVE_BLUE.gamma_multiply(alpha));
+        painter.rect_filled(
+            bar,
+            1.0,
+            crate::theme::shade(LIVE_BLUE).gamma_multiply(alpha),
+        );
         painter.rect_stroke(
             rect,
             round,
-            Stroke::new(2.0, LIVE_BLUE.gamma_multiply(alpha)),
+            Stroke::new(2.0, crate::theme::shade(LIVE_BLUE).gamma_multiply(alpha)),
             StrokeKind::Outside,
         );
     }

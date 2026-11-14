@@ -320,10 +320,26 @@ struct Page<'a> {
 
 fn note_style(kind: NoteKind) -> (Color32, &'static str, &'static str) {
     match kind {
-        NoteKind::Note => (Color32::from_rgb(90, 150, 230), "ℹ", "Note"),
-        NoteKind::Tip => (Color32::from_rgb(110, 196, 120), "💡", "Tip"),
-        NoteKind::Warning => (Color32::from_rgb(230, 180, 60), "⚠", "Warning"),
-        NoteKind::Programmers => (Color32::from_rgb(180, 140, 230), "⌨", "For programmers"),
+        NoteKind::Note => (
+            crate::theme::shade(Color32::from_rgb(90, 150, 230)),
+            "ℹ",
+            "Note",
+        ),
+        NoteKind::Tip => (
+            crate::theme::shade(Color32::from_rgb(110, 196, 120)),
+            "💡",
+            "Tip",
+        ),
+        NoteKind::Warning => (
+            crate::theme::shade(Color32::from_rgb(230, 180, 60)),
+            "⚠",
+            "Warning",
+        ),
+        NoteKind::Programmers => (
+            crate::theme::shade(Color32::from_rgb(180, 140, 230)),
+            "⌨",
+            "For programmers",
+        ),
     }
 }
 

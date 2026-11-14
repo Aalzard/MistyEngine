@@ -11,12 +11,12 @@ use crate::theme;
 /// A soft card (no outline) with a title.
 fn card(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
     egui::Frame::new()
-        .fill(theme::CARD_BG)
+        .fill(theme::card_bg())
         .corner_radius(6.0)
         .inner_margin(egui::Margin::symmetric(10, 8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new(title).strong().color(theme::TEXT));
+            ui.label(RichText::new(title).strong().color(theme::text()));
             ui.add_space(4.0);
             add(ui);
         });
@@ -33,8 +33,8 @@ fn rows(ui: &mut Ui, id: &str, rows: &[(&str, String)]) {
                 if v.is_empty() {
                     continue;
                 }
-                ui.label(RichText::new(*k).color(theme::TEXT_DIM));
-                ui.add(egui::Label::new(RichText::new(v).color(theme::TEXT)).wrap());
+                ui.label(RichText::new(*k).color(theme::text_dim()));
+                ui.add(egui::Label::new(RichText::new(v).color(theme::text())).wrap());
                 ui.end_row();
             }
         });
@@ -110,7 +110,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent, index: usize, tota
                     RichText::new(&e.name)
                         .size(15.0)
                         .strong()
-                        .color(theme::TEXT),
+                        .color(theme::text()),
                 );
             });
             ui.label(
@@ -120,13 +120,13 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent, index: usize, tota
                     total,
                     view_label(s.frame_debugger.view, e.display)
                 ))
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
             );
             ui.add_space(8.0);
             card(ui, "Event", |ui| rows(ui, "event", &event_rows(e)));
             if !e.shader.is_empty() {
                 card(ui, "Shader", |ui| {
-                    ui.label(RichText::new(&e.shader).monospace().color(theme::TEXT));
+                    ui.label(RichText::new(&e.shader).monospace().color(theme::text()));
                 });
             }
             if !e.bindings.is_empty() {
@@ -202,12 +202,16 @@ fn textures(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent) {
                 }
                 None => {
                     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 4.0, Color32::from_gray(48));
+                    ui.painter().rect_filled(
+                        rect,
+                        4.0,
+                        crate::theme::shade(Color32::from_gray(48)),
+                    );
                 }
             }
             ui.vertical(|ui| {
-                ui.label(RichText::new(slot).color(theme::TEXT_DIM));
-                ui.label(RichText::new(path).color(theme::TEXT));
+                ui.label(RichText::new(slot).color(theme::text_dim()));
+                ui.label(RichText::new(path).color(theme::text()));
             });
         });
     }

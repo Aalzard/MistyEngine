@@ -165,10 +165,10 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         pos2(props.left() - 1.0, full.bottom()),
     );
     let p = ui.painter();
-    p.rect_filled(maps, 0.0, theme::SIDEBAR_BG);
-    p.rect_filled(props, 0.0, theme::SIDEBAR_BG);
+    p.rect_filled(maps, 0.0, theme::sidebar_bg());
+    p.rect_filled(props, 0.0, theme::sidebar_bg());
     for x in [maps.right(), props.left()] {
-        p.vline(x, full.y_range(), egui::Stroke::new(1.0, theme::BORDER));
+        p.vline(x, full.y_range(), egui::Stroke::new(1.0, theme::border()));
     }
     if s.input_actions.map >= a.maps.len() {
         s.input_actions.map = a.maps.len().saturating_sub(1);
@@ -200,7 +200,7 @@ fn empty(ui: &mut Ui, s: &mut EditorState) {
         ui.label(RichText::new(ICON).size(32.0));
         match &s.input_actions.status {
             Some(e) => {
-                ui.colored_label(egui::Color32::LIGHT_RED, e);
+                ui.colored_label(crate::theme::error(), e);
             }
             None => {
                 ui.label("No Input Actions asset open.");
@@ -277,7 +277,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, a: &mut InputActionAsset) {
                 format!("{name}{}", if dirty { " *" } else { "" }),
             ));
             if let Some(st) = &s.input_actions.status {
-                ui.colored_label(egui::Color32::LIGHT_RED, st);
+                ui.colored_label(crate::theme::error(), st);
             }
         });
     });
@@ -325,19 +325,19 @@ fn row(ui: &mut Ui, selected: bool, indent: f32, text: &str, look: Look) -> egui
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, text)
     });
     if selected {
-        ui.painter().rect_filled(rect, 2.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 2.0, theme::selection());
     } else if resp.hovered() {
         ui.painter()
-            .rect_filled(rect, 2.0, theme::HOVER_BG.gamma_multiply(0.4));
+            .rect_filled(rect, 2.0, theme::hover_bg().gamma_multiply(0.4));
     }
     let font = match look {
         Look::Bold => egui::FontId::new(13.0, theme::bold_family(ui.ctx())),
         _ => egui::FontId::proportional(13.0),
     };
     let color = if look == Look::Dim {
-        theme::TEXT_DIM
+        theme::text_dim()
     } else {
-        theme::TEXT
+        theme::text()
     };
     let galley = ui.painter().layout_no_wrap(text.to_owned(), font, color);
     ui.painter().galley(
@@ -346,7 +346,7 @@ fn row(ui: &mut Ui, selected: bool, indent: f32, text: &str, look: Look) -> egui
             rect.center().y - galley.size().y / 2.0,
         ),
         galley,
-        theme::TEXT,
+        theme::text(),
     );
     resp
 }

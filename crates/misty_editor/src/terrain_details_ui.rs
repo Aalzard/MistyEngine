@@ -475,8 +475,11 @@ fn hero(ui: &mut Ui, thumb: &Thumb, title: &str, subtitle: &str) {
     match thumb {
         Thumb::Image(..) => {
             // The offscreen render's own background, so the image blends in.
-            ui.painter()
-                .rect_filled(rect, 6.0, egui::Color32::from_rgb(41, 43, 46));
+            ui.painter().rect_filled(
+                rect,
+                6.0,
+                crate::theme::shade(egui::Color32::from_rgb(41, 43, 46)),
+            );
             let sq = egui::Rect::from_center_size(rect.center(), egui::vec2(h, h));
             kit::paint_thumb(&child, sq, thumb);
         }

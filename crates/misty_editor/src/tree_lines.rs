@@ -74,9 +74,9 @@ pub fn guides(depths: &[Option<usize>]) -> Vec<Guide> {
 /// Stripe or parent tint behind a row (draw before hover/selection fills).
 pub fn paint_background(painter: &Painter, rect: Rect, index: usize, parent: bool) {
     if parent {
-        painter.rect_filled(rect, 0.0, PARENT_FILL);
+        painter.rect_filled(rect, 0.0, crate::theme::shade(PARENT_FILL));
     } else if index % 2 == 1 {
-        painter.rect_filled(rect, 0.0, STRIPE);
+        painter.rect_filled(rect, 0.0, crate::theme::shade(STRIPE));
     }
 }
 
@@ -90,7 +90,7 @@ pub fn paint_guide(
     tick_end: f32,
     arrow_half: f32,
 ) {
-    let stroke = Stroke::new(1.0, LINE);
+    let stroke = Stroke::new(1.0, crate::theme::shade(LINE));
     let x_at = |d: usize| painter.round_to_pixel_center(column(d));
     let mid = painter.round_to_pixel_center(rect.center().y);
     let (top, bottom) = (rect.top(), rect.bottom());

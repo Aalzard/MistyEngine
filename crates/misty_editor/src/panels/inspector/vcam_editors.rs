@@ -163,7 +163,7 @@ fn curve_editor(ui: &mut Ui, id: &str, c: &mut [f32; 4]) -> bool {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(64.0, 40.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, 3.0, crate::theme::CARD_BG);
+        p.rect_filled(rect, 3.0, crate::theme::card_bg());
         let at = |x: f32, y: f32| {
             egui::pos2(
                 rect.left() + x * rect.width(),
@@ -178,7 +178,7 @@ fn curve_editor(ui: &mut Ui, id: &str, c: &mut [f32; 4]) -> bool {
             .collect();
         p.add(egui::Shape::line(
             pts,
-            egui::Stroke::new(1.5, crate::theme::PREFAB),
+            egui::Stroke::new(1.5, crate::theme::prefab()),
         ));
         ui.vertical(|ui| {
             for (row, label) in [(0, "P1"), (2, "P2")] {
@@ -1165,7 +1165,7 @@ fn blend_list_entries(ui: &mut Ui, state: &mut EditorState, path: &str, names: &
     let mut list = match BlendList::load(&file) {
         Ok(l) => l,
         Err(e) => {
-            ui.colored_label(crate::theme::WARN, e);
+            ui.colored_label(crate::theme::warn(), e);
             return;
         }
     };

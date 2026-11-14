@@ -130,9 +130,9 @@ pub fn show(
                     Row::Event { index, depth } => (*depth, *index == selected, *index <= selected),
                 };
                 let fill = if is_selected {
-                    theme::SELECTION
+                    theme::selection()
                 } else if resp.hovered() {
-                    Color32::from_gray(66)
+                    crate::theme::shade(Color32::from_gray(66))
                 } else {
                     Color32::TRANSPARENT
                 };
@@ -140,8 +140,8 @@ pub fn show(
                 let x = rect.left() + 6.0 + depth as f32 * 14.0;
                 let text_color = match (is_selected, replayed) {
                     (true, _) => Color32::WHITE,
-                    (false, true) => theme::TEXT,
-                    (false, false) => theme::TEXT_DIM,
+                    (false, true) => theme::text(),
+                    (false, false) => theme::text_dim(),
                 };
                 match row {
                     Row::Pass {
@@ -153,7 +153,7 @@ pub fn show(
                             Align2::LEFT_CENTER,
                             if open { "⏷" } else { "⏵" },
                             FontId::proportional(11.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
                         painter.text(
                             rect.left_center() + vec2(x - rect.left() + 14.0, 0.0),
@@ -164,15 +164,18 @@ pub fn show(
                         );
                         // Count badge.
                         let badge = format!("{events}");
-                        let galley =
-                            painter.layout_no_wrap(badge, FontId::monospace(11.0), theme::TEXT_DIM);
+                        let galley = painter.layout_no_wrap(
+                            badge,
+                            FontId::monospace(11.0),
+                            theme::text_dim(),
+                        );
                         let size = galley.size() + vec2(10.0, 2.0);
                         let at = egui::Rect::from_min_size(
                             rect.right_center() - vec2(size.x + 6.0, size.y / 2.0),
                             size,
                         );
-                        painter.rect_filled(at, 7.0, Color32::from_gray(48));
-                        painter.galley(at.min + vec2(5.0, 1.0), galley, theme::TEXT_DIM);
+                        painter.rect_filled(at, 7.0, crate::theme::shade(Color32::from_gray(48)));
+                        painter.galley(at.min + vec2(5.0, 1.0), galley, theme::text_dim());
                         if resp.clicked() {
                             let arrow = rect.left() + depth as f32 * 14.0 + 20.0;
                             match resp.interact_pointer_pos().is_some_and(|p| p.x < arrow) {
@@ -206,7 +209,7 @@ pub fn show(
                                 Align2::RIGHT_CENTER,
                                 format!("×{}", e.instances),
                                 FontId::monospace(11.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
                         }
                         if resp.clicked() {
@@ -231,12 +234,12 @@ fn row_last(row: &Row) -> usize {
 
 pub fn kind_color(kind: EventKind) -> Color32 {
     match kind {
-        EventKind::Clear => Color32::from_rgb(150, 150, 150),
-        EventKind::Draw => Color32::from_rgb(110, 190, 120),
-        EventKind::DrawIndirect => Color32::from_rgb(70, 200, 190),
-        EventKind::Fullscreen => Color32::from_rgb(120, 170, 240),
-        EventKind::Compute => Color32::from_rgb(230, 170, 80),
-        EventKind::Copy => Color32::from_rgb(180, 140, 220),
-        EventKind::Ui => Color32::from_rgb(230, 110, 160),
+        EventKind::Clear => crate::theme::shade(Color32::from_rgb(150, 150, 150)),
+        EventKind::Draw => crate::theme::shade(Color32::from_rgb(110, 190, 120)),
+        EventKind::DrawIndirect => crate::theme::shade(Color32::from_rgb(70, 200, 190)),
+        EventKind::Fullscreen => crate::theme::shade(Color32::from_rgb(120, 170, 240)),
+        EventKind::Compute => crate::theme::shade(Color32::from_rgb(230, 170, 80)),
+        EventKind::Copy => crate::theme::shade(Color32::from_rgb(180, 140, 220)),
+        EventKind::Ui => crate::theme::shade(Color32::from_rgb(230, 110, 160)),
     }
 }

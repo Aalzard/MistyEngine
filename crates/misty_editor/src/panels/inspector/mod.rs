@@ -148,7 +148,8 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
         }
         if targets.len() > 1 {
             ui.label(
-                RichText::new(format!("{} objects selected", targets.len())).color(theme::TEXT_DIM),
+                RichText::new(format!("{} objects selected", targets.len()))
+                    .color(theme::text_dim()),
             );
         }
         ui.add_space(6.0);
@@ -240,7 +241,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         } else {
             let icon = RichText::new(icon).size(22.0);
             let icon = if state.scene.prefab_link(e).is_some() {
-                icon.color(theme::PREFAB)
+                icon.color(theme::prefab())
             } else {
                 icon
             };
@@ -808,7 +809,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.label(
             RichText::new(crate::state::PREFAB_ICON)
                 .size(22.0)
-                .color(theme::PREFAB),
+                .color(theme::prefab()),
         );
         ui.label(crate::theme::bold(
             ui.ctx(),
@@ -827,14 +828,14 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 if outline.len() == 1 { "" } else { "s" }
             ));
             egui::Frame::new()
-                .fill(theme::FIELD_BG)
+                .fill(theme::field_bg())
                 .inner_margin(4.0)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     for (n, depth) in &outline {
                         ui.label(
                             RichText::new(format!("{}{n}", "    ".repeat(*depth)))
-                                .color(theme::PREFAB),
+                                .color(theme::prefab()),
                         );
                     }
                 });
@@ -849,7 +850,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ));
         }
         Err(err) => {
-            ui.colored_label(theme::AXIS_X, err);
+            ui.colored_label(crate::theme::shade(theme::AXIS_X), err);
         }
     }
 }
@@ -870,7 +871,7 @@ fn prefab_asset_actions(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 crate::prefabs::display_name(&base)
             );
             if ui
-                .link(RichText::new(text).color(theme::PREFAB))
+                .link(RichText::new(text).color(theme::prefab()))
                 .on_hover_text(&base)
                 .clicked()
             {

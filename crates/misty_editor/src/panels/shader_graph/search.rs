@@ -221,7 +221,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         .constrain(true)
         .show(ui.ctx(), |ui| {
             egui::Frame::popup(ui.style())
-                .fill(theme::POPUP_BG)
+                .fill(theme::popup_bg())
                 .corner_radius(8.0)
                 .show(ui, |ui| {
                     ui.set_width(250.0);
@@ -272,7 +272,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
                                     ui.label(
                                         RichText::new(e.category)
                                             .font(FontId::proportional(11.0))
-                                            .color(theme::TEXT_DIM),
+                                            .color(theme::text_dim()),
                                     );
                                 }
                                 let on = i == highlighted;
@@ -285,7 +285,9 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
                                 }
                             }
                             if list.is_empty() {
-                                ui.label(RichText::new("No matching nodes").color(theme::TEXT_DIM));
+                                ui.label(
+                                    RichText::new("No matching nodes").color(theme::text_dim()),
+                                );
                             }
                         });
                 });

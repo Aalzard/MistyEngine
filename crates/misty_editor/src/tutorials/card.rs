@@ -55,7 +55,7 @@ fn dim(ctx: &egui::Context, hole: Rect) {
     let screen = ctx.content_rect();
     let hole = hole.expand(6.0).intersect(screen);
     let painter = ctx.layer_painter(LayerId::new(Order::Middle, Id::new("tutorial_dim")));
-    let shade = Color32::from_rgba_unmultiplied(8, 8, 12, 105);
+    let shade = crate::theme::shade(Color32::from_rgba_unmultiplied(8, 8, 12, 105));
     let bands = [
         Rect::from_min_max(screen.min, pos2(screen.max.x, hole.min.y)),
         Rect::from_min_max(pos2(screen.min.x, hole.max.y), screen.max),
@@ -86,11 +86,19 @@ fn outline(ctx: &egui::Context, rect: Rect, age: f64) {
         painter.rect_stroke(
             r.expand(grow),
             round,
-            Stroke::new(3.0, GLOW.gamma_multiply(alpha as f32 / 255.0)),
+            Stroke::new(
+                3.0,
+                crate::theme::shade(GLOW).gamma_multiply(alpha as f32 / 255.0),
+            ),
             egui::StrokeKind::Outside,
         );
     }
-    painter.rect_stroke(r, round, Stroke::new(2.0, GLOW), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        r,
+        round,
+        Stroke::new(2.0, crate::theme::shade(GLOW)),
+        egui::StrokeKind::Outside,
+    );
 }
 
 struct Info<'a> {
@@ -117,8 +125,11 @@ fn card(ctx: &egui::Context, info: &Info, target: Option<(&str, Rect)>) -> Optio
         .constrain(true)
         .show(ctx, |ui| {
             Frame::popup(ui.style())
-                .fill(theme::PANEL_BG)
-                .stroke(Stroke::new(1.0, GLOW.gamma_multiply(0.7)))
+                .fill(theme::panel_bg())
+                .stroke(Stroke::new(
+                    1.0,
+                    crate::theme::shade(GLOW).gamma_multiply(0.7),
+                ))
                 .corner_radius(8)
                 .inner_margin(12)
                 .show(ui, |ui| {
@@ -138,7 +149,7 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
                 index = info.index + 1,
                 count = info.count
             ))
-            .color(theme::TEXT_DIM),
+            .color(theme::text_dim()),
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let close = ui.add(egui::Button::new(RichText::new("✕").small()).frame(false));
@@ -166,7 +177,7 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
                 .color(Color32::WHITE),
         );
         ui.add_space(2.0);
-        ui.label(RichText::new(text).color(theme::TEXT));
+        ui.label(RichText::new(text).color(theme::text()));
     });
     if info.done {
         ui.add_space(2.0);
@@ -186,20 +197,20 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
         let last = info.index + 1 == info.count;
         let label = if last { tr!("Finish") } else { tr!("Next ▶") };
         let next = egui::Button::new(RichText::new(label).strong().color(Color32::BLACK))
-            .fill(GLOW)
+            .fill(crate::theme::shade(GLOW))
             .min_size(vec2(72.0, 0.0));
         if ui.add(next).clicked() {
             nav = Some(Nav::Next);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let exit = ui.add(
-                egui::Button::new(RichText::new(tr!("Exit")).color(theme::TEXT_DIM)).frame(false),
+                egui::Button::new(RichText::new(tr!("Exit")).color(theme::text_dim())).frame(false),
             );
             if exit.on_hover_text(tr!("Close the tutorial")).clicked() {
                 nav = Some(Nav::Exit);
             }
             let skip = ui.add(
-                egui::Button::new(RichText::new(tr!("Skip")).color(theme::TEXT_DIM)).frame(false),
+                egui::Button::new(RichText::new(tr!("Skip")).color(theme::text_dim())).frame(false),
             );
             if skip
                 .on_hover_text(tr!("Skip the rest and mark this tutorial as done"))
@@ -216,10 +227,10 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
 fn progress_bar(ui: &mut Ui, info: &Info) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 3.0), Sense::hover());
     let p = ui.painter();
-    p.rect_filled(rect, 1.5, theme::FIELD_BG);
+    p.rect_filled(rect, 1.5, theme::field_bg());
     let f = (info.index + 1) as f32 / info.count.max(1) as f32;
     let done = Rect::from_min_size(rect.min, vec2(rect.width() * f, rect.height()));
-    p.rect_filled(done, 1.5, GLOW.gamma_multiply(0.8));
+    p.rect_filled(done, 1.5, crate::theme::shade(GLOW).gamma_multiply(0.8));
 }
 
 /// Where the card goes: beside the target (menus leave room for their submenus), inside large

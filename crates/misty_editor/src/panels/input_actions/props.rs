@@ -286,9 +286,9 @@ fn path_row(ui: &mut Ui, s: &mut EditorState, path: &mut String, vector: bool) {
         let edit = egui::TextEdit::singleline(path)
             .desired_width(ui.available_width() - 30.0)
             .text_color(if ok {
-                theme::TEXT
+                theme::text()
             } else {
-                egui::Color32::LIGHT_RED
+                crate::theme::error()
             });
         ui.add(edit);
         ui.menu_button("▾", |ui| {
@@ -441,7 +441,7 @@ fn params_list(ui: &mut Ui, title: &str, id: &str, text: &mut String, kinds: Kin
     if list.is_empty() {
         ui.label(
             RichText::new(format!("No {} have been added.", title.to_lowercase()))
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
     }
     let mut remove = None;

@@ -140,7 +140,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .max_height(list_h)
             .show(ui, |ui| {
                 if props.is_empty() {
-                    ui.label(RichText::new("No properties yet: use +").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("No properties yet: use +").color(theme::text_dim()));
                 }
                 for p in &props {
                     row(ui, s, p);
@@ -167,7 +167,7 @@ fn row(ui: &mut Ui, s: &mut EditorState, p: &misty_engine::vfx::EffectProperty) 
     let selected = s.effect_graph.blackboard.selected.as_deref() == Some(p.name.as_str());
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 5.0, theme::SELECTION);
+        painter.rect_filled(rect, 5.0, theme::selection());
     } else if resp.hovered() {
         painter.rect_filled(rect, 5.0, Color32::from_white_alpha(10));
     }
@@ -182,14 +182,14 @@ fn row(ui: &mut Ui, s: &mut EditorState, p: &misty_engine::vfx::EffectProperty) 
         Align2::LEFT_CENTER,
         &p.name,
         FontId::proportional(12.5),
-        theme::TEXT,
+        theme::text(),
     );
     painter.text(
         pill.right_center(),
         Align2::RIGHT_CENTER,
         p.value.type_label(),
         FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
     if resp.clicked() || resp.drag_started() {
         let w = &mut s.effect_graph;

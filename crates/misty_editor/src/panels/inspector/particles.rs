@@ -289,9 +289,9 @@ fn min_max(ui: &mut Ui, id: &str, v: &mut MinMax, min: f32) -> bool {
             });
             if v.curve && editor_open(ui, open_id) {
                 if v.random {
-                    ui.label(RichText::new("Min").small().color(theme::TEXT_DIM));
+                    ui.label(RichText::new("Min").small().color(theme::text_dim()));
                     ch |= crate::panels::effect_graph::fields::curve_editor(ui, &mut v.curve_min);
-                    ui.label(RichText::new("Max").small().color(theme::TEXT_DIM));
+                    ui.label(RichText::new("Max").small().color(theme::text_dim()));
                 }
                 ch |= crate::panels::effect_graph::fields::curve_editor(ui, &mut v.curve_max);
             }
@@ -399,7 +399,7 @@ fn emission(ui: &mut Ui, em: &mut misty_engine::particles::EmissionModule) -> bo
         .striped(true)
         .show(ui, |ui| {
             for h in ["Time", "Count", "Cycles", "Interval", "Probability", ""] {
-                ui.label(RichText::new(h).small().color(theme::TEXT_DIM));
+                ui.label(RichText::new(h).small().color(theme::text_dim()));
             }
             ui.end_row();
             for (i, b) in em.bursts.iter_mut().enumerate() {
@@ -677,7 +677,7 @@ fn collision(ui: &mut Ui, c: &mut misty_engine::particles::CollisionModule) -> b
         ui.label(
             RichText::new("Planes (world point, normal)")
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
         let mut remove = None;
         for (i, pl) in c.planes.iter_mut().enumerate() {
@@ -718,7 +718,7 @@ fn sub_emitters(
         ui.label(
             RichText::new("Add a child object with a Particle System to use as a sub emitter.")
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
     }
     for (i, sub) in s.list.iter_mut().enumerate() {
@@ -929,7 +929,7 @@ fn keys<K: Clone + KeyTime>(
 ) -> bool {
     let mut ch = false;
     let mut remove = None;
-    ui.label(RichText::new(title).small().color(theme::TEXT_DIM));
+    ui.label(RichText::new(title).small().color(theme::text_dim()));
     for (i, k) in list.iter_mut().enumerate() {
         ui.push_id((title, i), |ui| {
             ui.horizontal(|ui| {
@@ -1011,7 +1011,7 @@ fn gradient_bar(ui: &mut Ui, g: &Gradient) {
     painter.rect_stroke(
         rect,
         0.0,
-        egui::Stroke::new(1.0, Color32::from_gray(30)),
+        egui::Stroke::new(1.0, crate::theme::shade(Color32::from_gray(30))),
         egui::StrokeKind::Inside,
     );
 }
