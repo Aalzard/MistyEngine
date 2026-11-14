@@ -94,6 +94,21 @@ olive; herbs still read as pale sprouts in the sun; the cliff terrain patch on t
 first view is a beige patch with tree dots (no outcrops show there); `inside2` crowns lighter
 than the photo; inside GPU ~0.7 ms over 12.7.
 
+## Round 4: far meadow, herbs, crowns, outcrops
+
+- `FAR_SHADE` 0.15 and the far field's shade easing off from 1.8× to 4.5× the grass distance
+  (×(1 − 0.6·smoothstep)). Eye level sRGB far / past crest / grass: r7 58/65/43, 65/71/32,
+  64/74/25; test knob 0.15 (f15) and r9 65/73/44, 66/73/33, 64/74/25.
+- Forest Herbs layer removed (function deleted). Inside 10.78 ms GPU (parts 10.60, 10.2 M
+  triangles, 422 draws), hero 12.65 (12.24).
+- Wood crowns [0.44–0.47, 0.49–0.52, 0.31–0.33]: `inside2` lower-half median 0.024 (photo
+  0.028).
+- Outcrops in the sites (150, 800), (280, 980), (40, 1020), 14–24 m; slabs over 6 m tilt 0.85
+  to the slope and sink 0.25 of their footprint.
+- Not done: moss / staining at the outcrop feet (shared rock materials from `sample_rocks`;
+  would need NoonValley material variants and prefab overrides, or terrain paint around each
+  outcrop computed in `terrain_data`).
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at

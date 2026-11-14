@@ -5001,3 +5001,9 @@ Notes, decisions, licences and checks: `docs/pending/r61-recorder.md`.
 - **Cliffs**: outcrops (14–24 m) in the three farther sites up the slope, so the bare patch on
   the left of the first view shows rock faces; big slabs follow the slope (0.85) and sink a
   quarter of their footprint into it. `cliffs_outcrops_r4.jpg`.
+- Final timings (High 1920×1080): hero 12.65 ms GPU (parts 12.24), inside 10.78 ms (parts
+  10.60), CPU 2.9 / 2.4 ms. Checks: fmt clean, clippy 0 warnings, tests 980 editor + 1627
+  engine + the rest passed, golden 20 / 20.
+- Still differs: no moss or staining at the outcrops' feet (they use the shared sample rock
+  materials; a NoonValley variant would be needed); the far meadow is still a darker olive
+  than the photo's; the forest floor between the carpets is bare litter.
