@@ -1,12 +1,16 @@
-//! MP4 files holding one H.264 video track, written as frames arrive: `ftyp`, then the samples
-//! in an `mdat` (64-bit size, patched at the end), then the `moov` index (sample sizes, offsets,
-//! key frames, timing). Every sample is its own chunk, so offsets are simply where each sample
-//! landed. [`read_samples`] reads such a file back (tests, the frame count).
+//! MP4 files holding one H.264 video track and, when the recording keeps sound, one Opus audio
+//! track ("Opus in ISOBMFF": an `Opus` sample entry with a `dOps` box, the encoder delay trimmed
+//! by an edit list). Written as frames and packets arrive: `ftyp`, then the samples in an
+//! `mdat` (64-bit size, patched at the end), then the `moov` index (sample sizes, offsets, key
+//! frames, timing). Every sample is its own chunk, so offsets are simply where each sample
+//! landed, and the two tracks can interleave freely. [`read_samples`] and [`read_audio`] read
+//! such a file back (tests, checks).
 
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use crate::audio::{CHANNELS, OPUS_FRAME, OpusStream, RATE, opus_bitrate};
 use crate::h264::{Encoded, H264, NAL_PPS, NAL_SPS};
 use crate::{Frame, Output, Sink};
 
@@ -16,13 +20,23 @@ const FRAME_TICKS: u32 = 1000;
 pub struct Mp4Sink {
     encoder: H264,
     writer: Mp4Writer,
+    audio: Option<OpusStream>,
 }
 
 impl Mp4Sink {
     pub fn create(out: &Output) -> Result<Self, String> {
+        let mut writer = Mp4Writer::create(&out.path(None), out.width, out.height, out.fps)?;
+        let audio = if out.audio {
+            let s = OpusStream::new(opus_bitrate(out.quality))?;
+            writer.enable_audio(s.pre_skip);
+            Some(s)
+        } else {
+            None
+        };
         Ok(Self {
             encoder: H264::new(out.width, out.height, out.fps, out.quality)?,
-            writer: Mp4Writer::create(&out.path(None), out.width, out.height, out.fps)?,
+            writer,
+            audio,
         })
     }
 }
@@ -33,11 +47,37 @@ impl Sink for Mp4Sink {
         self.writer.add(&e)
     }
 
-    fn finish(self: Box<Self>) -> Result<Vec<PathBuf>, String> {
+    fn write_audio(&mut self, samples: &[f32]) -> Result<(), String> {
+        let Some(a) = self.audio.as_mut() else {
+            return Ok(());
+        };
+        for p in a.push(samples)? {
+            self.writer.add_audio(&p)?;
+        }
+        Ok(())
+    }
+
+    fn finish(mut self: Box<Self>) -> Result<Vec<PathBuf>, String> {
+        if let Some(mut a) = self.audio.take() {
+            for p in a.finish()? {
+                self.writer.add_audio(&p)?;
+            }
+            self.writer.set_audio_length(a.samples());
+        }
         let path = self.writer.path.clone();
         self.writer.finish()?;
         Ok(vec![path])
     }
+}
+
+/// The Opus track's index.
+#[derive(Default)]
+struct AudioTrak {
+    pre_skip: u16,
+    sizes: Vec<u32>,
+    offsets: Vec<u64>,
+    /// Real samples (per channel): what plays after the pre-skip.
+    samples: u64,
 }
 
 /// Builds MP4 boxes: `size`, `type`, body.
@@ -113,6 +153,7 @@ pub struct Mp4Writer {
     /// Frames each sample lasts (an empty encode lengthens the one before).
     durations: Vec<u32>,
     keys: Vec<u32>,
+    audio: Option<AudioTrak>,
 }
 
 impl Mp4Writer {
@@ -144,7 +185,37 @@ impl Mp4Writer {
             offsets: Vec::new(),
             durations: Vec::new(),
             keys: Vec::new(),
+            audio: None,
         })
+    }
+
+    /// Add an Opus track (48 kHz stereo) whose decoder drops `pre_skip` samples first.
+    pub fn enable_audio(&mut self, pre_skip: u16) {
+        self.audio = Some(AudioTrak {
+            pre_skip,
+            ..Default::default()
+        });
+    }
+
+    /// Add one Opus packet (20 ms).
+    pub fn add_audio(&mut self, packet: &[u8]) -> Result<(), String> {
+        let Some(a) = self.audio.as_mut() else {
+            return Ok(());
+        };
+        self.file
+            .write_all(packet)
+            .map_err(|e| format!("{}: {e}", self.path.display()))?;
+        a.offsets.push(self.pos);
+        a.sizes.push(packet.len() as u32);
+        self.pos += packet.len() as u64;
+        Ok(())
+    }
+
+    /// The sound's real length (samples per channel at 48 kHz), for the edit list.
+    pub fn set_audio_length(&mut self, samples: u64) {
+        if let Some(a) = self.audio.as_mut() {
+            a.samples = samples;
+        }
     }
 
     /// Add one encoded frame.
@@ -211,13 +282,20 @@ impl Mp4Writer {
         let timescale = self.fps * FRAME_TICKS;
         let frames: u64 = self.durations.iter().map(|d| *d as u64).sum();
         let duration = (frames * FRAME_TICKS as u64).min(u32::MAX as u64) as u32;
+        // The sound in movie ticks.
+        let audio_duration = self.audio.as_ref().map_or(0, |a| {
+            (a.samples * timescale as u64 / RATE as u64).min(u32::MAX as u64) as u32
+        });
         let (w, h) = (self.width, self.height);
         let mut b = Boxes::new();
         b.boxed(b"moov", |b| {
             b.full(b"mvhd", 0, 0, |b| {
-                b.u32(0).u32(0).u32(timescale).u32(duration);
+                b.u32(0)
+                    .u32(0)
+                    .u32(timescale)
+                    .u32(duration.max(audio_duration));
                 b.u32(0x0001_0000).u16(0x0100).zeros(10).matrix().zeros(24);
-                b.u32(2);
+                b.u32(if self.audio.is_some() { 3 } else { 2 });
             });
             b.boxed(b"trak", |b| {
                 b.full(b"tkhd", 0, 3, |b| {
@@ -248,6 +326,9 @@ impl Mp4Writer {
                     });
                 });
             });
+            if let Some(a) = &self.audio {
+                b.boxed(b"trak", |b| audio_trak(b, a, audio_duration));
+            }
         });
         b.0
     }
@@ -317,6 +398,134 @@ impl Mp4Writer {
             }
         });
     }
+}
+
+/// The Opus track: `tkhd`, an edit list that skips the encoder delay and ends with the sound,
+/// and the sample table (every packet 20 ms, its own chunk).
+fn audio_trak(b: &mut Boxes, a: &AudioTrak, duration: u32) {
+    let packets = a.sizes.len() as u64;
+    let media = (packets * OPUS_FRAME as u64).min(u32::MAX as u64) as u32;
+    b.full(b"tkhd", 0, 3, |b| {
+        b.u32(0).u32(0).u32(2).u32(0).u32(duration);
+        // Layer, alternate group, volume 1.0, reserved, matrix, no size.
+        b.zeros(8).u16(0).u16(1).u16(0x0100).u16(0).matrix();
+        b.u32(0).u32(0);
+    });
+    b.boxed(b"edts", |b| {
+        b.full(b"elst", 0, 0, |b| {
+            b.u32(1).u32(duration).u32(a.pre_skip as u32).u16(1).u16(0);
+        });
+    });
+    b.boxed(b"mdia", |b| {
+        b.full(b"mdhd", 0, 0, |b| {
+            b.u32(0).u32(0).u32(RATE).u32(media);
+            b.u16(0x55c4).u16(0);
+        });
+        b.full(b"hdlr", 0, 0, |b| {
+            b.u32(0).bytes(b"soun").zeros(12).bytes(b"SoundHandler\0");
+        });
+        b.boxed(b"minf", |b| {
+            b.full(b"smhd", 0, 0, |b| {
+                b.u16(0).u16(0);
+            });
+            b.boxed(b"dinf", |b| {
+                b.full(b"dref", 0, 0, |b| {
+                    b.u32(1);
+                    b.full(b"url ", 0, 1, |_| {});
+                });
+            });
+            b.boxed(b"stbl", |b| {
+                b.full(b"stsd", 0, 0, |b| {
+                    b.u32(1);
+                    b.boxed(b"Opus", |b| {
+                        b.zeros(6).u16(1).zeros(8);
+                        b.u16(CHANNELS as u16).u16(16).u16(0).u16(0).u32(RATE << 16);
+                        b.boxed(b"dOps", |b| {
+                            b.u8(0).u8(CHANNELS as u8).u16(a.pre_skip).u32(RATE);
+                            b.u16(0).u8(0);
+                        });
+                    });
+                });
+                b.full(b"stts", 0, 0, |b| {
+                    b.u32(1).u32(packets as u32).u32(OPUS_FRAME as u32);
+                });
+                b.full(b"stsc", 0, 0, |b| {
+                    b.u32(1).u32(1).u32(1).u32(1);
+                });
+                b.full(b"stsz", 0, 0, |b| {
+                    b.u32(0).u32(a.sizes.len() as u32);
+                    for s in &a.sizes {
+                        b.u32(*s);
+                    }
+                });
+                b.full(b"co64", 0, 0, |b| {
+                    b.u32(a.offsets.len() as u32);
+                    for o in &a.offsets {
+                        b.u64(*o);
+                    }
+                });
+            });
+        });
+    });
+}
+
+/// What [`read_audio`] finds: the Opus track of a Recorder MP4.
+#[derive(Clone, Debug, Default)]
+pub struct Mp4Audio {
+    /// Sample entry type (`Opus`).
+    pub codec: String,
+    pub channels: u16,
+    pub sample_rate: u32,
+    pub pre_skip: u16,
+    /// What plays (samples per channel at `sample_rate`), from the edit list.
+    pub samples: u64,
+    pub packets: Vec<Vec<u8>>,
+}
+
+/// Read the audio track of an MP4 written by [`Mp4Writer`] (`None`: a silent video).
+pub fn read_audio(path: &Path) -> Result<Option<Mp4Audio>, String> {
+    let d = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bad = || format!("{}: not an MP4 the Recorder wrote", path.display());
+    let (moov, moov_end) = find(&d, 0, d.len(), &[b"moov"]).ok_or_else(bad)?;
+    let (mv, _) = find(&d, moov, moov_end, &[b"mvhd"]).ok_or_else(bad)?;
+    let movie_scale = be32(&d, mv + 12).ok_or_else(bad)? as u64;
+    for (kind, ts, te) in children(&d, moov, moov_end) {
+        if &kind != b"trak" {
+            continue;
+        }
+        let Some((hs, _)) = find(&d, ts, te, &[b"mdia", b"hdlr"]) else {
+            continue;
+        };
+        if d.get(hs + 8..hs + 12) != Some(b"soun") {
+            continue;
+        }
+        let mut a = Mp4Audio::default();
+        let (ss, se) = find(&d, ts, te, &[b"mdia", b"minf", b"stbl"]).ok_or_else(bad)?;
+        let (ds, _) = find(&d, ss, se, &[b"stsd"]).ok_or_else(bad)?;
+        let entry = ds + 8;
+        let entry_end = entry + be32(&d, entry).ok_or_else(bad)? as usize;
+        a.codec = String::from_utf8_lossy(d.get(entry + 4..entry + 8).ok_or_else(bad)?).into();
+        let body = entry + 8;
+        a.channels = u16::from_be_bytes([d[body + 16], d[body + 17]]);
+        a.sample_rate = be32(&d, body + 24).ok_or_else(bad)? >> 16;
+        if let Some((os, _)) = find(&d, body + 28, entry_end, &[b"dOps"]) {
+            a.pre_skip = u16::from_be_bytes([d[os + 2], d[os + 3]]);
+        }
+        if let Some((es, _)) = find(&d, ts, te, &[b"edts", b"elst"]) {
+            let seg = be32(&d, es + 8).ok_or_else(bad)? as u64;
+            a.samples = seg * a.sample_rate as u64 / movie_scale.max(1);
+        }
+        let (zs, _) = find(&d, ss, se, &[b"stsz"]).ok_or_else(bad)?;
+        let (os, _) = find(&d, ss, se, &[b"co64"]).ok_or_else(bad)?;
+        let count = be32(&d, zs + 8).ok_or_else(bad)? as usize;
+        for i in 0..count {
+            let size = be32(&d, zs + 12 + i * 4).ok_or_else(bad)? as usize;
+            let off = be64(&d, os + 8 + i * 8).ok_or_else(bad)? as usize;
+            a.packets.push(d.get(off..off + size).ok_or_else(bad)?.to_vec());
+        }
+        return Ok(Some(a));
+    }
+    Ok(None)
 }
 
 /// What [`read_samples`] finds in an MP4 file.

@@ -9,10 +9,13 @@
 //! - Encoders: [`sequence`] (PNG / JPG, on several threads), [`gif`], [`h264`] + [`mp4`]
 //!   (MP4 H.264 through OpenH264 compiled into the editor) and [`webm`] + [`av1`] (WebM AV1
 //!   through rav1e, pure Rust).
+//! - [`audio`]: the game's sound from taps on the mix, kept in step with the frames by the
+//!   mix's sample clock; Opus (pure Rust) in MP4 and WebM, a WAV beside image sequences.
 //!
 //! The settings themselves ([`RecorderSettings`]) live in the engine so Timeline clips and
 //! scripts can carry them.
 
+pub mod audio;
 pub mod av1;
 pub mod gif;
 pub mod h264;
@@ -24,6 +27,8 @@ pub mod session;
 pub mod webm;
 pub mod writer;
 
+#[cfg(test)]
+mod audio_tests;
 #[cfg(test)]
 mod gpu_tests;
 #[cfg(test)]
@@ -84,6 +89,8 @@ pub struct Output {
     pub fps: u32,
     /// 1–100.
     pub quality: u8,
+    /// Record the game's sound (formats that can hold it: see [`OutputFormat::has_audio`]).
+    pub audio: bool,
 }
 
 /// Stands for `<Frame>` in [`Output::name`] until a frame number is known.
@@ -114,6 +121,7 @@ impl Output {
             height,
             fps: settings.frame_rate(),
             quality: settings.quality.clamp(1, 100),
+            audio: settings.record_audio && settings.format.has_audio(),
         }
     }
 
@@ -135,12 +143,23 @@ impl Output {
         self.folder
             .join(format!("{name}.{}", self.format.extension()))
     }
+
+    /// The sound file beside an image sequence.
+    pub fn wav_path(&self) -> PathBuf {
+        self.path(None).with_extension("wav")
+    }
 }
 
 /// Something frames are written into.
 pub trait Sink: Send {
     /// Write one frame (frames come in order; sizes never change mid-recording).
     fn write(&mut self, frame: Frame) -> Result<(), String>;
+    /// Write sound: interleaved stereo at [`audio::RATE`], continuing where the last call
+    /// stopped (sample 0 = the first frame). Formats without sound ignore it.
+    fn write_audio(&mut self, samples: &[f32]) -> Result<(), String> {
+        let _ = samples;
+        Ok(())
+    }
     /// Finish the file(s); returns what was written.
     fn finish(self: Box<Self>) -> Result<Vec<PathBuf>, String>;
 }
@@ -150,7 +169,7 @@ pub fn open_sink(out: &Output) -> Result<Box<dyn Sink>, String> {
     std::fs::create_dir_all(&out.folder).map_err(|e| format!("{}: {e}", out.folder.display()))?;
     Ok(match out.format {
         OutputFormat::PngSequence | OutputFormat::JpgSequence => {
-            Box::new(sequence::SequenceSink::new(out.clone()))
+            Box::new(sequence::SequenceSink::create(out.clone())?)
         }
         OutputFormat::Gif => Box::new(gif::GifSink::create(out)?),
         OutputFormat::Mp4 => Box::new(mp4::Mp4Sink::create(out)?),

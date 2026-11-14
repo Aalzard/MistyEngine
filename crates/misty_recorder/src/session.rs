@@ -1,7 +1,10 @@
 //! One running recording: its schedule (which frames of capture time to keep), its output and
 //! the worker thread encoding it. The editor steps it once per frame of capture time and hands
-//! it the frames that come back from the GPU.
+//! it the frames that come back from the GPU, and the taps on the game's mix for its sound.
 
+use misty_engine::audio::MixTap;
+
+use crate::audio::{AudioFeed, samples_in};
 use crate::schedule::{Schedule, Step};
 use crate::writer::{Summary, Writer};
 use crate::{Frame, Output, RecorderSettings, open_sink};
@@ -14,13 +17,17 @@ pub struct Recording {
     /// Frames asked for (captured on the GPU) so far.
     requested: u64,
     error: Option<String>,
+    /// The sound (outputs that record it).
+    feed: Option<AudioFeed>,
 }
 
 impl Recording {
     /// Open the output and start the encoder.
     pub fn start(settings: RecorderSettings, output: Output) -> Result<Self, String> {
         let sink = open_sink(&output)?;
+        let feed = output.audio.then(AudioFeed::new);
         Ok(Self {
+            feed,
             schedule: Schedule::for_settings(&settings),
             settings,
             output,
@@ -56,6 +63,39 @@ impl Recording {
         }
     }
 
+    /// This recording keeps the game's sound.
+    pub fn wants_audio(&self) -> bool {
+        self.feed.is_some()
+    }
+
+    /// A tap on the game's mix (taken in capture time).
+    pub fn add_tap(&mut self, tap: MixTap) {
+        if let Some(f) = self.feed.as_mut() {
+            f.add_tap(tap);
+        }
+    }
+
+    /// A frame was captured at capture-time second `at`: the first one starts the sound.
+    pub fn mark_frame(&mut self, at: f64) {
+        if let Some(f) = self.feed.as_mut() {
+            f.begin(at);
+        }
+    }
+
+    /// Capture time reached `now`: hand the sound that is ready to the encoder.
+    pub fn pump_audio(&mut self, now: f64) {
+        if self.error.is_some() {
+            return;
+        }
+        let Some(f) = self.feed.as_mut() else { return };
+        let samples = f.pull(now);
+        if let Some(w) = self.writer.as_mut()
+            && let Err(e) = w.send_audio(samples)
+        {
+            self.error = Some(e);
+        }
+    }
+
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
@@ -80,9 +120,18 @@ impl Recording {
         self.schedule.elapsed()
     }
 
-    /// Wait for the encoder and finish the files.
+    /// Wait for the encoder and finish the files. The sound is cut or padded to exactly the
+    /// length of the frames.
     pub fn finish(mut self) -> Result<Summary, String> {
-        let writer = self.writer.take().ok_or("the recording is finished")?;
+        let mut writer = self.writer.take().ok_or("the recording is finished")?;
+        if let Some(feed) = self.feed.take() {
+            let fps = self.settings.frame_rate() as f64;
+            let total = samples_in(writer.sent() as f64 / fps);
+            let rest = feed.finish(total, std::time::Duration::from_millis(300));
+            if let Err(e) = writer.send_audio(rest) {
+                self.error.get_or_insert(e);
+            }
+        }
         let summary = writer.finish();
         match self.error.take() {
             Some(e) => Err(e),

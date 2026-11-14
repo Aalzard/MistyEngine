@@ -1,11 +1,13 @@
 //! PNG and JPG sequences: one file a frame, encoded on a few worker threads (PNG compression is
 //! the slow part of a recording). Frame `n` goes to worker `n % workers`; each worker has a
-//! short queue, so the recording waits for a busy worker instead of dropping its frame.
+//! short queue, so the recording waits for a busy worker instead of dropping its frame. The
+//! sound, when kept, goes to a WAV file beside the frames (same name, no frame number).
 
 use std::path::PathBuf;
 use std::sync::mpsc::{SyncSender, sync_channel};
 use std::thread::JoinHandle;
 
+use crate::audio::WavWriter;
 use crate::{Frame, Output, OutputFormat, Sink};
 
 type Worker = (SyncSender<Frame>, JoinHandle<Result<Vec<PathBuf>, String>>);
@@ -14,6 +16,7 @@ pub struct SequenceSink {
     workers: Vec<Worker>,
     count: u64,
     error: Option<String>,
+    wav: Option<WavWriter>,
 }
 
 /// Encode one frame to `path`.
@@ -78,7 +81,21 @@ impl SequenceSink {
             workers,
             count: 0,
             error: None,
+            wav: None,
         }
+    }
+
+    /// With the WAV for the sound when `out` keeps it.
+    pub fn create(out: Output) -> Result<Self, String> {
+        let wav = if out.audio {
+            Some(WavWriter::create(&out.wav_path())?)
+        } else {
+            None
+        };
+        Ok(Self {
+            wav,
+            ..Self::new(out)
+        })
     }
 }
 
@@ -97,7 +114,15 @@ impl Sink for SequenceSink {
         Ok(())
     }
 
+    fn write_audio(&mut self, samples: &[f32]) -> Result<(), String> {
+        match self.wav.as_mut() {
+            Some(w) => w.write(samples),
+            None => Ok(()),
+        }
+    }
+
     fn finish(self: Box<Self>) -> Result<Vec<PathBuf>, String> {
+        let wav = self.wav.map(WavWriter::finish).transpose()?;
         let mut all = Vec::new();
         let mut first_err = None;
         for (tx, handle) in self.workers {
@@ -116,6 +141,7 @@ impl Sink for SequenceSink {
             return Err(e);
         }
         all.sort();
+        all.extend(wav);
         Ok(all)
     }
 }

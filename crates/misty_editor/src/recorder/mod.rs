@@ -7,6 +7,11 @@
 //! back through a staging-buffer ring ([`misty_recorder::readback`]); encoders run on worker
 //! threads. A slow machine records slower than real time, but the file plays smoothly.
 //!
+//! Sound (Record Audio): while a recording keeps it, the game's mix runs in capture time too
+//! ([`misty_engine::audio::Audio::start_capture`]): each captured frame mixes exactly one frame
+//! of sound, read back through a tap on the final mix with its sample clock, so sound and
+//! picture stay in step at any speed. With no recording keeping sound, nothing changes.
+//!
 //! - [`window`]: Window ▸ General ▸ Recorder (only with the package installed).
 //! - [`timeline`]: the Timeline Recorder track (a clip records while it plays).
 //! - Lua `Recorder.Start()` / `Recorder.Stop()` arrive through `misty_engine::recorder`.
@@ -94,6 +99,8 @@ pub struct Active {
     draws: DrawCache,
     /// Capture-time seconds this recording has seen.
     time: f64,
+    /// The game session ([`RecorderState::audio_session`]) its mix tap came from.
+    tapped: Option<u64>,
 }
 
 impl Active {
@@ -131,6 +138,13 @@ pub struct RecorderState {
     /// The editor's renderer is still being made (the first seconds of a project). Recordings
     /// wait for it, and so does the game: frames captured without it came out black.
     pub gpu_starting: bool,
+    /// Capture-time seconds since the recordings began (the mix's clock while they keep sound).
+    capture_time: f64,
+    /// Counts game sessions whose mix was put in capture time (Play mode and scene swaps make
+    /// a new one; each recording keeping sound takes a tap from each).
+    audio_session: u64,
+    /// A game's mix is in capture time.
+    audio_on: bool,
 }
 
 impl RecorderState {
@@ -161,6 +175,7 @@ pub fn package_changed(s: &mut EditorState) {
             for a in std::mem::take(&mut s.recorder.active) {
                 finish(&mut s.recorder, a, None);
             }
+            end_audio(s);
             // Scripts saw `Recorder.isRecording` true for good after the package went
             // mid-recording.
             misty_engine::recorder::set_recording(false);
@@ -333,6 +348,7 @@ pub fn start_one(
         readback: None,
         draws: DrawCache::default(),
         time: 0.0,
+        tapped: None,
     });
     misty_engine::recorder::set_recording(true);
     Ok((shown, take))
@@ -426,7 +442,48 @@ pub fn stop_all(s: &mut EditorState, gpu: Option<&Gpu>) {
     for a in std::mem::take(&mut s.recorder.active) {
         finish(&mut s.recorder, a, gpu);
     }
+    end_audio(s);
     misty_engine::recorder::set_recording(false);
+}
+
+/// One frame of capture time went by (`dt` seconds): the game's mix renders exactly that much
+/// for the recordings that keep sound. A game the mix isn't in capture time for yet (Play
+/// mode just started, a scene was swapped in) joins at the current capture time, and every
+/// such recording takes a tap from it.
+fn advance_audio(s: &mut EditorState, active: &mut [Active], dt: f64) {
+    let now = s.recorder.capture_time;
+    s.recorder.capture_time = now + dt;
+    if !active.iter().any(|a| a.recording.wants_audio()) {
+        return;
+    }
+    let r = &mut s.recorder;
+    let Some(runtime) = s.runtime.as_ref() else {
+        return;
+    };
+    runtime.with_audio(|audio| {
+        if !audio.capturing() || !r.audio_on {
+            r.audio_session += 1;
+            r.audio_on = true;
+            audio.start_capture(now);
+        }
+        for a in active.iter_mut().filter(|a| a.recording.wants_audio()) {
+            if a.tapped != Some(r.audio_session) {
+                a.tapped = Some(r.audio_session);
+                a.recording.add_tap(audio.capture_tap());
+            }
+        }
+        audio.advance_capture(now + dt);
+    });
+}
+
+/// The recordings ended: the game's mix goes back to real time.
+fn end_audio(s: &mut EditorState) {
+    s.recorder.capture_time = 0.0;
+    if std::mem::take(&mut s.recorder.audio_on)
+        && let Some(runtime) = s.runtime.as_ref()
+    {
+        runtime.with_audio(|a| a.stop_capture());
+    }
 }
 
 /// Requests from scripts and the window, then the Timeline clips.
@@ -564,6 +621,7 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
     }
     poll_finishing(s);
     if s.recorder.active.is_empty() {
+        end_audio(s);
         s.recorder.ticked = false;
         s.recorder.play_seen = false;
         if std::mem::take(&mut s.recorder.started_play) && s.play.in_play_mode() {
@@ -593,6 +651,9 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
     let mut active = std::mem::take(&mut s.recorder.active);
     if ticked {
         let dt = capture_dt_of(&active);
+        // Capture time of the frame the game just advanced to (its sound follows it).
+        let at = s.recorder.capture_time;
+        advance_audio(s, &mut active, dt);
         for a in &mut active {
             // Due when the session's capture time reached this recording's next frame (its
             // rate may be lower than the fastest recording's).
@@ -602,15 +663,22 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
             }
             a.time += dt;
             match a.recording.step() {
-                Step::Capture(i) => match gpu.as_deref_mut() {
-                    Some(g) => capture(g, s, a, i),
-                    None => {
-                        let (w, h) = a.size;
-                        a.recording.push(Frame::solid(i, w, h, [0, 0, 0, 255]));
+                Step::Capture(i) => {
+                    a.recording.mark_frame(at);
+                    match gpu.as_deref_mut() {
+                        Some(g) => capture(g, s, a, i),
+                        None => {
+                            let (w, h) = a.size;
+                            a.recording.push(Frame::solid(i, w, h, [0, 0, 0, 255]));
+                        }
                     }
-                },
+                }
                 Step::Skip | Step::Done => {}
             }
+        }
+        let now = s.recorder.capture_time;
+        for a in &mut active {
+            a.recording.pump_audio(now);
         }
     }
     // Copies the GPU finished since: to the encoders.
@@ -640,6 +708,7 @@ pub fn gpu_frame(gpu: Option<&mut Gpu>, s: &mut EditorState) -> bool {
     }
     s.recorder.active = keep;
     if s.recorder.active.is_empty() {
+        end_audio(s);
         misty_engine::recorder::set_recording(false);
     }
     true

@@ -1,5 +1,5 @@
-//! A recording's worker thread: frames go in through a bounded queue and the [`Sink`] encodes
-//! them in order. When the queue is full, [`Writer::send`] waits: capture time is fixed, so a
+//! A recording's worker thread: frames and sound go in through a bounded queue and the [`Sink`]
+//! encodes them in order. When the queue is full, [`Writer::send`] waits: capture time is fixed, so a
 //! slow encoder makes the recording take longer, never lose frames.
 
 use std::path::PathBuf;
@@ -20,27 +20,37 @@ pub struct Summary {
 
 type Done = Result<(u64, Vec<PathBuf>), String>;
 
+/// What goes to the encoder.
+enum Packet {
+    Frame(Frame),
+    /// Interleaved stereo at [`crate::audio::RATE`].
+    Audio(Vec<f32>),
+}
+
 pub struct Writer {
-    tx: Option<SyncSender<Frame>>,
+    tx: Option<SyncSender<Packet>>,
     handle: Option<JoinHandle<Done>>,
     sent: u64,
 }
 
 impl Writer {
     pub fn spawn(mut sink: Box<dyn Sink>) -> Self {
-        let (tx, rx) = sync_channel::<Frame>(QUEUE);
+        let (tx, rx) = sync_channel::<Packet>(QUEUE);
         let handle = std::thread::Builder::new()
             .name("misty recorder encoder".into())
             .spawn(move || {
                 let mut frames = 0u64;
                 let mut failed = None;
-                for frame in rx {
+                for packet in rx {
                     if failed.is_some() {
                         continue;
                     }
-                    match sink.write(frame) {
-                        Ok(()) => frames += 1,
-                        Err(e) => failed = Some(e),
+                    let done = match packet {
+                        Packet::Frame(frame) => sink.write(frame).map(|()| frames += 1),
+                        Packet::Audio(samples) => sink.write_audio(&samples),
+                    };
+                    if let Err(e) = done {
+                        failed = Some(e);
                     }
                 }
                 let files = sink.finish();
@@ -60,10 +70,20 @@ impl Writer {
     /// Queue a frame (waits while the encoder is behind).
     pub fn send(&mut self, frame: Frame) -> Result<(), String> {
         let tx = self.tx.as_ref().ok_or("the recording is finished")?;
-        tx.send(frame)
+        tx.send(Packet::Frame(frame))
             .map_err(|_| "the encoder stopped".to_owned())?;
         self.sent += 1;
         Ok(())
+    }
+
+    /// Queue sound (interleaved stereo at [`crate::audio::RATE`]).
+    pub fn send_audio(&mut self, samples: Vec<f32>) -> Result<(), String> {
+        if samples.is_empty() {
+            return Ok(());
+        }
+        let tx = self.tx.as_ref().ok_or("the recording is finished")?;
+        tx.send(Packet::Audio(samples))
+            .map_err(|_| "the encoder stopped".to_owned())
     }
 
     /// Frames handed to the encoder.
