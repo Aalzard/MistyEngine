@@ -120,6 +120,14 @@ it, the toolbar's path goes back) or another `.vgraph` asset. Subgraphs are inli
 graph compiles, so they cost nothing at run time; each use has its own copy of the subgraph's
 Graph variables. A subgraph that uses itself is refused.
 
+A macro can also use the variables of the graph it is in. Such a variable is listed on the
+macro's Blackboard with the scope **Outer**: the macro's Get and Set nodes read and write the
+graph's variable of the same name (and type), not a copy. Collapse To Macro links the variables
+the collapsed nodes used this way, so they keep working on the graph's values. A macro inside a
+macro reaches the variables of the macro around it, and through its Outer links the graph's.
+Subgraph assets (`.vgraph` files) are not inside any graph: they have no Outer variables and
+pass values through their Graph Input and Graph Output pins instead.
+
 ## Debugging
 
 While playing, the window shows the instance on the selected object (else the first object using

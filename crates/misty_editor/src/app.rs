@@ -56,6 +56,8 @@ impl EditorApp {
         // idle editor still shows files added by other programs (see `ProjectBrowser::poll_disk`).
         let waker = ctx.clone();
         misty_engine::file_watch::set_waker(move || waker.request_repaint());
+        // The project lock first: with another editor on the project, nothing below may save.
+        let project_lock = crate::project_lock::open(&project);
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
         let guids = {
             misty_engine::profile_scope!(
@@ -76,6 +78,7 @@ impl EditorApp {
             EditorState::new(browser)
         };
         state.assets.note_guids(guids);
+        state.project_lock = project_lock;
         {
             misty_engine::profile_scope!(
                 "Editor.OpenInitialScene",
@@ -235,6 +238,10 @@ impl EditorApp {
     fn save_layout(&mut self, force: bool) {
         let dock = self.saved_dock.as_ref().unwrap_or(&self.dock);
         let s = &self.state;
+        // Read-only: the other editor's layouts stay as it saves them.
+        if s.project_lock.read_only() {
+            return;
+        }
         self.layout_autosave
             .tick(&s.project.root, &s.layouts, dock, force);
     }
@@ -820,6 +827,13 @@ impl EditorApp {
             s.push(action);
             ctx.request_repaint();
         }
+        match crate::project_lock::prompt_ui(ctx, &mut s.project_lock) {
+            Some(crate::project_lock::Choice::Cancel) => s.files.open_hub = Some(false),
+            Some(crate::project_lock::Choice::ReadOnly) => s.console.warn(
+                "This project is open in another editor: opened read-only (nothing is saved).",
+            ),
+            None => {}
+        }
         if let Some(action) = scene_files::prompt_ui(ctx, s)
             && scene_files::perform(s, action)
         {
@@ -938,6 +952,7 @@ impl eframe::App for EditorApp {
         misty_engine::asset_db::saver::flush();
         // A normal exit: this session's backups go, the session marker says "clean".
         crate::autosave::clean_exit(&mut self.state);
+        crate::project_lock::close(&mut self.state.project_lock);
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.

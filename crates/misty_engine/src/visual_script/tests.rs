@@ -1014,6 +1014,102 @@ fn doubler() -> ScriptGraph {
     m.0
 }
 
+/// A macro adding 1 to Score, Score linked to the graph's (`outer`) or its own.
+fn bump(outer: bool) -> ScriptGraph {
+    let mut m = G::new();
+    m.var("Score", PinType::Int, Literal::Int(0));
+    m.0.variables[0].outer = outer;
+    let input = m.np("GraphInput", &[("pins", "In:exec")]);
+    let output = m.np("GraphOutput", &[("pins", "Out:exec")]);
+    let inc = m.increment("Score");
+    m.w(input, "In", inc, "In");
+    m.w(inc, "Out", output, "Out");
+    m.0
+}
+
+/// Variables a macro links to the graph it is in (what Collapse To Macro makes) are the
+/// graph's: two uses of a macro adding 1 to Score take the graph's Score from 10 to 12, inside
+/// a macro inside a macro too. A macro's own variables stay private to each use.
+#[test]
+fn macros_read_and_write_the_graphs_variables_through_outer_links() {
+    let root = project("outer_vars");
+    for (outer, nested, expected) in [
+        (true, false, "12"),
+        (true, true, "12"),
+        (false, false, "10"),
+    ] {
+        let mut g = G::new();
+        g.var("Score", PinType::Int, Literal::Int(10));
+        let mut bump = bump(outer);
+        if nested {
+            // The macro wraps a second macro, both linking Score.
+            let mut wrap = G::new();
+            wrap.var("Score", PinType::Int, Literal::Int(0));
+            wrap.0.variables[0].outer = true;
+            wrap.0.macros.push(Macro {
+                name: "Inner".into(),
+                graph: bump,
+            });
+            let input = wrap.np("GraphInput", &[("pins", "In:exec")]);
+            let output = wrap.np("GraphOutput", &[("pins", "Out:exec")]);
+            let inner = wrap.np("Subgraph", &[("macro", "Inner")]);
+            wrap.0.connections.push(Connection {
+                from: input,
+                output: "In".into(),
+                to: inner,
+                input: "In".into(),
+            });
+            wrap.0.connections.push(Connection {
+                from: inner,
+                output: "Out".into(),
+                to: output,
+                input: "Out".into(),
+            });
+            bump = wrap.0;
+        }
+        g.0.macros.push(Macro {
+            name: "Bump".into(),
+            graph: bump,
+        });
+        let start = g.n("OnStart");
+        let b1 = g.np("Subgraph", &[("macro", "Bump")]);
+        let b2 = g.np("Subgraph", &[("macro", "Bump")]);
+        let l = g.log();
+        let get = g.get("Score");
+        g.w(get, "Value", l, "Message");
+        chain(&mut g, start, "Out", &[b1, b2, l]);
+        assert!(compile::check(&g.0, &NoFiles).is_empty());
+        g.0.save(&root.join(GRAPH)).unwrap();
+        let mut scene = Scene::new("t");
+        let e = scene.spawn("Thing", None);
+        attach(&mut scene, e, GRAPH, &[]);
+        let mut p = Play::start(root.clone(), scene);
+        p.frames(1);
+        p.no_errors();
+        assert_eq!(p.infos(), [expected], "outer {outer}, nested {nested}");
+    }
+    // A link to a variable the graph doesn't have, or of another type, is an error.
+    for graph_var in [None, Some(PinType::Float)] {
+        let mut g = G::new();
+        if let Some(ty) = graph_var {
+            g.var("Score", ty, Literal::Float(0.0));
+        }
+        g.0.macros.push(Macro {
+            name: "Bump".into(),
+            graph: bump(true),
+        });
+        let start = g.n("OnStart");
+        let b = g.np("Subgraph", &[("macro", "Bump")]);
+        chain(&mut g, start, "Out", &[b]);
+        let errs = compile::check(&g.0, &NoFiles);
+        assert!(
+            errs.iter()
+                .any(|e| e.node == Some(b) && e.message.contains("Score")),
+            "{graph_var:?}: {errs:?}"
+        );
+    }
+}
+
 #[test]
 fn macros_and_subgraph_assets_inline_with_their_own_state() {
     let root = project("subgraphs");

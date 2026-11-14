@@ -67,6 +67,7 @@ mod presets;
 mod probe_gizmos;
 mod probe_tools;
 mod project;
+mod project_lock;
 mod project_settings;
 mod project_settings_2d;
 mod project_settings_input;
@@ -248,6 +249,8 @@ mod terrain_tools;
 mod terrain_trees_ui;
 #[cfg(test)]
 mod terrain_ui_tests;
+#[cfg(test)]
+mod test_sample;
 #[cfg(test)]
 mod test_util;
 mod texture_drop;

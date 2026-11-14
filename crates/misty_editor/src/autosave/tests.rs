@@ -763,3 +763,50 @@ fn autosave_cost_on_a_big_scene_stays_within_budget() {
     assert!(stress > noon, "{report}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// With the project lock (round 60): the editor holding it backs up as usual (its writes to
+/// Library/Autosave, Library/Logs and the marker aren't refused); a second editor, open
+/// read-only, writes no marker, no backups and offers no recovery.
+#[test]
+fn a_read_only_editor_neither_backs_up_nor_recovers() {
+    let root = project("read_only");
+    let mut holder = state(&root);
+    holder.project_lock = crate::project_lock::open(&root);
+    assert!(!holder.project_lock.read_only());
+    start(&mut holder);
+    assert!(holder.autosave.active);
+    dirty_scene(
+        &mut holder,
+        "Assets/Scenes/Level.scene",
+        "Saved",
+        "Holder Edit",
+    );
+    autosave_now(&mut holder);
+    assert_eq!(files_in(holder.autosave.session_dir().unwrap()).len(), 1);
+    let log = crash::write_log(&root, "test log").unwrap();
+    assert!(log.exists());
+    let marker = Marker::load(&root).unwrap();
+
+    // A second editor on the same project.
+    let mut second = state(&root);
+    second.project_lock = crate::project_lock::open(&root);
+    assert!(second.project_lock.read_only());
+    start(&mut second);
+    assert!(!second.autosave.active);
+    assert!(second.autosave.recovery.is_none());
+    assert_eq!(
+        Marker::load(&root).unwrap(),
+        marker,
+        "the holder's marker is untouched"
+    );
+    second.scene.spawn("Read-only edit", None);
+    second.scene_dirty = true;
+    tick(&mut second, Instant::now(), false, Duration::from_secs(10));
+    assert!(second.autosave.run.is_none());
+    drop(second);
+
+    clean_exit(&mut holder);
+    assert!(Marker::load(&root).unwrap().clean_exit);
+    crate::project_lock::close(&mut holder.project_lock);
+    let _ = std::fs::remove_dir_all(&root);
+}

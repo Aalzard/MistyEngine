@@ -389,6 +389,7 @@
 [inspector]
 "Scales the penumbra: 1 = the light's physical size (rectangle lights: their width and height), larger = softer, 0 = as sharp as the shadow map allows." = "Yarı gölgeyi ölçekler: 1 = ışığın fiziksel boyutu (dikdörtgen ışıklarda genişliği ve yüksekliği), büyüdükçe daha yumuşak, 0 = gölge haritasının izin verdiği kadar keskin."
 "Lock Properties" = "Özellikleri Kilitle"
+"Softness" = "Yumuşaklık"
 "Static" = "Statik"
 "Tag" = "Etiket"
 "Layer" = "Katman"
@@ -806,6 +807,12 @@
 "Save changes to the following script(s)?" = "Aşağıdaki betik(ler)deki değişiklikler kaydedilsin mi?"
 "Save changes to {scene}?" = "{scene} sahnesindeki değişiklikler kaydedilsin mi?"
 "Delete {count} objects?" = "{count} nesne silinsin mi?"
+"Project Already Open" = "Proje Zaten Açık"
+"This project is open in another Misty editor (process {pid})." = "Bu proje başka bir Misty düzenleyicisinde açık (işlem {pid})."
+"This project is open in another Misty editor." = "Bu proje başka bir Misty düzenleyicisinde açık."
+"Open it read-only to look around: scenes, assets and settings can't be saved." = "Göz atmak için salt okunur açın: sahneler, varlıklar ve ayarlar kaydedilemez."
+"Open Read-Only" = "Salt Okunur Aç"
+"Read-Only" = "Salt Okunur"
 
 [preferences]
 "Preferences" = "Tercihler"
@@ -857,6 +864,10 @@
 "Code Editor Shortcuts" = "Kod Düzenleyici Kısayolları"
 
 [terrain]
+"Far Field" = "Uzak Alan"
+"Far Field Brightness" = "Uzak Alan Parlaklığı"
+"Past the blades the ground keeps the grass's colour, blade detail and shade, fading in as the blades fade out (0 = off)." = "Otların ötesinde zemin, otların rengini, yaprak ayrıntısını ve gölgesini korur; otlar kayboldukça belirir (0 = kapalı)."
+"Brightness of the far field against the lit blades: match it where the grass fades out." = "Uzak alanın aydınlatılmış otlara göre parlaklığı: otların kaybolduğu yerde eşleştirin."
 "Reset to default" = "Varsayılana sıfırla"
 "Edit ▸ Undo takes it back." = "Düzen ▸ Geri Al bunu geri alır."
 "Sets the brush falloff to {f}" = "Fırça yumuşaklığını {f} yapar"
@@ -979,6 +990,8 @@
 "Trees cast shadows" = "Ağaçlar gölge düşürür"
 "Shadow Detail" = "Gölge Ayrıntısı"
 "Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)" = "Güneş gölgelerindeki ağaçların ayrıntısı (düşük: daha hafif örgüler ve daha erken panolar; sık bir ormanın gölgeleri çok daha ucuza gelir)"
+"Plant Shadow Distance" = "Bitki Gölge Mesafesi"
+"Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)" = "Küçük bitkiler (eğrelti otları, yer örtücüler) yalnızca kameraya bu kadar yakınken gölge düşürür (0 = ağaçlar kadar uzak)"
 "Prefabs" = "Prefablar"
 "{count} placed. Double-click to open the prefab, drag to reorder." = "{count} yerleştirildi. Prefabı açmak için çift tıklayın, sırayı değiştirmek için sürükleyin."
 "Add Prefab" = "Prefab Ekle"

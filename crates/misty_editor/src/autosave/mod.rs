@@ -249,12 +249,23 @@ impl Autosave {
 /// Start autosave and the session marker for the project `s` has open, and look for work left
 /// by an earlier session (the Recover Unsaved Work dialog shows it).
 pub fn start(s: &mut EditorState) {
+    // Another editor holds the project (opened read-only, see `project_lock`): that editor
+    // backs the work up and owns the marker; this one writes nothing and offers nothing.
+    if read_only(s) {
+        s.console.info(
+            "Autosave and crash recovery are off: the project is open read-only in this editor.",
+        );
+        return;
+    }
     let started = session::start(&s.project.root);
     begin(s, Prefs::load(), started);
 }
 
 /// [`start`] with the preferences and the session given (tests simulate sessions).
 pub fn begin(s: &mut EditorState, prefs: Prefs, started: Result<session::Started, String>) {
+    if read_only(s) {
+        return;
+    }
     let root = s.project.root.clone();
     let a = &mut s.autosave;
     a.prefs = prefs;
@@ -289,6 +300,11 @@ pub fn begin(s: &mut EditorState, prefs: Prefs, started: Result<session::Started
             "Autosave is off: could not write the session marker: {e}"
         )),
     }
+}
+
+/// The project is open read-only here (another editor holds its lock).
+pub fn read_only(s: &EditorState) -> bool {
+    s.project_lock.read_only() || misty_engine::asset_db::is_read_only(&s.project.root)
 }
 
 /// Once a frame (after the panels): the recovery dialog, and the autosave when it is due.

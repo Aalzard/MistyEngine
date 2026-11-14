@@ -77,6 +77,18 @@ pub fn clouds_override(ui: &mut Ui, c: &mut CloudsOverride) -> bool {
         "Flat bases and heaped towers with rounded tops (fair-weather clouds).",
         |ui| slider(ui, &mut c.cumulus, 0.0..=1.0),
     );
+    ch |= row(
+        ui,
+        "Size",
+        "Scales the clouds: bigger, fewer heaps ↔ smaller, more of them.",
+        |ui| slider(ui, &mut c.size, 0.25..=4.0),
+    );
+    ch |= row(
+        ui,
+        "Softness",
+        "Smooth edges that fade gradually into the sky.",
+        |ui| slider(ui, &mut c.softness, 0.0..=1.0),
+    );
 
     group(ui, "Layer");
     ch |= row(ui, "Altitude", "Height of the cloud base.", |ui| {

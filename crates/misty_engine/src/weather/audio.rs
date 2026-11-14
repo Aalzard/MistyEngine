@@ -183,11 +183,29 @@ fn clip_dir() -> PathBuf {
     tmp
 }
 
+/// A whole WAV file: its RIFF size matches the file's length. A write cut short (a crash, a
+/// full disk) leaves a file that fails this.
+fn complete_wav(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut head = [0u8; 8];
+    if f.read_exact(&mut head).is_err() || &head[..4] != b"RIFF" {
+        return false;
+    }
+    u64::from(u32::from_le_bytes([head[4], head[5], head[6], head[7]])) + 8 == len
+}
+
+/// A generated clip, made when missing or cut short. Written through a temp file and a
+/// rename: another editor process on the project (Multiplayer Play Mode) never reads half a
+/// file, and a crash mid-write leaves no truncated clip that was never made again.
 fn write(dir: &Path, name: &str, make: impl FnOnce() -> Vec<(f32, f32)>) -> PathBuf {
     let path = dir.join(name);
-    if !path.exists() {
+    if !complete_wav(&path) {
         let bytes = crate::audio::wav::pcm16_stereo(&make(), RATE);
-        let _ = std::fs::write(&path, bytes);
+        let _ = crate::asset_db::write_atomic(&path, bytes);
     }
     path
 }
@@ -198,7 +216,7 @@ fn write_bundled(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     let path = dir.join(name);
     // (Re)written when missing or cut short.
     if std::fs::metadata(&path).map(|m| m.len()).ok() != Some(bytes.len() as u64) {
-        let _ = std::fs::write(&path, bytes);
+        let _ = crate::asset_db::write_atomic(&path, bytes);
     }
     let import = crate::audio::clip::AudioImporter {
         load_type: crate::audio::clip::LoadType::CompressedInMemory,
@@ -441,5 +459,37 @@ impl Driver {
         }
         self.levels = [0.0; 3];
         self.cover = 0.0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A generated clip cut short (a crash or a full disk mid-write) is made again; a whole one
+    /// is kept. It used to be kept whenever the file existed, so a truncated clip stayed.
+    #[test]
+    fn truncated_generated_clips_are_made_again() {
+        let dir = std::env::temp_dir().join(format!("misty_weather_wav_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tone = || {
+            (0..4800)
+                .map(|i| ((i as f32 * 0.05).sin() * 0.5, 0.0))
+                .collect()
+        };
+        let path = write(&dir, "tone_v1.wav", tone);
+        let whole = std::fs::read(&path).unwrap();
+        assert!(complete_wav(&path));
+        std::fs::write(&path, &whole[..whole.len() / 2]).unwrap();
+        assert!(!complete_wav(&path));
+        write(&dir, "tone_v1.wav", tone);
+        assert_eq!(std::fs::read(&path).unwrap(), whole, "made again");
+        let mut made = false;
+        write(&dir, "tone_v1.wav", || {
+            made = true;
+            Vec::new()
+        });
+        assert!(!made, "a whole clip is kept");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -266,6 +266,14 @@ fn copy_paste_and_collapse_to_macro() {
     assert_eq!(name, "Macro");
     let m = w.graph.macro_graph("Macro").unwrap();
     assert!(m.nodes.iter().any(|n| n.kind == "GraphOutput"));
+    // Get Speed keeps reading the graph's Speed: the macro links it instead of copying it
+    // (a copy is private to the macro and starts from its default).
+    assert_eq!(m.variables.len(), 1, "only the variables its nodes use");
+    assert!(
+        m.variables[0].name == "Speed" && m.variables[0].outer,
+        "{:?}",
+        m.variables
+    );
     let sub = w
         .graph
         .nodes

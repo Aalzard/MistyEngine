@@ -453,6 +453,7 @@ mod tests {
             let target = r.create_target(&device, 256, 160);
             let mut n = 0;
             let mut since = 0;
+            let started = std::time::Instant::now();
             loop {
                 match frames {
                     Some(total) if n >= total => break,
@@ -469,7 +470,12 @@ mod tests {
                 } else if frames.is_none() {
                     std::thread::sleep(std::time::Duration::from_millis(5));
                 }
-                assert!(n < 2000, "the glowless pipelines never arrived");
+                // Wall time, not frames: the pipelines build on workers that a machine busy
+                // with other tests can keep waiting much longer than 2000 frames (10 s).
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(300),
+                    "the glowless pipelines never arrived ({n} frames)"
+                );
             }
             assert_eq!(target.glow_msaa_view().is_none(), r.glowless.active);
             (n, r.glowless.active, read_back(&device, &queue, &target))

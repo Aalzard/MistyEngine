@@ -331,7 +331,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
     // between blades read as more grass rather than soil; far away (thin blades) it moves
     // towards the lit canopy colour, and beyond the draw distance it stands in for the grass.
     let tint = terrain.grass_healthy.w * grass_cover;
-    if (tint > 0.0) {
+    // Grass far field (terrain.rs, `DetailSettings::far_field`; 0 = off).
+    let far_field = terrain.chunks.y * grass_cover;
+    var far_ao = 1.0;
+    if (tint > 0.0 || far_field > 0.0) {
         let patches = grass_patches(local.xz, terrain.grass_dry.w);
         let dist = distance(in.world, view.camera_pos.xyz);
         let far = smoothstep(0.15, 1.0, dist / terrain.grass_lush.w);
@@ -367,7 +370,8 @@ fn terrain_surface(in: MeshOut) -> Surface {
             worn = grass_worn(local.xz) * (1.0 - mid);
         }
         let take = tint * mix(0.85, 1.0, mid) * (1.0 - 0.9 * worn);
-        let under = mix(0.4, 1.0, max(worn, mid));
+        // (Only with a ground tint: the far field alone leaves the near ground as it is.)
+        let under = select(1.0, mix(0.4, 1.0, max(worn, mid)), tint > 0.0);
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
         // Quality ▸ Grass Ground Cover: the undergrowth the grass LOD's flat fans drew (the
         // lit grass leaves them out then).
@@ -377,6 +381,39 @@ fn terrain_surface(in: MeshOut) -> Surface {
         s.smoothness *= 1.0 - take;
         // The soil's relief stays close up; far away it would only shimmer under the turf.
         s.normal = normalize(mix(s.normal, n, 0.8 * tint * far));
+        if (far_field > 0.0) {
+            // Grass far field: wherever single gaps between the blades are too small to read
+            // as ground (from a few metres on, and all of it past the blades), the ground
+            // looks like the grass it stands under: the grass's colour and patches at the
+            // lit blades' brightness, blade-scale detail from the ground texture, tufts that
+            // catch the sun, and the canopy's self-shade.
+            let wf = far_field * smoothstep(4.0, 24.0, dist);
+            let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+            var mean = vec3<f32>(0.0);
+            for (var i = 0u; i < 4u; i++) {
+                if (w[i] > 0.0) {
+                    mean += textureSampleLevel(layer_albedo, layer_sampler, vec2<f32>(0.5), ids[i], 12.0).rgb * w[i];
+                }
+            }
+            let detail = clamp(soil / max(dot(mean, luma), 1e-3), 0.3, 2.5);
+            let tufts = mix(1.0, 0.72 + 0.56 * mottle, smoothstep(8.0, 40.0, dist));
+            let field = grass * terrain.chunks.z * tufts * detail;
+            s.albedo = mix(s.albedo, field, wf);
+            s.smoothness *= 1.0 - wf;
+            // Tufts: a fine octave (faded out where one pixel covers it, so it never
+            // shimmers) and clumps of a few metres.
+            let fine = 1.0 - smoothstep(0.08, 0.35, max(length(dx), length(dy)));
+            let g1 = grass_noise_grad(local.xz / 0.8 + 13.1);
+            let g2 = grass_noise_grad(local.xz / 3.5 + 27.7);
+            let tilt = g1.yz * (0.3 * fine) + g2.yz * 0.35;
+            // Blades grow upright whatever the slope: they are lit more like level ground
+            // than the slope under them.
+            let upright = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), 0.6));
+            let tufted = normalize(upright - vec3<f32>(tilt.x, 0.0, tilt.y));
+            s.normal = normalize(mix(s.normal, tufted, wf));
+            // The blades shade each other: less sky light deep in the canopy.
+            far_ao = mix(1.0, 0.7 + 0.2 * mottle, wf);
+        }
     }
     if (count == 0u) {
         // No layers yet: plain light grey.
@@ -389,7 +426,7 @@ fn terrain_surface(in: MeshOut) -> Surface {
     s.emission = vec3<f32>(0.0);
     s.receive_shadows = true;
     // The layers' own ambient occlusion (ground under a canopy); none without layers.
-    s.occlusion = select(1.0, clamp(occlusion, 0.0, 1.0), count > 0u);
+    s.occlusion = select(1.0, clamp(occlusion, 0.0, 1.0), count > 0u) * far_ao;
     s.premultiply = false;
     s.draw = in.draw;
     return s;
