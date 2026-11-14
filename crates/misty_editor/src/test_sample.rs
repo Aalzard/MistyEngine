@@ -59,3 +59,75 @@ fn remove_stale_copies(temp: &Path) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// No test opens the repo's sample in the editor (`EditorState::new`, `AssetDatabase::open`)
+    /// or makes it the global project root, except the ignored generators that write it on
+    /// purpose: that imports the sample (extracting `Crate.fbx`'s materials next to it) and
+    /// resolves its packages (rewriting `packages-lock.json`), leaving files in the repo after a
+    /// full test run. The theme panel tests did, after the round 60 cleanup.
+    #[test]
+    fn tests_never_open_the_repo_sample() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        let mut stack = vec![src];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    files.push(p);
+                }
+            }
+        }
+        let opens = [
+            "EditorState::new(",
+            "AssetDatabase::open(",
+            "set_project_root(",
+        ];
+        let mut bad = Vec::new();
+        for f in files {
+            if f.ends_with("test_sample.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&f).unwrap();
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                let path = concat!("\"../../Sample", "Project\")");
+                // `project()` helpers of the sample generators return the repo's folder.
+                let repo = l.contains(path)
+                    || (l.trim() == "let root = project();"
+                        && text.contains(&format!(
+                            "fn project() -> PathBuf {{\n    PathBuf::from(env!(\"CARGO_MANIFEST_DIR\")).join({path})"
+                        )));
+                if !repo {
+                    continue;
+                }
+                let window = &lines[i..(i + 8).min(lines.len())];
+                let opened = window.iter().any(|w| opens.iter().any(|o| w.contains(o)));
+                let copied = window.iter().any(|w| {
+                    w.contains("copy_all") || w.contains("temp_dir") || w.contains("on purpose")
+                });
+                // The enclosing function's attributes: ignored generators may write the sample.
+                let start = (0..=i).rev().find(|&j| {
+                    lines[j].trim_start().starts_with("fn ")
+                        || lines[j].trim_start().starts_with("pub fn ")
+                });
+                let ignored = start.is_some_and(|j| {
+                    lines[j.saturating_sub(3)..j]
+                        .iter()
+                        .any(|a| a.contains("#[ignore"))
+                });
+                if opened && !copied && !ignored {
+                    bad.push(format!("{}:{}", f.display(), i + 1));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "tests open the repo's SampleProject: {bad:?}"
+        );
+    }
+}
