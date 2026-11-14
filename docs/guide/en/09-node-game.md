@@ -62,7 +62,7 @@ The Player graph moves a **Rigidbody 2D** by setting its velocity in **On Fixed 
 
 ```
 On Fixed Update ─► Branch (Get Dead) ─ False ─► Sequence
-  Then 0 ─► Physics2D: Raycast ×3 (down from the feet) ─► Branch ─► Set Grounded At ◄─ Time: Get time
+  Then 0 ─► Branch (Hit of Physics2D: Raycast ×3, down from the feet) ─► Set Grounded At ◄─ Time: Get time
   Then 3 ─► Branch (Get Dashing)
               └ False ─► Branch (jump pressed lately And on the ground lately)
                            ├ True ─► Set VY ◄─ Get Jump Speed
@@ -103,7 +103,7 @@ Each enemy has a Box Collider 2D with **Is Trigger** ticked and three graphs.
 - **Patrol** casts two rays each physics step: one down in front of its feet (a ledge?) and
   one ahead (a wall?). If either says stop it flips *Direction*; otherwise
   **Transform: Translate** moves it.
-- **Enemy Touch** uses **On Trigger Enter** and **On Trigger Exit** with
+- **Enemy Touch** uses **On Trigger Enter 2D** and **On Trigger Exit 2D** with
   **GameObject: CompareTag** to know while the player is inside. Then, each **On Update**: is the player
   *Dashing*? Yes: send *DashHit* to itself. No: send *Hurt* to the player.
 - **Brute** answers *DashHit*: *Health* minus one, *Knock* set (Patrol slides it back), a white
@@ -120,7 +120,7 @@ Each enemy has a Box Collider 2D with **Is Trigger** ticked and three graphs.
 
 ## Stages, hearts and the next scene
 
-- **Goal** is a trigger on the flag: **On Trigger Enter ▸ Branch (CompareTag Player) ▸ Do
+- **Goal** is a trigger on the flag: **On Trigger Enter 2D ▸ Branch (CompareTag Player) ▸ Do
   Once ▸ Broadcast Custom Event** *StageCleared*.
 - **Stage** hears it, shows "Stage clear!" with **Text: Set text**, waits with a **Delay** and
   calls **SceneManager: LoadScene** with its *Next Scene* variable. Each stage sets *This
@@ -138,8 +138,8 @@ Each enemy has a Box Collider 2D with **Is Trigger** ticked and three graphs.
 
 - The **Play** and **Quit** buttons have an **On Click** entry that names the Menu object and
   the event to send: *Play* or *Quit*. The Menu graph answers with **Custom Event** nodes:
-  *Play* loads stage 1, *Quit* calls **Application: Quit**. Enter and Escape send the same
-  events.
+  *Play* loads stage 1, *Quit* calls **Application: Quit**. The Play button starts selected,
+  so Enter presses it; Escape sends *Quit*.
 - **Win** waits with a **Delay** and then loads the menu; any of Enter, Space or Escape does
   it at once.
 
@@ -154,7 +154,6 @@ Ideas for changing the game without leaving the editor:
   on the Game object of stage 3.
 
 > [!PROGRAMMERS]
-> The graphs call a few members that have no native node yet (for example `Physics2D.Raycast`
-> and `Rigidbody2D.velocity`) through the Lua binding, so their pins are untyped; no Lua
-> script exists in the game. The project test `sample_node_game.rs` plays stage 1 headlessly
+> Raycasts, overlap queries and the Rigidbody 2D velocity use native typed nodes (a raycast
+> gives Hit, Point, Normal, Distance and Collider); no Lua script exists in the game. The project test `sample_node_game.rs` plays stage 1 headlessly
 > with simulated keys, and `tools/node_game` regenerates the files.

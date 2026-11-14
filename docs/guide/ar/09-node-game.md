@@ -47,7 +47,7 @@
 
 ```
 On Fixed Update ─► Branch (Get Dead) ─ False ─► Sequence
-  Then 0 ─► Physics2D: Raycast ×3 (down from the feet) ─► Branch ─► Set Grounded At ◄─ Time: Get time
+  Then 0 ─► Branch (Hit of Physics2D: Raycast ×3, down from the feet) ─► Set Grounded At ◄─ Time: Get time
   Then 3 ─► Branch (Get Dashing)
               └ False ─► Branch (jump pressed lately And on the ground lately)
                            ├ True ─► Set VY ◄─ Get Jump Speed
@@ -78,7 +78,7 @@ Custom Event: DashPressed ─► Branch (cooldown over) ─► Set Dashing (true
 على كل عدو مصادم صندوقي ثنائي الأبعاد فُعّل فيه **Is Trigger**، وثلاثة مخططات.
 
 - **Patrol** يطلق شعاعين في كل خطوة فيزيائية: واحدًا إلى الأسفل أمام قدميه (حافة؟) وواحدًا إلى الأمام (جدار؟). إن قال أحدهما «توقف» عكس *Direction*، وإلا حرّكته العقدة **Transform: Translate**.
-- **Enemy Touch** يستخدم **On Trigger Enter** و **On Trigger Exit** مع **GameObject: CompareTag** ليعرف متى يكون اللاعب في الداخل. ثم في كل **On Update**: هل اللاعب في حالة *Dashing*؟ نعم: يرسل *DashHit* إلى نفسه. لا: يرسل *Hurt* إلى اللاعب.
+- **Enemy Touch** يستخدم **On Trigger Enter 2D** و **On Trigger Exit 2D** مع **GameObject: CompareTag** ليعرف متى يكون اللاعب في الداخل. ثم في كل **On Update**: هل اللاعب في حالة *Dashing*؟ نعم: يرسل *DashHit* إلى نفسه. لا: يرسل *Hurt* إلى اللاعب.
 - **Brute** يجيب عن *DashHit*: ينقص *Health* واحدًا، ويضبط *Knock* (فيزلقه Patrol إلى الخلف)، ويومض بالأبيض، وبعد **Delay** يعود لونه. وعند الصفر يستدعي **Instantiate** بالقالب Burst ثم **Destroy**.
 - **Puff** يجيب عن *DashHit* بضبط *Dead*. ومن بعدها يدفعه حدثه **On Update** بعيدًا، ويخفض *Fade* بالعقدة **Move Towards**، ويكتبه في شفافية الصورة ويكبّرها قليلًا. وحين يبلغ *Fade* الصفر: **Destroy**.
 
@@ -87,7 +87,7 @@ Custom Event: DashPressed ─► Branch (cooldown over) ─► Set Dashing (true
 
 ## المراحل والقلوب والمشهد التالي
 
-- **Goal** مُشغِّل على العلم: **On Trigger Enter ▸ Branch (CompareTag Player) ▸ Do Once ▸ Broadcast Custom Event** بالحدث *StageCleared*.
+- **Goal** مُشغِّل على العلم: **On Trigger Enter 2D ▸ Branch (CompareTag Player) ▸ Do Once ▸ Broadcast Custom Event** بالحدث *StageCleared*.
 - **Stage** يسمعه، فيعرض «Stage clear!» بالعقدة **Text: Set text**، وينتظر بعقدة **Delay**، ثم يستدعي **SceneManager: LoadScene** بمتغيره *Next Scene*. كل مرحلة تضبط *This Scene* و *Next Scene* في لوحة الخصائص، فيخدم مخطط واحد المراحل الثلاث كلها.
 - مخطط Player يعدّ *Hearts*. كل تغيير يُبث بالحدث *HeartsChanged* فيكتبه Stage على الشاشة. وعند الصفر يبث اللاعب *PlayerDied* فيحمّل Stage المشهد *This Scene* من جديد. وكل اندفاعة تبث *DashUsed* مع وقت جاهزية الاندفاعة التالية، فيكتب Stage تحت القلوب "Dash: ready" أو "Dash: ...".
 
@@ -96,7 +96,7 @@ Custom Event: DashPressed ─► Branch (cooldown over) ─► Set Dashing (true
 
 ## القائمة وشاشة الفوز
 
-- للزرين **Play** و **Quit** مدخل **On Click** يسمّي الكائن Menu والحدث المطلوب إرساله: *Play* أو *Quit*. ويجيب مخطط Menu بعقد **Custom Event**: الحدث *Play* يحمّل المرحلة الأولى، والحدث *Quit* يستدعي **Application: Quit**. والمفتاحان Enter و Escape يرسلان الحدثين نفسيهما.
+- للزرين **Play** و **Quit** مدخل **On Click** يسمّي الكائن Menu والحدث المطلوب إرساله: *Play* أو *Quit*. ويجيب مخطط Menu بعقد **Custom Event**: الحدث *Play* يحمّل المرحلة الأولى، والحدث *Quit* يستدعي **Application: Quit**. يبدأ الزر Play محددًا فيضغطه المفتاح Enter، والمفتاح Escape يرسل *Quit*.
 - **Win** ينتظر بعقدة **Delay** ثم يحمّل القائمة، وأي مفتاح من Enter أو Space أو Escape يفعل ذلك فورًا.
 
 ## جرّب
@@ -109,4 +109,4 @@ Custom Event: DashPressed ─► Branch (cooldown over) ─► Set Dashing (true
 - أضف مرحلة رابعة: كرّر مشهد مرحلة، وأضفه إلى Build Settings، واضبط *Next Scene* على الكائن Game في المرحلة الثالثة.
 
 > [!PROGRAMMERS]
-> تستدعي المخططات بضعة أعضاء ليست لها عقدة أصلية بعد (مثل `Physics2D.Raycast` و `Rigidbody2D.velocity`) عبر ربط Lua، ولذلك منافذها غير محددة النوع، ولا يوجد في اللعبة أي برنامج Lua. اختبار المشروع `sample_node_game.rs` يلعب المرحلة الأولى دون نافذة بمفاتيح محاكاة، والمجلد `tools/node_game` يعيد توليد الملفات.
+> تستخدم الأشعة واستعلامات التداخل وسرعة Rigidbody 2D عقدًا أصلية محددة النوع (يعطي الشعاع Hit و Point و Normal و Distance و Collider)، ولا يوجد في اللعبة أي برنامج Lua. اختبار المشروع `sample_node_game.rs` يلعب المرحلة الأولى دون نافذة بمفاتيح محاكاة، والمجلد `tools/node_game` يعيد توليد الملفات.

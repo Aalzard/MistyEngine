@@ -6,7 +6,7 @@ SLOT_DIR=/e/MistyTargets/slots
 log=/c/MistyTry/r65tmp/$1.log; shift
 MINE=""
 while [ -z "$MINE" ]; do
-  for n in 1 2; do
+  for n in 1 2 3; do
     if mkdir "$SLOT_DIR/slot-$n" 2>/dev/null; then echo "r65 $(date)" > "$SLOT_DIR/slot-$n/owner"; MINE="$SLOT_DIR/slot-$n"; break; fi
   done
   [ -z "$MINE" ] && sleep 3
