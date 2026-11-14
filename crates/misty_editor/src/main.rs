@@ -146,6 +146,8 @@ mod sample_navigation2;
 #[cfg(test)]
 mod sample_network;
 #[cfg(test)]
+mod sample_node_game;
+#[cfg(test)]
 mod sample_noon_valley;
 #[cfg(test)]
 mod sample_occlusion;

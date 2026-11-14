@@ -273,10 +273,10 @@ fn guides_name_only_nodes_that_exist() {
     .into_iter()
     .map(|e| e.title)
     .collect();
-    // The Script Graph chapters (04 to 08); the others name UI labels such as "CPU: main".
+    // The Script Graph chapters (04 to 09); the others name UI labels such as "CPU: main".
     for c in CHAPTERS
         .iter()
-        .filter(|c| ("04".."09").contains(&&c.id[..2]))
+        .filter(|c| ("04".."10").contains(&&c.id[..2]))
     {
         for name in engine_nodes_named(c.en) {
             assert!(known.contains(&name), "{}: no node called {name}", c.id);

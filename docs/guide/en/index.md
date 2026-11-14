@@ -32,6 +32,8 @@ see a box like this:
    by speed through the Animator.
 9. [Autosave and crash recovery](09-autosave.md): backups of unsaved work, the Recover
    Unsaved Work window and crash reports.
+10. [A game made only with nodes](10-node-game.md): a whole 2D platformer, with a menu,
+   enemies and three stages, built from Script Graphs alone.
 
 [Glossary](glossary.md): the words this guide uses, in one place.
 

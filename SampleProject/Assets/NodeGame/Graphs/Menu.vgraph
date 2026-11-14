@@ -1,0 +1,439 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Sequence",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "count": "3"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        410.0,
+        95.0
+      ],
+      "params": {
+        "owner": "Input",
+        "member": "GetKeyDown",
+        "mode": "call"
+      },
+      "values": {
+        "Key": {
+          "String": "escape"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "Branch",
+      "position": [
+        660.0,
+        0.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "SendCustomEvent",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "Quit"
+      }
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        -840.0,
+        817.5
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 7,
+      "type": "MultiplyFloat",
+      "position": [
+        -590.0,
+        722.5
+      ],
+      "values": {
+        "B": {
+          "Float": 2.5
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "Sin",
+      "position": [
+        -340.0,
+        627.5
+      ]
+    },
+    {
+      "id": 9,
+      "type": "MultiplyFloat",
+      "position": [
+        -90.0,
+        532.5
+      ],
+      "values": {
+        "B": {
+          "Float": 0.04
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "AddFloat",
+      "position": [
+        160.0,
+        437.5
+      ],
+      "values": {
+        "A": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "MakeVector3",
+      "position": [
+        410.0,
+        342.5
+      ],
+      "values": {
+        "Z": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Api",
+      "position": [
+        410.0,
+        912.5
+      ],
+      "params": {
+        "owner": "GameObject",
+        "member": "Find",
+        "mode": "call"
+      },
+      "values": {
+        "Name": {
+          "String": "Title"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Api",
+      "position": [
+        660.0,
+        247.5
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "localScale",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 14,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        1169.9999999999998
+      ],
+      "params": {
+        "name": "Play"
+      }
+    },
+    {
+      "id": 15,
+      "type": "GetVariable",
+      "position": [
+        80.0,
+        1264.9999999999998
+      ],
+      "params": {
+        "name": "Started"
+      }
+    },
+    {
+      "id": 16,
+      "type": "Branch",
+      "position": [
+        330.0,
+        1169.9999999999998
+      ]
+    },
+    {
+      "id": 17,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        1169.9999999999998
+      ],
+      "params": {
+        "name": "Started"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        740.0,
+        1264.9999999999998
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 19,
+      "type": "Api",
+      "position": [
+        990.0,
+        1169.9999999999998
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Beep.wav"
+        },
+        "volume": {
+          "Float": 0.5
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "Delay",
+      "position": [
+        1320.0,
+        1169.9999999999998
+      ],
+      "values": {
+        "Duration": {
+          "Float": 0.15
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        1650.0,
+        1169.9999999999998
+      ],
+      "params": {
+        "owner": "SceneManager",
+        "member": "LoadScene",
+        "mode": "call",
+        "args": "nameOrIndex, mode"
+      },
+      "values": {
+        "nameOrIndex": {
+          "String": "NodeGameStage1"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        1507.4999999999998
+      ],
+      "params": {
+        "name": "Quit"
+      }
+    },
+    {
+      "id": 23,
+      "type": "Api",
+      "position": [
+        330.0,
+        1507.4999999999998
+      ],
+      "params": {
+        "owner": "Application",
+        "member": "Quit",
+        "mode": "call"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "Condition"
+    },
+    {
+      "from": 2,
+      "output": "Then 1",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "True",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "Radians"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 9,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 10,
+      "input": "B"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "X"
+    },
+    {
+      "from": 10,
+      "output": "Result",
+      "to": 11,
+      "input": "Y"
+    },
+    {
+      "from": 11,
+      "output": "Vector",
+      "to": 13,
+      "input": "Value"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Then 2",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 16,
+      "input": "Condition"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "False",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Value",
+      "to": 19,
+      "input": "position"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 20,
+      "output": "Completed",
+      "to": 21,
+      "input": "In"
+    },
+    {
+      "from": 22,
+      "output": "Out",
+      "to": 23,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Started",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    }
+  ]
+}

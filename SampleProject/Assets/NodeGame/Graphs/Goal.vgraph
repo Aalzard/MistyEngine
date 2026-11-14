@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnTriggerEnter2D",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#GameObject",
+        "member": "CompareTag",
+        "mode": "call"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Branch",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "DoOnce",
+      "position": [
+        660.0,
+        0.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "BroadcastCustomEvent",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "StageCleared"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Other",
+      "to": 2,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Result",
+      "to": 3,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "True",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Completed",
+      "to": 5,
+      "input": "In"
+    }
+  ]
+}

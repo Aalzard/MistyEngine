@@ -1,0 +1,461 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "name": "DashHit",
+        "args": "direction"
+      }
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        -170.0,
+        190.0
+      ],
+      "params": {
+        "name": "Health"
+      }
+    },
+    {
+      "id": 3,
+      "type": "SubtractInt",
+      "position": [
+        80.0,
+        95.0
+      ],
+      "values": {
+        "B": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        330.0,
+        0.0
+      ],
+      "params": {
+        "name": "Health"
+      }
+    },
+    {
+      "id": 5,
+      "type": "MultiplyFloat",
+      "position": [
+        410.0,
+        95.0
+      ],
+      "values": {
+        "B": {
+          "Float": 11.0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "SetVariable",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "name": "Knock"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        740.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "owner": "AudioSource",
+        "member": "PlayClipAtPoint",
+        "mode": "call",
+        "args": "clipPath, position, volume"
+      },
+      "values": {
+        "clipPath": {
+          "String": "Assets/Audio/Clap.wav"
+        },
+        "volume": {
+          "Float": 0.6
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        1070.0,
+        95.0
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 5.0
+        },
+        "g": {
+          "Float": 5.0
+        },
+        "b": {
+          "Float": 5.0
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        1320.0,
+        0.0
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    },
+    {
+      "id": 11,
+      "type": "GetVariable",
+      "position": [
+        1150.0,
+        190.0
+      ],
+      "params": {
+        "name": "Health"
+      }
+    },
+    {
+      "id": 12,
+      "type": "LessOrEqual",
+      "position": [
+        1400.0,
+        95.0
+      ],
+      "values": {
+        "B": {
+          "Int": 0
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Branch",
+      "position": [
+        1650.0,
+        0.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "SetVariable",
+      "position": [
+        1980.0,
+        0.0
+      ],
+      "params": {
+        "name": "Dead"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "Api",
+      "position": [
+        2060.0,
+        95.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 16,
+      "type": "Api",
+      "position": [
+        2310.0,
+        0.0
+      ],
+      "params": {
+        "owner": "",
+        "member": "Instantiate",
+        "mode": "call",
+        "args": "prefabPathOrObject, position"
+      },
+      "values": {
+        "prefabPathOrObject": {
+          "String": "Assets/NodeGame/Prefabs/Burst.prefab"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "Self",
+      "position": [
+        2390.0,
+        95.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        2640.0,
+        0.0
+      ],
+      "params": {
+        "owner": "",
+        "member": "Destroy",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 19,
+      "type": "Delay",
+      "position": [
+        1980.0,
+        247.5
+      ],
+      "values": {
+        "Duration": {
+          "Float": 0.14
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "Api",
+      "position": [
+        2060.0,
+        342.5
+      ],
+      "params": {
+        "owner": "Color",
+        "member": "new",
+        "mode": "call",
+        "args": "r, g, b, a"
+      },
+      "values": {
+        "r": {
+          "Float": 0.78
+        },
+        "g": {
+          "Float": 0.22
+        },
+        "b": {
+          "Float": 0.2
+        },
+        "a": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        2310.0,
+        247.5
+      ],
+      "params": {
+        "owner": "#SpriteRenderer",
+        "member": "color",
+        "mode": "set"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "A"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "Value"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "direction",
+      "to": 5,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Result",
+      "to": 6,
+      "input": "Value"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Value",
+      "to": 8,
+      "input": "position"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 10,
+      "input": "Value"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Value",
+      "to": 12,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "Condition"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 13,
+      "output": "True",
+      "to": 14,
+      "input": "In"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 16,
+      "input": "position"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 17,
+      "output": "Self",
+      "to": 18,
+      "input": "Object"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 13,
+      "output": "False",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 21,
+      "input": "Value"
+    },
+    {
+      "from": 19,
+      "output": "Completed",
+      "to": 21,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Health",
+      "type": "int",
+      "value": {
+        "Int": 2
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Knock",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dead",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    }
+  ]
+}

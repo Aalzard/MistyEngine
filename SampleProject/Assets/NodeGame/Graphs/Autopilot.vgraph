@@ -1,0 +1,696 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        -170.0,
+        190.0
+      ],
+      "params": {
+        "owner": "Time",
+        "member": "time",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 3,
+      "type": "GetVariable",
+      "position": [
+        -170.0,
+        285.0
+      ],
+      "params": {
+        "name": "Start After"
+      }
+    },
+    {
+      "id": 4,
+      "type": "Greater",
+      "position": [
+        80.0,
+        95.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Branch",
+      "position": [
+        330.0,
+        0.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Sequence",
+      "position": [
+        660.0,
+        0.0
+      ],
+      "params": {
+        "count": "3"
+      }
+    },
+    {
+      "id": 7,
+      "type": "SetVariable",
+      "position": [
+        990.0,
+        0.0
+      ],
+      "params": {
+        "name": "Move"
+      },
+      "values": {
+        "Value": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "SetVariable",
+      "position": [
+        1320.0,
+        0.0
+      ],
+      "params": {
+        "name": "Jump Held"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        240.0,
+        435.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 10,
+      "type": "Vector3",
+      "position": [
+        240.0,
+        530.0
+      ],
+      "values": {
+        "Value": {
+          "Vector3": [
+            0.0,
+            -1.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "Api",
+      "position": [
+        490.0,
+        340.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call"
+      },
+      "values": {
+        "Distance": {
+          "Float": 0.7
+        },
+        "Layer Mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "AddVector3",
+      "position": [
+        -260.0,
+        910.0
+      ],
+      "values": {
+        "B": {
+          "Vector3": [
+            0.9,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "Api",
+      "position": [
+        -10.0,
+        815.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call"
+      },
+      "values": {
+        "Distance": {
+          "Float": 1.5
+        },
+        "Layer Mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "Vector3",
+      "position": [
+        -10.0,
+        1100.0
+      ],
+      "values": {
+        "Value": {
+          "Vector3": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "Api",
+      "position": [
+        240.0,
+        1005.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "Raycast",
+        "mode": "call"
+      },
+      "values": {
+        "Distance": {
+          "Float": 1.0
+        },
+        "Layer Mask": {
+          "Int": 1
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "Not",
+      "position": [
+        240.0,
+        720.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Or",
+      "position": [
+        490.0,
+        625.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "And",
+      "position": [
+        740.0,
+        245.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Branch",
+      "position": [
+        990.0,
+        150.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "SendCustomEvent",
+      "position": [
+        1320.0,
+        150.0
+      ],
+      "params": {
+        "name": "JumpPressed"
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        240.0,
+        1560.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 22,
+      "type": "AddVector3",
+      "position": [
+        490.0,
+        1465.0
+      ],
+      "values": {
+        "B": {
+          "Vector3": [
+            1.3,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "GetVariable",
+      "position": [
+        490.0,
+        1655.0
+      ],
+      "params": {
+        "name": "Dash Range"
+      }
+    },
+    {
+      "id": 24,
+      "type": "Api",
+      "position": [
+        740.0,
+        1370.0
+      ],
+      "params": {
+        "owner": "Physics2D",
+        "member": "OverlapCircleAll",
+        "mode": "call"
+      }
+    },
+    {
+      "id": 25,
+      "type": "ForEach",
+      "position": [
+        990.0,
+        1275.0
+      ]
+    },
+    {
+      "id": 26,
+      "type": "GetObjectVariable",
+      "position": [
+        570.0,
+        1560.0
+      ],
+      "values": {
+        "Name": {
+          "String": "Dead"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "Api",
+      "position": [
+        320.0,
+        1845.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 28,
+      "type": "BreakVector3",
+      "position": [
+        570.0,
+        1750.0
+      ]
+    },
+    {
+      "id": 29,
+      "type": "Api",
+      "position": [
+        320.0,
+        2035.0
+      ],
+      "params": {
+        "owner": "#Transform",
+        "member": "position",
+        "mode": "get"
+      }
+    },
+    {
+      "id": 30,
+      "type": "BreakVector3",
+      "position": [
+        570.0,
+        1940.0
+      ]
+    },
+    {
+      "id": 31,
+      "type": "NotEqual",
+      "position": [
+        820.0,
+        1465.0
+      ]
+    },
+    {
+      "id": 32,
+      "type": "Greater",
+      "position": [
+        820.0,
+        1655.0
+      ]
+    },
+    {
+      "id": 33,
+      "type": "And",
+      "position": [
+        1070.0,
+        1370.0
+      ]
+    },
+    {
+      "id": 34,
+      "type": "Branch",
+      "position": [
+        1320.0,
+        1275.0
+      ]
+    },
+    {
+      "id": 35,
+      "type": "SendCustomEvent",
+      "position": [
+        1650.0,
+        1275.0
+      ],
+      "params": {
+        "name": "DashPressed"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 4,
+      "input": "A"
+    },
+    {
+      "from": 3,
+      "output": "Value",
+      "to": 4,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Result",
+      "to": 5,
+      "input": "Condition"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 5,
+      "output": "True",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Then 0",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 11,
+      "input": "Origin"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "Direction"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 12,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "Origin"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 13,
+      "input": "Direction"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 15,
+      "input": "Origin"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "Direction"
+    },
+    {
+      "from": 13,
+      "output": "Hit",
+      "to": 16,
+      "input": "Value"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 17,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Hit",
+      "to": 17,
+      "input": "B"
+    },
+    {
+      "from": 11,
+      "output": "Hit",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Result",
+      "to": 18,
+      "input": "B"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "Condition"
+    },
+    {
+      "from": 6,
+      "output": "Then 1",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "True",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 22,
+      "input": "A"
+    },
+    {
+      "from": 22,
+      "output": "Result",
+      "to": 24,
+      "input": "Center"
+    },
+    {
+      "from": 23,
+      "output": "Value",
+      "to": 24,
+      "input": "Radius"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "List"
+    },
+    {
+      "from": 6,
+      "output": "Then 2",
+      "to": 25,
+      "input": "In"
+    },
+    {
+      "from": 25,
+      "output": "Item",
+      "to": 26,
+      "input": "Target"
+    },
+    {
+      "from": 25,
+      "output": "Item",
+      "to": 27,
+      "input": "Target"
+    },
+    {
+      "from": 27,
+      "output": "Value",
+      "to": 28,
+      "input": "Vector"
+    },
+    {
+      "from": 29,
+      "output": "Value",
+      "to": 30,
+      "input": "Vector"
+    },
+    {
+      "from": 26,
+      "output": "Value",
+      "to": 31,
+      "input": "A"
+    },
+    {
+      "from": 28,
+      "output": "X",
+      "to": 32,
+      "input": "A"
+    },
+    {
+      "from": 30,
+      "output": "X",
+      "to": 32,
+      "input": "B"
+    },
+    {
+      "from": 31,
+      "output": "Result",
+      "to": 33,
+      "input": "A"
+    },
+    {
+      "from": 32,
+      "output": "Result",
+      "to": 33,
+      "input": "B"
+    },
+    {
+      "from": 33,
+      "output": "Result",
+      "to": 34,
+      "input": "Condition"
+    },
+    {
+      "from": 25,
+      "output": "Loop Body",
+      "to": 34,
+      "input": "In"
+    },
+    {
+      "from": 34,
+      "output": "True",
+      "to": 35,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Move",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Held",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Start After",
+      "type": "float",
+      "value": {
+        "Float": 0.5
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Dash Range",
+      "type": "float",
+      "value": {
+        "Float": 1.2
+      },
+      "scope": "Object"
+    }
+  ]
+}
