@@ -5575,3 +5575,56 @@ before the fix went in).
 warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
 1024 passed, engine 1681, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2737).
 No render code changed, so golden shots were not rerun.
+
+## Round 77 — Animator Controller edits reach the running game (branch r77-animlive)
+
+Edits made in the Animator window during Play now reach the Animators that are running, like the
+familiar engine: adding, removing or renaming states, transitions and their conditions,
+parameters, layers, blend tree thresholds and the clips states play. Before, a running Animator
+kept the controller it read at Play start; the edits were saved but only showed after Stop.
+
+- **How it gets there**: the editor's `ControllerStore` (which saves after every edit) bumps a
+  generation counter on every change (edits, undo/redo, reload from disk, create, rename) and
+  records it per controller. `play::sync_controllers`, run at the top of `play::tick` (also while
+  paused, so the live view follows at once), compares that counter with the one the game has
+  caught up with; only when they differ does it hand the changed controllers, read back from
+  their saved JSON so the game runs exactly what is on disk, to
+  `Runtime::reload_animator_controller`. The edit-mode live-reload poll
+  (`live_reload::assets`) stays Edit-mode only; Play mode now has its own path for the asset it
+  can change.
+- **In the engine**: `AnimatorPlayer::reload_controller` replaces the cached controller, bumps
+  its version and a global generation. Each running Animator remembers the generation it last
+  saw, so while nothing changes the check is one integer compare per Animator; when it differs,
+  an Animator whose controller's version moved is rebound (`animation::live_edit`):
+  - layers are matched by name (or position, when renamed); a script's `SetLayerWeight` stays
+    unless the edit changed that layer's weight;
+  - each layer keeps its current state and normalised time. States have no stored id, so a
+    state is matched by name, or by its slot when it was renamed in place (the new name was not
+    in the old machine); a state that is gone sends the layer to its default state (through
+    Entry, from its start);
+  - parameters keep their values when the name and type still match; a changed type, or a new
+    parameter, starts at its default;
+  - a transition in progress continues when it still exists (same ends, renames followed). If it
+    was removed, the layer snaps to its destination; if the destination is gone, it stays on the
+    source. Script cross-fades keep blending while their destination exists. Frozen interrupted
+    blends drop runs whose state is gone, and target matching follows its state or stops.
+- **Stop keeps the edits**: they were saved to the `.controller` file as before, and the
+  Play-mode undo history that Stop throws away only holds snapshots; the editor's held copy and
+  the file both keep the edit (test checks the file, the held copy and the running copy agree).
+- Tests (engine, `live_edit_tests`): `current_state_and_time_survive_an_edit`,
+  `a_renamed_current_state_keeps_playing`, `a_removed_current_state_falls_back_to_the_default`,
+  `a_parameter_type_change_resets_only_that_parameter`, `a_changed_default_keeps_the_running_value`,
+  `a_removed_transition_mid_blend_snaps_to_its_destination`,
+  `a_removed_destination_mid_blend_stays_on_the_source`,
+  `a_kept_transition_keeps_blending_after_an_edit`, `a_blend_tree_threshold_change_takes_effect`,
+  `a_new_motion_clip_on_the_current_state_plays`, `every_animator_sharing_the_controller_updates`,
+  `nothing_reloads_while_nothing_changes`, `layers_follow_renames_and_removals`. Editor:
+  `edits_during_play_reach_the_running_animator_and_survive_stop` (edit while paused, live view,
+  undo in Play, Stop) and `nothing_is_handed_to_the_game_while_no_controller_changes`.
+- User Guide: one paragraph in the animation chapter's "Try it" (English and Arabic).
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast` green: editor 1026 passed,
+engine 1694, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2752, 15 new). No
+render code changed, so golden shots were not rerun.

@@ -132,6 +132,12 @@ state is highlighted, and the parameters show their live values.
 - Change the thresholds in the Animator (click a transition) and see the switch points move.
 - Change **Walk Speed** to 4.5 in Properties: walking is now fast enough to count as running.
 
+Edits you make in the Animator while playing reach the game on the next frame: add, rename or
+remove states, change transitions and their conditions, parameters, blend tree thresholds or a
+state's clip. The character stays in the state it is playing (at the same point of it) and keeps
+its parameter values; if you delete the state it is in, it goes back to the layer's default
+state. Every edit is also saved to the controller, so it is still there when you press Stop.
+
 > [!PROGRAMMERS]
 > Lua equivalent of Steps 3 and 4:
 > ```lua

@@ -25,6 +25,8 @@ pub struct PlaySession {
     /// spawned or reloaded while playing are gone after Stop, so these come back too.
     inspector_targets: Vec<misty_engine::hecs::Entity>,
     expanded: std::collections::HashSet<misty_engine::hecs::Entity>,
+    /// `ControllerStore::generation` the running game has caught up with.
+    controllers_seen: u64,
 }
 
 impl PlaySession {
@@ -75,6 +77,7 @@ pub fn start(s: &mut EditorState) {
         terrains: Vec::new(),
         inspector_targets: s.inspector_targets.clone(),
         expanded: s.hierarchy.expanded.clone(),
+        controllers_seen: s.anim_clips.controllers.generation(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -156,8 +159,33 @@ pub fn stop(s: &mut EditorState) {
     s.console.info("Exited Play mode.");
 }
 
+/// Hand Animator Controllers edited in the Animator window since the last frame to the running
+/// game: its Animators move onto the new versions (the edits are already saved, so Stop keeps
+/// them). One counter compare while nothing changes; runs while paused too, so the live view
+/// follows an edit at once.
+pub fn sync_controllers(s: &mut EditorState) {
+    let generation = s.anim_clips.controllers.generation();
+    let Some(session) = s.play_session.as_mut() else {
+        return;
+    };
+    if session.controllers_seen == generation {
+        return;
+    }
+    let changed = s
+        .anim_clips
+        .controllers
+        .changed_since(session.controllers_seen);
+    session.controllers_seen = generation;
+    if let Some(runtime) = s.runtime.as_mut() {
+        for (path, c) in changed {
+            runtime.reload_animator_controller(&path, c);
+        }
+    }
+}
+
 /// Run one frame of the game if playing (or a single step while paused).
 pub fn tick(s: &mut EditorState, real_dt: f32) {
+    sync_controllers(s);
     let run = match s.play {
         PlayState::Playing => true,
         PlayState::Paused => std::mem::take(&mut s.step_requested),

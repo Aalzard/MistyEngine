@@ -269,6 +269,114 @@ fn play_mode_shows_the_live_state() {
     std::fs::remove_dir_all(root).ok();
 }
 
+#[test]
+fn edits_during_play_reach_the_running_animator_and_survive_stop() {
+    let (mut s, root) = project("live_edit");
+    let hero = s.scene.spawn("Hero", None);
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(PATH.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    crate::play::tick(&mut s, 0.25);
+    let status = |s: &EditorState| {
+        s.runtime
+            .as_ref()
+            .unwrap()
+            .animator_status(&s.scene, hero)
+            .unwrap()
+    };
+    let before = status(&s).current.unwrap();
+    // Rename the playing state, add a parameter and a state (as the window does: undo + save).
+    assert!(crate::anim_controllers::edit(
+        &mut s,
+        PATH,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+            c.add_parameter(ParamKind::Float);
+            c.base.add_state("Wave", [200.0, 0.0]);
+        }
+    ));
+    // Paused: the edit still reaches the game (and the live view) without a step.
+    s.play = crate::state::PlayState::Paused;
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    let st = status(&s);
+    let cur = st.current.unwrap();
+    assert_eq!(cur.name, "Rest");
+    assert_eq!(cur.normalized_time, before.normalized_time, "time kept");
+    // The saved file and the running copy agree.
+    let disk = saved(&root);
+    let names: Vec<&str> = disk.base.states.iter().map(|x| x.name.as_str()).collect();
+    assert_eq!(names, ["Rest", "Walk", "Wave"]);
+    let disk_params: Vec<(String, ParamKind, f32)> = disk
+        .parameters
+        .iter()
+        .map(|p| (p.name.clone(), p.kind, p.default))
+        .collect();
+    assert_eq!(st.params, disk_params);
+    // The live view highlights the renamed state.
+    let mut h = window(s);
+    h.get_by_label("● Live");
+    let s = h.state_mut();
+    // Undo in Play mode reaches the game too.
+    commands::apply(s, Action::Undo);
+    s.play = crate::state::PlayState::Playing;
+    crate::play::tick(s, 1.0 / 60.0);
+    assert_eq!(status(s).current.unwrap().name, "Idle");
+    assert!(crate::anim_controllers::edit(
+        s,
+        PATH,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+        }
+    ));
+    crate::play::tick(s, 1.0 / 60.0);
+    assert_eq!(status(s).current.unwrap().name, "Rest");
+    // Stop keeps the edit, in the file and in the editor.
+    crate::play::stop(s);
+    assert!(saved(&root).base.state("Rest").is_some());
+    let held = s.anim_clips.controllers.get(PATH).unwrap();
+    assert!(held.base.state("Rest").is_some());
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn nothing_is_handed_to_the_game_while_no_controller_changes() {
+    let (mut s, root) = project("live_idle");
+    let hero = s.scene.spawn("Hero", None);
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(PATH.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    let generation = s.anim_clips.controllers.generation();
+    for _ in 0..10 {
+        crate::play::tick(&mut s, 1.0 / 60.0);
+    }
+    assert_eq!(s.anim_clips.controllers.generation(), generation);
+    assert!(
+        s.anim_clips
+            .controllers
+            .changed_since(generation)
+            .is_empty()
+    );
+    let rebinds = |s: &EditorState| s.runtime.as_ref().unwrap().animator_rebinds();
+    assert_eq!(rebinds(&s), 0);
+    crate::play::stop(&mut s);
+    std::fs::remove_dir_all(root).ok();
+}
+
 // ---- layers, sub-state machines, blend trees, masks ------------------------------------------
 
 #[test]

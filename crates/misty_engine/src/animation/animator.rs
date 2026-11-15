@@ -20,6 +20,7 @@ use super::controller::{
 };
 use super::fsm::{self, LayerRun, Lengths, Params, Run};
 use super::humanoid::{self, Avatar};
+use super::live_edit;
 use super::mask::AvatarMask;
 use super::root_motion::{self, Delta};
 use crate::scene::{Animator, Scene};
@@ -60,6 +61,10 @@ struct Instance {
     /// Pose of an interrupted blend per layer, sampled once when it froze.
     frozen_poses: Vec<Option<Pose>>,
     matching: Option<MatchTarget>,
+    /// Version of the controller asset this instance plays (see `AnimatorPlayer::reload_controller`).
+    version: u64,
+    /// `Assets::generation` when the instance last checked for a newer controller.
+    seen: u64,
 }
 
 /// What the Animator window and `GetCurrentAnimatorStateInfo` show.
@@ -119,6 +124,11 @@ struct Assets {
     masks: HashMap<String, Option<Arc<AvatarMask>>>,
     avatars: HashMap<String, Option<Arc<Avatar>>>,
     logs: Vec<String>,
+    /// Version of each controller replaced while playing (absent = 0, as first read).
+    versions: HashMap<String, u64>,
+    /// Bumped by every controller replacement: instances compare it with what they last saw,
+    /// so nothing is looked up while no controller changes.
+    generation: u64,
 }
 
 impl Assets {
@@ -442,6 +452,8 @@ pub struct AnimatorPlayer {
     script_moves: HashSet<Entity>,
     /// Root motion of the last update.
     moves: Vec<RootMove>,
+    /// Instances moved onto a new controller version so far.
+    rebinds: u64,
 }
 
 impl AnimatorPlayer {
@@ -455,11 +467,14 @@ impl AnimatorPlayer {
                 masks: HashMap::new(),
                 avatars: HashMap::new(),
                 logs: Vec::new(),
+                versions: HashMap::new(),
+                generation: 0,
             },
             instances: HashMap::new(),
             defaults: HashMap::new(),
             script_moves: HashSet::new(),
             moves: Vec::new(),
+            rebinds: 0,
         }
     }
 
@@ -468,6 +483,21 @@ impl AnimatorPlayer {
         self.assets
             .controllers
             .insert(path.to_owned(), Some(Arc::new(c)));
+    }
+
+    /// A new version of the controller at `path` (edited in the Animator window while playing).
+    /// Animators playing it move onto it the next time they are used, keeping their current
+    /// states, normalised times and the parameter values that still fit (see `live_edit`).
+    pub fn reload_controller(&mut self, path: &str, c: AnimatorController) {
+        let a = &mut self.assets;
+        a.controllers.insert(path.to_owned(), Some(Arc::new(c)));
+        a.generation += 1;
+        a.versions.insert(path.to_owned(), a.generation);
+    }
+
+    /// How many times an Animator moved onto a new controller version (tests).
+    pub fn controller_rebinds(&self) -> u64 {
+        self.rebinds
     }
 
     /// Use an in-memory clip for `path` instead of reading the file.
@@ -497,6 +527,13 @@ impl AnimatorPlayer {
         if self.instances.get(&e).is_some_and(|i| i.path != path) {
             self.instances.remove(&e);
         }
+        if self
+            .instances
+            .get(&e)
+            .is_some_and(|i| i.seen != self.assets.generation)
+        {
+            self.refresh(e);
+        }
         if !self.instances.contains_key(&e) {
             let ctrl = self.assets.controller(&path)?;
             let mut params: Vec<f32> = ctrl.parameters.iter().map(|p| p.default).collect();
@@ -522,17 +559,46 @@ impl AnimatorPlayer {
             self.instances.insert(
                 e,
                 Instance {
-                    path,
                     ctrl,
                     params,
                     layers,
                     root_delta: (Vec3::ZERO, Quat::IDENTITY),
                     frozen_poses: vec![None; n],
                     matching: None,
+                    version: self.assets.versions.get(&path).copied().unwrap_or(0),
+                    seen: self.assets.generation,
+                    path,
                 },
             );
         }
         self.instances.get_mut(&e)
+    }
+
+    /// Move `e`'s instance onto a newer version of its controller, if there is one.
+    fn refresh(&mut self, e: Entity) {
+        let generation = self.assets.generation;
+        let Some(inst) = self.instances.get_mut(&e) else {
+            return;
+        };
+        inst.seen = generation;
+        let version = self.assets.versions.get(&inst.path).copied().unwrap_or(0);
+        if version == inst.version {
+            return;
+        }
+        inst.version = version;
+        let Some(new) = self.assets.controllers.get(&inst.path).cloned().flatten() else {
+            return;
+        };
+        let r = live_edit::rebind(&inst.ctrl, &new, &inst.params, &inst.layers);
+        inst.matching = inst.matching.and_then(|mut m| {
+            m.state = r.base_states.get(m.state).copied().flatten()?;
+            Some(m)
+        });
+        inst.frozen_poses = vec![None; r.layers.len()];
+        inst.params = r.params;
+        inst.layers = r.layers;
+        inst.ctrl = new;
+        self.rebinds += 1;
     }
 
     /// Run `f` on `e`'s instance, or warn that it has no controller.

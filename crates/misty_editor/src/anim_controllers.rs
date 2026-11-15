@@ -1,6 +1,10 @@
 //! Animator Controllers open in the editor: loaded on first use, edited in memory and written to
 //! their `.controller` file right after every edit. Edits made during one mouse drag or one
 //! text-field session share a single undo step.
+//!
+//! Every change bumps a generation counter and records it per controller, so Play mode can
+//! hand just the controllers edited since it last looked to the running game (see
+//! `play::sync_controllers`) without comparing anything while nothing changes.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -16,6 +20,10 @@ pub struct ControllerStore {
     controllers: BTreeMap<String, AnimatorController>,
     /// Undo label of the edit grouped with the current interaction.
     grouping: Option<String>,
+    /// Bumped by every change to a held controller.
+    generation: u64,
+    /// The generation of each controller's last change.
+    versions: BTreeMap<String, u64>,
 }
 
 impl ControllerStore {
@@ -35,6 +43,31 @@ impl ControllerStore {
         Ok(&self.controllers[path])
     }
 
+    /// Bumped by every change to a controller the editor holds.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Record a change to `path`.
+    fn touch(&mut self, path: &str) {
+        self.generation += 1;
+        self.versions.insert(path.to_owned(), self.generation);
+    }
+
+    /// Controllers changed after generation `since`, as their saved files read back (so the
+    /// running game gets exactly what is on disk).
+    pub fn changed_since(&self, since: u64) -> Vec<(String, AnimatorController)> {
+        self.versions
+            .iter()
+            .filter(|(_, v)| **v > since)
+            .filter_map(|(p, _)| {
+                let c = self.controllers.get(p)?;
+                let saved = AnimatorController::from_json(&c.to_json()).ok()?;
+                Some((p.clone(), saved))
+            })
+            .collect()
+    }
+
     /// Assets read so far (watched for changes on disk).
     pub fn loaded_paths(&self) -> Vec<String> {
         self.controllers.keys().cloned().collect()
@@ -47,6 +80,7 @@ impl ControllerStore {
             return Ok(false);
         }
         self.controllers.insert(path.to_owned(), fresh);
+        self.touch(path);
         Ok(true)
     }
 
@@ -60,6 +94,7 @@ impl ControllerStore {
     pub fn restore(&mut self, path: String, c: AnimatorController) -> ClipSnapshot {
         let _ = c.save(&self.root.join(&path));
         let old = self.controllers.insert(path.clone(), c).unwrap_or_default();
+        self.touch(&path);
         ClipSnapshot::Controller(path, old)
     }
 
@@ -67,6 +102,7 @@ impl ControllerStore {
     pub fn create(&mut self, path: &str, c: AnimatorController) -> Result<(), String> {
         c.save(&self.root.join(path))?;
         self.controllers.insert(path.to_owned(), c);
+        self.touch(path);
         Ok(())
     }
 
@@ -77,7 +113,9 @@ impl ControllerStore {
         for key in keys {
             if let Some(to) = crate::asset_ops::remap(&key, old, new) {
                 let c = self.controllers.remove(&key).expect("listed key");
-                self.controllers.insert(to, c);
+                self.versions.remove(&key);
+                self.controllers.insert(to.clone(), c);
+                self.touch(&to);
             }
         }
         for c in self.controllers.values_mut() {
@@ -129,5 +167,6 @@ pub fn edit(
     if let Err(e) = c.save(&store.root.join(path)) {
         s.console.warn(format!("Could not save {path}: {e}"));
     }
+    store.touch(path);
     true
 }

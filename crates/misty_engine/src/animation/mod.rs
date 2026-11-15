@@ -13,6 +13,7 @@ pub mod controller;
 pub mod curve;
 pub mod fsm;
 pub mod humanoid;
+mod live_edit;
 pub mod mask;
 pub mod player;
 pub mod root_motion;
@@ -46,5 +47,7 @@ mod blend_tests;
 mod humanoid_tests;
 #[cfg(test)]
 mod layer_tests;
+#[cfg(test)]
+mod live_edit_tests;
 #[cfg(test)]
 mod tests;
