@@ -159,7 +159,11 @@ fn hill_m(x: f32, z: f32) -> f32 {
     let soft = 60.0 * (1.0 + (u / 60.0).exp()).ln();
     let ridge = 1.0 + 0.2 * noise::fbm(x, z, 700.0, 2, 17);
     let hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
-    hill + 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u)
+    // Far ahead, where its foot swings across the view, the hillside sinks to a third of
+    // its height (round 59.9: in the photo it runs down to the horizon left of the middle;
+    // at full height it walled the view ahead off at ~2.5 km).
+    let far = 1.0 - 0.7 * smooth(1100.0, 2500.0, rel(x, z).y);
+    (hill + 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u)) * far
 }
 
 /// The terraces on the hillside at (x, z): weight 0..1 (limestone ledges in patches on the
@@ -188,20 +192,6 @@ fn cliff_ledge(x: f32, z: f32) -> bool {
     (hill_m(x, z) / step).fract() < 0.9 - face
 }
 
-// TEMP r75 knobs
-fn far_knobs() -> [f32; 7] {
-    static K: std::sync::OnceLock<[f32; 7]> = std::sync::OnceLock::new();
-    *K.get_or_init(|| {
-        let mut k = [110.0, 190.0, 300.0, 120.0, 0.0, 3000.0, 1300.0];
-        if let Ok(v) = std::env::var("NV_FAR") {
-            for (i, x) in v.split(',').enumerate() {
-                k[i] = x.parse().unwrap();
-            }
-        }
-        k
-    })
-}
-
 /// Height in metres at terrain-local (x, z).
 fn height_m(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
@@ -213,17 +203,15 @@ fn height_m(x: f32, z: f32) -> f32 {
         40.0 + 7.0 * rolling + 2.2 * swells + 0.6 * dips + 10.0 * smooth(-200.0, -900.0, p.x);
     // The hillside on the right, with limestone ledges and faces in patches.
     let mut hill = hill_m(x, z);
-    {
-        let k = far_knobs();
-        hill *= 1.0 - k[4] * smooth(k[6], 2500.0, p.y);
-    }
     let (cliffs, step, face) = cliff_steps(x, z);
     if cliffs > 0.0 {
         hill += (terrace(hill, step, face) - hill) * cliffs;
     }
     h += hill;
     // Distant hills: three rounded, layered ranges ahead (1.5, 2.2 and 2.8 km), each higher
-    // than the one before, closer behind; rock shows on the nearest.
+    // than the one before, closer behind. (Low since round 59.9: the photo's horizon shows
+    // over a low wooded ring, ~2° up, with bare blue mountains rising to ~3–4° ahead on the
+    // left; the old ring, 110 / 190 / 300 m and a 120 m rim, stood 5–7° up all round.)
     let r = far_radius(p);
     let band = |c: f32, w: f32| (-((r - c) / w).powi(2)).exp();
     let lump = |seed: u32| {
@@ -233,15 +221,14 @@ fn height_m(x: f32, z: f32) -> f32 {
     // Behind the camera the ranges are closer, so lower (else too steep for the forest).
     let behind = 0.45 + 0.55 * smooth(-600.0, 300.0, p.y);
     let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
-    let k = far_knobs();
-    let near = k[0] * band(1500.0, 300.0) * lump(31) * open_left;
+    let near = 25.0 * band(1500.0, 300.0) * lump(31) * open_left;
     h += (near
-        + k[1] * band(2200.0, 380.0) * lump(37)
-        + k[2] * smooth(2350.0, 2950.0, r) * lump(47))
+        + 60.0 * band(2200.0, 380.0) * lump(37)
+        + 260.0 * smooth(2350.0, 2950.0, r) * lump(47))
         * behind;
     // Rims at the terrain's edges (nothing to see past them).
     let edge = x.min(z).min(SIZE.x - x).min(SIZE.z - z);
-    h += k[3] * smooth(400.0, 0.0, edge);
+    h += 40.0 * smooth(400.0, 0.0, edge);
     h
 }
 
@@ -263,8 +250,8 @@ fn forest(x: f32, z: f32) -> f32 {
     f = f.max(ahead);
     // Woods on the far hills (their ring starts ~1.3 km out): closed, blue with distance.
     let r = far_radius(p);
-    let we = far_knobs()[5];
-    let woods = smooth(1150.0, 1350.0, r) * smooth(we, we - 300.0, r);
+    // (Only on the low ring since round 59.9: the far ranges stay bare, blue with haze.)
+    let woods = smooth(1150.0, 1350.0, r) * smooth(2300.0, 2000.0, r);
     f = f.max(woods);
     // Behind the camera, the far treeline 600 m back.
     let behind = smooth(-560.0, -640.0, p.y + 40.0 * noise::fbm(x, z, 80.0, 2, 61))
@@ -2080,34 +2067,4 @@ fn noon_valley_plays() {
     }
     let physics = misty_engine::physics::Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
     assert!(physics.warnings.is_empty(), "{:?}", physics.warnings);
-}
-
-// TEMP r75: horizon elevation per azimuth from the eye (degrees), from height_m and forest.
-#[test]
-#[ignore = "temp"]
-fn noon_horizon_profile() {
-    let eye = height_m(EYE.0, EYE.1) + 1.7;
-    let mut out = String::new();
-    for yaw in (-180..=180).step_by(10) {
-        let a = (yaw as f32).to_radians();
-        let (s, c) = (a.sin(), a.cos());
-        let (mut best, mut at, mut bh) = (-90.0f32, 0.0f32, 0.0f32);
-        let mut d = 60.0f32;
-        while d < 6000.0 {
-            let (x, z) = (EYE.0 + s * d, EYE.1 + c * d);
-            if x < 0.0 || z < 0.0 || x > SIZE.x || z > SIZE.z {
-                break;
-            }
-            let h = height_m(x, z) + if forest(x, z) > 0.5 { 22.0 } else { 0.0 };
-            let e = ((h - eye) / d).atan().to_degrees();
-            if e > best {
-                best = e;
-                at = d;
-                bh = h - eye;
-            }
-            d += 10.0;
-        }
-        out += &format!("yaw {yaw:4} elev {best:5.2} at {at:5.0} m (+{bh:4.0} m)\n");
-    }
-    eprintln!("{out}");
 }
