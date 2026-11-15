@@ -1486,7 +1486,8 @@ impl TreeRenderer {
                         {
                             continue;
                         }
-                        let lod = shadow_lod(f.cascades[slot].texel / s.cascade_shadow_detail(slot)) as usize;
+                        let lod = shadow_lod(f.cascades[slot].texel / s.cascade_shadow_detail(slot))
+                            as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
