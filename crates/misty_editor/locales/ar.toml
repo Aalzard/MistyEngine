@@ -1627,6 +1627,13 @@
 "Set the normal map of {name}" = "تم تعيين خريطة العموديات للمادة {name}"
 "{name} has no renderer to put a texture on" = "لا يحتوي {name} على عارض لوضع الخامة عليه"
 
+[particles]
+# Round 79: Particle System ▸ Stop Action
+"Stop Action" = "إجراء الإيقاف"
+"Disable" = "تعطيل"
+"Destroy" = "إتلاف"
+"Callback" = "استدعاء"
+
 [light_glow]
 "Soft Core" = "نواة ناعمة"
 "Turn on Show Emitter to see the light's glow." = "شغّل إظهار المُصدِر لترى توهج الضوء."

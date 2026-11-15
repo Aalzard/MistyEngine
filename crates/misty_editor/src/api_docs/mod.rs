@@ -32,6 +32,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "cursor_api.rs",
     "input_actions_api.rs",
     "input_api.rs",
+    "lifecycle.rs",
     "light_probes_api.rs",
     "localization_api.rs",
     "material_api.rs",

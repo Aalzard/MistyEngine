@@ -76,6 +76,9 @@ pub struct Runtime {
     streaming: crate::world_partition::Streamer,
     /// Rain loops and thunder of the scene's weather.
     weather_audio: crate::weather::audio::Driver,
+    /// `Scene::activity` when audio, particles and effects last looked for objects switched
+    /// off and on again within a frame.
+    seen_activity: u64,
 }
 
 /// Streamed objects get physics bodies and scripts as they arrive, and lose them as they go.
@@ -140,7 +143,14 @@ impl Runtime {
             reloaded: false,
             streaming: crate::world_partition::Streamer::new(),
             weather_audio: Default::default(),
+            seen_activity: scene.activity(),
         }
+    }
+
+    /// The game stops (Stop, or a scene load replacing this one): scripts get OnDisable and
+    /// OnDestroy while the objects still exist. Call it before dropping the runtime.
+    pub fn shutdown(&mut self, scene: &mut Scene) {
+        self.host.shutdown(scene);
     }
 
     /// Load addressables with `assets` (the editor's Play Mode Script).
@@ -168,6 +178,8 @@ impl Runtime {
                 let folder = self.host.save_folder();
                 let mut pending = std::mem::take(&mut self.pending);
                 pending.extend(report.warnings.into_iter().map(|w| format!("{rel}: {w}")));
+                // The old scene unloads: OnDisable / OnDestroy before the reloaded Awake.
+                self.host.shutdown(scene);
                 let old_logs = self.host.take_logs();
                 // Old scripts and bodies go before the reloaded scene's Awake.
                 *scene = Scene::default();
@@ -243,6 +255,21 @@ impl Runtime {
             crate::weather::update_scene(scene, time.delta, eye);
         }
         self.host.update(scene, time, input);
+        // Objects switched off and on again since the last frame: Play On Awake sounds,
+        // particle systems and effects start again, like a real switch (the polls below only
+        // see them on both times). Nothing to do when nothing changed.
+        let dipped = if scene.activity() != self.seen_activity {
+            let changes = scene.activity_changes(self.seen_activity);
+            self.seen_activity = scene.activity();
+            changes.map(|c| c.dipped).unwrap_or_default()
+        } else {
+            Default::default()
+        };
+        if !dipped.is_empty() {
+            self.host.with_audio(|a| a.replay_switched(scene, &dipped));
+            crate::particles::restart_switched(scene, &dipped);
+            crate::vfx::restart_switched(scene, &dipped);
+        }
         {
             crate::profile_scope!("Audio.Update", Category::Audio);
             // Rain under a roof is quieter: how much is overhead (only while something falls).
@@ -266,7 +293,9 @@ impl Runtime {
         }
         crate::profile_scope!("ParticleSystem.Update", Category::Others);
         let (gravity, _) = self.host.physics_config();
-        crate::particles::update(scene, time.delta, gravity);
+        let stopped = crate::particles::update(scene, time.delta, gravity);
+        // Stop Actions: switch off, destroy, or OnParticleSystemStopped.
+        self.host.particle_stop_actions(scene, &stopped);
         crate::profile_scope!("VisualEffect.Update", Category::Others);
         crate::vfx::update(scene, time.delta);
         if let Some(data) = self.host.take_pending_load() {

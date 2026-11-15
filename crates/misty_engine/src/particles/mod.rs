@@ -218,7 +218,9 @@ pub fn world_colliders(scene: &Scene) -> Vec<Collider> {
 
 /// Advance every active system by `dt` (Play mode). Systems seen for the first time start if
 /// Play On Awake is set, so objects created while playing behave like scene objects.
-pub fn update(scene: &mut Scene, dt: f32, gravity: Vec3) {
+/// Returns the systems that stopped for good in this step and have a Stop Action (the game
+/// carries it out: [`crate::scripting::ScriptHost::particle_stop_actions`]).
+pub fn update(scene: &mut Scene, dt: f32, gravity: Vec3) -> Vec<(Entity, StopAction)> {
     // Systems on objects switched off lose their particles and start again (Play On Awake)
     // when switched on, as the familiar engine stops and clears a system when it is disabled
     // and plays it again on enable (pooled one-shot effects rely on it).
@@ -246,6 +248,32 @@ pub fn update(scene: &mut Scene, dt: f32, gravity: Vec3) {
             emit: !subs.contains(&e),
         };
         step_with(scene, e, &world, dt, env);
+    }
+    let mut stopped = Vec::new();
+    for (e, (system, emitter)) in scene
+        .world
+        .query::<(Entity, (&ParticleSystem, &ParticleEmitter))>()
+        .iter()
+    {
+        if emitter.finished && system.main.stop_action != StopAction::None {
+            stopped.push((e, system.main.stop_action));
+        }
+    }
+    stopped
+}
+
+/// Systems under objects switched off and on again since the last frame (`dipped`, see
+/// [`Scene::activity_changes`]) start again like a real switch: their particles go, and Play
+/// On Awake plays them again in the next [`update`].
+pub fn restart_switched(scene: &mut Scene, dipped: &std::collections::HashMap<Entity, u64>) {
+    let again: Vec<Entity> = dipped
+        .keys()
+        .copied()
+        .filter(|e| scene.world.get::<&ParticleEmitter>(*e).is_ok())
+        .filter(|e| scene.active_in_hierarchy(*e))
+        .collect();
+    for e in again {
+        let _ = scene.world.remove_one::<ParticleEmitter>(e);
     }
 }
 

@@ -133,6 +133,11 @@ pub fn stop(s: &mut EditorState) {
     crate::multiplayer::on_play_stopped(s);
     {
         misty_engine::profile_scope!("Play.Stop.Runtime");
+        // Scripts get OnDisable / OnDestroy while the played scene still exists.
+        if let Some(rt) = s.runtime.as_mut() {
+            rt.shutdown(&mut s.scene);
+        }
+        flush_logs(s);
         s.runtime = None;
     }
     crate::game_input::stop_rumble();
@@ -280,6 +285,11 @@ fn load_scene_path(s: &mut EditorState, rel: &str) {
                 s.console.warn(format!("{rel}: {w}"));
             }
             scene.set_scene_path(0, rel);
+            // The old scene unloads: OnDisable / OnDestroy.
+            if let Some(rt) = s.runtime.as_mut() {
+                rt.shutdown(&mut s.scene);
+            }
+            flush_logs(s);
             let session = s.runtime.as_mut().map(|r| r.take_network());
             s.runtime = None;
             let mut audio = Audio::with_device(s.project.root.clone());

@@ -13,7 +13,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::particles::{
     AlphaKey, Burst, CollisionPlane, CollisionType, ColorKey, ColorMode, Curve, CurveMode,
     Gradient, MinMax, MinMaxColor, ParticleBlend, ParticleSystem, RenderMode, ShapeKind,
-    SheetAnimation, SimulationSpace, SubEmitter, SubEmitterTrigger, TrailMode,
+    SheetAnimation, SimulationSpace, StopAction, SubEmitter, SubEmitterTrigger, TrailMode,
 };
 
 use super::editors::{combo, grid};
@@ -186,6 +186,16 @@ fn main_module(ui: &mut Ui, p: &mut ParticleSystem) -> bool {
                             .changed()
                     });
                 }
+                // When the system stops for good (a one-shot ended and its last particle died).
+                ch |= row(ui, &crate::i18n::tr!("Stop Action"), |ui| {
+                    combo(
+                        ui,
+                        "p_stop_action",
+                        &mut m.stop_action,
+                        &StopAction::ALL,
+                        StopAction::label,
+                    )
+                });
                 ch
             });
         });

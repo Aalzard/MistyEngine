@@ -1286,9 +1286,8 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
         let header = |ui: &mut Ui, state: &mut EditorState| {
             let mut on = script.enabled;
             if ui.checkbox(&mut on, "").changed() {
-                if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
-                    s.list[slot].enabled = on;
-                }
+                // Through the scene, so a playing script gets OnEnable / OnDisable.
+                state.scene.set_script_enabled(e, slot, on);
                 let verb = if on { "Enable" } else { "Disable" };
                 state.mark_edited(&format!("{verb} Script"));
             }

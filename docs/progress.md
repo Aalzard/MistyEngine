@@ -5695,3 +5695,78 @@ regression test that fails without it (checked by running the tests before the f
 warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
 1024 passed, engine 1690, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2746).
 No render code changed, so golden shots were not rerun.
+
+## Round 79 — Script lifecycle: OnEnable / OnDisable, Stop Action (branch r79-lifecycle)
+
+Closes the gaps round 78 found: Lua scripts had no OnEnable / OnDisable (nor OnDestroy), a
+disabled script heard no collisions, particle systems had no Stop Action, and an object switched
+off and on within one frame did not replay its Play On Awake sound, particles or effects.
+
+### Lua OnEnable, OnDisable and OnDestroy
+- **Order**: `Awake`, `OnEnable`, `Start` … `OnDisable`, `OnDestroy`, as in the familiar engine.
+  A script *runs* while its object is active in the hierarchy and its component is enabled.
+  `Awake` runs the first time it can run (Play start, `Instantiate`, an additive scene, or an
+  object that started inactive being switched on: such objects never woke before), `OnEnable`
+  right after it and every time it can run again, `Start` before its first Update.
+  `OnDisable` runs when the object or a parent is switched off, the component is disabled, the
+  object is destroyed while running, Play stops or the scene unloads (editor Stop and scene
+  loads, the player's scene loads, `SaveSystem.Load` reloading the scene); `OnDestroy` after it,
+  only for scripts that woke. A flag per script makes the two alternate (never twice in a row).
+- **Cost**: the host looks only when `Scene::activity` moved since its last look, and then only
+  at scripts under the objects that changed (`Scene::activity_changes`, round 78's log). The
+  look happens after every callback (where `Awake` of instantiated objects already ran), before
+  Start, FixedUpdate, Update and LateUpdate (switches made by animation and Timeline). Nothing
+  changes: one integer compare.
+- **Off and on in one callback**: the activity log now keeps each object's own Active flag just
+  before each change, so a switch off and back on between two looks shows as `dipped` (with the
+  change number). Scripts get OnDisable then OnEnable for it, like SetActive's synchronous calls
+  in the familiar engine; a per-script stamp keeps a dip from before the script's own OnEnable
+  from counting.
+- **SetActive inside OnEnable / OnDisable**: callbacks don't start a nested pass; the pass repeats
+  for what they switched (an OnEnable switching its own object off gets its OnDisable). Two
+  scripts switching each other back for ever stop after 32 rounds with one Console error.
+- **The script component's checkbox** goes through `Scene::set_script_enabled`, which logs the
+  change, so a playing script gets OnDisable / OnEnable from the Inspector. Lua has no
+  `self.enabled` yet (it would need an `__index` function on every script instance).
+- **Script Graphs** already had On Enable / On Disable (polled per frame for graphs that use
+  them); they now also get On Disable when their object is destroyed and, with On Destroy, at
+  Stop and scene unload.
+
+### Collisions and triggers reach disabled scripts
+The familiar engine sends OnCollision* / OnTrigger* to disabled MonoBehaviours (not Update);
+Misty sent nothing to them, in 3D and 2D. Both dispatchers now check only that the object is
+alive and active. Script Graphs stay as they were (a disabled graph hears nothing, like a
+disabled Script Machine).
+
+### Particle System Stop Action
+New main-module field **Stop Action**: None (default), Disable, Destroy, Callback. It runs when a
+system stops for good: a non-looping cycle ended (or `Stop()`) and its last particle died (the
+emitter reports `finished` for that one step). Disable switches the object off (its scripts get
+OnDisable at once), Destroy destroys it (OnDisable, OnDestroy), Callback calls
+`OnParticleSystemStopped()` on its scripts. `particles::update` returns the stopped systems and
+the Runtime hands them to `ScriptHost::particle_stop_actions`. Shown in the Inspector (Particle
+System section), saved in scenes and prefabs only when not None (old files load as None, saved
+files don't change); "Stop Action", "Disable", "Destroy" and "Callback" are in a new
+`[particles]` table of `ar.toml` and `tr.toml`.
+
+### SetActive off and on within one frame
+It fits the activity log, so it is done: each frame the Runtime reads the `dipped` objects since
+its last look (nothing to read when nothing changed) and replays what a real switch would:
+Play On Awake audio sources play again (`Audio::replay_switched`, skipping sources that were
+already off at the last look, which the existing poll wakes), particle systems and Visual Effects
+lose their particles and start again (`restart_switched`).
+
+### Tests
+`scripting::lifecycle_tests`: callback order (Awake, OnEnable, Start, OnDisable, OnDestroy), a
+parent switch reaching a child with nothing called twice, an inactive object waking when switched
+on, off and on in one callback, Stop disabling then destroying, the component checkbox, SetActive
+inside OnEnable / OnDisable (including the endless pair), disabled scripts hearing collisions in
+3D and 2D, switched-off objects hearing none, each Stop Action, old files loading as None, and
+the same-frame toggle replaying audio and restarting particles.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast` green: editor 1026 passed,
+engine 1715, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2773; 12 new). The
+node-only 2D game (`sample_node_game`) and the Behaviour Tree tests pass. No render code
+changed, so golden shots were not rerun.

@@ -158,6 +158,11 @@ impl Game {
         for w in report.warnings {
             self.logs.push((LogKind::Warning, format!("{rel}: {w}")));
         }
+        // The old scene unloads: its scripts get OnDisable / OnDestroy.
+        if let Some(rt) = self.runtime.as_mut() {
+            rt.shutdown(&mut self.scene);
+            self.logs.extend(rt.take_logs());
+        }
         let session = self.runtime.as_mut().map(|r| r.take_network());
         // Old scripts and bodies go before the new scene's Awake runs.
         self.runtime = None;

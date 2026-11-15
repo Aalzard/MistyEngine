@@ -659,20 +659,14 @@ impl GraphRuntime {
         heard
     }
 
-    /// Objects about to be removed: their graphs get OnDestroy, then stop.
+    /// Objects about to be removed: their graphs get OnDisable (if enabled) and OnDestroy,
+    /// then stop.
     pub fn destroy(&mut self, lua: &Lua, doomed: &[Entity]) {
         if doomed.is_empty() {
             return;
         }
         let set: HashSet<Entity> = doomed.iter().copied().collect();
-        for i in 0..self.instances.len() {
-            if set.contains(&self.instances[i].entity)
-                && self.instances[i].started
-                && self.instances[i].prog.has_event(&EventKind::Destroy)
-            {
-                self.fire_kind(lua, i, &EventKind::Destroy, &[]);
-            }
-        }
+        self.goodbye(lua, |e| set.contains(&e));
         self.instances.retain(|i| !set.contains(&i.entity));
         if self
             .debug
@@ -687,6 +681,36 @@ impl GraphRuntime {
                 w.graph_vars.remove(*e);
             }
         });
+    }
+
+    /// OnDisable for the enabled graphs of the objects `which` picks, then OnDestroy for the
+    /// started ones.
+    fn goodbye(&mut self, lua: &Lua, which: impl Fn(Entity) -> bool) {
+        for i in 0..self.instances.len() {
+            if which(self.instances[i].entity) && self.instances[i].enabled {
+                self.instances[i].enabled = false;
+                if self.instances[i].prog.has_event(&EventKind::Disable) {
+                    self.fire_kind(lua, i, &EventKind::Disable, &[]);
+                }
+            }
+        }
+        for i in 0..self.instances.len() {
+            if which(self.instances[i].entity)
+                && self.instances[i].started
+                && self.instances[i].prog.has_event(&EventKind::Destroy)
+            {
+                self.fire_kind(lua, i, &EventKind::Destroy, &[]);
+            }
+        }
+    }
+
+    /// The game stops (Stop, the scene unloading): every graph gets OnDisable (if enabled)
+    /// and OnDestroy (if started) while the objects still exist.
+    pub fn shutdown(&mut self, lua: &Lua) {
+        self.goodbye(lua, |_| true);
+        for i in &mut self.instances {
+            i.started = false;
+        }
     }
 
     /// Step the paused flow to the next node (it stays paused there, or ends).

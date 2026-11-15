@@ -2,8 +2,8 @@
 //!
 //! A script file returns a class table. Plain values in it (numbers, booleans, strings, Vector3)
 //! are public fields shown in the Inspector; functions are callbacks:
-//! `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`,
-//! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
+//! `Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnDisable`, `OnDestroy`
+//! (see `lifecycle`), `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
 //! `OnJointBreak(breakForce)` (then the joint component is removed),
 //! and the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
@@ -31,6 +31,9 @@ pub mod camera_api;
 pub mod cursor_api;
 pub mod input_actions_api;
 pub mod input_api;
+mod lifecycle;
+#[cfg(test)]
+mod lifecycle_tests;
 pub mod light_probes_api;
 pub mod localization_api;
 pub mod material_api;
@@ -402,6 +405,12 @@ struct Instance {
     name: String,
     table: RegistryKey,
     started: bool,
+    /// `Awake` ran (the first time the instance could run); `OnDestroy` only follows it.
+    awoken: bool,
+    /// `OnEnable` ran and `OnDisable` has not since: the two always alternate.
+    enabled: bool,
+    /// `Scene::activity` when `enabled` last changed: a switch off and on after it counts.
+    stamp: u64,
 }
 
 pub struct ScriptHost {
@@ -417,6 +426,12 @@ pub struct ScriptHost {
     graphs: crate::visual_script::GraphRuntime,
     /// How long the last frame's Script Graph Update pass took.
     graph_update_time: std::time::Duration,
+    /// `Scene::activity` when OnEnable / OnDisable were last brought up to date.
+    seen_activity: u64,
+    /// OnEnable / OnDisable are being delivered (callbacks they run don't start another pass).
+    syncing: bool,
+    /// Play is starting: scripts get Awake and OnEnable in order, not when touched.
+    starting: bool,
 }
 
 impl ScriptHost {
@@ -509,7 +524,12 @@ impl ScriptHost {
             net: Default::default(),
             graphs: Default::default(),
             graph_update_time: Default::default(),
+            seen_activity: 0,
+            syncing: false,
+            starting: false,
         };
+        // OnEnable / OnDisable look at changes from here on.
+        host.seen_activity = host.with_world(|w| w.scene.activity());
         let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = host.with_world(|w| {
             w.scene
                 .walk()
@@ -537,7 +557,12 @@ impl ScriptHost {
         // Player Inputs enable their default map before any Awake.
         host.input_sync();
         crate::profile_scope!("Scripts.Start.Awake");
-        host.call_all("Awake");
+        // Awake then OnEnable, script by script, for the ones that can run.
+        host.starting = true;
+        for i in 0..host.instances.len() {
+            host.reconcile(i, None, true);
+        }
+        host.starting = false;
         host.flush_spawned();
         host.localization_frame();
         host.with_world(|w| {
@@ -677,6 +702,9 @@ impl ScriptHost {
                 name: script.name(),
                 table,
                 started: false,
+                awoken: false,
+                enabled: false,
+                stamp: 0,
             }),
             Err(err) => self.log(LogKind::Error, format!("{}: {err}", script.name())),
         }
@@ -717,6 +745,8 @@ impl ScriptHost {
     }
 
     fn call_all(&mut self, name: &str) {
+        // Objects switched on or off outside a callback (animation, Timeline) first.
+        self.sync_enabled();
         // Objects created during this pass join from the next one (after their Awake).
         for i in 0..self.instances.len() {
             if self.runnable(&self.instances[i]) {
@@ -745,6 +775,8 @@ impl ScriptHost {
     /// `Instantiate`.
     fn flush_spawned(&mut self) {
         self.controller_hits();
+        // OnDisable / OnEnable for what the callback switched off or on.
+        self.sync_enabled();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
             let delivered = self.deliver_custom_events();
@@ -753,6 +785,7 @@ impl ScriptHost {
                 if delivered {
                     continue;
                 }
+                self.sync_enabled();
                 // Network objects need their scripts' Awake before OnNetworkSpawn.
                 self.network_settle();
                 return;
@@ -791,10 +824,9 @@ impl ScriptHost {
                 self.instantiate(e, slot, script);
             }
         }
+        // Awake then OnEnable; what they spawn waits for the caller's next round.
         for i in first..self.instances.len() {
-            if self.runnable(&self.instances[i]) {
-                self.call(i, "Awake", None);
-            }
+            self.reconcile(i, None, false);
         }
         self.with_world(|w| {
             w.audio.play_on_awake(&w.scene, Some(root));
@@ -1027,7 +1059,9 @@ impl ScriptHost {
             for (me, other) in [(c.a, c.b), (c.b, c.a)] {
                 self.graphs.contact(&self.lua, me, other, &kind);
                 for (i, inst) in self.instances.iter().enumerate() {
-                    if inst.entity == me && self.runnable(inst) {
+                    // Disabled scripts hear contacts too (not Update), as in the familiar
+                    // engine; switched-off objects don't.
+                    if inst.entity == me && self.hears_contacts(inst) {
                         let arg = self
                             .lua
                             .create_userdata(LGameObject(other))
@@ -1086,7 +1120,8 @@ impl ScriptHost {
                 ];
                 self.graphs.contact_with(&self.lua, me, &kind, &args);
                 for i in 0..self.instances.len() {
-                    if self.instances[i].entity != me || !self.runnable(&self.instances[i]) {
+                    // Disabled scripts too, like 3D contacts.
+                    if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
                     let arg = if c.trigger {
@@ -1155,8 +1190,13 @@ impl ScriptHost {
         }
         {
             profile_scope!("Scripts.Start", Category::Scripts);
+            // OnEnable before Start for objects switched on since the last frame.
+            self.sync_enabled();
             for i in 0..self.instances.len() {
-                if !self.instances[i].started && self.runnable(&self.instances[i]) {
+                if !self.instances[i].started
+                    && self.instances[i].enabled
+                    && self.runnable(&self.instances[i])
+                {
                     self.instances[i].started = true;
                     self.call(i, "Start", None);
                     self.flush_spawned();
@@ -1542,6 +1582,8 @@ impl ScriptHost {
             });
             // Spawned network objects are despawned first (OnNetworkDespawn, clients told).
             self.network_destroying(&subtree);
+            // OnDisable (scripts that were enabled), then OnDestroy (scripts that woke).
+            self.destroying(&subtree);
             // Script Graphs get OnDestroy while the objects still exist.
             self.graphs.destroy(&self.lua, &subtree);
             let doomed: Vec<Entity> = self.with_world(|w| {

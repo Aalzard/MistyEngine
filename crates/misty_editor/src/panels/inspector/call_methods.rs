@@ -76,6 +76,7 @@ const CALLBACKS: &[&str] = &[
     "OnEnable",
     "OnDisable",
     "OnDestroy",
+    "OnParticleSystemStopped",
 ];
 
 /// Names of `function T:Name(` / `function T.Name(` in a Lua script.
