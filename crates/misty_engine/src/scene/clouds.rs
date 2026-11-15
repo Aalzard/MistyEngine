@@ -90,6 +90,18 @@ pub struct CloudsOverride {
     /// at 0.
     #[serde(skip_serializing_if = "is_zero")]
     pub softness: f32,
+    /// 2000..60000 m: how far along a view ray clouds are drawn; they thin out over the last
+    /// 40 % of it, so a shorter distance clears the sky near the horizon (a flat layer's far
+    /// clouds sit just above it). Left out of the file at the default 60 km.
+    #[serde(skip_serializing_if = "is_max_distance")]
+    pub distance: f32,
+}
+
+/// Default [`CloudsOverride::distance`] (metres).
+pub const CLOUD_DISTANCE: f32 = 60_000.0;
+
+fn is_max_distance(v: &f32) -> bool {
+    *v == CLOUD_DISTANCE
 }
 
 fn is_zero(v: &f32) -> bool {
@@ -119,6 +131,7 @@ impl Default for CloudsOverride {
             cumulus: 0.0,
             size: 1.0,
             softness: 0.0,
+            distance: CLOUD_DISTANCE,
         };
         CloudPreset::Cloudy.apply(&mut o);
         o
@@ -158,18 +171,20 @@ mod tests {
         assert_eq!(o.altitude, CloudsOverride::default().altitude);
         assert_eq!(o.size, 1.0);
         assert_eq!(o.softness, 0.0);
+        assert_eq!(o.distance, CLOUD_DISTANCE);
     }
 
     #[test]
     fn size_and_softness_stay_out_of_files_at_their_defaults() {
         let text = serde_json::to_string(&CloudsOverride::default()).unwrap();
         assert!(
-            !text.contains("size") && !text.contains("softness"),
+            !text.contains("size") && !text.contains("softness") && !text.contains("distance"),
             "{text}"
         );
         let o = CloudsOverride {
             size: 2.5,
             softness: 0.4,
+            distance: 18_000.0,
             ..Default::default()
         };
         let back: CloudsOverride =

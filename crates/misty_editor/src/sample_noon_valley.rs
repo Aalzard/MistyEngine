@@ -977,6 +977,10 @@ const LONE: &[(f32, f32, u16, f32)] = &[
     (-420.0, 520.0, 5, 1.0),
 ];
 
+/// Wood Oaks placed by hand in the treeline wood: (right, ahead) of the camera in metres,
+/// height scale.
+const WOOD_FILL: [(f32, f32, f32); 1] = [(-62.6, 519.6, 0.9)];
+
 /// One 8 m cell of the treeline wood, the forest you walk into: tall trunks standing apart
 /// under high, open crowns (sun flecks all over the floor), pools of sun where a tree is
 /// missing, slim birches and saplings between, bushes, ferns, and carpets of broad-leaved
@@ -1192,6 +1196,20 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 });
             }
         }
+    }
+    // Round 59.10: a Wood Oak behind the inside view's eye closes part of the canopy gap
+    // over its sun patch: the floor's sunlit share 23 % -> 20 % (photo 20 %). (Leaf density
+    // and the gap threshold change the whole wood and darkened its floor.)
+    for &(right, ahead, height) in &WOOD_FILL {
+        let p = Vec2::new(EYE.0 + right, EYE.1 + ahead);
+        out.push(TreeInstance {
+            position: p / size,
+            prototype: 9,
+            rotation: 1.0,
+            height_scale: height,
+            width_scale: 1.0,
+            color: 0.5,
+        });
     }
     for (k, &(right, ahead, kind, scale)) in LONE.iter().enumerate() {
         let p = Vec2::new(EYE.0 + right, EYE.1 + ahead);
@@ -1568,6 +1586,10 @@ fn volume() -> PostProcessVolume {
     // (Dense heaps cast near-black shadows at 0.7; the photo's meadow under the clouds
     // stays light.)
     c.shadow_opacity = 0.35;
+    // (Round 59.10: the photo's sky is clear for the last ~6 degrees above the far hills; a
+    // flat layer piled its far heaps into a white band there. Clouds thin out from 9 km and
+    // stop at 15 km along the view ray: clear below ~6 degrees, a few faint heaps above.)
+    c.distance = 15_000.0;
     // Aerial perspective: blue-grey haze that layers the distant hills.
     let f = &mut v.fog;
     f.active = true;

@@ -5241,6 +5241,47 @@ is flat from the fifth cycle.
 - Checks: fmt clean, clippy 0 warnings, editor tests 1024 passed (with
   `noon_valley_matches_its_generator`). No engine change (golden and workspace tests not run).
 
+### Round 59.10 — a clear sky above the far hills, a smaller sun pool in the wood (branch r82-noon10)
+
+- **Clouds, Distance** (new Volumetric Clouds setting, Layer group): how far along a view ray
+  clouds are drawn (2–60 km); they thin out over its last 40 %. The default, 60 km, is the
+  old fixed trace distance and stays out of scene files, so other scenes and the golden shots
+  are unchanged (golden 20 / 20, all 0.00 % changed). A flat layer's far heaps sit lowest in
+  the view: NoonValley's piled up into a white band 4–9° over the far hills, where the photo's
+  sky is clear to ~6°. NoonValley now draws them to 15 km. Hero sky, share of cloud pixels
+  (columns 0–42 %, bands of elevation over the horizon) round 9 → 10: 4–6° 9 % → 0 %,
+  6–9° 47 % → 18 % (a few faint heaps), 9–14° 26 % → 20 %; sky 4–7° up 149/160/176 →
+  124/141/164 sRGB (photo 2–6° 108/131/160). Crispness and core colour unchanged (0.061,
+  190/191/193). Tried 13 / 17 / 22 km: 13 km left 6–9° empty (the photo has small heaps from
+  ~6.5°), 17–22 km kept the band. `hero_r9_r10.jpg`, `hero_horizon_r9_r10.jpg`,
+  `away_r9_r10.jpg`, `left_r9_r10.jpg` in `docs/screenshots/r82/`.
+- **Inside the wood**: one more Wood Oak (generator `WOOD_FILL`), 11 m behind the inside view's
+  eye, covers part of the canopy gap over the view's big sun pool (its right lobe). Lower half:
+  sunlit share 23 % → 20 % (photo 20 %), median 0.028 → 0.026 (0.028), p95 0.745 → 0.738
+  (0.757); shaded median sRGB 50/40/18 → 49/39/18. p75 fell 0.163 → 0.067 (with less sun
+  the 75th percentile moves from the pools' soft edges into the shade). Tries: closing every
+  gap cell within 25 m changed only the right side (22 %): the pool is a gap between crowns,
+  not a missing tree; a whole oak over it, or a birch or sapling, left 2–10 %; the share jumps
+  with each metre (a sweep along the sun line gave 23 / 20 / 10 / 2 %). `inside_r9_r10.jpg`.
+- **Top differences left across the 9 views** (for planning, in order):
+  1. *The wood's sunlight and undergrowth* (`inside`, `inside2`, `forest`): sun falls in a
+     few big pools on bare litter; the photo has many small flecks among dense green
+     undergrowth and a leafy mid-storey. Bright blobs (≥ 4 px at 960×540, lower half): photo
+     332, the largest 19 % of the sun, the top 3 50 %; ours 34, 60 %, 93 %.
+  2. *The meadow's grass* (`hero`, `down`, `away`, `left`, `treeline`): near blades are long
+     coarse clumps, yellow-green with dark gaps, where the photo's is a fine even lawn with
+     flowers speckled all over; the far meadow is flat grey-olive. Meadow mid 72/87/34
+     (photo 76/87/43).
+  3. *The distance*: no mid-distance mountains with pale rocky crests (only a low wooded ring
+     and faint far peaks), and the low sky is greyer and paler (124/141/164, photo
+     108/131/160); the hillside forest reads as a dark uniform wall where the photo's crowns
+     are sunlit and separate.
+- Timings (High 1920×1080): hero 11.10 ms GPU (round 9 11.25), inside 10.51 ms (10.65;
+  clouds 0.40 → 0.25 ms, the shorter rays).
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, `cargo test
+  --workspace --release` 1031 editor (with `noon_valley_matches_its_generator`) + 1717 engine
+  + the rest passed, 0 failed; golden 20 / 20 with the engine change.
+
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
 - **Record Audio** (new setting, on by default): MP4 and WebM recordings get the game's sound
