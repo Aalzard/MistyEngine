@@ -23,7 +23,7 @@ pub use sim::{
     Trail,
 };
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use glam::{Mat4, Vec3};
 use hecs::Entity;
@@ -249,17 +249,59 @@ pub fn update(scene: &mut Scene, dt: f32, gravity: Vec3) -> Vec<(Entity, StopAct
         };
         step_with(scene, e, &world, dt, env);
     }
-    let mut stopped = Vec::new();
-    for (e, (system, emitter)) in scene
+    stop_actions(scene)
+}
+
+/// Systems stopped for good whose Stop Action can run now: a system waits for its sub
+/// emitters' particles (a firework's burst on Death outlives the rocket), and a sub emitter
+/// waits for the system it belongs to (its own short cycle ends long before the parent's
+/// particles die and fire it).
+fn stop_actions(scene: &mut Scene) -> Vec<(Entity, StopAction)> {
+    let waiting: Vec<(Entity, StopAction)> = scene
         .world
         .query::<(Entity, (&ParticleSystem, &ParticleEmitter))>()
         .iter()
-    {
-        if emitter.finished && system.main.stop_action != StopAction::None {
-            stopped.push((e, system.main.stop_action));
+        .filter(|(_, (s, m))| m.stop_pending && s.main.stop_action != StopAction::None)
+        .map(|(e, (s, _))| (e, s.main.stop_action))
+        .collect();
+    if waiting.is_empty() {
+        return Vec::new();
+    }
+    let alive = |e: Entity| {
+        scene
+            .world
+            .get::<&ParticleEmitter>(e)
+            .is_ok_and(|m| m.is_alive())
+    };
+    // Sub emitter -> the systems it belongs to, and system -> its sub emitters.
+    let mut parents: HashMap<Entity, Vec<Entity>> = HashMap::new();
+    let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
+    for (e, s) in scene.world.query::<(Entity, &ParticleSystem)>().iter() {
+        if !s.sub_emitters.enabled {
+            continue;
+        }
+        for sub in &s.sub_emitters.list {
+            if let Some(c) = sub_emitter_entity(scene, e, &sub.emitter) {
+                parents.entry(c).or_default().push(e);
+                children.entry(e).or_default().push(c);
+            }
         }
     }
-    stopped
+    let ready: Vec<(Entity, StopAction)> = waiting
+        .into_iter()
+        .filter(|(e, _)| {
+            let busy = |list: Option<&Vec<Entity>>| {
+                list.is_some_and(|l| l.iter().any(|x| *x != *e && alive(*x)))
+            };
+            !alive(*e) && !busy(children.get(e)) && !busy(parents.get(e))
+        })
+        .collect();
+    for (e, _) in &ready {
+        if let Ok(mut m) = scene.world.get::<&mut ParticleEmitter>(*e) {
+            m.stop_pending = false;
+        }
+    }
+    ready
 }
 
 /// Systems under objects switched off and on again since the last frame (`dipped`, see

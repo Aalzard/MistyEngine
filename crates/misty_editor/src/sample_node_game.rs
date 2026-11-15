@@ -230,8 +230,13 @@ impl Session {
         let (rel, _) = build.resolve(&SceneRef::Name(name)).unwrap();
         let (mut scene, _) = Scene::load(&self.root.join(&rel)).unwrap();
         scene.set_scene_path(0, &rel);
+        // The old stage unloads first (OnDisable / OnDestroy for scripts and graphs).
+        self.rt.shutdown(&mut self.scene);
+        for (kind, text) in self.rt.take_logs() {
+            assert!(kind == LogKind::Info, "unloading: {kind:?}: {text}");
+        }
         let (audio, _) = Audio::null(self.root.clone());
-        self.rt = Runtime::start_with_audio(&mut scene, self.root.clone(), &self.settings, audio);
+        self.rt =Runtime::start_with_audio(&mut scene, self.root.clone(), &self.settings, audio);
         self.scene = scene;
         self.time = Time::new(&self.settings.time);
         rel

@@ -430,8 +430,9 @@ pub struct ScriptHost {
     seen_activity: u64,
     /// OnEnable / OnDisable are being delivered (callbacks they run don't start another pass).
     syncing: bool,
-    /// Play is starting: scripts get Awake and OnEnable in order, not when touched.
-    starting: bool,
+    /// While Play starts, the scripts the start pass has not reached yet: they get Awake and
+    /// OnEnable in order, not when touched (the ones it went by are looked at as usual).
+    start_pending: std::ops::Range<usize>,
 }
 
 impl ScriptHost {
@@ -526,7 +527,7 @@ impl ScriptHost {
             graph_update_time: Default::default(),
             seen_activity: 0,
             syncing: false,
-            starting: false,
+            start_pending: 0..0,
         };
         // OnEnable / OnDisable look at changes from here on.
         host.seen_activity = host.with_world(|w| w.scene.activity());
@@ -558,11 +559,12 @@ impl ScriptHost {
         host.input_sync();
         crate::profile_scope!("Scripts.Start.Awake");
         // Awake then OnEnable, script by script, for the ones that can run.
-        host.starting = true;
-        for i in 0..host.instances.len() {
+        let count = host.instances.len();
+        for i in 0..count {
+            host.start_pending = i + 1..count;
             host.reconcile(i, None, true);
         }
-        host.starting = false;
+        host.start_pending = 0..0;
         host.flush_spawned();
         host.localization_frame();
         host.with_world(|w| {
