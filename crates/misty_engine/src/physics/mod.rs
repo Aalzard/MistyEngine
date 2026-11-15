@@ -22,7 +22,7 @@ pub mod ragdoll;
 pub mod shape_cache;
 mod vehicles;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use glam::{Mat4, Quat, Vec3};
 use hecs::Entity;
@@ -126,6 +126,14 @@ pub struct Physics {
     /// since). Counting walks every collider (a forest's ~100 000 tree trunks: ~2 ms), so it
     /// is taken again when the collider count changes, or once a second.
     trigger_count: std::sync::Mutex<(usize, usize, u32)>,
+    /// Objects with a body or colliders in the world: each step checks they are still active.
+    owners: HashSet<Entity>,
+    /// Objects left out because they were inactive, in the order they came: each step checks
+    /// whether one was switched on (`SetActive`, Timeline, an animated Active property).
+    dormant: Vec<Entity>,
+    dormant_set: HashSet<Entity>,
+    /// `Scene::activity` when `sync_active` last looked (`None`: never).
+    activity_seen: Option<u64>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -210,6 +218,10 @@ impl Physics {
             ragdolls: ragdoll::Ragdolls::default(),
             cloth: cloth::ClothSystem::default(),
             trigger_count: std::sync::Mutex::new((0, usize::MAX, 0)),
+            owners: HashSet::new(),
+            dormant: Vec::new(),
+            dormant_set: HashSet::new(),
+            activity_seen: None,
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -245,11 +257,16 @@ impl Physics {
     }
 
     fn add_objects_with(&mut self, scene: &Scene, objects: &[Entity], register: bool) {
-        let objects: Vec<Entity> = objects
-            .iter()
-            .copied()
-            .filter(|e| scene.active_in_hierarchy(*e))
-            .collect();
+        let mut active = Vec::with_capacity(objects.len());
+        for &e in objects {
+            if scene.active_in_hierarchy(e) {
+                self.dormant_set.remove(&e);
+                active.push(e);
+            } else if self.dormant_set.insert(e) {
+                self.dormant.push(e);
+            }
+        }
+        let objects = active;
         for &e in &objects {
             self.add_body(scene, e);
         }
@@ -307,6 +324,7 @@ impl Physics {
             .additional_mass(rb.mass.max(1e-4))
             .build();
         let handle = self.world.insert_body(body);
+        self.owners.insert(e);
         self.bodies.insert(
             e,
             Body {
@@ -415,6 +433,7 @@ impl Physics {
 
     /// One fixed step; returns the contacts that began or ended.
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
+        self.sync_active(scene);
         self.push_kinematic(scene);
         self.apply_springs();
         let dt = self.world.integration_parameters.dt;
@@ -589,15 +608,21 @@ impl Physics {
 
     /// Remove an object's body and colliders (Destroy).
     pub fn remove(&mut self, e: Entity) {
+        let owned = self.owners.remove(&e);
         if let Some(b) = self.bodies.remove(&e) {
             self.world.remove_body_with_colliders(b.handle, true);
         }
         self.controllers.remove(&e);
         self.cloth.remove(e);
         self.remove_springs(e);
+        self.remove_wheels(e);
+        self.ragdolls.forget(e);
+        // Only bodies and colliders are in the walks below (they visit every collider).
+        if !owned {
+            return;
+        }
         let colliders = &self.world.colliders;
         self.materials.retain(|h, _| colliders.get(*h).is_some());
-        self.remove_wheels(e);
         let handles: Vec<_> = self
             .colliders
             .iter()
@@ -610,6 +635,73 @@ impl Physics {
         }
         self.colliders
             .retain(|h, _| self.world.colliders.get(*h).is_some());
+    }
+
+    /// Objects switched off since the last step leave the world (with everything under the
+    /// object that was switched off); objects switched on join it, like objects created while
+    /// playing. Inactive objects were left out when the world was built, but scripts
+    /// (`SetActive`), Timeline activation tracks and animated Active properties switch objects
+    /// while playing: a switched-off floor held boxes up and its triggers kept firing, and a
+    /// switched-on Rigidbody hung in the air.
+    pub fn sync_active(&mut self, scene: &Scene) {
+        if self.activity_seen == Some(scene.activity()) {
+            return;
+        }
+        self.activity_seen = Some(scene.activity());
+        let off: Vec<Entity> = self
+            .owners
+            .iter()
+            .copied()
+            .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+            .collect();
+        for e in off {
+            // Already gone with a switched-off object above it.
+            if !self.owners.contains(&e) {
+                continue;
+            }
+            if !scene.contains(e) {
+                self.remove(e);
+                continue;
+            }
+            // The highest switched-off object: everything under it is inactive now.
+            let mut top = e;
+            let mut cur = Some(e);
+            while let Some(c) = cur {
+                if !scene.game_object(c).active {
+                    top = c;
+                }
+                cur = scene.parent(c);
+            }
+            for x in scene.subtree(top) {
+                self.remove(x);
+                if self.dormant_set.insert(x) {
+                    self.dormant.push(x);
+                }
+            }
+        }
+        if self.dormant_set.is_empty() {
+            self.dormant.clear();
+            return;
+        }
+        let mut on = Vec::new();
+        for &e in &self.dormant {
+            if !self.dormant_set.contains(&e) {
+                continue;
+            }
+            if !scene.contains(e) {
+                self.dormant_set.remove(&e);
+            } else if scene.active_in_hierarchy(e) {
+                on.push(e);
+            }
+        }
+        for e in &on {
+            self.dormant_set.remove(e);
+        }
+        let set = &self.dormant_set;
+        self.dormant.retain(|e| set.contains(e));
+        if !on.is_empty() {
+            self.add_objects(scene, &on);
+        }
     }
 
     /// Kinematic bodies (and Character Controllers) follow their Transform.
@@ -657,6 +749,8 @@ pub fn collider_matrix(scene: &Scene, e: Entity, center: Vec3) -> Mat4 {
     Mat4::from_rotation_translation(r, p + r * (center * s))
 }
 
+#[cfg(test)]
+mod active_tests;
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]

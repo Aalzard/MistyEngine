@@ -545,6 +545,17 @@ impl Ragdolls {
         self.bones.contains(&e) && self.runs.iter().any(|r| r.enabled && r.bones.contains(&e))
     }
 
+    /// `e` left the physics world: a ragdoll rooted on it goes too (it is added again with
+    /// its object), and it is no longer a bone.
+    pub(super) fn forget(&mut self, e: Entity) {
+        if self.bones.remove(&e) {
+            for r in &mut self.runs {
+                r.bones.retain(|b| *b != e);
+            }
+        }
+        self.runs.retain(|r| r.root != e);
+    }
+
     fn find(&self, e: Entity) -> Option<usize> {
         self.runs
             .iter()

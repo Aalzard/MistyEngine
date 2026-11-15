@@ -1203,6 +1203,7 @@ impl ScriptHost {
             self.flush_spawned();
             self.joint_breaks();
             let contacts_2d = self.with_world(|w| {
+                w.physics2d.sync_active(&w.scene);
                 w.physics2d.refresh_tilemaps(&w.scene);
                 w.physics2d.step()
             });
@@ -1971,6 +1972,8 @@ mod input_tests;
 mod material_tests;
 #[cfg(test)]
 mod network_tests;
+#[cfg(test)]
+mod set_active_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

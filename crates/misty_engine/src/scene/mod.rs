@@ -117,6 +117,9 @@ pub struct Scene {
     /// One past the highest id freed in this world (trailing free ids have no live object
     /// above them to show they were used).
     free_top: u32,
+    /// Bumped by every change that can switch an object on or off (GameObject edits,
+    /// re-parenting, removal): physics looks for switched objects only when it moved.
+    activity: u64,
 }
 
 impl Default for Scene {
@@ -193,6 +196,7 @@ impl Clone for Scene {
             generation_floor: generation.saturating_add(1),
             frees: 0,
             free_top: top,
+            activity: self.activity,
         }
     }
 }
@@ -214,6 +218,7 @@ impl Scene {
             generation_floor: 1,
             frees: 0,
             free_top: 0,
+            activity: 0,
         }
     }
 
@@ -275,6 +280,7 @@ impl Scene {
     }
 
     pub fn game_object_mut(&mut self, e: Entity) -> hecs::RefMut<'_, GameObject> {
+        self.activity = self.activity.wrapping_add(1);
         self.world
             .get::<&mut GameObject>(e)
             .expect("scene object has GameObject")
@@ -405,7 +411,13 @@ impl Scene {
         false
     }
 
+    /// Changes so far that could have switched objects on or off (see `activity`).
+    pub fn activity(&self) -> u64 {
+        self.activity
+    }
+
     fn detach(&mut self, e: Entity) {
+        self.activity = self.activity.wrapping_add(1);
         match self.parent(e) {
             Some(p) => {
                 if let Ok(mut n) = self.world.get::<&mut Node>(p) {
