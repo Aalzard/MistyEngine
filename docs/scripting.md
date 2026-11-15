@@ -45,22 +45,25 @@ Networking below).
 A script *runs* while its object is active in the hierarchy (it and every parent) and its
 component is enabled (the checkbox on its Properties header).
 
-- `Awake` runs once, the first time the script can run: when Play starts, when its object is
+- `Awake` runs once, the first time its object is active: when Play starts, when its object is
   created (`Instantiate`, an additive scene), or when an object that started inactive is first
-  switched on.
+  switched on. A disabled component wakes too (it hears collisions), but gets no `OnEnable`
+  or `Start` until it is enabled.
 - `OnEnable` runs right after `Awake`, and again every time the script can run after it could
   not: its object (or a parent) is switched on, or its component is enabled.
 - `Start` runs once, before the script's first `Update` (the frame after it was switched on).
 - `OnDisable` runs when it stops running: its object or a parent is switched off, its component
-  is disabled, its object is destroyed while running, Play stops or its scene unloads.
-- `OnDestroy` runs when the object is destroyed (after `OnDisable`), when Play stops and when
-  its scene unloads; only for scripts whose `Awake` ran.
+  is disabled, its object is destroyed while running, Play stops, its scene unloads or the
+  built game quits.
+- `OnDestroy` runs when the object is destroyed (after `OnDisable`), when Play stops, when
+  its scene unloads and when the built game quits; only for scripts whose `Awake` ran.
 
 `OnEnable` and `OnDisable` always alternate: switching an object off twice, or off while a parent
 is already off, calls nothing more. They run right after the callback that switched the object
 (like `Awake` after `Instantiate`); `SetActive(false)` then `SetActive(true)` in one callback still
 gives `OnDisable` then `OnEnable`. Calling `SetActive` inside them is fine (an `OnEnable` that
-switches its own object off gets its `OnDisable`); two scripts that keep switching each other
+switches its own object off gets its `OnDisable`, and a chain of `OnEnable`s switching on the
+next object down a deep hierarchy goes all the way); two scripts that keep switching each other
 back stop with an error in the Console. Nothing is checked while nothing is switched.
 
 Disabled scripts still get the collision and trigger callbacks (3D and 2D), as in the familiar
@@ -476,7 +479,9 @@ Systems with Play On Awake are already playing in `Awake`/`Start`. Module settin
 **Stop Action** (Particle System ▸ main module) says what happens when a system stops for good: a
 non-looping cycle ended (or `Stop()` was called) and its last particle died. **None** (the
 default) does nothing, **Disable** switches the object off, **Destroy** destroys it, **Callback**
-calls `OnParticleSystemStopped()` on the object's scripts:
+calls `OnParticleSystemStopped()` on the object's scripts. A system waits for its sub emitters'
+particles (a firework's burst on Death outlives the rocket), and a sub emitter's own Stop Action
+waits for the system it belongs to:
 ```lua
 local Pooled = {}
 function Pooled:OnParticleSystemStopped()
