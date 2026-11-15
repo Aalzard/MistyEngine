@@ -191,7 +191,7 @@ fn main_module(ui: &mut Ui, p: &mut ParticleSystem) -> bool {
                     combo(
                         ui,
                         "p_stop_action",
-                        &mut p.main.stop_action,
+                        &mut m.stop_action,
                         &StopAction::ALL,
                         StopAction::label,
                     )

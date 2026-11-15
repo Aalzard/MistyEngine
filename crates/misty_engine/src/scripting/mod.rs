@@ -528,6 +528,8 @@ impl ScriptHost {
             syncing: false,
             starting: false,
         };
+        // OnEnable / OnDisable look at changes from here on.
+        host.seen_activity = host.with_world(|w| w.scene.activity());
         let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = host.with_world(|w| {
             w.scene
                 .walk()
@@ -556,7 +558,6 @@ impl ScriptHost {
         host.input_sync();
         crate::profile_scope!("Scripts.Start.Awake");
         // Awake then OnEnable, script by script, for the ones that can run.
-        host.seen_activity = host.with_world(|w| w.scene.activity());
         host.starting = true;
         for i in 0..host.instances.len() {
             host.reconcile(i, None, true);
