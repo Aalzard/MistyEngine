@@ -5624,4 +5624,7 @@ kept the controller it read at Play start; the edits were saved but only showed 
 - User Guide: one paragraph in the animation chapter's "Try it" (English and Arabic).
 
 ### Checks
-CHECKS_PLACEHOLDER
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast` green: editor 1026 passed,
+engine 1694, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2752, 15 new). No
+render code changed, so golden shots were not rerun.
