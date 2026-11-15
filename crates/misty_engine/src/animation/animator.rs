@@ -495,6 +495,33 @@ impl AnimatorPlayer {
         a.versions.insert(path.to_owned(), a.generation);
     }
 
+    /// Controller assets were renamed or moved (`remap` gives a path's new path, or `None`):
+    /// cached copies and running Animators follow, so an Animator whose component now names
+    /// the new path carries on instead of restarting as if it had a different controller.
+    pub fn rename_controllers(&mut self, remap: impl Fn(&str) -> Option<String>) {
+        let a = &mut self.assets;
+        let moved: Vec<(String, String)> = a
+            .controllers
+            .keys()
+            .chain(a.versions.keys())
+            .chain(self.instances.values().map(|i| &i.path))
+            .filter_map(|p| remap(p).map(|n| (p.clone(), n)))
+            .collect();
+        for (old, new) in &moved {
+            if let Some(c) = a.controllers.remove(old) {
+                a.controllers.insert(new.clone(), c);
+            }
+            if let Some(v) = a.versions.remove(old) {
+                a.versions.insert(new.clone(), v);
+            }
+        }
+        for inst in self.instances.values_mut() {
+            if let Some(new) = remap(&inst.path) {
+                inst.path = new;
+            }
+        }
+    }
+
     /// How many times an Animator moved onto a new controller version (tests).
     pub fn controller_rebinds(&self) -> u64 {
         self.rebinds

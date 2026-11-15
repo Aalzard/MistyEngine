@@ -27,6 +27,8 @@ pub struct PlaySession {
     expanded: std::collections::HashSet<misty_engine::hecs::Entity>,
     /// `ControllerStore::generation` the running game has caught up with.
     controllers_seen: u64,
+    /// `MaskStore::generation` the running game has caught up with.
+    masks_seen: u64,
 }
 
 impl PlaySession {
@@ -78,6 +80,7 @@ pub fn start(s: &mut EditorState) {
         inspector_targets: s.inspector_targets.clone(),
         expanded: s.hierarchy.expanded.clone(),
         controllers_seen: s.anim_clips.controllers.generation(),
+        masks_seen: s.anim_clips.masks.generation(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -169,6 +172,7 @@ pub fn stop(s: &mut EditorState) {
 /// them). One counter compare while nothing changes; runs while paused too, so the live view
 /// follows an edit at once.
 pub fn sync_controllers(s: &mut EditorState) {
+    sync_masks(s);
     let generation = s.anim_clips.controllers.generation();
     let Some(session) = s.play_session.as_mut() else {
         return;
@@ -184,6 +188,24 @@ pub fn sync_controllers(s: &mut EditorState) {
     if let Some(runtime) = s.runtime.as_mut() {
         for (path, c) in changed {
             runtime.reload_animator_controller(&path, c);
+        }
+    }
+}
+
+/// Avatar Masks edited in the Inspector while playing reach the running Animators' layers.
+fn sync_masks(s: &mut EditorState) {
+    let generation = s.anim_clips.masks.generation();
+    let Some(session) = s.play_session.as_mut() else {
+        return;
+    };
+    if session.masks_seen == generation {
+        return;
+    }
+    let changed = s.anim_clips.masks.changed_since(session.masks_seen);
+    session.masks_seen = generation;
+    if let Some(runtime) = s.runtime.as_mut() {
+        for (path, m) in changed {
+            runtime.reload_avatar_mask(&path, m);
         }
     }
 }
@@ -217,10 +239,12 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     crate::panels::script_graph::sync_debugger(s);
     if let Some(runtime) = s.runtime.as_mut() {
         runtime.update(&mut s.scene, &s.time, input);
-        // SaveSystem.Load reloaded the scene: its objects are new.
+        // SaveSystem.Load reloaded the scene: its objects are new (and Play mode's undo
+        // history holds copies of the old ones).
         if runtime.take_scene_reloaded() {
             s.selection.clear();
             s.inspector_targets.clear();
+            s.undo.clear();
         }
     }
     flush_logs(s);
@@ -255,6 +279,8 @@ fn handle_requests(s: &mut EditorState) {
                     s.console.log(LogLevel::Error, e);
                 }
                 s.selection.retain_existing(&s.scene);
+                // Undo would bring back (or drop) the scene's objects behind the game's back.
+                s.undo.clear();
             }
         }
     }
@@ -307,6 +333,9 @@ fn load_scene_path(s: &mut EditorState, rel: &str) {
             s.scene = scene;
             s.selection.clear();
             s.inspector_targets.clear();
+            // Play mode's undo history holds copies of the scene that was left (the Edit-mode
+            // history is kept in the session and comes back on Stop).
+            s.undo.clear();
             flush_logs(s);
         }
         Err(e) => s.console.log(LogLevel::Error, e),
@@ -467,6 +496,43 @@ return N
         tick(&mut s, 1.0 / 60.0);
         assert!(s.scene.find_by_name("Loader").is_some());
         assert!(s.console.count(LogLevel::Error) > 0);
+    }
+
+    /// Undo after a script loaded another scene during Play put back the previous scene's
+    /// objects (the history's copies were taken before the load) under the new scene's game.
+    #[test]
+    fn undo_after_a_scene_load_in_play_does_not_bring_back_the_old_scene() {
+        let root =
+            std::env::temp_dir().join(format!("misty_play_undo_load_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
+        let mut level = Scene::new("Level2");
+        level.spawn("Only In Level2", None);
+        level
+            .save(&root.join("Assets/Scenes/Level2.scene"))
+            .unwrap();
+        let mut s = EditorState::new(ProjectBrowser::open(root.clone()));
+        let menu = s.scene.spawn("Menu Object", None);
+        start(&mut s);
+        // An Inspector edit while playing (one undo step), then the game loads Level2.
+        s.record("Rename Menu Object");
+        s.scene.game_object_mut(menu).name = "Renamed".into();
+        load_scene_path(&mut s, "Assets/Scenes/Level2.scene");
+        assert!(s.scene.find_by_name("Only In Level2").is_some());
+        crate::commands::apply(&mut s, crate::actions::Action::Undo);
+        tick(&mut s, 1.0 / 60.0);
+        assert!(
+            s.scene.find_by_name("Only In Level2").is_some(),
+            "the loaded scene stays"
+        );
+        assert!(s.scene.find_by_name("Menu Object").is_none());
+        assert!(s.scene.find_by_name("Renamed").is_none());
+        stop(&mut s);
+        assert!(
+            s.scene.find_by_name("Menu Object").is_some(),
+            "edit scene back"
+        );
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]

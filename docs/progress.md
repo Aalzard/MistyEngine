@@ -5770,3 +5770,73 @@ warnings. Full `cargo test --workspace --release --no-fail-fast` green: editor 1
 engine 1715, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2773; 12 new). The
 node-only 2D game (`sample_node_game`) and the Behaviour Tree tests pass. No render code
 changed, so golden shots were not rerun.
+## Round 80 — Bug hunt 14: live Animator edits, scenes and prefabs in the editor (branch r80-qa14)
+
+Attacked round 77 (Animator Controller edits during Play) and the editor's scene and prefab
+workflow (copy/paste and duplicate across scenes, multi-scene editing, prefabs dropped in Play,
+undo across scene switches, Hierarchy search, Unicode and Arabic names).
+
+### Bugs fixed
+- **Renaming a controller during Play restarted every Animator using it**: the rename rewrote the
+  playing scene's Animator to the new path, and the running Animator took that for a different
+  controller: back to the default state at time 0, parameters reset. The game's Animator player
+  now follows renames and moves (`AnimatorPlayer::rename_controllers`, called from the asset
+  rename with the same path remap), so the Animator carries on and later edits to the renamed
+  asset still reach it. Test: `renaming_the_controller_during_play_keeps_the_running_animator`.
+- **Undoing a controller edit during Play rewound the game**: every undo step kept a copy of the
+  scene, also steps that only changed an asset, and undo put that copy back. Undoing an Animator
+  window edit ten seconds into Play moved every object back to where it was at the edit,
+  removed what the game had spawned and brought back what it had destroyed. Steps that change
+  only an asset (Animator Controllers, Avatar Masks, Audio Mixers: new `UndoStack::push_asset`)
+  keep no scene copy, and undo/redo leave the scene and selection alone. (Timeline edits still
+  take a scene copy: deleting a track also drops its bindings in the scene.) Test:
+  `undoing_a_controller_edit_during_play_leaves_the_running_scene_alone` (undo/redo storm).
+- **Avatar Mask edits during Play never reached running Animators**: the Inspector saved the
+  mask, but the game kept the copy it read when Play started. Masks now have the same
+  generation counter as controllers (`MaskStore::generation`), and `play::sync_controllers`
+  hands changed masks to the game (`Runtime::reload_avatar_mask`), undo included. Test:
+  `mask_edits_during_play_reach_running_animator_layers`.
+- **Renaming the sub-state machine a cross-fade was entering snapped the blend**: the live edit
+  matched transitions by their ends and sub-machine path, so an `Idle → Combat` transition (or
+  an Any State transition inside Combat) counted as removed when Combat was renamed. Sub-machines
+  renamed in place are now matched by slot like states (`live_edit::machine_map`). Test:
+  `renaming_the_sub_machine_being_entered_keeps_the_blend`.
+- **Undo after a scene load in Play brought the old scene back**: Play mode's undo history held
+  copies of the scene taken before a script's `SceneManager.LoadScene` (or `SaveSystem.Load`,
+  or an additive load/unload), and Ctrl+Z put the previous level's objects back under the new
+  level's game. A scene change in Play now clears Play mode's history, as opening a scene does
+  in Edit mode (the Edit-mode history is kept in the session and comes back on Stop). Test:
+  `undo_after_a_scene_load_in_play_does_not_bring_back_the_old_scene`.
+- **`tag:` search missed tags with non-ASCII capitals**: the query was lower-cased with Unicode
+  rules but compared ignoring ASCII case only, so `tag:Çit` (the editor ships a Turkish locale)
+  never matched. Test: `tag_filter_ignores_case_beyond_ascii` (also an Arabic name and tag).
+
+### Checked, no bug found
+- Live edits while on a sub-state machine state (states are matched by name across machines),
+  during an Any State transition (kept by index or by ends), deleting the layer holding the
+  current state (layers matched by name, the rest keep their states), controllers no running
+  Animator uses (cached for later spawns, one counter compare per instance), prefab instances
+  spawned after an edit (created on the new version), Stop and Play again (a new player starts
+  at generation 0, the session records the store's generation at Start; counters are u64).
+  There are no Animator Override Controllers or IK passes in the engine yet.
+- Root motion across an edit (`root_delta` kept; the current state keeps its normalised time),
+  events of a clip swapped on the current state (fired from the new clip by time window).
+- Copy/paste and duplicate across open scenes (pasted next to another scene's object it joins
+  that scene; outside references are only restored when the source still matches), opening or
+  unloading scenes clears the history, Hierarchy search with thousands of objects (rows are
+  virtualised; the search is one pass over names), Arabic and other Unicode names (the Hierarchy
+  shapes them for drawing only, rename fields and saved scene/prefab files keep the logical
+  text, prefab file names keep them and replace only characters Windows forbids).
+
+### Known limits (not changed)
+- Undoing a scene edit made during Play still restores the whole scene as it was at that edit
+  (snapshot undo); only asset-only steps and scene loads are handled above.
+- Animation clip settings changed in the Inspector during Play (Loop Time) are not handed to the
+  running game; the Animation window itself is closed in Play.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1031 passed, engine 1704, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2767).
+Each new test was run against the code without its fix and failed. No render code changed, so
+golden shots were not rerun.

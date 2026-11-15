@@ -15,6 +15,11 @@ pub struct MaskStore {
     masks: BTreeMap<String, AvatarMask>,
     /// Undo label of the edit grouped with the current interaction.
     grouping: Option<String>,
+    /// Bumped by every change to a held mask (Play mode hands changed masks to the game, see
+    /// `play::sync_controllers`).
+    generation: u64,
+    /// The generation of each mask's last change.
+    versions: BTreeMap<String, u64>,
 }
 
 impl MaskStore {
@@ -34,6 +39,29 @@ impl MaskStore {
         Ok(&self.masks[path])
     }
 
+    /// Bumped by every change to a mask the editor holds.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn touch(&mut self, path: &str) {
+        self.generation += 1;
+        self.versions.insert(path.to_owned(), self.generation);
+    }
+
+    /// Masks changed after generation `since`, as their saved files read back.
+    pub fn changed_since(&self, since: u64) -> Vec<(String, AvatarMask)> {
+        self.versions
+            .iter()
+            .filter(|(_, v)| **v > since)
+            .filter_map(|(p, _)| {
+                let m = self.masks.get(p)?;
+                let saved = AvatarMask::from_json(&m.to_json()).ok()?;
+                Some((p.clone(), saved))
+            })
+            .collect()
+    }
+
     pub fn snapshot(&mut self, path: &str) -> Option<ClipSnapshot> {
         self.get(path)
             .ok()
@@ -44,6 +72,7 @@ impl MaskStore {
     pub fn restore(&mut self, path: String, m: AvatarMask) -> ClipSnapshot {
         let _ = m.save(&self.root.join(&path));
         let old = self.masks.insert(path.clone(), m).unwrap_or_default();
+        self.touch(&path);
         ClipSnapshot::Mask(path, old)
     }
 
@@ -53,7 +82,9 @@ impl MaskStore {
         for key in keys {
             if let Some(to) = crate::asset_ops::remap(&key, old, new) {
                 let m = self.masks.remove(&key).expect("listed key");
-                self.masks.insert(to, m);
+                self.versions.remove(&key);
+                self.masks.insert(to.clone(), m);
+                self.touch(&to);
             }
         }
     }
@@ -80,8 +111,7 @@ pub fn edit(
     };
     let grouped = interacting && store.grouping.as_deref() == Some(label);
     if !grouped {
-        s.undo
-            .push_with_clip(label, &s.scene, &s.selection, Some(snap));
+        s.undo.push_asset(label, &s.selection, snap);
         s.anim_clips.masks.grouping = interacting.then(|| label.to_owned());
     }
     let store = &mut s.anim_clips.masks;
@@ -92,5 +122,6 @@ pub fn edit(
     if let Err(e) = m.save(&store.root.join(path)) {
         s.console.warn(format!("Could not save {path}: {e}"));
     }
+    store.touch(path);
     true
 }

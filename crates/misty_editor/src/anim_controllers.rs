@@ -155,8 +155,7 @@ pub fn edit(
     };
     let grouped = interacting && store.grouping.as_deref() == Some(label);
     if !grouped {
-        s.undo
-            .push_with_clip(label, &s.scene, &s.selection, Some(snap));
+        s.undo.push_asset(label, &s.selection, snap);
         s.anim_clips.controllers.grouping = interacting.then(|| label.to_owned());
     }
     let store = &mut s.anim_clips.controllers;
