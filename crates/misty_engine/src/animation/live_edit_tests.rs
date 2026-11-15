@@ -356,3 +356,34 @@ fn layers_follow_renames_and_removals() {
     p.update(&mut s, 0.1);
     assert_eq!(p.status(&s, e).unwrap().layers.len(), 1);
 }
+
+/// Renaming the sub-state machine a cross-fade was entering (Idle → the "Combat" machine)
+/// counted the transition as removed, so the blend in progress snapped to its destination.
+#[test]
+fn renaming_the_sub_machine_being_entered_keeps_the_blend() {
+    let sub = || {
+        let mut c = controller();
+        c.base.sub_machines.push(SubMachine {
+            path: "Combat".into(),
+            default_state: Some("Up".into()),
+            ..Default::default()
+        });
+        c.base.states[1].machine = "Combat".into();
+        c.base.transitions[0].to = Node::Machine("Combat".into());
+        c
+    };
+    let (mut s, e, mut p) = setup(sub());
+    halfway(&mut p, &mut s, e);
+    let mut c = sub();
+    assert_eq!(
+        c.base.rename_sub_machine("Combat", "Fight").as_deref(),
+        Some("Fight")
+    );
+    p.reload_controller(CTRL, c);
+    p.update(&mut s, 0.25);
+    let st = p.status(&s, e).unwrap();
+    let (to, progress) = st.next.expect("still blending");
+    assert_eq!(to.name, "Up");
+    assert!((progress - 0.75).abs() < 1e-4, "{progress}");
+    assert!((y(&s, e) - 1.5).abs() < 1e-4, "{}", y(&s, e));
+}

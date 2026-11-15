@@ -111,6 +111,10 @@ pub struct Snapshot {
     pub material: Option<MaterialUndo>,
     pub imports: Option<ImportUndo>,
     pub prefabs: Option<PrefabUndo>,
+    /// The step changed an asset only: undo and redo leave the scene and selection as they
+    /// are (no scene copy is kept). In Play mode the game changes the scene all the time, and
+    /// putting back the copy taken at the edit would rewind it.
+    asset_only: bool,
     /// Approximate memory held (for the history cap).
     bytes: usize,
 }
@@ -129,6 +133,7 @@ impl Snapshot {
             material: None,
             imports: None,
             prefabs: None,
+            asset_only: false,
             bytes: 0,
         }
     }
@@ -194,6 +199,16 @@ impl UndoStack {
         snap.clip = clip;
         self.commit(snap);
         // A structural command ends any pending continuous edit.
+        self.reset_interaction();
+    }
+
+    /// An edit of an asset only (an Animator Controller, an Avatar Mask): undo puts `asset`
+    /// back and leaves the scene as it is then.
+    pub fn push_asset(&mut self, label: &str, selection: &Selection, asset: ClipSnapshot) {
+        let mut snap = Snapshot::new(label, &Scene::default(), selection);
+        snap.clip = Some(asset);
+        snap.asset_only = true;
+        self.commit(snap);
         self.reset_interaction();
     }
 
@@ -415,6 +430,21 @@ impl UndoStack {
 
     /// Put `snap` in place; returns its label and a snapshot of what it replaced.
     fn swap(snap: Snapshot, to: &mut Restore) -> (String, Snapshot) {
+        if snap.asset_only {
+            let current = Snapshot {
+                label: snap.label.clone(),
+                scene: Scene::default(),
+                selection: to.selection.clone(),
+                clip: snap.clip.map(|c| to.clips.restore(c)),
+                terrain: snap.terrain.map(TerrainUndo::restore),
+                material: snap.material.map(|m| m.restore(to.assets)),
+                imports: snap.imports.map(|i| i.restore(to)),
+                prefabs: snap.prefabs.map(|p| p.restore(to.assets)),
+                asset_only: true,
+                bytes: snap.bytes,
+            };
+            return (snap.label, current);
+        }
         // The active scene and scene file paths stay as they are now (multi-scene editing).
         let mut scene = snap.scene;
         scene.keep_open_set_from(to.scene);
@@ -429,6 +459,7 @@ impl UndoStack {
             material: snap.material.map(|m| m.restore(to.assets)),
             imports: snap.imports.map(|i| i.restore(to)),
             prefabs: snap.prefabs.map(|p| p.restore(to.assets)),
+            asset_only: false,
             bytes: snap.bytes,
         };
         (snap.label, current)

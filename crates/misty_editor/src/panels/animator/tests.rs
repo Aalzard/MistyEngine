@@ -663,3 +663,214 @@ fn transition_inspector_edits_interruption() {
     h.get_by_label("Ordered Interruption");
     std::fs::remove_dir_all(root).ok();
 }
+
+/// Renaming the controller asset during Play rewrote the playing scene's Animator to the new
+/// path, and the running Animator took that for a different controller: it restarted in its
+/// default state at time 0 (parameters reset) instead of carrying on.
+#[test]
+fn renaming_the_controller_during_play_keeps_the_running_animator() {
+    let (mut s, root) = project("live_rename");
+    let hero = s.scene.spawn("Hero", None);
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(PATH.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    crate::play::tick(&mut s, 0.25);
+    let status = |s: &EditorState| {
+        s.runtime
+            .as_ref()
+            .unwrap()
+            .animator_status(&s.scene, hero)
+            .unwrap()
+    };
+    let before = status(&s).current.unwrap().normalized_time;
+    assert!(before > 0.2, "{before}");
+    crate::commands::apply(
+        &mut s,
+        Action::RenameAsset {
+            path: root.join(PATH),
+            name: "Champion".into(),
+        },
+    );
+    let new_path = "Assets/Champion.controller";
+    assert!(root.join(new_path).exists());
+    crate::play::tick(&mut s, 0.1);
+    let st = status(&s);
+    assert_eq!(st.controller, new_path);
+    let cur = st.current.unwrap();
+    assert_eq!(cur.name, "Idle");
+    assert!(
+        (cur.normalized_time - (before + 0.1)).abs() < 1e-4,
+        "restarted: {} (was {before})",
+        cur.normalized_time
+    );
+    // Edits to the renamed asset still reach it.
+    assert!(crate::anim_controllers::edit(
+        &mut s,
+        new_path,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+        }
+    ));
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert_eq!(status(&s).current.unwrap().name, "Rest");
+    crate::play::stop(&mut s);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// Undoing an Animator Controller edit during Play also put back the scene copy taken when the
+/// edit was made: everything the game had done since (objects moved, spawned or destroyed)
+/// was rewound, though the step only changed the controller asset.
+#[test]
+fn undoing_a_controller_edit_during_play_leaves_the_running_scene_alone() {
+    let (mut s, root) = project("live_undo_scene");
+    let hero = s.scene.spawn("Hero", None);
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(PATH.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert!(crate::anim_controllers::edit(
+        &mut s,
+        PATH,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+        }
+    ));
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    // The game moves the hero and spawns a bullet after the edit.
+    let mut t = s.scene.transform(hero);
+    t.position.x = 7.0;
+    s.scene.set_transform(hero, t);
+    let bullet = s.scene.spawn("Bullet", None);
+    for _ in 0..3 {
+        commands::apply(&mut s, Action::Undo);
+        commands::apply(&mut s, Action::Redo);
+    }
+    commands::apply(&mut s, Action::Undo);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert!(s.scene.contains(bullet), "spawned object kept");
+    assert_eq!(s.scene.transform(hero).position.x, 7.0, "game state kept");
+    let st = s
+        .runtime
+        .as_ref()
+        .unwrap()
+        .animator_status(&s.scene, hero)
+        .unwrap();
+    assert_eq!(st.current.unwrap().name, "Idle", "the controller edit is undone");
+    commands::apply(&mut s, Action::Redo);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert!(s.scene.contains(bullet));
+    let st = s
+        .runtime
+        .as_ref()
+        .unwrap()
+        .animator_status(&s.scene, hero)
+        .unwrap();
+    assert_eq!(st.current.unwrap().name, "Rest");
+    crate::play::stop(&mut s);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// An Avatar Mask edited in the Inspector during Play was saved, but running Animators kept
+/// filtering their layers with the copy they read when Play started (only controllers were
+/// handed to the game).
+#[test]
+fn mask_edits_during_play_reach_running_animator_layers() {
+    use misty_engine::animation::clip::Property;
+    use misty_engine::animation::controller::{Layer, StateMachine};
+    use misty_engine::animation::mask::MaskEntry;
+    use misty_engine::animation::{AnimationClip, AvatarMask};
+    let (mut s, root) = project("live_mask");
+    // Body and Arm held at y = `y` (one second, looping).
+    let pose = |y: f32| {
+        let mut c = AnimationClip {
+            length: 1.0,
+            ..Default::default()
+        };
+        for path in ["Body", "Arm"] {
+            c.set_key(path, Property::Position(1), 0.0, y);
+            c.set_key(path, Property::Position(1), 1.0, y);
+        }
+        c
+    };
+    pose(1.0).save(&root.join("Assets/P1.anim")).unwrap();
+    pose(5.0).save(&root.join("Assets/P5.anim")).unwrap();
+    let mask = "Assets/Arm.mask";
+    let entries = |body: bool| AvatarMask {
+        transforms: [("", false), ("Body", body), ("Arm", true)]
+            .iter()
+            .map(|(p, on)| MaskEntry {
+                path: (*p).into(),
+                active: *on,
+            })
+            .collect(),
+    };
+    entries(false).save(&root.join(mask)).unwrap();
+    let ctrl = "Assets/Masked.controller";
+    let one = |name: &str, motion: &str| StateMachine {
+        states: vec![State {
+            name: name.into(),
+            motion: Some(motion.into()),
+            ..Default::default()
+        }],
+        default_state: Some(name.into()),
+        ..Default::default()
+    };
+    let c = AnimatorController {
+        base: one("Idle", "Assets/P1.anim"),
+        layers: vec![Layer {
+            name: "Arms".into(),
+            weight: 1.0,
+            mask: Some(mask.into()),
+            machine: one("Wave", "Assets/P5.anim"),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    s.anim_clips.controllers.create(ctrl, c).unwrap();
+    let hero = s.scene.spawn("Hero", None);
+    let body = s.scene.spawn("Body", Some(hero));
+    let arm = s.scene.spawn("Arm", Some(hero));
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(ctrl.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    let y = |s: &EditorState, e| s.scene.transform(e).position.y;
+    assert_eq!(y(&s, body), 1.0, "masked out");
+    assert_eq!(y(&s, arm), 5.0, "masked in");
+    // Switch Body on in the mask (as the Inspector's mask editor does).
+    assert!(crate::avatar_masks::edit(
+        &mut s,
+        mask,
+        "Toggle Body",
+        false,
+        |m| *m = entries(true)
+    ));
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert_eq!(y(&s, body), 5.0, "the edited mask lets Body through");
+    // Undo reaches the game too.
+    commands::apply(&mut s, Action::Undo);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert_eq!(y(&s, body), 1.0);
+    crate::play::stop(&mut s);
+    std::fs::remove_dir_all(root).ok();
+}

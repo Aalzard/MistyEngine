@@ -407,6 +407,18 @@ impl Runtime {
         self.host.with_animator(|a| a.reload_controller(path, c));
     }
 
+    /// A new version of the Avatar Mask at `path`, edited while playing: Animator layers
+    /// using it filter with it from their next frame.
+    pub fn reload_avatar_mask(&mut self, path: &str, m: crate::animation::AvatarMask) {
+        self.host.with_animator(|a| a.insert_mask(path, m));
+    }
+
+    /// Animator Controller assets were renamed or moved while playing (`remap` gives a path's
+    /// new path): running Animators keep playing under the new path.
+    pub fn rename_animator_controllers(&mut self, remap: impl Fn(&str) -> Option<String>) {
+        self.host.with_animator(|a| a.rename_controllers(remap));
+    }
+
     /// How many times a running Animator moved onto an edited controller (tests).
     pub fn animator_rebinds(&self) -> u64 {
         self.host.with_animator(|a| a.controller_rebinds())

@@ -108,6 +108,19 @@ fn state_map(old: &StateMachine, new: &StateMachine, i: usize) -> Option<usize> 
         .map(|_| i)
 }
 
+/// New path of old sub-state machine `path`: the same path, or the machine in the same slot if
+/// it was renamed in place (its new path was not in the old machine). "" stays "".
+fn machine_map(old: &StateMachine, new: &StateMachine, path: &str) -> Option<String> {
+    if path.is_empty() || new.machine_exists(path) {
+        return Some(path.to_owned());
+    }
+    let i = old.sub_machines.iter().position(|m| m.path == path)?;
+    new.sub_machines
+        .get(i)
+        .filter(|n| !old.machine_exists(&n.path))
+        .map(|n| n.path.clone())
+}
+
 /// New index of old transition `t`: the transition between the same (maybe renamed) ends,
 /// preferring the same position. `None` when it was removed.
 fn transition_map(old: &StateMachine, new: &StateMachine, t: usize) -> Option<usize> {
@@ -117,10 +130,12 @@ fn transition_map(old: &StateMachine, new: &StateMachine, t: usize) -> Option<us
             .state_index(name)
             .and_then(|i| state_map(old, new, i))
             .map(|j| Node::State(new.states[j].name.clone())),
+        Node::Machine(path) => machine_map(old, new, path).map(Node::Machine),
         other => Some(other.clone()),
     };
     let (from, to) = (end(&ot.from)?, end(&ot.to)?);
-    let same = |x: &Transition| x.from == from && x.to == to && x.machine == ot.machine;
+    let machine = machine_map(old, new, &ot.machine)?;
+    let same = |x: &Transition| x.from == from && x.to == to && x.machine == machine;
     if new.transitions.get(t).is_some_and(same) {
         return Some(t);
     }

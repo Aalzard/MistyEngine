@@ -312,6 +312,10 @@ fn update_memory(s: &mut EditorState, old: &str, new: &str, from: &Path, to: &Pa
             rewrite_scene(scene, old, new);
         }
     }
+    // Running Animators follow the playing scene onto the new controller path.
+    if let Some(runtime) = s.runtime.as_mut() {
+        runtime.rename_animator_controllers(|p| asset_ops::remap(p, old, new));
+    }
     s.files.settings.recent_scenes.iter_mut().for_each(&remap);
     s.files.settings.save(&s.project.root);
     crate::build_settings::load(s);
