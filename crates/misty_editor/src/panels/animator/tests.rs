@@ -292,11 +292,17 @@ fn edits_during_play_reach_the_running_animator_and_survive_stop() {
     };
     let before = status(&s).current.unwrap();
     // Rename the playing state, add a parameter and a state (as the window does: undo + save).
-    assert!(crate::anim_controllers::edit(&mut s, PATH, "Rename State", false, |c| {
-        c.base.rename_state("Idle", "Rest");
-        c.add_parameter(ParamKind::Float);
-        c.base.add_state("Wave", [200.0, 0.0]);
-    }));
+    assert!(crate::anim_controllers::edit(
+        &mut s,
+        PATH,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+            c.add_parameter(ParamKind::Float);
+            c.base.add_state("Wave", [200.0, 0.0]);
+        }
+    ));
     // Paused: the edit still reaches the game (and the live view) without a step.
     s.play = crate::state::PlayState::Paused;
     crate::play::tick(&mut s, 1.0 / 60.0);
@@ -323,9 +329,15 @@ fn edits_during_play_reach_the_running_animator_and_survive_stop() {
     s.play = crate::state::PlayState::Playing;
     crate::play::tick(s, 1.0 / 60.0);
     assert_eq!(status(s).current.unwrap().name, "Idle");
-    assert!(crate::anim_controllers::edit(s, PATH, "Rename State", false, |c| {
-        c.base.rename_state("Idle", "Rest");
-    }));
+    assert!(crate::anim_controllers::edit(
+        s,
+        PATH,
+        "Rename State",
+        false,
+        |c| {
+            c.base.rename_state("Idle", "Rest");
+        }
+    ));
     crate::play::tick(s, 1.0 / 60.0);
     assert_eq!(status(s).current.unwrap().name, "Rest");
     // Stop keeps the edit, in the file and in the editor.
@@ -359,12 +371,7 @@ fn nothing_is_handed_to_the_game_while_no_controller_changes() {
             .changed_since(generation)
             .is_empty()
     );
-    let rebinds = |s: &EditorState| {
-        s.runtime
-            .as_ref()
-            .unwrap()
-            .animator_rebinds()
-    };
+    let rebinds = |s: &EditorState| s.runtime.as_ref().unwrap().animator_rebinds();
     assert_eq!(rebinds(&s), 0);
     crate::play::stop(&mut s);
     std::fs::remove_dir_all(root).ok();

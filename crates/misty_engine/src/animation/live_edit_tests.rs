@@ -112,10 +112,9 @@ fn current_state_and_time_survive_an_edit() {
     let mut c = controller();
     c.base.remove_state("Up");
     c.base.add_state("Wave", [0.0, 0.0]);
-    c.base.transitions.push(Transition::new(
-        Node::state("Side"),
-        Node::state("Idle"),
-    ));
+    c.base
+        .transitions
+        .push(Transition::new(Node::state("Side"), Node::state("Idle")));
     p.reload_controller(CTRL, c);
     let (name, norm) = current(&mut p, &s, e);
     assert_eq!(name, "Side");
@@ -176,8 +175,16 @@ fn a_parameter_type_change_resets_only_that_parameter() {
     let get = |n: &str| params.iter().find(|q| q.0 == n).map(|q| (q.1, q.2));
     assert_eq!(get("Speed"), Some((ParamKind::Float, 0.7)), "kept");
     assert_eq!(get("Up"), Some((ParamKind::Bool, 0.0)), "kept");
-    assert_eq!(get("Mode"), Some((ParamKind::Float, 0.5)), "new type: new default");
-    assert_eq!(get("Fresh"), Some((ParamKind::Int, 3.0)), "added: its default");
+    assert_eq!(
+        get("Mode"),
+        Some((ParamKind::Float, 0.5)),
+        "new type: new default"
+    );
+    assert_eq!(
+        get("Fresh"),
+        Some((ParamKind::Int, 3.0)),
+        "added: its default"
+    );
     assert_eq!(get("Jump"), None, "removed");
     assert_eq!(params.len(), 4);
 }
