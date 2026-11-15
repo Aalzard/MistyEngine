@@ -121,6 +121,11 @@ pub struct DocSnapshot {
     /// Hash of `body`, worked out where the snapshot is made (a worker thread for scenes): a
     /// big scene's text takes milliseconds to hash, which the main thread did in `write_backup`.
     hash: u64,
+    /// When the document held these contents (Unix ms): for a scene, when its copy was made on
+    /// the main thread, not when the worker finished writing it out. A save in between is newer
+    /// than this backup (the backup's header carried the time it was handed to the saver, so a
+    /// crash then offered these older contents back over the save).
+    taken_ms: u64,
 }
 
 fn hash_of(text: &str) -> u64 {
@@ -143,7 +148,13 @@ impl DocSnapshot {
             hash: hash_of(&body),
             body,
             emergency: false,
+            taken_ms: super::session::now_ms(),
         }
+    }
+
+    /// When the document held these contents (Unix ms, see the field).
+    pub fn taken_ms(&self) -> u64 {
+        self.taken_ms
     }
 
     /// The document's backup folder: kind, a readable name and a hash of the key
@@ -319,11 +330,15 @@ pub fn start_snapshot(s: &mut EditorState, doc: &DocRef) -> Started {
         }
     };
     let id = *id;
+    // The contents are the copy's: a save after this line is newer than the backup.
+    let taken_ms = super::session::now_ms();
     let (tx, rx) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("misty autosave snapshot".into())
         .spawn(move || {
-            let _ = tx.send(scene_snapshot(&copy, id));
+            let mut snap = scene_snapshot(&copy, id);
+            snap.taken_ms = taken_ms;
+            let _ = tx.send(snap);
         });
     match spawned {
         Ok(_) => Started::Worker(rx),

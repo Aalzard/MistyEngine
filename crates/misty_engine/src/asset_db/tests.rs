@@ -608,3 +608,82 @@ fn an_unfixable_meta_file_does_not_rescan_the_project_again_and_again() {
     assert!(poll_now_in(&db, &walk).is_none());
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Round 73: an asset the last scan could not give a GUID (its meta file could not be written)
+/// was remembered as known so the watcher stopped rescanning the project for it (round 72),
+/// but nothing ever tried it again: once its meta file could be written (the read-only lock
+/// gone, the file's permissions fixed) or another editor wrote it a GUID, the asset still had
+/// none until something else changed under `Assets/`. A read-only project still writes nothing.
+#[test]
+fn an_unresolved_asset_is_picked_up_once_its_meta_file_can_be_written() {
+    let root = temp("unresolved_later");
+    write(&root, "Assets/Mats/Blue.mat", "{}");
+    write(&root, "Assets/Mats/Green.mat", "{}");
+    let blue_meta = root.join("Assets/Mats/Blue.mat.meta");
+    set_read_only(&root, true);
+    let (scanned, _) = GuidDatabase::scan(&root);
+    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+    assert!(scanned.unresolved().any(|p| p == "Assets/Mats/Blue.mat"));
+    assert!(scanned.guid_of("Assets/Mats/Blue.mat").is_none());
+    let db = RwLock::new(Some(scanned));
+    let walk = Mutex::new(None);
+    let guid = |rel: &str| db.read().unwrap().as_ref().unwrap().guid_of(rel);
+    // Still read-only: nothing written, nothing new.
+    assert!(poll_now_in(&db, &walk).is_none());
+    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+
+    // The editor holding the lock gives Green a GUID: picked up, still without writing.
+    let green = Guid::new();
+    write(
+        &root,
+        "Assets/Mats/Green.mat.meta",
+        &meta::compose(green, &Default::default()),
+    );
+    assert!(poll_now_in(&db, &walk).is_some(), "Green's GUID is read");
+    assert_eq!(guid("Assets/Mats/Green.mat"), Some(green));
+    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+    assert!(guid("Assets/Mats/Blue.mat").is_none());
+
+    // The project stops being read-only: Blue gets its meta file and GUID.
+    set_read_only(&root, false);
+    let report = poll_now_in(&db, &walk).expect("Blue is given a GUID");
+    assert!(
+        report.created.iter().any(|p| p == "Assets/Mats/Blue.mat"),
+        "{report:?}"
+    );
+    let blue = guid("Assets/Mats/Blue.mat").expect("Blue's GUID");
+    let text = std::fs::read_to_string(&blue_meta).unwrap();
+    assert_eq!(meta::guid_in(&text), Some(blue));
+    assert_eq!(guid("Assets/Mats/Green.mat"), Some(green));
+    // Then nothing more to do.
+    assert!(poll_now_in(&db, &walk).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Round 73: the same for a meta file whose permissions are fixed later (read-only file).
+#[cfg(windows)]
+#[test]
+fn an_unresolved_asset_is_picked_up_once_its_meta_file_is_writable_again() {
+    let root = temp("unresolved_perms");
+    write(&root, "Assets/Level.scene", "{}");
+    let m = root.join("Assets/Level.scene.meta");
+    write(&root, "Assets/Level.scene.meta", "");
+    let set_ro = |ro: bool| {
+        let mut p = std::fs::metadata(&m).unwrap().permissions();
+        p.set_readonly(ro);
+        std::fs::set_permissions(&m, p).unwrap();
+    };
+    set_ro(true);
+    let (scanned, report) = GuidDatabase::scan(&root);
+    assert_eq!(report.errors.len(), 1, "{report:?}");
+    let db = RwLock::new(Some(scanned));
+    let walk = Mutex::new(None);
+    assert!(poll_now_in(&db, &walk).is_none(), "still read-only");
+    set_ro(false);
+    let report = poll_now_in(&db, &walk).expect("the meta file is written now");
+    assert_eq!(report.created, ["Assets/Level.scene"]);
+    let g = db.read().unwrap().as_ref().unwrap().guid_of("Assets/Level.scene");
+    assert!(g.is_some());
+    assert_eq!(meta::guid_in(&std::fs::read_to_string(&m).unwrap()), g);
+    let _ = std::fs::remove_dir_all(root);
+}

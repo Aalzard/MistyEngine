@@ -529,3 +529,44 @@ pub fn requires(name: &str) -> &'static [&'static str] {
 pub fn find(name: &str) -> Option<&'static ComponentInfo> {
     components().iter().find(|c| c.name == name)
 }
+
+#[cfg(test)]
+mod present_tests {
+    use super::*;
+
+    /// Round 73 check of round 72's `present` (scene copies, undo steps, Play, autosave and
+    /// saves go through it): it names exactly the registered components `has` finds, in
+    /// registry order, whichever way they were added (a script's `AddComponent`, a file, an
+    /// optional package's component), and skips components that are not registered.
+    #[test]
+    fn present_names_what_has_finds() {
+        let mut types = std::collections::HashSet::new();
+        for info in components() {
+            assert!(
+                types.insert(info.type_id),
+                "{} shares its type with another entry",
+                info.name
+            );
+        }
+        struct NotRegistered;
+        let mut world = World::new();
+        for step in 1..=4 {
+            let e = world.spawn((NotRegistered,));
+            for (i, info) in components().iter().enumerate() {
+                if i % step == 0 {
+                    (info.add_default)(&mut world, e);
+                }
+            }
+            let want: Vec<&str> = components()
+                .iter()
+                .filter(|info| (info.has)(&world, e))
+                .map(|info| info.name)
+                .collect();
+            let got: Vec<&str> = present(&world, e).iter().map(|info| info.name).collect();
+            assert_eq!(got, want);
+        }
+        let gone = world.spawn(());
+        world.despawn(gone).unwrap();
+        assert!(present(&world, gone).is_empty());
+    }
+}

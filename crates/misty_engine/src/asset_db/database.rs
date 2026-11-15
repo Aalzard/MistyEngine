@@ -176,6 +176,12 @@ impl GuidDatabase {
         self.unresolved.iter().map(String::as_str)
     }
 
+    /// `rel`, unresolved by the last scan, has `guid` now (see [`Self::unresolved`]).
+    pub(super) fn resolve(&mut self, rel: &str, guid: Guid) {
+        self.unresolved.remove(rel);
+        self.insert(rel, guid);
+    }
+
     /// Map `rel` to `guid` (replacing what either was mapped to).
     pub fn insert(&mut self, rel: &str, guid: Guid) {
         if let Some(old) = self.by_path.insert(rel.to_owned(), guid) {

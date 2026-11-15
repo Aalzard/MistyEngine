@@ -303,12 +303,17 @@ fn mirror_rotation(q: Quat) -> Quat {
 // ---- cache ---------------------------------------------------------------------------------
 
 struct Entry {
+    /// The path the model was asked for by ("Assets/…", see [`model`]).
+    rel: String,
     modified: Option<SystemTime>,
     model: Result<Arc<Model>, String>,
 }
 
 #[derive(Default)]
 struct Library {
+    /// By the model file's full path: two projects (the editor's and a game session's, tests
+    /// running side by side) can each have a model at the same "Assets/…" path, and one
+    /// project's failed import (no such file there) was handed to the other.
     entries: HashMap<String, Entry>,
     generation: u64,
     last_poll: Option<Instant>,
@@ -331,22 +336,33 @@ fn mtime_with(path: &Path, modified: fn(&Path) -> Option<SystemTime>) -> Option<
     modified(path).max(meta)
 }
 
+/// Where the cache keeps the model asked for as `rel`: its file's full path (resolved against
+/// this thread's project, see [`assets::absolute`]); runtime meshes by their own key.
+fn cache_key(rel: &str) -> String {
+    if rel.starts_with(runtime::PREFIX) {
+        return rel.to_owned();
+    }
+    assets::absolute(rel).to_string_lossy().into_owned()
+}
+
 /// The model at a project-relative path (read once, then cached until the file changes).
 pub fn model(rel: &str) -> Result<Arc<Model>, String> {
-    if let Some(e) = library().entries.get(rel) {
+    let key = cache_key(rel);
+    if let Some(e) = library().entries.get(&key) {
         return e.model.clone();
     }
-    crate::profile_scope!(format!("Import.Model: {rel}"));
     let abs = assets::absolute(rel);
+    crate::profile_scope!(format!("Import.Model: {rel}"));
     let settings = ModelImporter::load(&abs);
     let entry = Entry {
+        rel: rel.to_owned(),
         modified: mtime(&abs),
         model: load_with(&abs, &settings)
             .map(|m| process::apply(m, &settings, rel))
             .map(Arc::new),
     };
     let result = entry.model.clone();
-    library().entries.insert(rel.to_owned(), entry);
+    library().entries.insert(key, entry);
     result
 }
 
@@ -362,13 +378,13 @@ pub fn poll_changes() -> Vec<String> {
     }
     lib.last_poll = Some(now);
     let mut changed = Vec::new();
-    lib.entries.retain(|rel, e| {
-        let abs = assets::absolute(rel);
+    lib.entries.retain(|key, e| {
+        let abs = Path::new(key);
         // The background file watch's stamps first; a difference is checked on disk.
-        let same = e.modified == mtime_with(&abs, crate::vfs::cached_modified)
-            || e.modified == mtime(&abs);
-        if !same {
-            changed.push(rel.clone());
+        let same = e.modified == mtime_with(abs, crate::vfs::cached_modified)
+            || e.modified == mtime(abs);
+        if !same && !changed.contains(&e.rel) {
+            changed.push(e.rel.clone());
         }
         same
     });
@@ -382,9 +398,10 @@ pub fn poll_changes() -> Vec<String> {
 /// [`model`] call imports them again), unlike [`poll_changes`], which looks at most twice a
 /// second.
 pub fn forget(rels: &[String]) {
+    let keys: Vec<String> = rels.iter().map(|r| cache_key(r)).collect();
     let mut lib = library();
     let before = lib.entries.len();
-    lib.entries.retain(|rel, _| !rels.contains(rel));
+    lib.entries.retain(|key, _| !keys.contains(key));
     if lib.entries.len() != before {
         lib.generation += 1;
     }
@@ -397,7 +414,7 @@ pub fn cache_memory() -> Vec<(String, u64, u64)> {
     let mut out: Vec<(String, u64, u64)> = lib
         .entries
         .iter()
-        .filter_map(|(rel, e)| {
+        .filter_map(|(_, e)| {
             let m = e.model.as_ref().ok()?;
             let meshes = m
                 .meshes
@@ -422,7 +439,7 @@ pub fn cache_memory() -> Vec<(String, u64, u64)> {
                     _ => 0,
                 })
                 .sum();
-            Some((rel.clone(), meshes, textures))
+            Some((e.rel.clone(), meshes, textures))
         })
         .collect();
     out.sort();

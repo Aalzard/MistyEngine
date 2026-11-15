@@ -324,11 +324,64 @@ fn compare(
     let (root, known) = known(db)?;
     let changed = found.is_some_and(|(r, now)| r == root && now != known);
     if !changed {
-        return None;
+        return retry_unresolved(db);
     }
     // Scanned without a lock; kept only when the slot still holds this project.
     let (scanned, report) = GuidDatabase::scan(&root);
     replace_if_same(db, scanned).then_some(report)
+}
+
+/// Try again the assets the last scan of the project in `db` could not give a GUID (a few
+/// files, not a rescan of the project): another editor may have written their meta files
+/// since, or they can be written now (the project no longer read-only, the file's permissions
+/// fixed). `Some` when one of them got its GUID; failures stay quiet (the scan reported them).
+fn retry_unresolved(db: &RwLock<Option<GuidDatabase>>) -> Option<ScanReport> {
+    let (root, todo) = {
+        let guard = db.read().unwrap_or_else(|e| e.into_inner());
+        let d = guard.as_ref()?;
+        let todo: Vec<String> = d.unresolved().map(str::to_owned).collect();
+        if todo.is_empty() {
+            return None;
+        }
+        (d.root().to_path_buf(), todo)
+    };
+    let read_only = is_read_only(&root);
+    let mut report = ScanReport::default();
+    let mut found: Vec<(String, Guid)> = Vec::new();
+    for rel in todo {
+        let asset = root.join(&rel);
+        let taken = |g: Guid| {
+            let guard = db.read().unwrap_or_else(|e| e.into_inner());
+            guard.as_ref().is_some_and(|d| d.path_of(g).is_some()) || found.iter().any(|f| f.1 == g)
+        };
+        // Written by someone else meanwhile (another editor on the project).
+        if let Some(g) = std::fs::read_to_string(meta::meta_path(&asset))
+            .ok()
+            .and_then(|t| meta::guid_in(&t))
+            .filter(|g| !taken(*g))
+        {
+            found.push((rel, g));
+            continue;
+        }
+        // A read-only project writes no meta file.
+        if read_only || !asset.exists() {
+            continue;
+        }
+        let g = Guid::new();
+        if meta::write_guid(&asset, g).is_ok() {
+            report.created.push(rel.clone());
+            found.push((rel, g));
+        }
+    }
+    if found.is_empty() {
+        return None;
+    }
+    let mut guard = db.write().unwrap_or_else(|e| e.into_inner());
+    let d = guard.as_mut().filter(|d| d.root() == root)?;
+    for (rel, g) in found {
+        d.resolve(&rel, g);
+    }
+    Some(report)
 }
 
 /// Start listing `Assets/` of the project in `db` on a thread (`None` when none is open).

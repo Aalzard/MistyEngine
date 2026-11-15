@@ -79,6 +79,12 @@ impl Thumbnails {
         tex
     }
 
+    /// Use up this frame's decoding budget (tests).
+    #[cfg(test)]
+    fn spend_budget(&mut self, _ctx: &egui::Context) {
+        self.window = Some((Instant::now(), DECODE_BUDGET));
+    }
+
     /// Drop the previews nobody asked for in [`KEEP`] (looked for every few seconds).
     fn sweep(&mut self, now: Instant) {
         if self
@@ -151,6 +157,36 @@ mod tests {
         assert!(t.get(&ctx, &paths[2]).is_some());
         assert_eq!(t.cache.len(), 1);
         assert!(t.cache.contains_key(&paths[2]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 73: the decoding budget was "per 16 ms of wall time", not per frame. A decode that
+    /// ran over it (a loaded machine) held every frame of the next 16 ms back, each asking for
+    /// another frame: the material picker test ran out of the harness's frames that way. The
+    /// next frame decodes, however soon it comes.
+    #[test]
+    fn a_frame_over_the_decoding_budget_holds_back_only_itself() {
+        let dir = std::env::temp_dir().join(format!("misty_tex_budget_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("T.png");
+        misty_engine::image::RgbaImage::from_pixel(
+            8,
+            8,
+            misty_engine::image::Rgba([20, 100, 50, 255]),
+        )
+        .save(&p)
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut t = Thumbnails::default();
+        // This frame's budget is used up: the preview waits for the next frame.
+        let _ = ctx.run(Default::default(), |ctx| {
+            t.spend_budget(ctx);
+            assert!(t.get(ctx, &p).is_none(), "over the budget: next frame");
+        });
+        // The next frame decodes it.
+        let _ = ctx.run(Default::default(), |ctx| {
+            assert!(t.get(ctx, &p).is_some(), "decoded in the next frame");
+        });
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

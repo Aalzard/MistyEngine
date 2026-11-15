@@ -473,7 +473,9 @@ pub fn write_backup(
         a.made_dirs.insert(dir.clone());
     }
     let path = dir.join(format!("{slot}.{BACKUP_EXT}"));
-    let taken = session::now_ms();
+    // When the document held these contents, not now: a scene's worker may have finished after
+    // a save of newer contents.
+    let taken = snap.taken_ms();
     let bytes = snap.file_bytes(taken);
     let len = bytes.len();
     let result = if direct {
