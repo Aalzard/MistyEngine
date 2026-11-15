@@ -1372,8 +1372,9 @@ fn terrain_data() -> TerrainData {
     // camera: lacy, leaf-fine sun flecks instead of a few big pools (the lighter mesh's fewer,
     // bigger leaf cards cast blobs).
     d.trees.near_shadow_detail = 0.5;
-    // Full meshes up to 20 m (the lighter mesh beyond reads the same inside the wood).
-    d.trees.lod_distance = 20.0;
+    // Full meshes up to 15 m (the lighter mesh beyond reads the same inside the wood; round
+    // 59.11: 20 -> 15 m pays for part of the near shadows' full meshes).
+    d.trees.lod_distance = 15.0;
     // Ferns and ground cover shade the floor only near the camera (their shadows were most of
     // the inside view's shadow-map cost).
     d.trees.plant_shadow_distance = 4.0;
