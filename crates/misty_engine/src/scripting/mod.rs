@@ -1972,6 +1972,8 @@ mod material_tests;
 #[cfg(test)]
 mod network_tests;
 #[cfg(test)]
+mod set_active_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tilemap_tests;

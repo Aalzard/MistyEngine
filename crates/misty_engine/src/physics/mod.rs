@@ -658,6 +658,8 @@ pub fn collider_matrix(scene: &Scene, e: Entity, center: Vec3) -> Mat4 {
 }
 
 #[cfg(test)]
+mod active_tests;
+#[cfg(test)]
 mod character_tests;
 #[cfg(test)]
 mod joint_config_tests;

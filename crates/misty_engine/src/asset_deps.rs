@@ -24,7 +24,7 @@ pub struct Dependencies {
 }
 
 /// Extensions whose files are JSON documents that can reference other assets.
-const JSON_ASSETS: [&str; 18] = [
+const JSON_ASSETS: &[&str] = &[
     "scene",
     "prefab",
     "mat",
@@ -393,6 +393,70 @@ mod tests {
             deps.missing.get("Assets/Missing.png").map(String::as_str),
             Some("Assets/Scenes/A.scene")
         );
+    }
+
+    /// A Shader Graph's subgraphs and default textures, a Behaviour Tree's action scripts and a
+    /// VFX operator's assets were left out of builds: those files were packed (the material,
+    /// scene or effect names them) but never read, so the built game's material failed to
+    /// compile its graph and the guard's tree had no script.
+    #[test]
+    fn walks_shader_graphs_behaviour_trees_and_vfx_operators() {
+        let root = std::env::temp_dir().join(format!("misty_deps_graphs_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "Assets/Scenes/A.scene",
+            r#"{ "objects": [ { "mat": "Assets/Mats/Glow.mat", "tree": "Assets/AI/Guard.btree",
+                 "effect": "Assets/Fx/Sparks.effect" } ] }"#,
+        );
+        write(
+            &root,
+            "Assets/Mats/Glow.mat",
+            r#"{ "shader": "Assets/Shaders/Glow.shadergraph" }"#,
+        );
+        write(
+            &root,
+            "Assets/Shaders/Glow.shadergraph",
+            r#"{ "properties": [ { "texture": "Assets/Tex/Noise.png" } ],
+                 "nodes": [ { "subgraph": "Assets/Shaders/Edge.shadersubgraph" } ] }"#,
+        );
+        write(
+            &root,
+            "Assets/Shaders/Edge.shadersubgraph",
+            r#"{ "nodes": [ { "texture": "Assets/Tex/Ramp.png" } ] }"#,
+        );
+        write(&root, "Assets/Tex/Noise.png", "png");
+        write(&root, "Assets/Tex/Ramp.png", "png");
+        write(
+            &root,
+            "Assets/AI/Guard.btree",
+            r#"{ "nodes": [ { "script": "Assets/AI/NextWaypoint.lua" } ] }"#,
+        );
+        write(&root, "Assets/AI/NextWaypoint.lua", "-- action");
+        write(
+            &root,
+            "Assets/Fx/Sparks.effect",
+            r#"{ "operators": [ { "subgraph": "Assets/Fx/Orbit.vfxoperator" } ] }"#,
+        );
+        write(
+            &root,
+            "Assets/Fx/Orbit.vfxoperator",
+            r#"{ "properties": [ { "texture": "Assets/Tex/Spark.png" } ] }"#,
+        );
+        write(&root, "Assets/Tex/Spark.png", "png");
+
+        let deps = collect(&root, &["Assets/Scenes/A.scene".into()]);
+        for f in [
+            "Assets/Shaders/Edge.shadersubgraph",
+            "Assets/Tex/Noise.png",
+            "Assets/Tex/Ramp.png",
+            "Assets/AI/NextWaypoint.lua",
+            "Assets/Tex/Spark.png",
+        ] {
+            assert!(deps.files.contains(f), "{f} is packed: {:?}", deps.files);
+        }
+        assert!(deps.missing.is_empty(), "{:?}", deps.missing);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
