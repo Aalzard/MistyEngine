@@ -159,7 +159,11 @@ fn hill_m(x: f32, z: f32) -> f32 {
     let soft = 60.0 * (1.0 + (u / 60.0).exp()).ln();
     let ridge = 1.0 + 0.2 * noise::fbm(x, z, 700.0, 2, 17);
     let hill = 600.0 * ridge * (1.0 - (-0.85 * soft / 600.0).exp());
-    hill + 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u)
+    // Far ahead, where its foot swings across the view, the hillside sinks to a third of
+    // its height (round 59.9: in the photo it runs down to the horizon left of the middle;
+    // at full height it walled the view ahead off at ~2.5 km).
+    let far = 1.0 - 0.7 * smooth(1100.0, 2500.0, rel(x, z).y);
+    (hill + 40.0 * noise::fbm(x, z, 180.0, 3, 19) * smooth(20.0, 200.0, u)) * far
 }
 
 /// The terraces on the hillside at (x, z): weight 0..1 (limestone ledges in patches on the
@@ -205,7 +209,9 @@ fn height_m(x: f32, z: f32) -> f32 {
     }
     h += hill;
     // Distant hills: three rounded, layered ranges ahead (1.5, 2.2 and 2.8 km), each higher
-    // than the one before, closer behind; rock shows on the nearest.
+    // than the one before, closer behind. (Low since round 59.9: the photo's horizon shows
+    // over a low wooded ring, ~2° up, with bare blue mountains rising to ~3–4° ahead on the
+    // left; the old ring, 110 / 190 / 300 m and a 120 m rim, stood 5–7° up all round.)
     let r = far_radius(p);
     let band = |c: f32, w: f32| (-((r - c) / w).powi(2)).exp();
     let lump = |seed: u32| {
@@ -215,14 +221,14 @@ fn height_m(x: f32, z: f32) -> f32 {
     // Behind the camera the ranges are closer, so lower (else too steep for the forest).
     let behind = 0.45 + 0.55 * smooth(-600.0, 300.0, p.y);
     let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
-    let near = 110.0 * band(1500.0, 300.0) * lump(31) * open_left;
+    let near = 25.0 * band(1500.0, 300.0) * lump(31) * open_left;
     h += (near
-        + 190.0 * band(2200.0, 380.0) * lump(37)
-        + 300.0 * smooth(2350.0, 2950.0, r) * lump(47))
+        + 60.0 * band(2200.0, 380.0) * lump(37)
+        + 260.0 * smooth(2350.0, 2950.0, r) * lump(47))
         * behind;
     // Rims at the terrain's edges (nothing to see past them).
     let edge = x.min(z).min(SIZE.x - x).min(SIZE.z - z);
-    h += 120.0 * smooth(400.0, 0.0, edge);
+    h += 40.0 * smooth(400.0, 0.0, edge);
     h
 }
 
@@ -244,7 +250,8 @@ fn forest(x: f32, z: f32) -> f32 {
     f = f.max(ahead);
     // Woods on the far hills (their ring starts ~1.3 km out): closed, blue with distance.
     let r = far_radius(p);
-    let woods = smooth(1150.0, 1350.0, r) * smooth(3000.0, 2700.0, r);
+    // (Only on the low ring since round 59.9: the far ranges stay bare, blue with haze.)
+    let woods = smooth(1150.0, 1350.0, r) * smooth(2300.0, 2000.0, r);
     f = f.max(woods);
     // Behind the camera, the far treeline 600 m back.
     let behind = smooth(-560.0, -640.0, p.y + 40.0 * noise::fbm(x, z, 80.0, 2, 61))
@@ -1541,22 +1548,26 @@ fn volume() -> PostProcessVolume {
     cs.sample_count = 6;
     // Past the shadow maps (150 m on High) the forests keep their shade.
     cs.far_shadows = 1.0;
-    // Fair-weather cumulus: a few big soft heaps.
+    // Fair-weather cumulus: big white heaps with crisp, rounded outlines (round 59.9: the
+    // photo's heaps are crisper and whiter; Softness blurred and greyed their edges, and
+    // the sharpest Shape erodes them least, so they stay rounded instead of cauliflower).
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.34;
+    c.coverage = 0.29;
     c.density = 0.7;
-    c.shape = 0.45;
+    c.shape = 1.0;
     c.altitude = 1400.0;
     c.thickness = 1500.0;
     c.size = 2.4;
-    c.softness = 0.5;
+    c.softness = 0.0;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
     c.cumulus = 1.0;
-    c.shadow_opacity = 0.7;
+    // (Dense heaps cast near-black shadows at 0.7; the photo's meadow under the clouds
+    // stays light.)
+    c.shadow_opacity = 0.35;
     // Aerial perspective: blue-grey haze that layers the distant hills.
     let f = &mut v.fog;
     f.active = true;

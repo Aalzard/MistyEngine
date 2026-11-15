@@ -5209,6 +5209,38 @@ is flat from the fifth cycle.
   project root held by the autosave `panic` test's folder for its whole retry window; passes
   alone; not touched by this round). No engine change (golden and workspace tests not run).
 
+### Round 59.9 — crisp white cumulus, a low far ring with blue mountains (branch r75-noon9)
+
+- **Clouds**: Shape 0.45 → 1.0, Softness 0.5 → 0, coverage 0.34 → 0.29, shadow opacity
+  0.7 → 0.35 (scene settings only; no cloud shader change). Softness both blurred the edges
+  and greyed the heaps; the sharpest Shape erodes them least, so they stay rounded instead of
+  cauliflower. Hero sky (x 0–0.6, y 0–0.35): edge sharpness (mean gradient across the edge
+  over the cloud's contrast) 0.032 → 0.061 (photo 0.054), cloud core sRGB 141/149/162 →
+  190/191/193, cover 25 % → 28 %. Tries: Softness 0 alone 0.067 but small, wispy heaps;
+  Shape 0.8 at coverage 0.34 covered 43 %; Softness 0.25 with Shape 0.75–0.9 blurred them
+  again (0.030). At shadow opacity 0.7 the dense heaps put the whole near meadow in a black
+  shadow (cloud time is fixed in the shots and Size scales the field round the camera, so
+  every size kept a cloud over it): meadow mid 75/90/36 → 61/75/28.
+- **Far hills** (generator terrain): the three far ranges 110 / 190 / 300 m → 25 / 60 /
+  260 m and the edge rim 120 → 40 m; the far woods stop at 2.0–2.3 km instead of 2.7–3 km,
+  so the outer range is bare and blue with haze; the right hillside sinks to a third of its
+  height between 1.1 and 2.5 km ahead, where its foot swings across the view. Horizon
+  elevation from the eye (generator heights plus 22 m of trees): round 8 5–7° on the left
+  of the first view and 10–15° just left of ahead, 7.5° behind; now ~2° (a low wooded ring)
+  all round, the bare mountains 3–3.6° between 10° and 30° left of ahead, 8.8° straight
+  ahead (the hillside). The photo: ~1–2° forest line, blue mountains to ~3°.
+  `hero_r8_r9.jpg`, `hero_horizon_r8_r9.jpg`, `sun_r8_r9.jpg`, `away_r8_r9.jpg`,
+  `left_r8_r9.jpg` in `docs/screenshots/r75/`.
+- Kept: `inside` lower half median 0.028 (photo 0.028), p75 0.163, p95 0.745; shaded
+  median sRGB 50/40/18; hero meadow mid 72/87/34 (round 8 75/90/36, photo 76/87/43), sky top
+  72/90/119; the round 8 haze colours.
+- Not done: `inside` sunlit share still 23 % (photo 20 %). Canopy gap threshold 0.67–0.69
+  changed no tree in the view; wood leaf density × 1.05 / × 1.1 gave 13 % / 16 % with the
+  floor median down to 0.024 / 0.025.
+- Timings (High 1920×1080): hero 11.26 ms GPU (round 8 11.83), inside 10.66 ms (10.66).
+- Checks: fmt clean, clippy 0 warnings, editor tests 1024 passed (with
+  `noon_valley_matches_its_generator`). No engine change (golden and workspace tests not run).
+
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
 - **Record Audio** (new setting, on by default): MP4 and WebM recordings get the game's sound

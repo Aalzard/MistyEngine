@@ -167,6 +167,16 @@ Tries (env knobs in the generator, removed): occlusion 0.8 → median 0.022, 1.0
 × 1.3 olive → 0.030; × 1.15 olive, occlusion 0.9 → 0.023; × 1.25 olive → 0.028 (kept).
 Next: crisper cumulus; the far hill ring lower / farther on the left of the first view.
 
+## Round 9 (branch r75-noon9, done)
+
+Clouds shape 1.0, softness 0, coverage 0.29, shadow opacity 0.35. Far ranges 25 / 60 / 260 m,
+rim 40 m, far woods end 2.0–2.3 km, `hill_m` × (1 − 0.7 smooth(1100, 2500, ahead)).
+Metrics in the session scratchpad `r75/`: `clouds.py` (edge sharpness: photo 0.054, round 8
+0.032, round 9 0.061), `stats.py`, `shade.py`; geometric horizon profiles came from a
+temporary test (removed). Cloud tries via `cl.py` (edits the scene's cloud block directly,
+no regen). Sunlit share still 23 %: gap threshold and leaf density tries failed (see
+progress.md).
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
