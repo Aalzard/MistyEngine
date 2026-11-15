@@ -256,15 +256,29 @@ fn unity_meta_guids_are_kept() {
     let c = "0123456789abcdef0123456789abcdef";
     // A Misty asset that already holds the GUID `c`.
     write(&root, "Assets/Mine.png", "png");
-    write(&root, "Assets/Mine.png.meta", &format!("{{\n  \"guid\": \"{c}\"\n}}\n"));
+    write(
+        &root,
+        "Assets/Mine.png.meta",
+        &format!("{{\n  \"guid\": \"{c}\"\n}}\n"),
+    );
     std::thread::sleep(std::time::Duration::from_millis(30));
     write(&root, "Assets/Pack/Bark.tif", "tif");
     write(&root, "Assets/Pack/Bark.tif.meta", &unity(a));
-    write(&root, "Assets/Pack.meta", &format!("fileFormatVersion: 2\nguid: {b}\nfolderAsset: yes\nDefaultImporter:\n  externalObjects: {{}}\n"));
+    write(
+        &root,
+        "Assets/Pack.meta",
+        &format!(
+            "fileFormatVersion: 2\nguid: {b}\nfolderAsset: yes\nDefaultImporter:\n  externalObjects: {{}}\n"
+        ),
+    );
     write(&root, "Assets/Pack/Clash.tif", "tif");
     write(&root, "Assets/Pack/Clash.tif.meta", &unity(c));
     write(&root, "Assets/Pack/Bom.tif", "tif");
-    write(&root, "Assets/Pack/Bom.tif.meta", &format!("\u{feff}{}", unity("1111111111111111aaaaaaaaaaaaaaaa")));
+    write(
+        &root,
+        "Assets/Pack/Bom.tif.meta",
+        &format!("\u{feff}{}", unity("1111111111111111aaaaaaaaaaaaaaaa")),
+    );
     write(&root, "Assets/Pack/Broken.tif", "tif");
     write(&root, "Assets/Pack/Broken.tif.meta", &unity("not-a-guid"));
     // A second copy of the pack: the same Unity GUID.
@@ -275,7 +289,11 @@ fn unity_meta_guids_are_kept() {
     let guid = |rel: &str| db.guid_of(rel).map(|g| g.to_string());
     assert_eq!(guid("Assets/Pack/Bark.tif").as_deref(), Some(a));
     assert_eq!(guid("Assets/Pack").as_deref(), Some(b));
-    assert_eq!(guid("Assets/Mine.png").as_deref(), Some(c), "a Misty GUID stays");
+    assert_eq!(
+        guid("Assets/Mine.png").as_deref(),
+        Some(c),
+        "a Misty GUID stays"
+    );
     assert_ne!(guid("Assets/Pack/Clash.tif").as_deref(), Some(c));
     assert_eq!(
         guid("Assets/Pack/Bom.tif").as_deref(),
@@ -285,13 +303,24 @@ fn unity_meta_guids_are_kept() {
     assert_ne!(guid("Assets/Copy/Bark.tif").as_deref(), Some(a));
     assert!(guid("Assets/Copy/Bark.tif").is_some());
     // Every meta file is Misty's now, holding the GUID the database has.
-    for rel in ["Assets/Pack/Bark.tif", "Assets/Pack", "Assets/Pack/Clash.tif", "Assets/Pack/Bom.tif", "Assets/Pack/Broken.tif", "Assets/Copy/Bark.tif", "Assets/Mine.png"] {
+    for rel in [
+        "Assets/Pack/Bark.tif",
+        "Assets/Pack",
+        "Assets/Pack/Clash.tif",
+        "Assets/Pack/Bom.tif",
+        "Assets/Pack/Broken.tif",
+        "Assets/Copy/Bark.tif",
+        "Assets/Mine.png",
+    ] {
         assert_eq!(meta::read_guid(&root.join(rel)), db.guid_of(rel), "{rel}");
     }
     // The pack copied in again: its meta files overwrite Misty's; the GUIDs stay.
     write(&root, "Assets/Pack/Bark.tif.meta", &unity(a));
     let (again, _) = GuidDatabase::scan(&root);
-    assert_eq!(again.guid_of("Assets/Pack/Bark.tif"), db.guid_of("Assets/Pack/Bark.tif"));
+    assert_eq!(
+        again.guid_of("Assets/Pack/Bark.tif"),
+        db.guid_of("Assets/Pack/Bark.tif")
+    );
     std::fs::remove_dir_all(root).ok();
 }
 

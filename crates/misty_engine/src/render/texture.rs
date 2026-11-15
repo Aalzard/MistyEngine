@@ -333,10 +333,14 @@ fn decode_extra_channels(bytes: &[u8], l: &ExtraChannels) -> Result<image::Dynam
         1u16.to_be_bytes()
     };
     patched[l.photometric_at..l.photometric_at + 2].copy_from_slice(&one);
-    let mut d = tiff::decoder::Decoder::new(std::io::Cursor::new(patched)).map_err(|e| e.to_string())?;
+    let mut d =
+        tiff::decoder::Decoder::new(std::io::Cursor::new(patched)).map_err(|e| e.to_string())?;
     let (w, h) = d.dimensions().map_err(|e| e.to_string())?;
     match d.colortype().map_err(|e| e.to_string())? {
-        tiff::ColorType::Multiband { bit_depth: 8 | 16, num_samples } if usize::from(num_samples) == l.samples => {}
+        tiff::ColorType::Multiband {
+            bit_depth: 8 | 16,
+            num_samples,
+        } if usize::from(num_samples) == l.samples => {}
         other => return Err(format!("TIFF channels {other:?} are not supported")),
     }
     let pixels = w as usize * h as usize;
@@ -355,7 +359,11 @@ fn decode_extra_channels(bytes: &[u8], l: &ExtraChannels) -> Result<image::Dynam
             if v.len() < pixels * l.samples {
                 return Err(short());
             }
-            let raw: Vec<u8> = v.chunks_exact(l.samples).take(pixels).flat_map(|s| rgba(s, l, 255)).collect();
+            let raw: Vec<u8> = v
+                .chunks_exact(l.samples)
+                .take(pixels)
+                .flat_map(|s| rgba(s, l, 255))
+                .collect();
             image::RgbaImage::from_raw(w, h, raw)
                 .map(image::DynamicImage::ImageRgba8)
                 .ok_or_else(short)
@@ -364,7 +372,11 @@ fn decode_extra_channels(bytes: &[u8], l: &ExtraChannels) -> Result<image::Dynam
             if v.len() < pixels * l.samples {
                 return Err(short());
             }
-            let raw: Vec<u16> = v.chunks_exact(l.samples).take(pixels).flat_map(|s| rgba(s, l, 65535)).collect();
+            let raw: Vec<u16> = v
+                .chunks_exact(l.samples)
+                .take(pixels)
+                .flat_map(|s| rgba(s, l, 65535))
+                .collect();
             image::ImageBuffer::from_raw(w, h, raw)
                 .map(image::DynamicImage::ImageRgba16)
                 .ok_or_else(short)

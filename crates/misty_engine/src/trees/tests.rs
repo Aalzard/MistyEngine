@@ -448,24 +448,49 @@ fn odd_models_make_trees_or_clear_errors() {
         }
     };
     let tri = |name: &str, material: &str, y: f32| {
-        format!("o {name}\nusemtl {material}\nv 0 {y} 0\nv 1 {y} 0\nv 0 {} 1\nf -3 -2 -1\n", y + 2.0)
+        format!(
+            "o {name}\nusemtl {material}\nv 0 {y} 0\nv 1 {y} 0\nv 0 {} 1\nf -3 -2 -1\n",
+            y + 2.0
+        )
     };
     let header = "mtllib tree.mtl\n";
     // Bark alone (a dead tree) and leaves alone (a bush of cards).
-    let bark = write("bark.obj", &format!("{header}{}", tri("Trunk", "Bark", 0.0)));
+    let bark = write(
+        "bark.obj",
+        &format!("{header}{}", tri("Trunk", "Bark", 0.0)),
+    );
     let built = store::try_build(bark).expect("bark only");
     assert!(built.model.lods[0].leaves.is_empty() && !built.model.lods[0].bark.is_empty());
-    let leaves = write("leaves.obj", &format!("{header}{}", tri("Crown", "Leave", 0.5)));
+    let leaves = write(
+        "leaves.obj",
+        &format!("{header}{}", tri("Crown", "Leave", 0.5)),
+    );
     let built = store::try_build(leaves).expect("leaves only");
     assert!(built.model.lods[0].bark.is_empty() && !built.model.lods[0].leaves.is_empty());
     // Errors that say what is wrong.
     let cases = [
         ("empty.obj", String::new(), ""),
         ("points.obj", "v 0 0 0\nv 1 1 1\nv 0 2 0\n".to_owned(), ""),
-        ("card.obj", format!("{header}{}", tri("Billboard", "Billboard", 0.0)), "no meshes"),
-        ("flat.obj", "o Flat\nv 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n".to_owned(), "no height"),
-        ("garbage.fbx", "Kaydara FBX Binary  \0garbage".to_owned(), ""),
-        ("text.fbx", "; FBX 7.4.0 project file\nnot really\n".to_owned(), ""),
+        (
+            "card.obj",
+            format!("{header}{}", tri("Billboard", "Billboard", 0.0)),
+            "no meshes",
+        ),
+        (
+            "flat.obj",
+            "o Flat\nv 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n".to_owned(),
+            "no height",
+        ),
+        (
+            "garbage.fbx",
+            "Kaydara FBX Binary  \0garbage".to_owned(),
+            "",
+        ),
+        (
+            "text.fbx",
+            "; FBX 7.4.0 project file\nnot really\n".to_owned(),
+            "",
+        ),
     ];
     for (name, text, says) in cases {
         let e = store::try_build(write(name, &text)).err();
@@ -474,12 +499,18 @@ fn odd_models_make_trees_or_clear_errors() {
         assert!(e.contains(says), "{name}: {e}");
     }
     // A texture in the model slot, and a file that is gone.
-    let png = TreeAsset { model: "Assets/T/tree.mtl".into(), ..t.clone() };
+    let png = TreeAsset {
+        model: "Assets/T/tree.mtl".into(),
+        ..t.clone()
+    };
     assert!(store::try_build(png).is_err());
     // Broken numbers in the file: a tree or an error, no panic.
     let nan = write(
         "nan.obj",
-        &format!("{header}{}o Crown\nusemtl Leave\nv nan 1 0\nv inf 2 0\nv 0 3 -inf\nf -3 -2 -1\n", tri("Trunk", "Bark", 0.0)),
+        &format!(
+            "{header}{}o Crown\nusemtl Leave\nv nan 1 0\nv inf 2 0\nv 0 3 -inf\nf -3 -2 -1\n",
+            tri("Trunk", "Bark", 0.0)
+        ),
     );
     let _ = store::try_build(nan);
     let huge = write(

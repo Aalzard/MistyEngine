@@ -200,13 +200,13 @@ pub fn bytes_have_cutouts(bytes: &[u8]) -> bool {
     // The header says whether there is an alpha channel at all (no decode).
     let alpha = extra
         || image::ImageReader::new(std::io::Cursor::new(&bytes[..]))
-        .with_guessed_format()
-        .ok()
-        .and_then(|r| r.into_decoder().ok())
-        .is_some_and(|d| {
-            use image::ImageDecoder;
-            d.color_type().has_alpha()
-        });
+            .with_guessed_format()
+            .ok()
+            .and_then(|r| r.into_decoder().ok())
+            .is_some_and(|d| {
+                use image::ImageDecoder;
+                d.color_type().has_alpha()
+            });
     if !alpha {
         return false;
     }
@@ -324,9 +324,15 @@ mod tests {
             find(&dir, "écorce").albedo,
             Some(textures.join("Écorce_Alb.png"))
         );
-        assert_eq!(find(&dir, "ÉCORCE").albedo, Some(textures.join("Écorce_Alb.png")));
+        assert_eq!(
+            find(&dir, "ÉCORCE").albedo,
+            Some(textures.join("Écorce_Alb.png"))
+        );
         // Blender names copies of a material "Bark.001".
-        assert_eq!(find(&dir, "Bark.001").albedo, Some(textures.join("Bark_Alb.png")));
+        assert_eq!(
+            find(&dir, "Bark.001").albedo,
+            Some(textures.join("Bark_Alb.png"))
+        );
         // A material name is a name, not a path.
         assert_eq!(find(&dir, "../Textures/Secret"), NamedTextures::default());
         assert_eq!(find(&dir, "Textures/Secret"), NamedTextures::default());
@@ -340,7 +346,10 @@ mod tests {
         let top = project.join("Assets");
         assert_eq!(find(&top, "Stone"), NamedTextures::default());
         assert_eq!(find(&top, "Moss"), NamedTextures::default());
-        assert_eq!(find(&dir, "Bark").albedo, Some(textures.join("Bark_Alb.png")));
+        assert_eq!(
+            find(&dir, "Bark").albedo,
+            Some(textures.join("Bark_Alb.png"))
+        );
         std::fs::remove_dir_all(root).ok();
     }
 

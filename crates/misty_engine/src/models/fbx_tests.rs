@@ -304,14 +304,58 @@ fn fbx_unreadable_named_maps_do_not_stop_extraction() {
     let model = load(&path).unwrap();
     let created = extract_materials_in(&dir, "Model/Crate.fbx", &model)
         .expect("materials extracted despite the broken maps");
-    assert!(created.contains(&"Model/Crate_Wood.mat".to_owned()), "{created:?}");
-    assert!(created.contains(&"Model/Crate_Metal.mat".to_owned()), "{created:?}");
+    assert!(
+        created.contains(&"Model/Crate_Wood.mat".to_owned()),
+        "{created:?}"
+    );
+    assert!(
+        created.contains(&"Model/Crate_Metal.mat".to_owned()),
+        "{created:?}"
+    );
     let mat = crate::assets::Material::load(&model_dir.join("Crate_Wood.mat")).unwrap();
     assert!(mat.albedo_map.is_some());
     assert!(mat.metallic_map.is_none());
     // Without its gloss map the material is not mirror-smooth.
-    assert_eq!(mat.smoothness, crate::assets::Material::default().smoothness);
+    assert_eq!(
+        mat.smoothness,
+        crate::assets::Material::default().smoothness
+    );
     assert!(mat.features.translucency.thickness_map.is_none());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// Every model of a pack shares its textures: a map converted for one model is copied for
+/// the next (not decoded, scaled and converted again), and a changed source converts anew.
+#[test]
+fn fbx_converted_maps_are_shared_between_models() {
+    let dir = temp_dir("named_shared");
+    let model_dir = dir.join("Pack");
+    std::fs::create_dir_all(&model_dir).unwrap();
+    let grey = |v: u8| image::RgbaImage::from_pixel(4, 4, image::Rgba([v, v, v, 255]));
+    grey(180).save(model_dir.join("Wood_Alb.png")).unwrap();
+    grey(64).save(model_dir.join("Wood_Gloss.png")).unwrap();
+    let smoothness = |model: &str| {
+        let mat =
+            crate::assets::Material::load(&model_dir.join(format!("{model}_Wood.mat"))).unwrap();
+        let map = image::open(dir.join(mat.metallic_map.unwrap()))
+            .unwrap()
+            .into_rgba8();
+        map.get_pixel(0, 0).0[3]
+    };
+    for name in ["Crate.fbx", "Crate2.fbx"] {
+        let path = write(&model_dir, name, &crate_fbx());
+        let model = load(&path).unwrap();
+        extract_materials_in(&dir, &format!("Pack/{name}"), &model).unwrap();
+    }
+    assert_eq!(smoothness("Crate"), 64);
+    assert_eq!(smoothness("Crate2"), 64);
+    // The gloss map repainted: the next model converts it again.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    grey(100).save(model_dir.join("Wood_Gloss.png")).unwrap();
+    let path = write(&model_dir, "Crate3.fbx", &crate_fbx());
+    let model = load(&path).unwrap();
+    extract_materials_in(&dir, "Pack/Crate3.fbx", &model).unwrap();
+    assert_eq!(smoothness("Crate3"), 100);
     std::fs::remove_dir_all(dir).ok();
 }
 

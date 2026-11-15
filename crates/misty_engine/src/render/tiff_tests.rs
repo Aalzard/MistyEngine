@@ -32,11 +32,7 @@ fn tiff(ifds: &[Vec<Entry>], data: &[u8]) -> Vec<u8> {
         let values_at = at + 2 + ifd.len() * 12 + 4;
         out.extend((ifd.len() as u16).to_le_bytes());
         let fix = |v: u32| {
-            if v >= DATA {
-                v - DATA + data_at
-            } else {
-                v
-            }
+            if v >= DATA { v - DATA + data_at } else { v }
         };
         for (tag, kind, v) in ifd {
             out.extend(tag.to_le_bytes());
@@ -74,7 +70,14 @@ fn tiff(ifds: &[Vec<Entry>], data: &[u8]) -> Vec<u8> {
 }
 
 /// The usual tags of a one-strip image; `extra` adds or replaces tags.
-fn image_ifd(w: u32, h: u32, bits: &[u32], photometric: u32, bytes: u32, extra: &[Entry]) -> Vec<Entry> {
+fn image_ifd(
+    w: u32,
+    h: u32,
+    bits: &[u32],
+    photometric: u32,
+    bytes: u32,
+    extra: &[Entry],
+) -> Vec<Entry> {
     let mut e: Vec<Entry> = vec![
         (256, 4, vec![w]),
         (257, 4, vec![h]),
@@ -99,7 +102,9 @@ fn image_ifd(w: u32, h: u32, bits: &[u32], photometric: u32, bytes: u32, extra: 
 fn try_decode(name: &str, bytes: Vec<u8>) -> Option<Result<image::RgbaImage, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let handle = std::thread::spawn(move || {
-        let r = decode(&bytes).map(|i| i.into_rgba8()).map_err(|e| e.to_string());
+        let r = decode(&bytes)
+            .map(|i| i.into_rgba8())
+            .map_err(|e| e.to_string());
         let _ = tx.send(r);
     });
     match rx.recv_timeout(std::time::Duration::from_secs(20)) {
@@ -125,7 +130,14 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
         (
             "float32",
             tiff(
-                &[image_ifd(2, 2, &[32, 32, 32], 2, 48, &[(339, 3, vec![3, 3, 3])])],
+                &[image_ifd(
+                    2,
+                    2,
+                    &[32, 32, 32],
+                    2,
+                    48,
+                    &[(339, 3, vec![3, 3, 3])],
+                )],
                 &[0.5f32, 1.0, 0.25]
                     .repeat(4)
                     .iter()
@@ -134,7 +146,10 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
             ),
         ),
         // CMYK print files.
-        ("cmyk", tiff(&[image_ifd(4, 4, &[8, 8, 8, 8], 5, 64, &[])], &px(64))),
+        (
+            "cmyk",
+            tiff(&[image_ifd(4, 4, &[8, 8, 8, 8], 5, 64, &[])], &px(64)),
+        ),
         // Palette images.
         (
             "palette",
@@ -174,26 +189,42 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
         // PackBits: one literal run of 48 bytes.
         (
             "packbits",
-            tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 49, &[(259, 3, vec![32773])])], &{
-                let mut d = vec![47u8];
-                d.extend(px(48));
-                d
-            }),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 49, &[(259, 3, vec![32773])])],
+                &{
+                    let mut d = vec![47u8];
+                    d.extend(px(48));
+                    d
+                },
+            ),
         ),
         // Compression schemes the decoder lacks (JPEG-in-TIFF, old JPEG).
         (
             "jpeg-compressed",
-            tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![6])])], &px(48)),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![6])])],
+                &px(48),
+            ),
         ),
         // Grey with a Photoshop alpha, and 16-bit RGB with one.
         (
             "grey+alpha",
-            tiff(&[image_ifd(4, 4, &[8, 8], 1, 32, &[(338, 3, vec![0])])], &px(32)),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8], 1, 32, &[(338, 3, vec![0])])],
+                &px(32),
+            ),
         ),
         (
             "rgba16 unspecified",
             tiff(
-                &[image_ifd(2, 2, &[16, 16, 16, 16], 2, 32, &[(338, 3, vec![0])])],
+                &[image_ifd(
+                    2,
+                    2,
+                    &[16, 16, 16, 16],
+                    2,
+                    32,
+                    &[(338, 3, vec![0])],
+                )],
                 &px(32),
             ),
         ),
@@ -201,13 +232,23 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
         (
             "rgb + 2 extra",
             tiff(
-                &[image_ifd(2, 2, &[8, 8, 8, 8, 8], 2, 20, &[(338, 3, vec![0, 0])])],
+                &[image_ifd(
+                    2,
+                    2,
+                    &[8, 8, 8, 8, 8],
+                    2,
+                    20,
+                    &[(338, 3, vec![0, 0])],
+                )],
                 &px(20),
             ),
         ),
         (
             "rgba associated",
-            tiff(&[image_ifd(2, 2, &[8, 8, 8, 8], 2, 16, &[(338, 3, vec![1])])], &px(16)),
+            tiff(
+                &[image_ifd(2, 2, &[8, 8, 8, 8], 2, 16, &[(338, 3, vec![1])])],
+                &px(16),
+            ),
         ),
         // Bilevel and 4-bit grey.
         ("1-bit", tiff(&[image_ifd(8, 2, &[1], 1, 2, &[])], &px(2))),
@@ -218,26 +259,58 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
         // 65535 × 65535 RGBA8 (16 GB) with 48 bytes of data.
         (
             "huge",
-            tiff(&[image_ifd(65535, 65535, &[8, 8, 8, 8], 2, 48, &[])], &px(48)),
+            tiff(
+                &[image_ifd(65535, 65535, &[8, 8, 8, 8], 2, 48, &[])],
+                &px(48),
+            ),
         ),
         (
             "huge strip",
             tiff(
-                &[image_ifd(65535, 65535, &[8, 8, 8], 2, u32::MAX, &[(278, 4, vec![65535])])],
+                &[image_ifd(
+                    65535,
+                    65535,
+                    &[8, 8, 8],
+                    2,
+                    u32::MAX,
+                    &[(278, 4, vec![65535])],
+                )],
                 &px(48),
             ),
         ),
         // 4 billion pixels wide, one tall.
-        ("wide", tiff(&[image_ifd(u32::MAX, 1, &[8], 1, 48, &[])], &px(48))),
-        ("zero size", tiff(&[image_ifd(0, 0, &[8, 8, 8], 2, 0, &[])], &[])),
+        (
+            "wide",
+            tiff(&[image_ifd(u32::MAX, 1, &[8], 1, 48, &[])], &px(48)),
+        ),
+        (
+            "zero size",
+            tiff(&[image_ifd(0, 0, &[8, 8, 8], 2, 0, &[])], &[]),
+        ),
         ("strip past the end", {
             let mut b = tiff(&[rgb8.clone()], &px(48));
             b.truncate(b.len() - 20);
             b
         }),
-        ("strip offset far out", tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(273, 4, vec![0x7fff_ffff])])], &px(48))),
+        (
+            "strip offset far out",
+            tiff(
+                &[image_ifd(
+                    4,
+                    4,
+                    &[8, 8, 8],
+                    2,
+                    48,
+                    &[(273, 4, vec![0x7fff_ffff])],
+                )],
+                &px(48),
+            ),
+        ),
         ("header only", vec![b'I', b'I', 42, 0]),
-        ("ifd past the end", vec![b'I', b'I', 42, 0, 0xff, 0xff, 0xff, 0x7f]),
+        (
+            "ifd past the end",
+            vec![b'I', b'I', 42, 0, 0xff, 0xff, 0xff, 0x7f],
+        ),
         ("ifd loop", {
             let mut b = tiff(&[rgb8.clone()], &px(48));
             // Next-IFD offset of the only IFD points back at itself.
@@ -251,21 +324,48 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
             b.extend(px(600));
             b
         }),
-        ("bits 0", tiff(&[image_ifd(4, 4, &[0, 0, 0], 2, 48, &[])], &px(48))),
-        ("bits 64", tiff(&[image_ifd(4, 4, &[64, 64, 64], 2, 48, &[])], &px(48))),
-        ("samples 0", tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(277, 3, vec![0])])], &px(48))),
-        ("samples 200", tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(277, 3, vec![200])])], &px(48))),
+        (
+            "bits 0",
+            tiff(&[image_ifd(4, 4, &[0, 0, 0], 2, 48, &[])], &px(48)),
+        ),
+        (
+            "bits 64",
+            tiff(&[image_ifd(4, 4, &[64, 64, 64], 2, 48, &[])], &px(48)),
+        ),
+        (
+            "samples 0",
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(277, 3, vec![0])])],
+                &px(48),
+            ),
+        ),
+        (
+            "samples 200",
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(277, 3, vec![200])])],
+                &px(48),
+            ),
+        ),
         (
             "packbits overrun",
-            tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 3, &[(259, 3, vec![32773])])], &[0x81, 7, 0x81]),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 3, &[(259, 3, vec![32773])])],
+                &[0x81, 7, 0x81],
+            ),
         ),
         (
             "lzw garbage",
-            tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![5])])], &[0xff; 48]),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![5])])],
+                &[0xff; 48],
+            ),
         ),
         (
             "deflate garbage",
-            tiff(&[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![8])])], &[0x78; 48]),
+            tiff(
+                &[image_ifd(4, 4, &[8, 8, 8], 2, 48, &[(259, 3, vec![8])])],
+                &[0x78; 48],
+            ),
         ),
         (
             "tile 0",
@@ -273,23 +373,50 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
                 &[{
                     let mut e = image_ifd(16, 16, &[8, 8, 8], 2, 768, &[]);
                     e.retain(|x| ![273, 278, 279].contains(&x.0));
-                    e.extend([(322, 3, vec![0]), (323, 3, vec![0]), (324, 4, vec![DATA]), (325, 4, vec![768])]);
+                    e.extend([
+                        (322, 3, vec![0]),
+                        (323, 3, vec![0]),
+                        (324, 4, vec![DATA]),
+                        (325, 4, vec![768]),
+                    ]);
                     e.sort_by_key(|x| x.0);
                     e
                 }],
                 &px(768),
             ),
         ),
-        ("palette without a colour map", tiff(&[image_ifd(4, 4, &[8], 3, 16, &[])], &px(16))),
-        ("extra samples 3 values", tiff(&[image_ifd(4, 4, &[8, 8, 8, 8], 2, 64, &[(338, 3, vec![0, 0, 0])])], &px(64))),
+        (
+            "palette without a colour map",
+            tiff(&[image_ifd(4, 4, &[8], 3, 16, &[])], &px(16)),
+        ),
+        (
+            "extra samples 3 values",
+            tiff(
+                &[image_ifd(
+                    4,
+                    4,
+                    &[8, 8, 8, 8],
+                    2,
+                    64,
+                    &[(338, 3, vec![0, 0, 0])],
+                )],
+                &px(64),
+            ),
+        ),
     ];
     cases.extend(broken);
     // Every prefix of a good file too.
-    let good = tiff(&[image_ifd(4, 4, &[8, 8, 8, 8], 2, 64, &[(338, 3, vec![0])])], &px(64));
+    let good = tiff(
+        &[image_ifd(4, 4, &[8, 8, 8, 8], 2, 64, &[(338, 3, vec![0])])],
+        &px(64),
+    );
     let mut report = Vec::new();
     for (name, bytes) in &cases {
         let r = try_decode(name, bytes.clone());
-        report.push(format!("{name}: {:?}", r.as_ref().map(|r| r.as_ref().map(|i| i.dimensions()))));
+        report.push(format!(
+            "{name}: {:?}",
+            r.as_ref().map(|r| r.as_ref().map(|i| i.dimensions()))
+        ));
         assert!(r.is_some(), "{name}: decoding panicked");
     }
     for len in 0..good.len() {
@@ -299,7 +426,14 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
     }
     println!("{}", report.join("\n"));
     // The good ones decode.
-    for name in ["rgb8", "multipage", "tiled", "packbits", "grey+alpha", "rgba16 unspecified"] {
+    for name in [
+        "rgb8",
+        "multipage",
+        "tiled",
+        "packbits",
+        "grey+alpha",
+        "rgba16 unspecified",
+    ] {
         let (_, bytes) = cases.iter().find(|c| c.0 == name).unwrap();
         assert!(decode(bytes).is_ok(), "{name}: {:?}", decode(bytes).err());
     }
@@ -317,7 +451,14 @@ fn tiff_associated_alpha_is_unpremultiplied() {
     ];
     for extra in [1u32, 2] {
         let bytes = tiff(
-            &[image_ifd(2, 2, &[8, 8, 8, 8], 2, 16, &[(338, 3, vec![extra])])],
+            &[image_ifd(
+                2,
+                2,
+                &[8, 8, 8, 8],
+                2,
+                16,
+                &[(338, 3, vec![extra])],
+            )],
             &pixels,
         );
         let img = decode(&bytes).unwrap().into_rgba8();
@@ -336,10 +477,23 @@ fn tiff_associated_alpha_is_unpremultiplied() {
         .iter()
         .flat_map(|v| v.to_le_bytes())
         .collect();
-    let bytes = tiff(&[image_ifd(1, 1, &[16, 16, 16, 16], 2, 8, &[(338, 3, vec![1])])], &deep);
+    let bytes = tiff(
+        &[image_ifd(
+            1,
+            1,
+            &[16, 16, 16, 16],
+            2,
+            8,
+            &[(338, 3, vec![1])],
+        )],
+        &deep,
+    );
     let img = decode(&bytes).unwrap().into_rgba16();
     let p = img.get_pixel(0, 0).0;
-    assert!((i32::from(p[0]) - 0x7fff).abs() <= 2 && (i32::from(p[1]) - 0x3fff).abs() <= 2, "{p:?}");
+    assert!(
+        (i32::from(p[0]) - 0x7fff).abs() <= 2 && (i32::from(p[1]) - 0x3fff).abs() <= 2,
+        "{p:?}"
+    );
 }
 
 /// Photoshop saves a second alpha channel (or a spot colour) as another unspecified extra
@@ -353,12 +507,27 @@ fn tiff_two_extra_channels_keep_the_first_as_alpha() {
         1, 2, 3, 77, 99,
     ];
     let bytes = tiff(
-        &[image_ifd(2, 2, &[8, 8, 8, 8, 8], 2, 20, &[(338, 3, vec![0, 0])])],
+        &[image_ifd(
+            2,
+            2,
+            &[8, 8, 8, 8, 8],
+            2,
+            20,
+            &[(338, 3, vec![0, 0])],
+        )],
         &pixels,
     );
     let img = decode(&bytes).unwrap().into_rgba8();
     let got: Vec<[u8; 4]> = img.pixels().map(|p| p.0).collect();
-    assert_eq!(got, [[10, 20, 30, 0], [40, 50, 60, 128], [70, 80, 90, 255], [1, 2, 3, 77]]);
+    assert_eq!(
+        got,
+        [
+            [10, 20, 30, 0],
+            [40, 50, 60, 128],
+            [70, 80, 90, 255],
+            [1, 2, 3, 77]
+        ]
+    );
 }
 
 /// Greyscale TIFFs with an alpha channel (masks, gloss maps saved in Grayscale mode with
@@ -371,20 +540,39 @@ fn tiff_grey_with_alpha_loads() {
             &[10, 0, 200, 255],
         );
         let img = decode(&bytes).unwrap().into_rgba8();
-        assert_eq!(img.get_pixel(0, 0).0, [10, 10, 10, 0], "ExtraSamples {extra}");
+        assert_eq!(
+            img.get_pixel(0, 0).0,
+            [10, 10, 10, 0],
+            "ExtraSamples {extra}"
+        );
         // A grey leaf mask with clear texels is a cut-out; its size reads without a decode.
         assert!(crate::models::named_textures::bytes_have_cutouts(&bytes));
-        let path = std::env::temp_dir().join(format!("misty_grey_alpha_{extra}_{}.tif", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "misty_grey_alpha_{extra}_{}.tif",
+            std::process::id()
+        ));
         std::fs::write(&path, &bytes).unwrap();
         assert_eq!(super::texture::image_size(&path), Some([2, 1]));
         std::fs::remove_file(path).ok();
         assert_eq!(img.get_pixel(1, 0).0, [200, 200, 200, 255]);
     }
-    let deep: Vec<u8> = [0x1000u16, 0xffff].iter().flat_map(|v| v.to_le_bytes()).collect();
-    let bytes = tiff(&[image_ifd(1, 1, &[16, 16], 1, 4, &[(338, 3, vec![2])])], &deep);
-    assert_eq!(decode(&bytes).unwrap().into_rgba8().get_pixel(0, 0).0, [16, 16, 16, 255]);
+    let deep: Vec<u8> = [0x1000u16, 0xffff]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
+    let bytes = tiff(
+        &[image_ifd(1, 1, &[16, 16], 1, 4, &[(338, 3, vec![2])])],
+        &deep,
+    );
+    assert_eq!(
+        decode(&bytes).unwrap().into_rgba8().get_pixel(0, 0).0,
+        [16, 16, 16, 255]
+    );
     // White is zero: inverted when it loads (the decoder may refuse it), never a panic.
-    let bytes = tiff(&[image_ifd(1, 1, &[8, 8], 0, 2, &[(338, 3, vec![2])])], &[10, 255]);
+    let bytes = tiff(
+        &[image_ifd(1, 1, &[8, 8], 0, 2, &[(338, 3, vec![2])])],
+        &[10, 255],
+    );
     if let Ok(img) = decode(&bytes) {
         assert_eq!(img.into_rgba8().get_pixel(0, 0).0, [245, 245, 245, 255]);
     }
@@ -398,9 +586,24 @@ fn big_tiff_timing() {
     let (w, h) = (4096u32, 4096u32);
     let mut pixels = vec![0u8; (w * h * 4) as usize];
     for (i, p) in pixels.chunks_exact_mut(4).enumerate() {
-        p.copy_from_slice(&[(i % 251) as u8, (i % 241) as u8, (i % 239) as u8, (i % 256) as u8]);
+        p.copy_from_slice(&[
+            (i % 251) as u8,
+            (i % 241) as u8,
+            (i % 239) as u8,
+            (i % 256) as u8,
+        ]);
     }
-    let bytes = tiff(&[image_ifd(w, h, &[8, 8, 8, 8], 2, w * h * 4, &[(338, 3, vec![0])])], &pixels);
+    let bytes = tiff(
+        &[image_ifd(
+            w,
+            h,
+            &[8, 8, 8, 8],
+            2,
+            w * h * 4,
+            &[(338, 3, vec![0])],
+        )],
+        &pixels,
+    );
     let t = std::time::Instant::now();
     let img = decode(&bytes).unwrap().into_rgba8();
     let decoded = t.elapsed();
@@ -410,5 +613,8 @@ fn big_tiff_timing() {
     let t = std::time::Instant::now();
     let small = super::texture::fit(img, 2048);
     let fitted = t.elapsed();
-    println!("4K TIFF: decode {decoded:?}, cut-out check {cutouts:?} ({cut}), 2K fit {fitted:?}, {}", small.width());
+    println!(
+        "4K TIFF: decode {decoded:?}, cut-out check {cutouts:?} ({cut}), 2K fit {fitted:?}, {}",
+        small.width()
+    );
 }

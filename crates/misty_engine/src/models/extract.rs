@@ -10,6 +10,7 @@
 //! the repo).
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use super::{ExtraMap, Model, TextureSource};
 use crate::assets;
@@ -144,6 +145,30 @@ fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Ve
                 // without its gloss map the material keeps the usual smoothness.
                 source if map.converted() => {
                     let png = dir.join(format!("{stem}_{}.png", map.label()));
+                    // The same pack texture converted for another model already: a copy of
+                    // that file (a 4K map took a second to decode, scale and convert, once
+                    // per model of the pack).
+                    let key = match source {
+                        TextureSource::File(p) => {
+                            Some((p.clone(), crate::vfs::modified(p), format!("{map:?}")))
+                        }
+                        TextureSource::Embedded(_) => None,
+                    };
+                    let earlier = key.as_ref().and_then(|k| {
+                        converted()
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .get(k)
+                            .cloned()
+                    });
+                    if !png.exists()
+                        && let Some((earlier, _)) = earlier.filter(|(e, t)| {
+                            *e != png && crate::vfs::modified(e) == *t && t.is_some()
+                        })
+                        && std::fs::copy(&earlier, &png).is_ok()
+                    {
+                        created.push(root.relative(&png));
+                    }
                     if !png.exists() {
                         let read = match source {
                             TextureSource::File(p) => crate::vfs::read(p).ok(),
@@ -164,6 +189,12 @@ fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Ve
                             .save_with_format(&png, image::ImageFormat::Png)
                             .map_err(|e| format!("{}: {e}", png.display()))?;
                         created.push(root.relative(&png));
+                        if let Some(k) = key {
+                            converted()
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .insert(k, (png.clone(), crate::vfs::modified(&png)));
+                        }
                     }
                     root.relative(&png)
                 }
@@ -183,6 +214,16 @@ fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Ve
         created.push(rel);
     }
     Ok(created)
+}
+
+/// Converted maps written this session: (source file, its modification time, map kind) → the
+/// PNG written for it and its modification time (an edited copy is not copied again).
+type Converted =
+    std::collections::HashMap<(PathBuf, Option<SystemTime>, String), (PathBuf, Option<SystemTime>)>;
+
+fn converted() -> &'static std::sync::Mutex<Converted> {
+    static CONVERTED: std::sync::OnceLock<std::sync::Mutex<Converted>> = std::sync::OnceLock::new();
+    CONVERTED.get_or_init(Default::default)
 }
 
 /// Save image bytes as PNG (PNG data is copied as-is, other formats are re-encoded).
