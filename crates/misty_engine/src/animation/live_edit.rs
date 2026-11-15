@@ -67,10 +67,8 @@ pub(super) fn rebind(
                     ctrl: new,
                     values: &mut values,
                 };
-                lr.current = fsm::enter(m, "", &p, &mut Vec::new(), 0).map(|state| Run {
-                    state,
-                    norm: 0.0,
-                });
+                lr.current =
+                    fsm::enter(m, "", &p, &mut Vec::new(), 0).map(|state| Run { state, norm: 0.0 });
                 lr.fresh = true;
             }
         }
