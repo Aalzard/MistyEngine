@@ -492,7 +492,8 @@ return N
     /// objects (the history's copies were taken before the load) under the new scene's game.
     #[test]
     fn undo_after_a_scene_load_in_play_does_not_bring_back_the_old_scene() {
-        let root = std::env::temp_dir().join(format!("misty_play_undo_load_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("misty_play_undo_load_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
         let mut level = Scene::new("Level2");
@@ -517,7 +518,10 @@ return N
         assert!(s.scene.find_by_name("Menu Object").is_none());
         assert!(s.scene.find_by_name("Renamed").is_none());
         stop(&mut s);
-        assert!(s.scene.find_by_name("Menu Object").is_some(), "edit scene back");
+        assert!(
+            s.scene.find_by_name("Menu Object").is_some(),
+            "edit scene back"
+        );
         std::fs::remove_dir_all(root).ok();
     }
 

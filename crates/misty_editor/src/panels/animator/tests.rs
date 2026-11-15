@@ -770,7 +770,11 @@ fn undoing_a_controller_edit_during_play_leaves_the_running_scene_alone() {
         .unwrap()
         .animator_status(&s.scene, hero)
         .unwrap();
-    assert_eq!(st.current.unwrap().name, "Idle", "the controller edit is undone");
+    assert_eq!(
+        st.current.unwrap().name,
+        "Idle",
+        "the controller edit is undone"
+    );
     commands::apply(&mut s, Action::Redo);
     crate::play::tick(&mut s, 1.0 / 60.0);
     assert!(s.scene.contains(bullet));
