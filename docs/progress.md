@@ -5482,3 +5482,64 @@ regression test that fails without it (checked by putting the old code back).
 warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
 1024 passed, engine 1675, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2731).
 No render code changed, so golden shots were not rerun.
+
+## Round 76 — Bug hunt 12: physics, runtime UI, the build pipeline (branch r76-qa12)
+
+Picked the systems with the fewest recent bug rounds: physics (objects switched on and off
+while playing, triggers, layers, the character controller), runtime UI (selection, scroll views,
+anchors and the Canvas Scaler) and the build pipeline (does a built game get every asset its
+scenes use?). Each fix has a regression test that fails without it (checked by running the tests
+before the fix went in).
+
+### Fixes
+- **Objects switched on or off while playing stayed as they were in physics (3D and 2D)**: the
+  physics worlds were built from the active objects when Play started and never looked at the
+  Active flag again. A floor a script switched off (`SetActive(false)`) still held boxes up, its
+  triggers kept firing and raycasts still hit it; a Rigidbody that started inactive and was
+  switched on hung in the air (it never got a body), and so did objects inside an inactive child
+  of an instantiated prefab. The same went for Timeline activation tracks and animated Active
+  properties. Both worlds now keep the objects they own and the ones they left out because they
+  were inactive: before each step, objects switched off leave the world with everything under the
+  object that was switched off, and objects switched on join it like objects created while
+  playing (child colliders attach to the parent's body again, a trigger they overlap fires its
+  enter again). The check only runs when something could have switched an object
+  (`Scene::activity`, bumped by GameObject edits, re-parenting and removal), so a frame where
+  nothing changes costs nothing. `Physics::remove` also skips its walk over every collider for
+  objects that own none (Destroy of a big hierarchy in a forest scene), and a ragdoll rooted on a
+  removed object goes with it. Tests: `a_floor_switched_off_while_playing_lets_the_cube_fall`,
+  `a_body_switched_on_while_playing_falls`,
+  `a_parent_switched_off_and_on_brings_its_children_back` and, through Lua in 3D and 2D,
+  `set_active_while_playing_reaches_3d_and_2d_physics`.
+- **A hidden selected button still took Submit**: the UI let go of hovered, pressed and selected
+  objects only when they were removed. A button selected by a click or the gamepad and then
+  hidden with its menu (a pause menu's "Resume") stayed selected, so every Enter or gamepad A
+  during play clicked it again, and arrow keys navigated from it. Hidden objects are now let go
+  like removed ones (as the familiar engine deselects a disabled selectable). Test:
+  `a_hidden_selected_button_is_deselected_and_never_clicked`.
+- **Builds left out what Shader Graphs, Behaviour Trees and VFX operators use**: the dependency
+  walk reads the references of a fixed list of JSON asset types, and `.shadergraph`,
+  `.shadersubgraph`, `.btree`, `.vfxoperator` and `.physicmat` (the list had the old
+  `.physicmaterial` name) were not on it. The files themselves were packed (a material, scene or
+  effect names them), but not what they name: a material using "Dissolve Glow" lost its
+  "Dissolve Edge" subgraph in the built game, "Triplanar Rock" its default textures, and the
+  guard's Behaviour Tree its `NextWaypoint.lua` action. Test:
+  `walks_shader_graphs_behaviour_trees_and_vfx_operators`.
+
+### Checked, no bug found
+- Character controller slopes and steps, layer collision matrix groups (`collision_mask`,
+  `groups`), trigger contacts found while building (reported by the first step), contacts of
+  destroyed objects (dropped, like the familiar engine's OnTriggerExit).
+- Scroll Rect maths (`content_bounds`, `offset`, rubber-banding, `smooth_damp`, `settle`) and
+  the Canvas Scaler's Expand / Shrink / match modes against the reference engine's formulas.
+- Timeline activation tracks guard against destroyed bindings; Post-playback State applies on
+  stop.
+- Build dependencies: lightmaps, light probes, reflection probes, occlusion data and nav meshes
+  are named by path in their scenes, so they are packed; `.shader` texture defaults are built-in
+  names, not assets; Lua has no `require`.
+- Animator root motion across loop wraps and huge time steps (bounded by `MAX_SEGMENTS`).
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1024 passed, engine 1681, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2737).
+No render code changed, so golden shots were not rerun.
