@@ -85,6 +85,12 @@ pub struct TreeSettings {
     /// its contact shade close by for much less shadow-map work. Left out of the file at 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub plant_shadow_distance: f32,
+    /// 0.1..1: [`Self::shadow_detail`] in the first (finest) sun cascade only, the one that
+    /// shades the ground round the camera: leaf-fine shadows there (a forest floor's flecks)
+    /// for little cost, the lighter meshes further out. 0 = the same as `shadow_detail`.
+    /// Left out of the file at 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub near_shadow_detail: f32,
 }
 
 fn one() -> f32 {
@@ -114,6 +120,7 @@ impl Default for TreeSettings {
             cast_shadows: true,
             shadow_detail: 1.0,
             plant_shadow_distance: 0.0,
+            near_shadow_detail: 0.0,
         }
     }
 }
@@ -204,6 +211,20 @@ impl TreeSettings {
         } else {
             0.0
         };
+        // (0 = off; otherwise the same range as Shadow Detail.)
+        self.near_shadow_detail = match self.near_shadow_detail {
+            v if v.is_finite() && v > 0.0 => v.clamp(0.1, 1.0),
+            _ => 0.0,
+        };
+    }
+
+    /// The shadow detail of sun cascade `slot` (0 = the finest).
+    pub fn cascade_shadow_detail(&self, slot: usize) -> f32 {
+        if slot == 0 && self.near_shadow_detail > 0.0 {
+            self.near_shadow_detail
+        } else {
+            self.shadow_detail
+        }
     }
 
     /// Remove prototype `index` and the trees placed with it (later indices move down).
@@ -574,6 +595,33 @@ mod tests {
         assert_eq!(s.prototypes.len(), 2);
         let protos: Vec<u16> = s.instances.iter().map(|t| t.prototype).collect();
         assert_eq!(protos, vec![0, 1]);
+    }
+
+    #[test]
+    fn near_shadow_detail_is_off_by_default_and_round_trips() {
+        let text = serde_json::to_string(&TreeSettings::default()).unwrap();
+        assert!(!text.contains("near_shadow"), "{text}");
+        let s = TreeSettings {
+            shadow_detail: 0.2,
+            ..Default::default()
+        };
+        assert_eq!(s.cascade_shadow_detail(0), 0.2);
+        assert_eq!(s.cascade_shadow_detail(2), 0.2);
+        let mut s = TreeSettings {
+            shadow_detail: 0.2,
+            near_shadow_detail: 0.6,
+            ..Default::default()
+        };
+        let back: TreeSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.near_shadow_detail, 0.6);
+        assert_eq!(s.cascade_shadow_detail(0), 0.6);
+        assert_eq!(s.cascade_shadow_detail(1), 0.2);
+        s.near_shadow_detail = 5.0;
+        s.sanitize();
+        assert_eq!(s.near_shadow_detail, 1.0);
+        s.near_shadow_detail = f32::NAN;
+        s.sanitize();
+        assert_eq!(s.near_shadow_detail, 0.0);
     }
 
     #[test]

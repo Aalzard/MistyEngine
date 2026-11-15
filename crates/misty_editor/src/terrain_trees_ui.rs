@@ -536,6 +536,18 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             );
             ch |= kit::slider(
                 ui,
+                &tr!("Near Shadow Detail"),
+                &tr!(
+                    "Shadow Detail in the finest sun cascade only, round the camera: leaf-fine shadows on the ground nearby for little cost (0 = the same as Shadow Detail)"
+                ),
+                &mut s.near_shadow_detail,
+                0.0..=1.0,
+                def.near_shadow_detail,
+                "",
+                false,
+            );
+            ch |= kit::slider(
+                ui,
                 &tr!("Plant Shadow Distance"),
                 &tr!(
                     "Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)"
@@ -556,6 +568,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             d.trees.lod_fade = s.lod_fade;
             d.trees.cast_shadows = s.cast_shadows;
             d.trees.shadow_detail = s.shadow_detail;
+            d.trees.near_shadow_detail = s.near_shadow_detail;
             d.trees.plant_shadow_distance = s.plant_shadow_distance;
         });
     }

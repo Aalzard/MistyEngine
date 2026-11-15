@@ -1300,7 +1300,7 @@ fn terrain_data() -> TerrainData {
             // Sky light reaching the floor (1 = open ground; round 59.8: the open wood's shade
             // is lit by the sky between the crowns and the sunlit leaves, 0.5 left it near
             // black).
-            occlusion: 1.0,
+            occlusion: nv("OCC", 1.0),
             ..Default::default()
         },
     ];
@@ -1382,6 +1382,7 @@ fn terrain_data() -> TerrainData {
     // (impostors in the far one), which keeps a walk inside the wood real-time.
     d.trees.billboard_start = 80.0;
     d.trees.shadow_detail = nv("SHD", 0.2);
+    d.trees.near_shadow_detail = nv("NSD", 0.0);
     // Full meshes up to 20 m (the lighter mesh beyond reads the same inside the wood).
     d.trees.lod_distance = 20.0;
     // Ferns and ground cover shade the floor only near the camera (their shadows were most of

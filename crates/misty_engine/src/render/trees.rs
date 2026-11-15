@@ -1486,7 +1486,7 @@ impl TreeRenderer {
                         {
                             continue;
                         }
-                        let lod = shadow_lod(f.cascades[slot].texel / s.shadow_detail) as usize;
+                        let lod = shadow_lod(f.cascades[slot].texel / s.cascade_shadow_detail(slot)) as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
@@ -1907,7 +1907,11 @@ impl TreeRenderer {
             true => f
                 .cascades
                 .iter()
-                .map(|c| (c.view_proj, shadow_lod(c.texel / s.shadow_detail), c.texel))
+                .enumerate()
+                .map(|(slot, c)| {
+                    let lod = shadow_lod(c.texel / s.cascade_shadow_detail(slot));
+                    (c.view_proj, lod, c.texel)
+                })
                 .collect(),
             false => Vec::new(),
         };
