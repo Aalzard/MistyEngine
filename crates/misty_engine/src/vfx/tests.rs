@@ -946,3 +946,45 @@ fn effect_graph_files_with_link_loops_load_without_the_loop() {
     assert!(back.links.iter().all(|l| l.to != a));
     compiles(&back, "loop cut");
 }
+
+/// A Visual Effect switched off and on again starts over (fresh particles, Play On Awake
+/// spawning again), like the familiar engine reinitialises an effect on enable: it used to
+/// carry on from where it was, so a pooled effect that had been stopped never spawned again
+/// and the old particles came back.
+#[test]
+fn an_effect_switched_off_and_on_starts_again() {
+    let dir = std::env::temp_dir().join(format!("misty_vfx_active_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("Sparks.effect");
+    EffectGraph::new_default().save(&file).unwrap();
+    let rel = file.to_string_lossy().replace('\\', "/");
+    let mut scene = crate::scene::Scene::new("t");
+    let e = scene.spawn("Sparks", None);
+    scene.add(e, VisualEffect::with_effect(&rel));
+    super::update(&mut scene, 0.5);
+    let first = scene.world.get::<&EffectInstance>(e).unwrap().id;
+    assert_eq!(
+        scene.world.get::<&EffectInstance>(e).unwrap().spawn_count,
+        10
+    );
+    super::with_instance(&mut scene, e, |i, _| i.stop());
+    super::update(&mut scene, 0.5);
+    assert_eq!(
+        scene.world.get::<&EffectInstance>(e).unwrap().spawn_count,
+        0
+    );
+
+    scene.game_object_mut(e).active = false;
+    super::update(&mut scene, 0.5);
+    assert!(super::draws(&scene).is_empty(), "switched off: not drawn");
+    scene.game_object_mut(e).active = true;
+    super::update(&mut scene, 0.5);
+    let i = scene.world.get::<&EffectInstance>(e).unwrap();
+    assert_ne!(i.id, first, "a fresh instance: the old particles are gone");
+    assert!(
+        i.playing && i.spawn_count == 10,
+        "Play On Awake spawns again"
+    );
+    drop(i);
+    let _ = std::fs::remove_dir_all(&dir);
+}

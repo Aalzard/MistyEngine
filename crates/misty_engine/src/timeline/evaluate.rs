@@ -200,7 +200,7 @@ impl Baseline {
         }
         for (&e, &on) in &self.active {
             if scene.contains(e) {
-                scene.game_object_mut(e).active = on;
+                scene.set_active(e, on);
             }
         }
         for (&e, (t, cam)) in &self.cameras {

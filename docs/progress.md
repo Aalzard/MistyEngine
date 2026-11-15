@@ -5628,3 +5628,70 @@ kept the controller it read at Play start; the edits were saved but only showed 
 warnings. Full `cargo test --workspace --release --no-fail-fast` green: editor 1026 passed,
 engine 1694, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2752, 15 new). No
 render code changed, so golden shots were not rerun.
+## Round 78 — Bug hunt 13: SetActive in physics, audio and effects at runtime (branch r78-qa13)
+
+Started by attacking round 76's change (physics follows objects switched on and off while
+playing), then audio sources, particle systems and Visual Effects at runtime. Each fix has a
+regression test that fails without it (checked by running the tests before the fix went in).
+
+### Fixes
+- **Switching an object off dropped its contacts without an exit (3D and 2D)**: the colliders
+  left the world and rapier reported their contacts as stopped, but the step only knew the
+  colliders still in the world, so the stop was thrown away. A zone's script saw
+  OnTriggerEnter, then OnTriggerEnter again when the object came back, and a script counting
+  what is inside never went back to zero; floors switched off under crates lost their
+  OnCollisionExit too. The colliders of switched-off objects are now kept for one step, so the
+  stops become OnTriggerExit / OnCollisionExit (and the 2D Exit phase), sent to the object that
+  is still active, as the familiar engine does (its Physics 2D "callbacks on disable"). Destroyed
+  objects are unchanged. Tests: `switching_off_sends_the_exit_for_its_contacts`,
+  `switching_off_sends_exit_2d`.
+- **A joint whose connected body was switched off and on stayed broken**: the joint left the
+  world with its connected body, and switching the body on rebuilt only that body's own joints,
+  so a lamp hanging from a hook fell for good. Objects switched on now rebuild the joints other
+  objects have to them; a joint added while its connected body is off waits for it instead of
+  being pinned to the world (with a "has no Rigidbody" warning). Test:
+  `a_joint_comes_back_with_its_connected_body`.
+- **One object switched on and off every frame cost ~3 ms per physics step in a big scene**: the
+  check walked every body (10 000 bodies: 2.8 ms, six times a whole step of the sleeping world),
+  in both worlds. The scene now logs which objects each change touched (`activity_scope`), and
+  physics looks only under them, falling back to the full walk after thousands of changes
+  (0.14 ms per toggle now, most of it rapier registering the object again).
+  Writing the Active flag an object already has (an animated Active property or a Timeline
+  activation track holding an object on, every frame; `SetActive(true)` in Update) no longer
+  counts as a change at all (`Scene::set_active`). Tests:
+  `writing_the_same_active_flag_is_no_activity`, `the_activity_scope_covers_the_switched_objects`.
+- **Play On Awake audio sources stayed silent when their object was switched on**: sources only
+  played when Play started or their object was created, so a pooled explosion's sound played
+  once, and a source whose object started inactive never played. They now play every time their
+  object is switched on or the component enabled again, like OnEnable in the familiar engine.
+  Test: `play_on_awake_sources_play_when_switched_on`.
+- **Switching Audio Listener jumped the pitch**: a cut to a camera with its own listener moved
+  the "ear" across the level in one frame, and Doppler took the jump as speed (pitch halved or
+  doubled for that frame). Velocity only counts while the listener stays the same object. Test:
+  `switching_listener_does_not_bend_the_pitch`.
+- **Particle systems and Visual Effects switched off and on carried on where they were**: a
+  pooled one-shot effect that had finished stayed finished when reused, and a looping one came
+  back with its particles frozen from when it was switched off. Systems and effects on switched-off
+  objects now lose their particles and start again (Play On Awake) when switched on, as the
+  familiar engine clears a disabled system and plays it again on enable. Tests:
+  `a_system_switched_off_and_on_starts_again`, `an_effect_switched_off_and_on_starts_again`.
+
+### Checked, no bug found
+- An object switched off and destroyed in the same frame (destroy removes it, the dormant entry
+  is dropped); `SetActive` toggled several times between two steps (net no change: no exit, no
+  enter); switching off from inside a collision callback (the other contacts of the batch skip
+  the inactive object, exits come next step); Character Controllers and kinematic bodies switched
+  off and on (rebuilt where the Transform is); inactive prefab children switched on (round 76's
+  test); Wheel Colliders (inactive wheels already skip the simulation).
+- Every way to change Active goes through `game_object_mut` (scripts, Script Graphs, Timeline,
+  animation, saves, UI); removal and re-parenting count too.
+- Audio voices stop with Stop / scene unload (`Audio` drops them) and with destroyed or disabled
+  sources; additive loads start Play On Awake sources through `add_objects`.
+- Visual Effects with zero-count spawns (stopped, Rate 0, bursts of 0, a 0 s step): the renderer
+  skips the emit dispatch; capacity 0 is a compile error, not an empty buffer.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1024 passed, engine 1690, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2746).
+No render code changed, so golden shots were not rerun.

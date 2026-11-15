@@ -134,6 +134,10 @@ pub struct Physics {
     dormant_set: HashSet<Entity>,
     /// `Scene::activity` when `sync_active` last looked (`None`: never).
     activity_seen: Option<u64>,
+    /// Colliders of objects switched off in this step, with their objects: rapier reports
+    /// their contacts as stopped, and the step turns those into exits (OnTriggerExit /
+    /// OnCollisionExit) instead of dropping them.
+    departed: HashMap<rp::ColliderHandle, Entity>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -222,6 +226,7 @@ impl Physics {
             dormant: Vec::new(),
             dormant_set: HashSet::new(),
             activity_seen: None,
+            departed: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -454,20 +459,24 @@ impl Physics {
         self.project_joints();
         let mut raw = std::mem::take(&mut self.pending);
         raw.extend(events.0.into_inner().unwrap_or_default());
-        raw.into_iter()
+        let contacts = raw
+            .into_iter()
             .filter_map(|ev| {
                 let (h1, h2, started) = match ev {
                     rp::CollisionEvent::Started(a, b, _) => (a, b, true),
                     rp::CollisionEvent::Stopped(a, b, _) => (a, b, false),
                 };
+                let owner = |h| self.colliders.get(&h).or_else(|| self.departed.get(&h));
                 Some(Contact {
-                    a: *self.colliders.get(&h1)?,
-                    b: *self.colliders.get(&h2)?,
+                    a: *owner(h1)?,
+                    b: *owner(h2)?,
                     started,
                     trigger: ev.sensor(),
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        self.departed.clear();
+        contacts
     }
 
     /// Dynamic bodies drive their Transform (interpolated ones are blended between steps).
@@ -644,16 +653,28 @@ impl Physics {
     /// while playing: a switched-off floor held boxes up and its triggers kept firing, and a
     /// switched-on Rigidbody hung in the air.
     pub fn sync_active(&mut self, scene: &Scene) {
-        if self.activity_seen == Some(scene.activity()) {
+        let now = scene.activity();
+        let seen = self.activity_seen.replace(now);
+        if seen == Some(now) {
             return;
         }
-        self.activity_seen = Some(scene.activity());
-        let off: Vec<Entity> = self
-            .owners
-            .iter()
-            .copied()
-            .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
-            .collect();
+        // Only under the objects changed since the last look (one object switched on and off
+        // every frame walked every body of a big scene); everything when that isn't known.
+        let scope = seen.and_then(|s| scene.activity_scope(s));
+        let off: Vec<Entity> = match &scope {
+            Some(near) => near
+                .iter()
+                .copied()
+                .filter(|e| self.owners.contains(e))
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+            None => self
+                .owners
+                .iter()
+                .copied()
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+        };
         for e in off {
             // Already gone with a switched-off object above it.
             if !self.owners.contains(&e) {
@@ -672,7 +693,23 @@ impl Physics {
                 }
                 cur = scene.parent(c);
             }
-            for x in scene.subtree(top) {
+            let subtree = scene.subtree(top);
+            // Its contacts end with exits: keep the colliders' objects for this step (a body
+            // takes its children's colliders with it, so they are listed first).
+            let gone: HashSet<Entity> = subtree
+                .iter()
+                .copied()
+                .filter(|x| self.owners.contains(x))
+                .collect();
+            if !gone.is_empty() {
+                self.departed.extend(
+                    self.colliders
+                        .iter()
+                        .filter(|(_, o)| gone.contains(*o))
+                        .map(|(h, o)| (*h, *o)),
+                );
+            }
+            for x in subtree {
                 self.remove(x);
                 if self.dormant_set.insert(x) {
                     self.dormant.push(x);
@@ -684,23 +721,46 @@ impl Physics {
             return;
         }
         let mut on = Vec::new();
-        for &e in &self.dormant {
-            if !self.dormant_set.contains(&e) {
-                continue;
+        match &scope {
+            Some(near) => {
+                for &e in near {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) {
+                        on.push(e);
+                    }
+                }
+                // A fixed order (bodies are added in it).
+                on.sort_unstable_by_key(|e| e.to_bits());
             }
-            if !scene.contains(e) {
-                self.dormant_set.remove(&e);
-            } else if scene.active_in_hierarchy(e) {
-                on.push(e);
+            None => {
+                for &e in &self.dormant {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) && self.dormant_set.remove(&e) {
+                        // (Listed once even if the list holds it twice.)
+                        on.push(e);
+                    }
+                }
             }
         }
         for e in &on {
             self.dormant_set.remove(e);
         }
-        let set = &self.dormant_set;
-        self.dormant.retain(|e| set.contains(e));
+        // The list keeps objects that left the set until it is mostly stale.
+        if self.dormant.len() > 2 * self.dormant_set.len() + 64 {
+            let set = &self.dormant_set;
+            self.dormant.retain(|e| set.contains(e));
+        }
         if !on.is_empty() {
             self.add_objects(scene, &on);
+            self.rejoin(scene, &on);
         }
     }
 

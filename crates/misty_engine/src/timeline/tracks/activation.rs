@@ -15,7 +15,7 @@ pub fn is_active(track: &Track, t: f32) -> bool {
 pub fn apply(scene: &mut Scene, track: &Track, e: Entity, t: f32, base: &mut Baseline) {
     let was = scene.game_object(e).active;
     base.active.entry(e).or_insert(was);
-    scene.game_object_mut(e).active = is_active(track, t);
+    scene.set_active(e, is_active(track, t));
 }
 
 /// Post-playback State, applied when the director stops.
@@ -32,5 +32,5 @@ pub fn finish(scene: &mut Scene, track: &Track, e: Entity, base: &Baseline) {
         },
         PostPlayback::LeaveAsIs => return,
     };
-    scene.game_object_mut(e).active = on;
+    scene.set_active(e, on);
 }

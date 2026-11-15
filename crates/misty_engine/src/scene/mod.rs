@@ -43,6 +43,8 @@ pub mod water;
 pub mod wheel_collider;
 pub mod wind_zone;
 
+use std::collections::HashSet;
+
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
@@ -120,7 +122,14 @@ pub struct Scene {
     /// Bumped by every change that can switch an object on or off (GameObject edits,
     /// re-parenting, removal): physics looks for switched objects only when it moved.
     activity: u64,
+    /// The object of each change since `activity_start` (in order), so physics looks only
+    /// under them; dropped when it grows past [`ACTIVITY_LOG`] (physics then looks at all).
+    activity_log: Vec<Entity>,
+    activity_start: u64,
 }
+
+/// Changes [`Scene::activity_log`] keeps before starting over.
+const ACTIVITY_LOG: usize = 4096;
 
 impl Default for Scene {
     fn default() -> Self {
@@ -197,6 +206,8 @@ impl Clone for Scene {
             frees: 0,
             free_top: top,
             activity: self.activity,
+            activity_log: Vec::new(),
+            activity_start: self.activity,
         }
     }
 }
@@ -219,6 +230,8 @@ impl Scene {
             frees: 0,
             free_top: 0,
             activity: 0,
+            activity_log: Vec::new(),
+            activity_start: 0,
         }
     }
 
@@ -280,10 +293,19 @@ impl Scene {
     }
 
     pub fn game_object_mut(&mut self, e: Entity) -> hecs::RefMut<'_, GameObject> {
-        self.activity = self.activity.wrapping_add(1);
+        self.note_activity(e);
         self.world
             .get::<&mut GameObject>(e)
             .expect("scene object has GameObject")
+    }
+
+    /// Switch `e` on or off (`SetActive`). Writing the flag it already has is no activity:
+    /// animated Active properties, Timeline activation tracks and scripts write it every
+    /// frame, and each change makes physics look for switched objects.
+    pub fn set_active(&mut self, e: Entity, on: bool) {
+        if self.game_object(e).active != on {
+            self.game_object_mut(e).active = on;
+        }
     }
 
     pub fn name(&self, e: Entity) -> String {
@@ -416,8 +438,42 @@ impl Scene {
         self.activity
     }
 
-    fn detach(&mut self, e: Entity) {
+    /// Count a change to `e` that could switch objects on or off.
+    fn note_activity(&mut self, e: Entity) {
+        if self.activity_log.len() >= ACTIVITY_LOG {
+            self.activity_log.clear();
+            self.activity_start = self.activity;
+        }
         self.activity = self.activity.wrapping_add(1);
+        self.activity_log.push(e);
+    }
+
+    /// The objects that may have been switched on or off since `activity()` was `seen`: the
+    /// changed objects with everything under them (removed ones too). `None` when that is not
+    /// known any more (too many changes since): look at every object.
+    pub fn activity_scope(&self, seen: u64) -> Option<HashSet<Entity>> {
+        let back = self.activity.wrapping_sub(seen);
+        let kept = self.activity.wrapping_sub(self.activity_start);
+        if back > kept || kept != self.activity_log.len() as u64 {
+            return None;
+        }
+        let changed = &self.activity_log[self.activity_log.len() - back as usize..];
+        let mut out = HashSet::new();
+        for &x in changed {
+            if out.contains(&x) {
+                continue;
+            }
+            if self.contains(x) {
+                out.extend(self.subtree(x));
+            } else {
+                out.insert(x);
+            }
+        }
+        Some(out)
+    }
+
+    fn detach(&mut self, e: Entity) {
+        self.note_activity(e);
         match self.parent(e) {
             Some(p) => {
                 if let Ok(mut n) = self.world.get::<&mut Node>(p) {

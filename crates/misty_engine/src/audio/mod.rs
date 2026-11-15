@@ -116,7 +116,11 @@ pub struct Audio {
     mixers: Vec<MixerState>,
     /// Positions last frame, for Doppler.
     last_pos: HashMap<Entity, Vec3>,
-    last_ear: Option<Vec3>,
+    /// The listener last frame and where it was (a different listener has no speed).
+    last_ear: Option<(Entity, Vec3)>,
+    /// Play On Awake sources that were switched off (or disabled) when last looked: they play
+    /// when switched on, like the familiar engine's OnEnable.
+    asleep: HashSet<Entity>,
     /// Scaled seconds of the current frame (`tick`).
     dt: f32,
     muted: bool,
@@ -242,6 +246,7 @@ impl Audio {
             mixers: Vec::new(),
             last_pos: HashMap::new(),
             last_ear: None,
+            asleep: HashSet::new(),
             dt: 0.0,
             muted: false,
             paused: false,
@@ -689,16 +694,23 @@ impl Audio {
     /// Per frame: stop voices of destroyed/disabled sources, drop finished ones, update volume,
     /// pitch and pan from the current positions, and push mixer values to their tracks.
     pub fn update(&mut self, scene: &Scene) {
+        self.wake(scene);
         if self.backend.is_none() {
             return;
         }
         let mut ended: Vec<(VoiceId, Route)> = Vec::new();
+        let ear = listener_entity(scene);
+        // A cut to another listener is no movement of the ear (Doppler).
+        let last_ear = self
+            .last_ear
+            .filter(|(l, _)| Some(*l) == ear)
+            .map(|(_, p)| p);
         let ctx = Ctx::moving(
             scene,
             &self.mixers,
             self.muted,
             self.dt,
-            self.last_ear,
+            last_ear,
             &self.last_pos,
         );
         let Self {
@@ -752,11 +764,32 @@ impl Audio {
         for (id, p, _) in planned {
             b.set(id, p);
         }
-        let (ear, positions) = ctx.positions(scene, sources.keys().copied());
-        self.last_ear = ear;
+        let (ear_pos, positions) = ctx.positions(scene, sources.keys().copied());
+        self.last_ear = ear.zip(ear_pos);
         self.last_pos = positions;
         for (id, route) in ended {
             self.end(id, route);
+        }
+    }
+
+    /// Play On Awake sources switched on (object activated, component enabled) since the last
+    /// frame start playing; a pooled object's sound plays every time it is reused.
+    fn wake(&mut self, scene: &Scene) {
+        let mut asleep = HashSet::new();
+        let mut wake = Vec::new();
+        for (e, s) in scene.world.query::<(Entity, &AudioSource)>().iter() {
+            if !s.play_on_awake {
+                continue;
+            }
+            if !s.enabled || !scene.active_in_hierarchy(e) {
+                asleep.insert(e);
+            } else if self.asleep.contains(&e) {
+                wake.push(e);
+            }
+        }
+        self.asleep = asleep;
+        for e in wake {
+            self.play(scene, e);
         }
     }
 
@@ -832,14 +865,18 @@ fn playable(scene: &Scene, e: Entity) -> Option<AudioSource> {
 
 /// World matrix of the first enabled, active Audio Listener.
 pub fn listener(scene: &Scene) -> Option<Mat4> {
-    let e = scene
+    listener_entity(scene).map(|e| scene.world_matrix(e))
+}
+
+/// The first enabled, active Audio Listener.
+pub fn listener_entity(scene: &Scene) -> Option<Entity> {
+    scene
         .world
         .query::<(Entity, &AudioListener)>()
         .iter()
         .filter(|(e, l)| l.enabled && scene.active_in_hierarchy(*e))
         .map(|(e, _)| e)
-        .next()?;
-    Some(scene.world_matrix(e))
+        .next()
 }
 
 #[cfg(test)]

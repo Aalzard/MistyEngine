@@ -379,7 +379,7 @@ impl UserData for LGameObject {
         m.add_method("SetActive", |lua, g, on: bool| {
             with_world(lua, |w| {
                 alive(w, g.0)?;
-                w.scene.game_object_mut(g.0).active = on;
+                w.scene.set_active(g.0, on);
                 Ok(())
             })?
         });

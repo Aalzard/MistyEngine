@@ -79,6 +79,9 @@ pub struct Physics2D {
     dormant_set: HashSet<Entity>,
     /// `Scene::activity` when `sync_active` last looked.
     activity_seen: Option<u64>,
+    /// Colliders of objects switched off since the last step, with their objects: rapier
+    /// reports their contacts as stopped and the step turns them into Exit contacts.
+    departed: HashMap<rp::ColliderHandle, Entity>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -123,6 +126,7 @@ impl Physics2D {
             dormant: Vec::new(),
             dormant_set: HashSet::new(),
             activity_seen: None,
+            departed: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
@@ -239,8 +243,14 @@ impl Physics2D {
                 body.set_angvel(w, true);
             }
         }
-        self.contacts
-            .update(&self.world, &self.colliders, events.take(), &before)
+        let departed = std::mem::take(&mut self.departed);
+        self.contacts.update(
+            &self.world,
+            &self.colliders,
+            &departed,
+            events.take(),
+            &before,
+        )
     }
 
     /// Linear velocities of the bodies before a step (for relative velocities of new contacts).
@@ -435,16 +445,28 @@ impl Physics2D {
     /// object that was switched off), objects switched on join it (see
     /// `Physics::sync_active`). Call before a step.
     pub fn sync_active(&mut self, scene: &Scene) {
-        if self.activity_seen == Some(scene.activity()) {
+        let now = scene.activity();
+        let seen = self.activity_seen.replace(now);
+        if seen == Some(now) {
             return;
         }
-        self.activity_seen = Some(scene.activity());
-        let off: Vec<Entity> = self
-            .owners
-            .iter()
-            .copied()
-            .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
-            .collect();
+        // Only under the objects changed since the last look (one object switched on and off
+        // every frame walked every body of a big scene); everything when that isn't known.
+        let scope = seen.and_then(|s| scene.activity_scope(s));
+        let off: Vec<Entity> = match &scope {
+            Some(near) => near
+                .iter()
+                .copied()
+                .filter(|e| self.owners.contains(e))
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+            None => self
+                .owners
+                .iter()
+                .copied()
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+        };
         for e in off {
             if !self.owners.contains(&e) {
                 continue;
@@ -461,7 +483,23 @@ impl Physics2D {
                 }
                 cur = scene.parent(c);
             }
-            for x in scene.subtree(top) {
+            let subtree = scene.subtree(top);
+            // Their contacts end with Exit (the familiar engine's Physics 2D calls back when
+            // a collider is switched off): keep the colliders' objects until the next step.
+            let gone: HashSet<Entity> = subtree
+                .iter()
+                .copied()
+                .filter(|x| self.owners.contains(x))
+                .collect();
+            if !gone.is_empty() {
+                self.departed.extend(
+                    self.colliders
+                        .iter()
+                        .filter(|(_, o)| gone.contains(*o))
+                        .map(|(h, o)| (*h, *o)),
+                );
+            }
+            for x in subtree {
                 self.remove(x);
                 if self.dormant_set.insert(x) {
                     self.dormant.push(x);
@@ -469,21 +507,43 @@ impl Physics2D {
             }
         }
         let mut on = Vec::new();
-        for &e in &self.dormant {
-            if !self.dormant_set.contains(&e) {
-                continue;
+        match &scope {
+            Some(near) => {
+                for &e in near {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) {
+                        on.push(e);
+                    }
+                }
+                // A fixed order (bodies are added in it).
+                on.sort_unstable_by_key(|e| e.to_bits());
             }
-            if !scene.contains(e) {
-                self.dormant_set.remove(&e);
-            } else if scene.active_in_hierarchy(e) {
-                on.push(e);
+            None => {
+                for &e in &self.dormant {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) && self.dormant_set.remove(&e) {
+                        // (Listed once even if the list holds it twice.)
+                        on.push(e);
+                    }
+                }
             }
         }
         for e in &on {
             self.dormant_set.remove(e);
         }
-        let set = &self.dormant_set;
-        self.dormant.retain(|e| set.contains(e));
+        // The list keeps objects that left the set until it is mostly stale.
+        if self.dormant.len() > 2 * self.dormant_set.len() + 64 {
+            let set = &self.dormant_set;
+            self.dormant.retain(|e| set.contains(e));
+        }
         if !on.is_empty() {
             self.add_objects(scene, &on);
         }

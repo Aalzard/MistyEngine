@@ -102,7 +102,7 @@ pub fn write(scene: &mut Scene, e: Entity, p: Property, value: f32) {
             }
             scene.set_transform(e, t);
         }
-        Property::Active => scene.game_object_mut(e).active = value >= 0.5,
+        Property::Active => scene.set_active(e, value >= 0.5),
         Property::HumanRotation(_) | Property::HumanPosition(_) => {}
         Property::BlendShape(i) => {
             if let Ok(mut r) = scene.world.get::<&mut crate::scene::SkinnedMeshRenderer>(e) {

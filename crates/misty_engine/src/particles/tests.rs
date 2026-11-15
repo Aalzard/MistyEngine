@@ -1022,3 +1022,55 @@ fn huge_rates_and_bursts_stop_at_max_particles() {
     run(&mut e, &s, 0.5);
     assert_eq!(e.count(), 50);
 }
+
+/// A pooled explosion (a one-shot burst, Play On Awake) switched off and on again restarts,
+/// as the familiar engine plays such a system again when its object is enabled: the emitter
+/// used to stay as it was (finished, so the reused explosion never showed, and a looping
+/// system went on with the particles frozen while it was off).
+#[test]
+fn a_system_switched_off_and_on_starts_again() {
+    let mut scene = Scene::new("Particles");
+    let e = scene.spawn("Explosion", None);
+    let mut s = burst(5, 1.0, 0.5);
+    s.main.looping = false;
+    s.main.duration = 1.0;
+    scene.add(e, s);
+    let count = |sc: &Scene| sc.world.get::<&ParticleEmitter>(e).map_or(0, |m| m.count());
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    assert_eq!(count(&scene), 5);
+    for _ in 0..120 {
+        update(&mut scene, DT, DEFAULT_GRAVITY);
+    }
+    assert_eq!(count(&scene), 0, "the burst is over");
+
+    scene.game_object_mut(e).active = false;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    scene.game_object_mut(e).active = true;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    assert_eq!(count(&scene), 5, "reused from the pool: it explodes again");
+
+    // Switched off mid-life: the particles go with it, the system starts over when back.
+    scene.game_object_mut(e).active = false;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    assert_eq!(
+        count(&scene),
+        0,
+        "an object switched off keeps no particles"
+    );
+    scene.game_object_mut(e).active = true;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    assert_eq!(count(&scene), 5);
+
+    // Without Play On Awake it stays stopped when switched on.
+    scene
+        .world
+        .get::<&mut ParticleSystem>(e)
+        .unwrap()
+        .main
+        .play_on_awake = false;
+    scene.game_object_mut(e).active = false;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    scene.game_object_mut(e).active = true;
+    update(&mut scene, DT, DEFAULT_GRAVITY);
+    assert_eq!(count(&scene), 0);
+}

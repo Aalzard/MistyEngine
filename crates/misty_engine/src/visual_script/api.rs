@@ -267,7 +267,7 @@ fn go_active(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
 fn go_set_active(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(), String> {
     let e = cx.obj(i[0])?;
     let on = cx.b(i[1]);
-    cx.world.scene.game_object_mut(e).active = on;
+    cx.world.scene.set_active(e, on);
     Ok(())
 }
 

@@ -601,3 +601,76 @@ fn non_finite_script_numbers_leave_bodies_finite_and_find_nothing() {
             .is_empty()
     );
 }
+
+/// Steps with the activity check a playing game runs before each step.
+fn run_synced(p: &mut Physics2D, scene: &mut Scene, steps: usize) -> Vec<Contact2D> {
+    let mut all = Vec::new();
+    for _ in 0..steps {
+        p.sync_active(scene);
+        all.extend(p.step());
+        p.sync_out(scene);
+    }
+    all
+}
+
+/// Contacts between `x` and `y` (either order) with this trigger flag and phase.
+fn count(cs: &[Contact2D], x: Entity, y: Entity, trigger: bool, phase: Phase) -> usize {
+    cs.iter()
+        .filter(|c| {
+            c.trigger == trigger
+                && c.phase == phase
+                && ((c.a == x && c.b == y) || (c.a == y && c.b == x))
+        })
+        .count()
+}
+
+/// An object switched off inside a trigger (or the trigger switched off, or a floor under a
+/// box) left its contacts without an Exit: the pair was forgotten, so a script saw
+/// OnTriggerEnter2D twice when the object came back (the familiar engine's Physics 2D sends
+/// the exit callbacks when a collider is switched off).
+#[test]
+fn switching_off_sends_exit_2d() {
+    let mut scene = Scene::new("t");
+    let floor = ground(&mut scene, 0.0);
+    let b = crate_box(&mut scene, Vec2::new(0.0, 1.0));
+    let zone = object(&mut scene, "Zone", Vec2::new(5.0, 3.0));
+    scene.add(
+        zone,
+        BoxCollider2D {
+            common: Collider2DCommon {
+                is_trigger: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    );
+    let guest = object(&mut scene, "Guest", Vec2::new(5.0, 3.0));
+    scene.add(
+        guest,
+        Rigidbody2D {
+            body_type: BodyType2D::Kinematic,
+            ..Default::default()
+        },
+    );
+    scene.add(guest, BoxCollider2D::default());
+    let mut p = build(&scene);
+    let first = run_synced(&mut p, &mut scene, 30);
+    assert_eq!(count(&first, zone, guest, true, Phase::Enter), 1);
+    assert_eq!(count(&first, floor, b, false, Phase::Enter), 1);
+
+    scene.game_object_mut(guest).active = false;
+    let off = run_synced(&mut p, &mut scene, 5);
+    assert_eq!(count(&off, zone, guest, true, Phase::Exit), 1, "{off:?}");
+    assert_eq!(count(&off, zone, guest, true, Phase::Stay), 0);
+    scene.game_object_mut(guest).active = true;
+    let on = run_synced(&mut p, &mut scene, 5);
+    assert_eq!(count(&on, zone, guest, true, Phase::Enter), 1, "{on:?}");
+
+    scene.game_object_mut(zone).active = false;
+    let off = run_synced(&mut p, &mut scene, 5);
+    assert_eq!(count(&off, zone, guest, true, Phase::Exit), 1, "{off:?}");
+
+    scene.game_object_mut(floor).active = false;
+    let off = run_synced(&mut p, &mut scene, 2);
+    assert_eq!(count(&off, floor, b, false, Phase::Exit), 1, "{off:?}");
+}
