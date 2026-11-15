@@ -45,9 +45,8 @@ pub fn category(rel: &str) -> &'static str {
     }
     match ext {
         "meta" => "Import Settings",
-        "png" | "jpg" | "jpeg" | "hdr" | "exr" | "tga" | "bmp" | "psd" | "dds" | "ktx2" => {
-            "Textures"
-        }
+        "png" | "jpg" | "jpeg" | "tif" | "tiff" | "hdr" | "exr" | "tga" | "bmp" | "psd" | "dds"
+        | "ktx2" => "Textures",
         "gltf" | "glb" | "bin" | "fbx" | "obj" | "vgeo" | "mesh" => "Meshes",
         "wav" | "ogg" | "mp3" | "flac" => "Audio",
         "mp4" | "webm" | "mkv" | "mov" | "avi" | "y4m" => "Video",

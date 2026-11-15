@@ -110,7 +110,7 @@ fn decode(path: &Path) -> Option<egui::ColorImage> {
             &rgba,
         ));
     }
-    let img = misty_engine::image::open(path).ok()?;
+    let img = misty_engine::render::texture::open(path).ok()?;
     let small = img.thumbnail(SIZE, SIZE).into_rgba8();
     let size = [small.width() as usize, small.height() as usize];
     Some(egui::ColorImage::from_rgba_unmultiplied(

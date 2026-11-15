@@ -116,7 +116,7 @@ pub fn material_name(rel: Option<&str>) -> String {
 }
 
 /// File extensions loaded as textures.
-pub const TEXTURE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
+pub const TEXTURE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "tif", "tiff"];
 
 pub fn is_texture(path: &str) -> bool {
     has_extension(path, &TEXTURE_EXTENSIONS)

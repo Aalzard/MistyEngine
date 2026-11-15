@@ -56,6 +56,11 @@ fn stamps(path: &str) -> Vec<Option<SystemTime>> {
         for tex in t.textures() {
             out.push(stamp(tex));
         }
+        // A model tree: the model file and its import settings.
+        if !t.model.is_empty() {
+            out.push(stamp(&t.model));
+            out.push(stamp(&format!("{}.meta", t.model)));
+        }
     }
     out
 }
@@ -65,7 +70,9 @@ fn load_image(rel: &str) -> Option<RgbaImage> {
         return None;
     }
     let bytes = crate::vfs::read(crate::assets::absolute(rel)).ok()?;
-    image::load_from_memory(&bytes).ok().map(|i| i.into_rgba8())
+    crate::render::texture::decode(&bytes)
+        .ok()
+        .map(|i| i.into_rgba8())
 }
 
 /// Mean linear colour of the opaque texels.
@@ -93,31 +100,58 @@ pub fn bake_textures(t: &TreeAsset) -> BakeTextures {
     }
 }
 
-/// Build the model of a recipe (any thread).
+/// Build the model of a recipe (any thread). A model tree ([`TreeAsset::model`]) whose model
+/// can't be read is built as the generated tree of the recipe ([`try_build`] reports why).
 pub fn build(asset: TreeAsset) -> Built {
-    let textures = bake_textures(&asset);
-    let model = generate::build(&asset, &textures);
-    Built {
-        asset,
-        model,
-        version: next_version(),
+    match try_build(asset.clone()) {
+        Ok(b) => b,
+        Err(_) => {
+            let textures = bake_textures(&asset);
+            let model = generate::build(&asset, &textures);
+            Built {
+                asset,
+                model,
+                version: next_version(),
+            }
+        }
     }
 }
 
+/// Build the model of a recipe (any thread): generated, or from its model file.
+pub fn try_build(mut asset: TreeAsset) -> Result<Built, String> {
+    let textures = bake_textures(&asset);
+    let model = if asset.model.is_empty() {
+        generate::build(&asset, &textures)
+    } else {
+        let m = generate::build_from_model(&asset, &textures)?;
+        // The renderer scales the wind by the recipe's height: the model's own.
+        asset.height = m.height;
+        m
+    };
+    Ok(Built {
+        asset,
+        model,
+        version: next_version(),
+    })
+}
+
 fn build_path(path: &str) -> Result<Built, String> {
-    let asset = TreeAsset::load(&crate::assets::absolute(path))?;
+    let mut asset = TreeAsset::load(&crate::assets::absolute(path))?;
     if !super::cache::enabled() {
-        return Ok(build(asset));
+        return try_build(asset);
     }
     let file = super::cache::path(&asset);
     if let Some(model) = super::cache::load(&file) {
+        if !asset.model.is_empty() {
+            asset.height = model.height;
+        }
         return Ok(Built {
             asset,
             model,
             version: next_version(),
         });
     }
-    let built = build(asset);
+    let built = try_build(asset)?;
     // A cache that cannot be written only costs the next launch the build.
     let _ = super::cache::save(&file, &built.model);
     Ok(built)

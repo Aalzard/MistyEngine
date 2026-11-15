@@ -12,6 +12,7 @@ mod fbx_import;
 mod gltf_anim;
 mod gltf_import;
 mod gltf_materials;
+pub mod named_textures;
 mod obj_import;
 pub mod preview;
 pub mod process;
@@ -167,6 +168,16 @@ pub struct ModelMaterial {
 pub enum ExtraMap {
     /// `KHR_materials_clearcoat` normal texture → Clear Coat ▸ Normal Map.
     ClearCoatNormal,
+    /// A greyscale ambient occlusion map → Occlusion.
+    Occlusion,
+    /// A greyscale gloss (smoothness) map: extraction packs it into a Metallic map (alpha =
+    /// smoothness, the Standard material's layout).
+    Gloss,
+    /// A greyscale roughness map: packed like [`Self::Gloss`], inverted.
+    Roughness,
+    /// A greyscale translucency map (white = light comes through): extraction writes it
+    /// inverted as the Translucency feature's Thickness map.
+    Translucency,
 }
 
 impl ExtraMap {
@@ -174,6 +185,9 @@ impl ExtraMap {
     pub fn label(self) -> &'static str {
         match self {
             Self::ClearCoatNormal => "ClearCoatNormal",
+            Self::Occlusion => "Occlusion",
+            Self::Gloss | Self::Roughness => "MetallicSmoothness",
+            Self::Translucency => "Thickness",
         }
     }
 
@@ -181,7 +195,33 @@ impl ExtraMap {
     pub fn slot(self, m: &mut Material) -> &mut Option<String> {
         match self {
             Self::ClearCoatNormal => &mut m.features.clear_coat.normal_map,
+            Self::Occlusion => &mut m.occlusion_map,
+            Self::Gloss | Self::Roughness => &mut m.metallic_map,
+            Self::Translucency => &mut m.features.translucency.thickness_map,
         }
+    }
+
+    /// The Standard material reads this map differently from the source image: extraction
+    /// writes a converted copy ([`Self::convert`]) instead of pointing at the file.
+    pub fn converted(self) -> bool {
+        matches!(self, Self::Gloss | Self::Roughness | Self::Translucency)
+    }
+
+    /// The source image as the texture the material slot expects.
+    pub fn convert(self, src: &image::RgbaImage) -> image::RgbaImage {
+        let mut out = src.clone();
+        for p in out.pixels_mut() {
+            let v = p[0];
+            *p = match self {
+                // R = metallic (none), A = smoothness.
+                Self::Gloss => image::Rgba([0, 0, 0, v]),
+                Self::Roughness => image::Rgba([0, 0, 0, 255 - v]),
+                // R = thickness: white = no light through.
+                Self::Translucency => image::Rgba([255 - v, 255 - v, 255 - v, 255]),
+                Self::ClearCoatNormal | Self::Occlusion => *p,
+            };
+        }
+        out
     }
 }
 

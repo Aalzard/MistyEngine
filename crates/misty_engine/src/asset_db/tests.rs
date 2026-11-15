@@ -177,6 +177,69 @@ fn settings_writes_keep_the_guid() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// A Unity asset pack copied into the project brings Unity's YAML `.meta` files: the scan
+/// takes them over (a GUID, and the import settings Misty has as well).
+#[test]
+fn unity_meta_files_are_taken_over() {
+    let root = temp("unity_meta");
+    write(&root, "Assets/Pack/Tree.fbx", "fbx");
+    write(
+        &root,
+        "Assets/Pack/Tree.fbx.meta",
+        "fileFormatVersion: 2
+guid: ecf79f82681e62140adeb13fd61158c5
+ModelImporter:
+  meshes:
+    globalScale: 1.17
+    useFileScale: 1
+  humanDescription:
+    globalScale: 0.03
+",
+    );
+    write(&root, "Assets/Pack/Bump.png", "png");
+    write(
+        &root,
+        "Assets/Pack/Bump.png.meta",
+        "fileFormatVersion: 2
+guid: 4e33ac5f608e9da4397fa9720b91a387
+TextureImporter:
+  mipmaps:
+    sRGBTexture: 0
+  maxTextureSize: 1024
+  textureType: 1
+",
+    );
+    write(&root, "Assets/Pack/Other.txt", "text");
+    write(&root, "Assets/Pack/Other.txt.meta", "not json, not unity");
+    let (db, report) = GuidDatabase::scan(&root);
+    assert!(db.guid_of("Assets/Pack/Tree.fbx").is_some());
+    assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+    let model = root.join("Assets/Pack/Tree.fbx");
+    assert_eq!(meta::read_guid(&model), db.guid_of("Assets/Pack/Tree.fbx"));
+    let s = crate::models::ModelImporter::load(&model);
+    assert_eq!(s.scale_factor, 1.17);
+    assert!(s.convert_units);
+    let t = crate::sprites::import::TextureImporter::load(&root.join("Assets/Pack/Bump.png"));
+    assert_eq!(
+        t.texture_type,
+        crate::sprites::import::TextureType::NormalMap
+    );
+    assert!(!t.srgb);
+    assert_eq!(t.max_size, 1024);
+    // A second scan changes nothing.
+    let before = std::fs::read_to_string(meta::meta_path(&model)).unwrap();
+    let (again, _) = GuidDatabase::scan(&root);
+    assert_eq!(
+        again.guid_of("Assets/Pack/Tree.fbx"),
+        db.guid_of("Assets/Pack/Tree.fbx")
+    );
+    assert_eq!(
+        std::fs::read_to_string(meta::meta_path(&model)).unwrap(),
+        before
+    );
+    std::fs::remove_dir_all(root).ok();
+}
+
 #[test]
 fn the_watcher_walks_on_a_thread_and_reports_new_files() {
     // The watcher's own database and walk, not the process-wide ones: other tests running at

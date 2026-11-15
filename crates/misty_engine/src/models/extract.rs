@@ -138,6 +138,29 @@ fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Ve
         // Feature maps from glTF extensions (Clear Coat normal).
         for (map, source) in &m.extra_maps {
             let rel = match source {
+                // Maps the material reads differently (gloss, translucency): a converted
+                // copy next to the material.
+                source if map.converted() => {
+                    let png = dir.join(format!("{stem}_{}.png", map.label()));
+                    if !png.exists() {
+                        let bytes = match source {
+                            TextureSource::File(p) => {
+                                crate::vfs::read(p).map_err(|e| format!("{}: {e}", p.display()))?
+                            }
+                            TextureSource::Embedded(bytes) => bytes.clone(),
+                        };
+                        let img = crate::render::texture::decode(&bytes)
+                            .map_err(|e| format!("{}: {e}", png.display()))?
+                            .into_rgba8();
+                        // (The 2K the material would be drawn at.)
+                        let img = crate::render::texture::fit(img, 2048);
+                        map.convert(&img)
+                            .save_with_format(&png, image::ImageFormat::Png)
+                            .map_err(|e| format!("{}: {e}", png.display()))?;
+                        created.push(root.relative(&png));
+                    }
+                    root.relative(&png)
+                }
                 TextureSource::File(p) => root.relative(p),
                 TextureSource::Embedded(bytes) => {
                     let png = dir.join(format!("{stem}_{}.png", map.label()));
@@ -161,7 +184,7 @@ fn write_png(bytes: &[u8], path: &Path) -> Result<(), String> {
     if bytes.starts_with(b"\x89PNG") {
         return std::fs::write(path, bytes).map_err(|e| e.to_string());
     }
-    image::load_from_memory(bytes)
+    crate::render::texture::decode(bytes)
         .and_then(|img| img.save_with_format(path, image::ImageFormat::Png))
         .map_err(|e| format!("{}: {e}", path.display()))
 }

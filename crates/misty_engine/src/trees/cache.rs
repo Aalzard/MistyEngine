@@ -22,7 +22,8 @@ const FORMAT: u32 = 1;
 const MAGIC: &[u8; 4] = b"MTRE";
 
 /// The generator's source: a change to how trees are built is a different key.
-const GENERATOR: [&str; 4] = [
+const GENERATOR: [&str; 5] = [
+    include_str!("from_model.rs"),
     include_str!("generate.rs"),
     include_str!("impostor.rs"),
     include_str!("mod.rs"),
@@ -42,7 +43,13 @@ pub(super) fn path(asset: &TreeAsset) -> PathBuf {
     serde_json::to_string(asset)
         .unwrap_or_default()
         .hash(&mut h);
-    for rel in asset.textures() {
+    let model_meta = format!("{}.meta", asset.model);
+    let model_files = [&asset.model, &model_meta];
+    let files = asset
+        .textures()
+        .into_iter()
+        .chain(model_files.into_iter().filter(|_| !asset.model.is_empty()));
+    for rel in files {
         rel.hash(&mut h);
         let meta = std::fs::metadata(crate::assets::absolute(rel)).ok();
         meta.as_ref().map(|m| m.len()).hash(&mut h);

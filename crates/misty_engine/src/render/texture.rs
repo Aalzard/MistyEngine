@@ -86,13 +86,84 @@ pub fn mip_chain(image: RgbaImage, srgb: bool) -> Vec<RgbaImage> {
     }
 }
 
-/// Decode a PNG/JPG file as RGBA8 (scaled down if larger than [`MAX_SIZE`]).
+/// TIFF files whose fourth channel is marked "unspecified" (ExtraSamples 0: how Photoshop
+/// saves an alpha channel, so most asset-pack TIFFs) would decode without it; `bytes` with
+/// that channel marked as alpha (unassociated). Any other data comes back as it is.
+pub fn tiff_alpha(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    use std::borrow::Cow;
+    let le = match bytes.get(..4) {
+        Some([b'I', b'I', 42, 0]) => true,
+        Some([b'M', b'M', 0, 42]) => false,
+        _ => return Cow::Borrowed(bytes),
+    };
+    let u16_at = |at: usize| {
+        let b = bytes.get(at..at + 2)?;
+        Some(if le {
+            u16::from_le_bytes([b[0], b[1]])
+        } else {
+            u16::from_be_bytes([b[0], b[1]])
+        })
+    };
+    let u32_at = |at: usize| {
+        let b = bytes.get(at..at + 4)?;
+        Some(if le {
+            u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+        } else {
+            u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+        })
+    };
+    // The first image's tags: (tag, type, count, value) of 12 bytes each.
+    let find = || {
+        let ifd = u32_at(4)? as usize;
+        let n = u16_at(ifd)? as usize;
+        let (mut samples, mut extra) = (0u16, None);
+        for i in 0..n {
+            let at = ifd + 2 + i * 12;
+            let (tag, kind, count) = (u16_at(at)?, u16_at(at + 2)?, u32_at(at + 4)?);
+            match tag {
+                // SamplesPerPixel.
+                277 => samples = u16_at(at + 8)?,
+                // ExtraSamples: one SHORT, stored in the entry itself.
+                338 if kind == 3 && count == 1 && u16_at(at + 8)? == 0 => extra = Some(at + 8),
+                _ => {}
+            }
+        }
+        // Grey + 1 or RGB + 1.
+        extra.filter(|_| samples == 2 || samples == 4)
+    };
+    match find() {
+        Some(at) => {
+            let mut fixed = bytes.to_vec();
+            // 2 = unassociated alpha.
+            let alpha = if le {
+                2u16.to_le_bytes()
+            } else {
+                2u16.to_be_bytes()
+            };
+            fixed[at..at + 2].copy_from_slice(&alpha);
+            Cow::Owned(fixed)
+        }
+        None => Cow::Borrowed(bytes),
+    }
+}
+
+/// Decode image bytes (PNG, JPEG, TIFF, ...; the format is found from the data), keeping a
+/// TIFF's alpha channel ([`tiff_alpha`]).
+pub fn decode(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
+    image::load_from_memory(&tiff_alpha(bytes))
+}
+
+/// Decode an image file on disk ([`decode`]).
+pub fn open(path: &Path) -> Result<image::DynamicImage, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    decode(&bytes).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Decode a PNG/JPG/TIFF file as RGBA8 (scaled down if larger than [`MAX_SIZE`]).
 pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
     let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
     let bytes = crate::vfs::read(path).map_err(|e| err(&e))?;
-    let img = image::load_from_memory(&bytes)
-        .map_err(|e| err(&e))?
-        .into_rgba8();
+    let img = decode(&bytes).map_err(|e| err(&e))?.into_rgba8();
     if img.width() == 0 || img.height() == 0 {
         return Err(err(&"the image has no pixels"));
     }
@@ -1132,6 +1203,103 @@ fn stamps_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A minimal uncompressed TIFF, 8 bits a sample, RGB plus a fourth channel marked with
+    /// ExtraSamples `extra` (0 = unspecified, as Photoshop writes alpha; 2 = alpha).
+    fn rgbx_tiff(w: u32, h: u32, pixels: &[u8], extra: u16) -> Vec<u8> {
+        assert_eq!(pixels.len() as u32, w * h * 4);
+        let entries: [(u16, u16, u32, u32); 11] = [
+            (256, 4, 1, w),
+            (257, 4, 1, h),
+            (258, 3, 4, 146),
+            (259, 3, 1, 1),
+            (262, 3, 1, 2),
+            (273, 4, 1, 154),
+            (277, 3, 1, 4),
+            (278, 4, 1, h),
+            (279, 4, 1, w * h * 4),
+            (284, 3, 1, 1),
+            (338, 3, 1, extra as u32),
+        ];
+        let mut out = vec![b'I', b'I', 42, 0];
+        out.extend(8u32.to_le_bytes());
+        out.extend((entries.len() as u16).to_le_bytes());
+        for (tag, kind, count, value) in entries {
+            out.extend(tag.to_le_bytes());
+            out.extend(kind.to_le_bytes());
+            out.extend(count.to_le_bytes());
+            out.extend(value.to_le_bytes());
+        }
+        out.extend(0u32.to_le_bytes());
+        assert_eq!(out.len(), 146);
+        for _ in 0..4 {
+            out.extend(8u16.to_le_bytes());
+        }
+        out.extend_from_slice(pixels);
+        out
+    }
+
+    fn tiff_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("misty_tiff_{tag}_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn tiff_files_load_as_textures() {
+        assert!(crate::assets::is_texture("Assets/Bark.tif"));
+        assert!(crate::assets::is_texture("Assets/Bark.TIFF"));
+        let dir = tiff_dir("load");
+        // 8 bits and 16 bits a channel (normal maps of some packs).
+        let mut rgb = image::RgbImage::new(5, 3);
+        for (x, y, p) in rgb.enumerate_pixels_mut() {
+            *p = image::Rgb([x as u8 * 50, y as u8 * 100, 7]);
+        }
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        rgb.write_to(&mut bytes, image::ImageFormat::Tiff).unwrap();
+        let path = dir.join("rgb8.tif");
+        std::fs::write(&path, bytes.get_ref()).unwrap();
+        let img = load_image(&path).unwrap();
+        assert_eq!(img.dimensions(), (5, 3));
+        assert_eq!(img.get_pixel(4, 2).0, [200, 200, 7, 255]);
+        assert_eq!(image_size(&path), Some([5, 3]));
+        let deep = image::ImageBuffer::<image::Rgb<u16>, _>::from_fn(4, 4, |x, _| {
+            image::Rgb([x as u16 * 0x1111, 0x8080, 0xffff])
+        });
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb16(deep)
+            .write_to(&mut bytes, image::ImageFormat::Tiff)
+            .unwrap();
+        let path = dir.join("rgb16.tiff");
+        std::fs::write(&path, bytes.get_ref()).unwrap();
+        let img = load_image(&path).unwrap();
+        assert_eq!(img.get_pixel(3, 0).0, [0x33, 0x80, 0xff, 255]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Photoshop saves an alpha channel as an "unspecified" extra sample: it is the alpha.
+    #[test]
+    fn tiff_unspecified_fourth_channel_is_alpha() {
+        let dir = tiff_dir("alpha");
+        let pixels = [
+            10, 20, 30, 0, 40, 50, 60, 128, //
+            70, 80, 90, 255, 1, 2, 3, 77,
+        ];
+        for extra in [0, 2] {
+            let path = dir.join(format!("cut{extra}.tif"));
+            std::fs::write(&path, rgbx_tiff(2, 2, &pixels, extra)).unwrap();
+            let img = load_image(&path).unwrap();
+            assert_eq!(img.as_raw().as_slice(), &pixels, "ExtraSamples {extra}");
+        }
+        // Anything else passes through untouched.
+        let png = [0x89, b'P', b'N', b'G'];
+        assert!(matches!(tiff_alpha(&png), std::borrow::Cow::Borrowed(_)));
+        assert!(matches!(
+            tiff_alpha(&[b'I', b'I', 42, 0]),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        std::fs::remove_dir_all(dir).ok();
+    }
 
     #[test]
     fn mip_chain_reaches_one_pixel() {

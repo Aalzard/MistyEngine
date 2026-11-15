@@ -6082,3 +6082,70 @@ runs were green; one run in between had `video::tests::seeking_shows_the_request
 once (frame 0 instead of 25 after its 10 s wait, under full-suite load; video code is untouched
 here, and it passed 5 of 5 alone and in the next full run). No render code changed, so golden
 shots were not rerun.
+## Round 85 — Asset packs from other engines: TIFF textures, FBX trees (branch r85-autumn)
+
+A bought tree pack (15 FBX trees with their own LOD levels, TIFF textures, Unity `.meta`
+files) was brought into a project outside the repo and made into a forest scene. The pack,
+everything made from it and the scene are not in the repo; what the import needed is.
+
+### Textures
+- **TIFF files are textures.** The `image` crate's `tiff` feature is on and `.tif` / `.tiff`
+  are in `assets::TEXTURE_EXTENSIONS`, so they show, get thumbnails and go into every texture
+  slot like PNG and JPEG files (8 and 16 bits a channel, LZW or not).
+- **A TIFF's alpha channel saved as an "unspecified" extra channel is kept.** That is how
+  Photoshop writes an alpha channel, so most asset-pack TIFFs: the decoder read such files as
+  RGB and every leaf card came out as a solid rectangle. `render::texture::tiff_alpha` marks
+  the channel as alpha before decoding (`render::texture::decode` / `open`; textures, tree
+  textures, thumbnails and model texture extraction go through it).
+
+### Asset database
+- **Unity `.meta` files are taken over.** A pack copied in with its `.meta` files (YAML) had
+  assets without a GUID: the scan could not read the meta file and refused to write one over
+  it. Such a file is now replaced by Misty's, keeping the settings both have: a model's Scale
+  Factor and Convert Units (`globalScale`, `useFileScale`), a texture's type (Normal Map),
+  sRGB and Max Size (`asset_db::meta::unity_settings`).
+
+### FBX import
+- **Materials that name no texture take the textures named after them.** Packs made for
+  another engine ship bare materials (`Bark`, `Leave`) beside a `Textures` folder
+  (`Bark_Alb.tif`, `Bark_NM.tif`, `Bark_AO.tif`, `Bark_Gloss.tif`, `Leave_Transluc.tif`).
+  `models::named_textures` looks in the model's folder, a `Textures` folder in it and up to
+  two levels above for files named `<material>` plus a known suffix: albedo, normal,
+  occlusion, gloss or roughness, translucency (an unknown suffix such as `Leave_Autumn` is a
+  colour variant, used when there is no albedo). Gloss / roughness maps are packed into a
+  Metallic map (alpha = smoothness) and translucency maps inverted into a Thickness map when
+  the materials are extracted; the file's grey stand-in colour no longer darkens a texture it
+  never named.
+- **An albedo with clear texels makes the material a two-sided cut-out.** FBX has no word for
+  it; leaf cards and fences came in opaque. Checked once per texture (header first, then the
+  share of clear texels: an RGBA file that is opaque everywhere stays opaque).
+- **Top nodes named `…_LOD0`, `…_LOD1`, … become one LOD Group** when the model is put in a
+  scene (they all drew on top of each other), every part of a level in it.
+
+### Trees from model files
+- **A tree asset can name a model** (`TreeAsset::model`, the tree asset's new Model slot): the
+  model's meshes are placed and drawn like a generated tree's — instanced on terrains, the
+  lighter mesh further out, the baked impostor far away, wind, leaf cut-outs and
+  translucency, the sun's shadow cascades. `trees::from_model` sorts the parts by name (leaf /
+  leave / foliage … are leaves, a `billboard` part is left out, `LOD<n>` picks the two mesh
+  levels), gives every vertex its wind weights from the shape (height for the trunk's bend,
+  distance from the trunk for the limbs' sway), each connected leaf card its own colour
+  variation, and lights the leaves as one soft crown (normals leaning towards the crown's
+  outline from whichever side of the card faces out, shade inside it), as the generated trees
+  do. **Gloss Maps** reads the roughness slots as gloss.
+- The tree cache and the rebuild check follow the model file and its import settings.
+
+### Tools
+- `render::project_shots_tests` (ignored): any project's scene rendered without a window from
+  GameObjects named in `MISTY_SHOT_VIEWS` (cameras kept switched off in the scene as saved
+  views), and its GPU frame time with every part.
+
+### Tests and checks
+New: TIFF loading (8 / 16 bits, the unspecified alpha), Unity meta files in a scan, textures
+found by material name, cut-out detection, the FBX material mapping with extraction, LOD
+Groups from node names, a model tree (levels, leaves, wind weights, variation, impostor, a
+missing model), gloss packing.
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings; `cargo test --workspace --release --no-fail-fast`: editor 1032 passed, engine 1731,
+player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2796; 11 new), 0 failed; golden
+shots green (procedural trees, textures and materials draw as before).
