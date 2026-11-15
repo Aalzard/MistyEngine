@@ -671,8 +671,15 @@ fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
 }
 
 /// Write a grayscale map (its red channel, resized to `dst`'s size) into `channel` of `dst`,
-/// or `fallback` everywhere when the map is missing or can't be read.
-fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback: u8) {
+/// or `fallback` everywhere when the map is missing or can't be read. `invert`: the map holds
+/// the opposite (gloss for roughness).
+fn pack_channel(
+    dst: &mut image::RgbaImage,
+    rel: &str,
+    channel: usize,
+    fallback: u8,
+    invert: bool,
+) {
     let src = (!rel.is_empty())
         .then(|| super::texture::load_image(&crate::assets::absolute(rel)).ok())
         .flatten()
@@ -691,7 +698,7 @@ fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback:
     match src {
         Some(src) => {
             for (d, s) in dst.pixels_mut().zip(src.pixels()) {
-                d[channel] = s[0];
+                d[channel] = if invert { 255 - s[0] } else { s[0] };
             }
         }
         None => {
@@ -723,13 +730,13 @@ impl TreeTextures {
         // albedo alpha = height; normal maps = (x, y, roughness, occlusion / translucency),
         // z rebuilt in the shader.
         let mut bark = texture_or(&a.bark_texture, false);
-        pack_channel(&mut bark, &a.bark_height, 3, 128);
+        pack_channel(&mut bark, &a.bark_height, 3, 128, false);
         let mut bark_n = texture_or(&a.bark_normal, true);
-        pack_channel(&mut bark_n, &a.bark_roughness, 2, 222);
-        pack_channel(&mut bark_n, &a.bark_occlusion, 3, 255);
+        pack_channel(&mut bark_n, &a.bark_roughness, 2, 222, a.gloss_maps);
+        pack_channel(&mut bark_n, &a.bark_occlusion, 3, 255, false);
         let mut leaf_n = texture_or(&a.leaf_normal, true);
-        pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150);
-        pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255);
+        pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150, a.gloss_maps);
+        pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255, false);
         let leaf = texture_or(&a.leaf_texture, false);
         let colour = |rel: &str| TexSpec {
             recipe: "tree box srgb",

@@ -161,7 +161,7 @@ fn write_png(bytes: &[u8], path: &Path) -> Result<(), String> {
     if bytes.starts_with(b"\x89PNG") {
         return std::fs::write(path, bytes).map_err(|e| e.to_string());
     }
-    image::load_from_memory(bytes)
+    crate::render::texture::decode(bytes)
         .and_then(|img| img.save_with_format(path, image::ImageFormat::Png))
         .map_err(|e| format!("{}: {e}", path.display()))
 }

@@ -78,12 +78,58 @@ pub fn write_guid(asset: &Path, guid: Guid) -> Result<(), String> {
     let text = match std::fs::read_to_string(&path) {
         // An empty meta file (cut short by a crash or a power cut) holds nothing to keep.
         Ok(old) if old.trim().is_empty() => compose(guid, &Map::new()),
+        // A Unity meta file (an asset pack copied in with its `.meta` files): taken over,
+        // keeping the import settings Misty has too.
+        Ok(old) if is_unity(&old) => compose(guid, &unity_settings(&old)),
         Ok(old) => with_guid(&old, guid)
             .ok_or_else(|| format!("{} is not a JSON object", path.display()))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => compose(guid, &Map::new()),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
     super::write_atomic(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Whether `text` is a Unity `.meta` file (YAML; they come along with Unity asset packs).
+pub fn is_unity(text: &str) -> bool {
+    text.trim_start().starts_with("fileFormatVersion:")
+}
+
+/// The first `key: value` line of a Unity meta file.
+fn unity_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines().find_map(|l| {
+        let (k, v) = l.trim().split_once(':')?;
+        (k == key).then_some(v.trim())
+    })
+}
+
+/// The import settings of a Unity meta file that Misty has as well, as Misty meta fields:
+/// models keep their Scale Factor and Convert Units (`globalScale`, `useFileScale`), textures
+/// their type (Normal Map), sRGB and Max Size.
+pub fn unity_settings(text: &str) -> Map<String, Value> {
+    let mut out = Map::new();
+    let number = |key: &str| unity_value(text, key).and_then(|v| v.parse::<f64>().ok());
+    if text.contains("ModelImporter:") {
+        if let Some(s) = number("globalScale").filter(|s| s.is_finite() && *s > 0.0 && *s != 1.0) {
+            out.insert("scale_factor".into(), Value::from(s));
+        }
+        if number("useFileScale") == Some(0.0) {
+            out.insert("convert_units".into(), Value::from(false));
+        }
+    } else if text.contains("TextureImporter:") {
+        if number("textureType") == Some(1.0) {
+            out.insert("texture_type".into(), Value::from("NormalMap"));
+            out.insert("srgb".into(), Value::from(false));
+        } else if number("sRGBTexture") == Some(0.0) {
+            out.insert("srgb".into(), Value::from(false));
+        }
+        if let Some(size) = number("maxTextureSize")
+            .map(|s| s as u32)
+            .filter(|s| *s != 2048 && crate::sprites::import::MAX_SIZES.contains(s))
+        {
+            out.insert("max_size".into(), Value::from(size));
+        }
+    }
+    out
 }
 
 /// Write import `settings` for `asset`, keeping the GUID already in its meta file. Without one,

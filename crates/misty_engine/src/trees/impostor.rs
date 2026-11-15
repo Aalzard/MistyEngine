@@ -66,8 +66,15 @@ pub fn leaf_variation(color: Vec3, v: f32, amount: f32) -> Vec3 {
 }
 
 /// Bilinear sample (linear colour, alpha) of an sRGB image at uv (clamped).
-fn sample(img: &RgbaImage, uv: Vec2) -> (Vec3, f32) {
+fn sample(img: &RgbaImage, mut uv: Vec2) -> (Vec3, f32) {
     let (w, h) = img.dimensions();
+    // Model trees may tile the texture: coordinates outside 0..1 wrap.
+    if !(0.0..=1.0).contains(&uv.x) {
+        uv.x = uv.x.rem_euclid(1.0);
+    }
+    if !(0.0..=1.0).contains(&uv.y) {
+        uv.y = uv.y.rem_euclid(1.0);
+    }
     let x = (uv.x * w as f32 - 0.5).clamp(0.0, w as f32 - 1.0);
     let y = (uv.y * h as f32 - 0.5).clamp(0.0, h as f32 - 1.0);
     let (x0, y0) = (x.floor() as u32, y.floor() as u32);

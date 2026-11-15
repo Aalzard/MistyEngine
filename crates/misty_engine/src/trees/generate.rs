@@ -802,3 +802,41 @@ pub fn build(t: &TreeAsset, textures: &super::impostor::BakeTextures) -> TreeMod
         height: t.height,
     }
 }
+
+/// The tree of a recipe that names a model file ([`TreeAsset::model`]): the model's meshes
+/// (see [`super::from_model`]) and the impostor baked from them.
+pub fn build_from_model(
+    t: &TreeAsset,
+    textures: &super::impostor::BakeTextures,
+) -> Result<TreeModel, String> {
+    let ([lod0, lod1], height) = super::from_model::build(t)?;
+    let bounds = |range: Range<u32>| {
+        let (mut min, mut max) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for &i in &lod0.indices[range.start as usize..range.end as usize] {
+            let p = Vec3::from(lod0.vertices[i as usize].position);
+            min = min.min(p);
+            max = max.max(p);
+        }
+        (min, max)
+    };
+    let (min, max) = bounds(0..lod0.indices.len() as u32);
+    // The crown: what the leaves fill (the whole tree when it has none).
+    let (lo, hi) = if lod0.leaves.is_empty() {
+        (min, max)
+    } else {
+        bounds(lod0.leaves.clone())
+    };
+    let impostor = super::impostor::bake(t, &lod0, min, max, textures);
+    Ok(TreeModel {
+        lods: [lod0, lod1],
+        impostor,
+        min,
+        max,
+        crown_center: (lo + hi) * 0.5,
+        crown_radii: Vec2::new(
+            ((hi.x - lo.x).max(hi.z - lo.z) * 0.5).max(0.1),
+            ((hi.y - lo.y) * 0.5).max(0.1),
+        ),
+        height,
+    })
+}

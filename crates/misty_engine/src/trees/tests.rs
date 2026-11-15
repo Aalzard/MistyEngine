@@ -296,3 +296,136 @@ fn dump_impostors() {
             .unwrap();
     }
 }
+
+/// A small model tree as an OBJ (two levels, a pack-style billboard card) in a temporary
+/// project; returns the project root and the recipe.
+fn model_tree(tag: &str) -> (std::path::PathBuf, TreeAsset) {
+    let root = std::env::temp_dir().join(format!("misty_model_tree_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("Assets/T")).unwrap();
+    let mtl = "newmtl Bark\nKd 1 1 1\nnewmtl Leave\nKd 1 1 1\nnewmtl Billboard\nKd 1 1 1\n";
+    std::fs::write(root.join("Assets/T/tree.mtl"), mtl).unwrap();
+    // Trunk: a 4 m three-sided column (LOD 0: two rings of sides, LOD 1: one). Leaves: two
+    // separate cards out on the +X side (LOD 1: one). Billboard: a big card to leave out.
+    let mut obj = String::from("mtllib tree.mtl\n");
+    let mut n = 0;
+    let mut object = |name: &str, material: &str, tris: &[[[f32; 3]; 3]]| {
+        obj.push_str(&format!("o {name}\nusemtl {material}\n"));
+        for t in tris {
+            for p in t {
+                obj.push_str(&format!("v {} {} {}\nvt 0.5 0.5\n", p[0], p[1], p[2]));
+            }
+            obj.push_str(&format!("f {0}/{0} {1}/{1} {2}/{2}\n", n + 1, n + 2, n + 3));
+            n += 3;
+        }
+    };
+    let column = |y0: f32, y1: f32| -> Vec<[[f32; 3]; 3]> {
+        let ring = [[0.1, 0.0], [-0.05, 0.087], [-0.05, -0.087]];
+        (0..3)
+            .flat_map(|i| {
+                let (a, b) = (ring[i], ring[(i + 1) % 3]);
+                [
+                    [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]]],
+                    [[a[0], y0, a[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]],
+                ]
+            })
+            .collect()
+    };
+    let card = |x: f32, y: f32| [[x, y, 0.0], [x + 0.5, y, 0.0], [x, y + 0.5, 0.2]];
+    let mut trunk0 = column(0.0, 2.0);
+    trunk0.extend(column(2.0, 4.0));
+    object("Trunk_LOD0", "Bark", &trunk0);
+    object("Crown_LOD0", "Leave", &[card(1.0, 3.0), card(1.6, 2.0)]);
+    object("Trunk_LOD1", "Bark", &column(0.0, 4.0));
+    object("Crown_LOD1", "Leave", &[card(1.0, 3.0)]);
+    object(
+        "Billboard_LOD2",
+        "Billboard",
+        &[[[-9.0, 0.0, 0.0], [9.0, 0.0, 0.0], [0.0, 9.0, 0.0]]],
+    );
+    std::fs::write(root.join("Assets/T/tree.obj"), obj).unwrap();
+    let t = TreeAsset {
+        model: "Assets/T/tree.obj".into(),
+        bark_texture: String::new(),
+        bark_normal: String::new(),
+        bark_roughness: String::new(),
+        bark_occlusion: String::new(),
+        bark_height: String::new(),
+        leaf_texture: String::new(),
+        leaf_normal: String::new(),
+        leaf_roughness: String::new(),
+        leaf_translucency: String::new(),
+        ..TreeAsset::oak()
+    };
+    (root, t)
+}
+
+#[test]
+fn lod_levels_are_read_from_names() {
+    use super::from_model::lod_level;
+    assert_eq!(lod_level("Forest_Tree1_LOD0"), Some(0));
+    assert_eq!(lod_level("tree lod 2"), Some(2));
+    assert_eq!(lod_level("LOD_3_bark"), Some(3));
+    assert_eq!(lod_level("Melody"), None);
+    assert_eq!(lod_level("Lodge"), None);
+}
+
+#[test]
+fn a_tree_can_come_from_a_model_file() {
+    let (root, t) = model_tree("build");
+    crate::assets::set_project_root(&root);
+    let built = store::try_build(t.clone()).expect("model tree");
+    let m = &built.model;
+    // LOD 0: 12 bark triangles and 2 leaf cards; LOD 1: 6 and 1; the billboard card is out.
+    assert_eq!(m.lods[0].bark.len(), 36);
+    assert_eq!(m.lods[0].leaves.len(), 6);
+    assert_eq!(m.lods[1].bark.len(), 18);
+    assert_eq!(m.lods[1].leaves.len(), 3);
+    assert_eq!(m.lods[0].bark.end, m.lods[0].leaves.start);
+    assert!((m.height - 4.0).abs() < 1e-4 && (m.max.y - 4.0).abs() < 1e-4);
+    assert!(m.max.x.abs().max(m.min.x.abs()) < 3.0, "billboard left out");
+    // The recipe the renderer reads carries the model's height (the wind scales by it).
+    assert_eq!(built.asset.height, m.height);
+    let lod0 = &m.lods[0];
+    let vertex = |k: u32| &lod0.vertices[lod0.indices[k as usize] as usize];
+    // Bark: no leaf mark and no flutter; the trunk does not sway with the limbs.
+    for k in lod0.bark.clone() {
+        let v = vertex(k);
+        assert_eq!(v.extra[2], 0);
+        assert_eq!(v.wind[2], 0.0);
+        assert!(v.wind[0] < 0.01, "trunk sway {}", v.wind[0]);
+        assert!((0.0..=1.0).contains(&v.wind[3]));
+    }
+    // Leaves: marked, fluttering, swaying out on the limb; each card its own colour variation.
+    let (a, b) = (vertex(lod0.leaves.start), vertex(lod0.leaves.start + 3));
+    for v in [a, b] {
+        assert_eq!(v.extra[2], 255);
+        assert!(v.wind[2] > 0.0 && v.wind[0] > 0.05);
+    }
+    assert_eq!(a.extra[1], vertex(lod0.leaves.start + 1).extra[1]);
+    assert_ne!(a.extra[1], b.extra[1]);
+    // The crown is what the leaves fill; the impostor shows the tree.
+    assert!(m.crown_center.x.abs() > 0.5 && m.crown_center.y > 2.0);
+    assert!(m.impostor.albedo.pixels().any(|p| p[3] > 0));
+    assert!((m.impostor.height - 4.05).abs() < 0.01);
+    // Same file, same tree.
+    let again = store::try_build(t).unwrap();
+    assert_eq!(again.model.lods[0].vertices, m.lods[0].vertices);
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn a_missing_model_is_reported_and_the_generated_tree_stands_in() {
+    let (root, mut t) = model_tree("missing");
+    crate::assets::set_project_root(&root);
+    t.model = "Assets/T/gone.obj".into();
+    assert!(store::try_build(t.clone()).is_err());
+    let stand_in = store::build(t.clone());
+    assert!(stand_in.model.lods[0].triangles() > 2000);
+    // The field stays out of files that do not use it.
+    assert!(!TreeAsset::oak().to_json().contains("model"));
+    assert!(!TreeAsset::oak().to_json().contains("gloss_maps"));
+    let json = t.to_json();
+    assert_eq!(TreeAsset::from_json(&json).unwrap().model, "Assets/T/gone.obj");
+    std::fs::remove_dir_all(root).ok();
+}

@@ -5,10 +5,14 @@
 //! terrain (`terrain::trees`): the renderer draws every placed copy with GPU instancing, a full
 //! mesh close up, a lighter mesh further away and a baked billboard (impostor) far away.
 //!
+//! A tree can also come from a model file ([`TreeAsset::model`], see [`from_model`]): the
+//! recipe's shape settings are then unused, its textures, tints and wind still apply.
+//!
 //! [`generate::build`] turns a recipe into a [`generate::TreeModel`] (deterministic for a given
 //! recipe and textures); [`store`] caches built models per asset file.
 
 mod cache;
+pub mod from_model;
 pub mod generate;
 pub mod impostor;
 pub mod store;
@@ -157,6 +161,15 @@ pub struct TreeAsset {
     #[serde(default)]
     pub leaf_translucency: String,
     pub wind: TreeWind,
+    /// A model file (project-relative `.fbx`, `.gltf`, `.glb` or `.obj`) drawn instead of the
+    /// generated tree (empty = generated). Its leaf parts are found by name, see
+    /// [`from_model`]; `height`, `trunk_radius` and `crown_base` should describe it (the
+    /// trunk collider uses them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    /// The roughness maps hold gloss (smoothness: white = shiny), as in many asset packs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gloss_maps: bool,
 }
 
 impl Default for TreeAsset {
@@ -215,6 +228,8 @@ impl TreeAsset {
                 branch_sway: 0.9,
                 leaf_flutter: 1.0,
             },
+            model: String::new(),
+            gloss_maps: false,
         }
     }
 
