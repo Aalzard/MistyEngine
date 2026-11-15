@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use crate::quality::QualityLevel;
 use crate::render::Renderer;
-use crate::render::terrain_grass::gpu_tests::breakdown;
 use crate::render::gpu_tests::{headless, read_back};
+use crate::render::terrain_grass::gpu_tests::breakdown;
 use crate::render_scene::GameView;
 use crate::scene::Scene;
 

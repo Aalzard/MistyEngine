@@ -130,6 +130,13 @@ pub fn spawn_with_clips(
 
     // Generated LODs need a root for the LOD Group.
     let lods = !model.lod_heights.is_empty() && model.nodes.iter().any(|n| !n.lods.is_empty());
+    // Levels the file brings itself: top nodes named "…_LOD0", "…_LOD1", … (how other engines'
+    // asset packs ship their levels) become one LOD Group, as generated ones do.
+    let file_levels = if lods {
+        Vec::new()
+    } else {
+        file_lod_levels(model)
+    };
     if let [node] = model.nodes.as_slice()
         && node.meshes.len() <= 1
         && !lods
@@ -152,8 +159,9 @@ pub fn spawn_with_clips(
     let mut ids: Vec<Entity> = Vec::with_capacity(model.nodes.len());
     // Skinned meshes bind to bones made later: (object, node, mesh), added at the end.
     let mut skinned: Vec<(Entity, usize, usize)> = Vec::new();
-    // Objects of each LOD level (generated LODs).
-    let mut levels: Vec<Vec<Entity>> = vec![Vec::new(); model.lod_heights.len()];
+    // Objects of each LOD level (generated LODs, or the file's own).
+    let file_count = file_levels.iter().flatten().max().map_or(0, |m| m + 1);
+    let mut levels: Vec<Vec<Entity>> = vec![Vec::new(); model.lod_heights.len().max(file_count)];
     for (n, node) in model.nodes.iter().enumerate() {
         let p = node
             .parent
@@ -173,8 +181,9 @@ pub fn spawn_with_clips(
                         scene.spawn(&model.meshes[i].name, Some(object))
                     };
                     add_mesh(scene, target, i);
+                    // Every renderer of the level (a second material's mesh is a child).
+                    levels[level].push(target);
                 }
-                levels[level].push(object);
             }
             ids.push(e);
             continue;
@@ -191,6 +200,9 @@ pub fn spawn_with_clips(
                 skinned.push((target, n, i));
             } else {
                 add_mesh(scene, target, i);
+                if let Some(level) = file_levels.get(n).copied().flatten() {
+                    levels[level].push(target);
+                }
             }
         }
         ids.push(e);
@@ -200,10 +212,15 @@ pub fn spawn_with_clips(
         scene.add(e, r);
     }
     if levels.iter().any(|l| !l.is_empty()) {
+        let heights = if file_count > 0 {
+            file_lod_heights(file_count)
+        } else {
+            model.lod_heights.clone()
+        };
         let group = LodGroup {
             lods: levels
                 .into_iter()
-                .zip(&model.lod_heights)
+                .zip(&heights)
                 .map(|(renderers, h)| LodLevel {
                     screen_height: *h,
                     renderers,
@@ -215,6 +232,45 @@ pub fn spawn_with_clips(
     }
     add_clips(scene, root, clips);
     root
+}
+
+/// The LOD level of each node of a model whose file brings its own levels: static top nodes
+/// named "…LOD<n>" (their children with them), at least two different levels, none above the
+/// LOD Group's limit. Empty when the model has no such levels.
+fn file_lod_levels(model: &models::Model) -> Vec<Option<usize>> {
+    let mut out: Vec<Option<usize>> = Vec::with_capacity(model.nodes.len());
+    for (n, node) in model.nodes.iter().enumerate() {
+        let level = match node.parent {
+            Some(p) => out.get(p).copied().flatten(),
+            None => misty_engine::trees::from_model::lod_level(&node.name).map(|l| l as usize),
+        };
+        if level.is_some() && skinning::is_skinned_node(model, n) {
+            return Vec::new();
+        }
+        out.push(level);
+    }
+    let mut found: Vec<usize> = out.iter().flatten().copied().collect();
+    found.sort_unstable();
+    found.dedup();
+    let top = found.last().copied().unwrap_or(0);
+    if found.len() < 2 || top >= LodGroup::MAX_LEVELS {
+        return Vec::new();
+    }
+    out
+}
+
+/// Screen heights of `count` levels a file brought (the usual defaults: a quarter of the
+/// screen, halving per level; the last level draws down to 1%).
+fn file_lod_heights(count: usize) -> Vec<f32> {
+    (0..count)
+        .map(|i| {
+            if i + 1 == count {
+                0.01
+            } else {
+                0.25 / (1u32 << i) as f32
+            }
+        })
+        .collect()
 }
 
 /// Animation component playing the model's clips (the first one automatically).
@@ -277,6 +333,49 @@ f 4 6 5
 
         s.undo_step().expect("undo step");
         assert_eq!(s.scene.len(), before);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Top nodes named "…_LOD<n>" (asset packs made for other engines) become one LOD Group
+    /// holding every level's renderers.
+    #[test]
+    fn lod_named_nodes_become_a_lod_group() {
+        let root = std::env::temp_dir().join(format!("misty_model_lods_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Models")).unwrap();
+        let file = root.join("Assets/Models/Tree.obj");
+        let mut obj = String::new();
+        for (k, name) in ["Tree_LOD0", "Tree_LOD1", "Tree_LOD2"].iter().enumerate() {
+            let y = k as f32;
+            obj.push_str(&format!(
+                "o {name}\nv 0 {y} 0\nv 1 {y} 0\nv 0 {y} 1\nf {} {} {}\n",
+                k * 3 + 1,
+                k * 3 + 3,
+                k * 3 + 2
+            ));
+        }
+        std::fs::write(&file, obj).unwrap();
+        let rel = file.to_string_lossy().replace('\\', "/");
+        let model = models::model(&rel).unwrap();
+        let mut scene = Scene::default();
+        let e = spawn(&mut scene, &rel, &model, &[], None);
+        let group = scene
+            .world
+            .get::<&LodGroup>(e)
+            .expect("LOD Group on the root");
+        assert_eq!(group.lods.len(), 3);
+        let kids = scene.children(e).to_vec();
+        for (i, level) in group.lods.iter().enumerate() {
+            assert_eq!(level.renderers, vec![kids[i]]);
+        }
+        let heights: Vec<f32> = group.lods.iter().map(|l| l.screen_height).collect();
+        assert_eq!(heights, [0.25, 0.125, 0.01]);
+        drop(group);
+        // One level alone, or names without levels: no group.
+        let ramp = sample_model("Ramp.obj")
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert!(file_lod_levels(&models::model(&ramp).unwrap()).is_empty());
         std::fs::remove_dir_all(root).ok();
     }
 

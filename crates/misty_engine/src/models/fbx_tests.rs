@@ -209,6 +209,85 @@ fn fbx_static_model_has_parts_materials_textures_and_hierarchy() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+/// A material that names no texture file takes the textures named after it (asset packs for
+/// other engines: bare "Bark" / "Leave" materials beside a Textures folder), and an albedo
+/// with clear texels makes it a two-sided cut-out.
+#[test]
+fn fbx_materials_find_textures_by_name_and_cut_out_leaves() {
+    let dir = temp_dir("named");
+    let model_dir = dir.join("Model/1");
+    let textures = dir.join("Textures");
+    std::fs::create_dir_all(&model_dir).unwrap();
+    std::fs::create_dir_all(&textures).unwrap();
+    // The crate's "Wood" material names Wood.png, which is not there.
+    let leaves = image::RgbaImage::from_fn(8, 8, |x, _| {
+        image::Rgba([180, 120, 60, if x < 4 { 0 } else { 255 }])
+    });
+    leaves.save(textures.join("Wood_Autumn.png")).unwrap();
+    let grey = |v: u8| image::RgbaImage::from_pixel(4, 4, image::Rgba([v, v, v, 255]));
+    grey(128).save(textures.join("Wood_NM.png")).unwrap();
+    grey(200).save(textures.join("Wood_AO.png")).unwrap();
+    grey(64).save(textures.join("Wood_Gloss.png")).unwrap();
+    grey(230).save(textures.join("Wood_Transluc.png")).unwrap();
+    let path = write(&model_dir, "Crate.fbx", &crate_fbx());
+    let model = load(&path).unwrap();
+    let wood = &model.materials[0];
+    let bytes_of = |s: &Option<TextureSource>| match s {
+        Some(TextureSource::Embedded(b)) => b.clone(),
+        Some(TextureSource::File(p)) => std::fs::read(p).unwrap(),
+        None => panic!("texture not found"),
+    };
+    assert_eq!(
+        bytes_of(&wood.albedo),
+        std::fs::read(textures.join("Wood_Autumn.png")).unwrap()
+    );
+    assert_eq!(
+        bytes_of(&wood.normal),
+        std::fs::read(textures.join("Wood_NM.png")).unwrap()
+    );
+    // The file's own colour does not tint a texture it never named.
+    assert_eq!(wood.material.color, [1.0; 4]);
+    assert_eq!(
+        wood.material.rendering_mode,
+        crate::render::RenderingMode::Cutout
+    );
+    assert!(wood.material.double_sided);
+    assert!(wood.material.features.translucency.enabled);
+    let maps: Vec<ExtraMap> = wood.extra_maps.iter().map(|(m, _)| *m).collect();
+    assert_eq!(
+        maps,
+        [ExtraMap::Occlusion, ExtraMap::Gloss, ExtraMap::Translucency]
+    );
+    // "Metal" names its own normal map: nothing is looked up for it, it stays opaque.
+    let metal = &model.materials[1];
+    assert!(metal.albedo.is_none() && metal.extra_maps.is_empty());
+    assert_eq!(
+        metal.material.rendering_mode,
+        crate::render::RenderingMode::Opaque
+    );
+    assert!(!metal.material.double_sided);
+
+    // Extraction: the gloss map packed as Metallic (alpha = smoothness), the translucency
+    // map inverted as Thickness.
+    let created = extract_materials_in(&dir, "Model/1/Crate.fbx", &model).unwrap();
+    assert!(
+        created.contains(&"Model/1/Crate_Wood.mat".to_owned()),
+        "{created:?}"
+    );
+    let mat = crate::assets::Material::load(&model_dir.join("Crate_Wood.mat")).unwrap();
+    assert_eq!(mat.rendering_mode, crate::render::RenderingMode::Cutout);
+    assert_eq!(mat.smoothness, 1.0);
+    let packed = image::open(dir.join(mat.metallic_map.as_ref().unwrap()))
+        .unwrap()
+        .into_rgba8();
+    assert_eq!(packed.get_pixel(0, 0).0, [0, 0, 0, 64]);
+    let thickness = mat.features.translucency.thickness_map.as_ref().unwrap();
+    let thick = image::open(dir.join(thickness)).unwrap().into_rgba8();
+    assert_eq!(thick.get_pixel(0, 0).0, [25, 25, 25, 255]);
+    assert!(mat.occlusion_map.is_some() && mat.albedo_map.is_some() && mat.normal_map.is_some());
+    std::fs::remove_dir_all(dir).ok();
+}
+
 #[test]
 fn fbx_skinned_tentacle_matches_the_gltf_one() {
     let dir = temp_dir("tentacle");

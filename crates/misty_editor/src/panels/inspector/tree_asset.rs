@@ -53,6 +53,31 @@ fn count(ui: &mut Ui, label: &str, tip: &str, v: &mut u32, range: std::ops::Rang
     ui.end_row();
 }
 
+/// Model file picker: the project's models, or one dragged from the Asset Files window
+/// (empty = the generated tree).
+fn model_slot(ui: &mut Ui, models: &[String], value: &mut String) -> egui::Response {
+    let none = "None (generated)";
+    let slot = egui::ComboBox::from_id_salt("tree_model_file")
+        .selected_text(if value.is_empty() {
+            none.to_owned()
+        } else {
+            name(value)
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(value, String::new(), none);
+            for m in models {
+                ui.selectable_value(value, m.clone(), name(m));
+            }
+        })
+        .response;
+    if let Some(p) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
+        && misty_engine::models::is_model(&p.0)
+    {
+        *value = p.0.clone();
+    }
+    slot
+}
+
 fn section(ui: &mut Ui, title: &str, open: bool, body: impl FnOnce(&mut Ui)) {
     egui::CollapsingHeader::new(RichText::new(title).strong())
         .id_salt(("tree_section", title))
@@ -98,6 +123,21 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         }
     });
     ui.add_space(4.0);
+
+    let models: Vec<String> = state.assets.models.keys().cloned().collect();
+    section(ui, "Model", !t.model.is_empty(), |ui| {
+        grid(ui, "tree_model", |ui| {
+            let tip = "A model file (FBX, glTF, OBJ) drawn instead of the generated tree";
+            ui.label("Model").on_hover_text(tip);
+            model_slot(ui, &models, &mut t.model).on_hover_text(tip);
+            ui.end_row();
+            let tip = "The roughness maps hold gloss (white = shiny), as in many asset packs";
+            ui.label("Gloss Maps").on_hover_text(tip);
+            ui.checkbox(&mut t.gloss_maps, "").on_hover_text(tip);
+            ui.end_row();
+        });
+        ui.weak("With a model, the Shape, Branches and Leaves settings are unused (tints, variation, translucency, textures and wind still apply; Height, Trunk Radius and Crown Base size the trunk collider). Parts whose material or name holds \"leaf\", \"leave\" or \"foliage\" are leaves; LOD0, LOD1 in the names pick the two mesh levels; a part named \"billboard\" is left out (the far billboard is baked from the mesh).");
+    });
 
     section(ui, "Shape", true, |ui| {
         grid(ui, "tree_shape", |ui| {

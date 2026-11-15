@@ -426,6 +426,9 @@ fn a_missing_model_is_reported_and_the_generated_tree_stands_in() {
     assert!(!TreeAsset::oak().to_json().contains("model"));
     assert!(!TreeAsset::oak().to_json().contains("gloss_maps"));
     let json = t.to_json();
-    assert_eq!(TreeAsset::from_json(&json).unwrap().model, "Assets/T/gone.obj");
+    assert_eq!(
+        TreeAsset::from_json(&json).unwrap().model,
+        "Assets/T/gone.obj"
+    );
     std::fs::remove_dir_all(root).ok();
 }

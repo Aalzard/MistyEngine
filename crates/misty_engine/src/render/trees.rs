@@ -673,13 +673,7 @@ fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
 /// Write a grayscale map (its red channel, resized to `dst`'s size) into `channel` of `dst`,
 /// or `fallback` everywhere when the map is missing or can't be read. `invert`: the map holds
 /// the opposite (gloss for roughness).
-fn pack_channel(
-    dst: &mut image::RgbaImage,
-    rel: &str,
-    channel: usize,
-    fallback: u8,
-    invert: bool,
-) {
+fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback: u8, invert: bool) {
     let src = (!rel.is_empty())
         .then(|| super::texture::load_image(&crate::assets::absolute(rel)).ok())
         .flatten()

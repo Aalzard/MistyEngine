@@ -15,7 +15,8 @@
 //! its foot stands at the model's origin, and the wind weights come from the shape: height for
 //! the trunk's bend, distance from the trunk's axis for the limbs' sway (one phase per
 //! direction and height, so a branch moves as one), a flutter on the leaves. Each connected
-//! piece of the leaves (a twig's card) gets its own colour variation.
+//! piece of the leaves (a twig's card) gets its own colour variation, and the leaves are lit
+//! as one soft crown (normals leaning towards its outline, shade inside it).
 
 use std::collections::HashMap;
 
@@ -158,6 +159,7 @@ fn level_mesh(model: &Model, parts: &[&Part], height: f32, trunk: f32) -> TreeMe
         let range = start..m.indices.len() as u32;
         if leaf {
             vary_pieces(&mut m, first_vertex, range.clone());
+            soften_leaves(&mut m, first_vertex);
             m.leaves = range;
         } else {
             m.bark = range;
@@ -199,8 +201,43 @@ fn vary_pieces(m: &mut TreeMesh, first: usize, range: std::ops::Range<u32>) {
         let root = find(&mut parent, i as u32);
         // The piece's first vertex names it (stable for a given file).
         let p = m.vertices[first + root as usize].position;
-        let v = hash01(p[0].to_bits() ^ p[2].to_bits().rotate_left(13), p[1].to_bits());
+        let v = hash01(
+            p[0].to_bits() ^ p[2].to_bits().rotate_left(13),
+            p[1].to_bits(),
+        );
         m.vertices[first + i].extra[1] = (v * 255.0) as u8;
+    }
+}
+
+/// Light the leaves (vertices from `first` on) as one soft crown, like the generated trees:
+/// each normal leans towards the outline of the crown (the leaves' bounds as an ellipsoid)
+/// from the side of its card that faces outwards, so neither side of a card is "the back";
+/// leaves deep inside the crown get less sky light and pass less sunlight on.
+fn soften_leaves(m: &mut TreeMesh, first: usize) {
+    let leaves = &mut m.vertices[first..];
+    if leaves.is_empty() {
+        return;
+    }
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for v in leaves.iter() {
+        let p = Vec3::from(v.position);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    let center = (lo + hi) * 0.5;
+    let radii = ((hi - lo) * 0.5).max(Vec3::splat(0.05));
+    for v in leaves.iter_mut() {
+        // Position in the crown: 0 at its centre, 1 on the outline.
+        let q = (Vec3::from(v.position) - center) / radii;
+        let depth = q.length().min(1.0);
+        // The outline's normal there, a little upwards (light comes from above).
+        let dome = (q / radii + Vec3::Y * 0.35 / radii.y.max(radii.x)).normalize_or(Vec3::Y);
+        let mut n = Vec3::from(v.normal);
+        if n.dot(dome) < 0.0 {
+            n = -n;
+        }
+        v.normal = n.lerp(dome, 0.6).normalize_or(dome).into();
+        v.extra[0] = (255.0 * (0.6 + 0.4 * depth * depth)) as u8;
     }
 }
 

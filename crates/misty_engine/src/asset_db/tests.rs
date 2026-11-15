@@ -220,14 +220,23 @@ TextureImporter:
     assert_eq!(s.scale_factor, 1.17);
     assert!(s.convert_units);
     let t = crate::sprites::import::TextureImporter::load(&root.join("Assets/Pack/Bump.png"));
-    assert_eq!(t.texture_type, crate::sprites::import::TextureType::NormalMap);
+    assert_eq!(
+        t.texture_type,
+        crate::sprites::import::TextureType::NormalMap
+    );
     assert!(!t.srgb);
     assert_eq!(t.max_size, 1024);
     // A second scan changes nothing.
     let before = std::fs::read_to_string(meta::meta_path(&model)).unwrap();
     let (again, _) = GuidDatabase::scan(&root);
-    assert_eq!(again.guid_of("Assets/Pack/Tree.fbx"), db.guid_of("Assets/Pack/Tree.fbx"));
-    assert_eq!(std::fs::read_to_string(meta::meta_path(&model)).unwrap(), before);
+    assert_eq!(
+        again.guid_of("Assets/Pack/Tree.fbx"),
+        db.guid_of("Assets/Pack/Tree.fbx")
+    );
+    assert_eq!(
+        std::fs::read_to_string(meta::meta_path(&model)).unwrap(),
+        before
+    );
     std::fs::remove_dir_all(root).ok();
 }
 

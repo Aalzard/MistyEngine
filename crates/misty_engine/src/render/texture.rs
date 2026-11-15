@@ -163,9 +163,7 @@ pub fn open(path: &Path) -> Result<image::DynamicImage, String> {
 pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
     let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
     let bytes = crate::vfs::read(path).map_err(|e| err(&e))?;
-    let img = decode(&bytes)
-        .map_err(|e| err(&e))?
-        .into_rgba8();
+    let img = decode(&bytes).map_err(|e| err(&e))?.into_rgba8();
     if img.width() == 0 || img.height() == 0 {
         return Err(err(&"the image has no pixels"));
     }
@@ -1296,7 +1294,10 @@ mod tests {
         // Anything else passes through untouched.
         let png = [0x89, b'P', b'N', b'G'];
         assert!(matches!(tiff_alpha(&png), std::borrow::Cow::Borrowed(_)));
-        assert!(matches!(tiff_alpha(&[b'I', b'I', 42, 0]), std::borrow::Cow::Borrowed(_)));
+        assert!(matches!(
+            tiff_alpha(&[b'I', b'I', 42, 0]),
+            std::borrow::Cow::Borrowed(_)
+        ));
         std::fs::remove_dir_all(dir).ok();
     }
 

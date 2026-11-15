@@ -16,7 +16,9 @@ use glam::{Mat4, Quat, Vec3, Vec4};
 use super::gltf_anim::{SAMPLE_RATE, continuous_euler, mirror_matrix, simplify};
 use super::settings::{AxisConversion, ModelImporter};
 use super::skin::{BlendShape, MeshSkin, ModelAnimation, ModelSkin};
-use super::{Model, ModelMaterial, ModelMesh, ModelNode, TextureSource, mirror_rotation, mirror_x};
+use super::{
+    ExtraMap, Model, ModelMaterial, ModelMesh, ModelNode, TextureSource, mirror_rotation, mirror_x,
+};
 use crate::animation::{AnimationClip, Property, TangentMode};
 use crate::assets::Material;
 use crate::render::mesh::{MeshData, Vertex};
@@ -428,10 +430,54 @@ fn material(m: &ufbx::Material, dir: &Path) -> ModelMaterial {
             .find_map(|map| map.texture.as_ref())
             .and_then(|t| texture_source(t, dir))
     };
-    let albedo = texture(&[&pbr.base_color, &fbx.diffuse_color]);
-    let normal = texture(&[&pbr.normal_map, &fbx.normal_map, &fbx.bump]);
+    let mut albedo = texture(&[&pbr.base_color, &fbx.diffuse_color]);
+    let mut normal = texture(&[&pbr.normal_map, &fbx.normal_map, &fbx.bump]);
     if normal.is_some() {
         material.normal_scale = scalar(&fbx.bump_factor, 1.0);
+    }
+    // A material that names no textures (asset packs made for another engine): the textures
+    // named after it next to the model ("Bark_Alb", "Bark_NM", …).
+    let mut extra_maps = Vec::new();
+    if albedo.is_none() && normal.is_none() && !m.element.name.is_empty() {
+        let found = super::named_textures::find(dir, &m.element.name);
+        let source = |p: PathBuf| file_source(&p);
+        if let Some(a) = found.albedo.and_then(source) {
+            albedo = Some(a);
+            // The file's grey stand-in colour would darken the texture.
+            material.color = [1.0, 1.0, 1.0, material.color[3]];
+        }
+        normal = found.normal.and_then(source);
+        if let Some(s) = found.occlusion.and_then(source) {
+            extra_maps.push((ExtraMap::Occlusion, s));
+        }
+        // Gloss or roughness: the map sets the smoothness (the slider scales it).
+        let smooth = match (found.gloss, found.roughness) {
+            (Some(g), _) => source(g).map(|s| (ExtraMap::Gloss, s)),
+            (None, Some(r)) => source(r).map(|s| (ExtraMap::Roughness, s)),
+            (None, None) => None,
+        };
+        if let Some(map) = smooth {
+            material.smoothness = 1.0;
+            extra_maps.push(map);
+        }
+        if let Some(s) = found.translucency.and_then(source) {
+            let t = &mut material.features.translucency;
+            t.enabled = true;
+            t.color = [1.0, 0.92, 0.75];
+            t.thickness = 1.0;
+            extra_maps.push((ExtraMap::Translucency, s));
+        }
+    }
+    // FBX materials do not say "cut-out": an albedo texture with clear texels (leaf cards,
+    // fences) is one, seen from both sides.
+    let cutouts = match &albedo {
+        Some(TextureSource::File(p)) => super::named_textures::has_cutouts(p),
+        Some(TextureSource::Embedded(bytes)) => super::named_textures::bytes_have_cutouts(bytes),
+        None => false,
+    };
+    if cutouts && alpha >= 1.0 {
+        material.rendering_mode = crate::render::RenderingMode::Cutout;
+        material.double_sided = true;
     }
     ModelMaterial {
         name: if m.element.name.is_empty() {
@@ -442,7 +488,18 @@ fn material(m: &ufbx::Material, dir: &Path) -> ModelMaterial {
         material,
         albedo,
         normal,
-        extra_maps: Vec::new(),
+        extra_maps,
+    }
+}
+
+/// A texture file found on disk as a source (read into memory when it is outside the project,
+/// so extraction copies it in).
+fn file_source(found: &Path) -> Option<TextureSource> {
+    let inside = !Path::new(&crate::assets::relative(found)).is_absolute();
+    if inside || crate::vfs::is_mounted() {
+        Some(TextureSource::File(found.to_path_buf()))
+    } else {
+        crate::vfs::read(found).ok().map(TextureSource::Embedded)
     }
 }
 
@@ -479,12 +536,7 @@ fn texture_source(t: &ufbx::Texture, dir: &Path) -> Option<TextureSource> {
         candidates.push(PathBuf::from(t.absolute_filename.replace('\\', "/")));
     }
     let found = candidates.into_iter().find(|p| crate::vfs::is_file(p))?;
-    let inside = !Path::new(&crate::assets::relative(&found)).is_absolute();
-    if inside || crate::vfs::is_mounted() {
-        Some(TextureSource::File(found))
-    } else {
-        crate::vfs::read(&found).ok().map(TextureSource::Embedded)
-    }
+    file_source(&found)
 }
 
 // ---- animation -----------------------------------------------------------------------------
