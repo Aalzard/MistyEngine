@@ -195,9 +195,11 @@ pub fn has_cutouts(path: &Path) -> bool {
 
 /// [`has_cutouts`] of image data.
 pub fn bytes_have_cutouts(bytes: &[u8]) -> bool {
+    let extra = crate::render::texture::tiff_extra_alpha(bytes);
     let bytes = crate::render::texture::tiff_alpha(bytes);
     // The header says whether there is an alpha channel at all (no decode).
-    let alpha = image::ImageReader::new(std::io::Cursor::new(&bytes[..]))
+    let alpha = extra
+        || image::ImageReader::new(std::io::Cursor::new(&bytes[..]))
         .with_guessed_format()
         .ok()
         .and_then(|r| r.into_decoder().ok())
@@ -208,7 +210,7 @@ pub fn bytes_have_cutouts(bytes: &[u8]) -> bool {
     if !alpha {
         return false;
     }
-    let Ok(img) = image::load_from_memory(&bytes) else {
+    let Ok(img) = crate::render::texture::decode(&bytes) else {
         return false;
     };
     let img = img.into_rgba8();

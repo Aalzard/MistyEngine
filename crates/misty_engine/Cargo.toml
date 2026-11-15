@@ -21,6 +21,9 @@ kira.workspace = true
 symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "wav", "pcm"] }
 rtrb = "0.4"
 image.workspace = true
+# TIFF channel layouts the image crate refuses (grey + alpha, RGB + two extra channels); the
+# version the image crate already uses.
+tiff = "0.11"
 gltf.workspace = true
 # FBX import: ufbx (single-file C library, MIT or public domain) through its official binding.
 ufbx = "0.11.5"

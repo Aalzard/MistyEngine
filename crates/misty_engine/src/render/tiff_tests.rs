@@ -304,3 +304,111 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
         assert!(decode(bytes).is_ok(), "{name}: {:?}", decode(bytes).err());
     }
 }
+
+/// Associated (premultiplied) alpha, ExtraSamples 1 (GIMP, some exporters): the colours come
+/// back un-premultiplied, or cut-out edges and soft alpha draw too dark.
+#[test]
+fn tiff_associated_alpha_is_unpremultiplied() {
+    let pixels = [
+        50u8, 25, 0, 128, // half covered: (100, 50, 0) at half alpha
+        200, 100, 50, 255, // opaque: as it is
+        0, 0, 0, 0, // clear
+        10, 20, 30, 64,
+    ];
+    for extra in [1u32, 2] {
+        let bytes = tiff(
+            &[image_ifd(2, 2, &[8, 8, 8, 8], 2, 16, &[(338, 3, vec![extra])])],
+            &pixels,
+        );
+        let img = decode(&bytes).unwrap().into_rgba8();
+        let got: Vec<[u8; 4]> = img.pixels().map(|p| p.0).collect();
+        if extra == 2 {
+            assert_eq!(img.as_raw().as_slice(), &pixels, "unassociated alpha stays");
+            continue;
+        }
+        assert_eq!(got[0], [100, 50, 0, 128]);
+        assert_eq!(got[1], [200, 100, 50, 255]);
+        assert_eq!(got[2], [0, 0, 0, 0]);
+        assert_eq!(got[3], [40, 80, 120, 64]);
+    }
+    // 16 bits a channel too.
+    let deep: Vec<u8> = [0x4000u16, 0x2000, 0, 0x8000]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
+    let bytes = tiff(&[image_ifd(1, 1, &[16, 16, 16, 16], 2, 8, &[(338, 3, vec![1])])], &deep);
+    let img = decode(&bytes).unwrap().into_rgba16();
+    let p = img.get_pixel(0, 0).0;
+    assert!((i32::from(p[0]) - 0x7fff).abs() <= 2 && (i32::from(p[1]) - 0x3fff).abs() <= 2, "{p:?}");
+}
+
+/// Photoshop saves a second alpha channel (or a spot colour) as another unspecified extra
+/// sample: RGB + 2. The first extra channel is the alpha, the second is dropped.
+#[test]
+fn tiff_two_extra_channels_keep_the_first_as_alpha() {
+    let pixels: Vec<u8> = vec![
+        10, 20, 30, 0, 99, //
+        40, 50, 60, 128, 99, //
+        70, 80, 90, 255, 99, //
+        1, 2, 3, 77, 99,
+    ];
+    let bytes = tiff(
+        &[image_ifd(2, 2, &[8, 8, 8, 8, 8], 2, 20, &[(338, 3, vec![0, 0])])],
+        &pixels,
+    );
+    let img = decode(&bytes).unwrap().into_rgba8();
+    let got: Vec<[u8; 4]> = img.pixels().map(|p| p.0).collect();
+    assert_eq!(got, [[10, 20, 30, 0], [40, 50, 60, 128], [70, 80, 90, 255], [1, 2, 3, 77]]);
+}
+
+/// Greyscale TIFFs with an alpha channel (masks, gloss maps saved in Grayscale mode with
+/// transparency) load: the image crate refuses grey + extra samples.
+#[test]
+fn tiff_grey_with_alpha_loads() {
+    for extra in [0u32, 2] {
+        let bytes = tiff(
+            &[image_ifd(2, 1, &[8, 8], 1, 4, &[(338, 3, vec![extra])])],
+            &[10, 0, 200, 255],
+        );
+        let img = decode(&bytes).unwrap().into_rgba8();
+        assert_eq!(img.get_pixel(0, 0).0, [10, 10, 10, 0], "ExtraSamples {extra}");
+        // A grey leaf mask with clear texels is a cut-out; its size reads without a decode.
+        assert!(crate::models::named_textures::bytes_have_cutouts(&bytes));
+        let path = std::env::temp_dir().join(format!("misty_grey_alpha_{extra}_{}.tif", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(super::texture::image_size(&path), Some([2, 1]));
+        std::fs::remove_file(path).ok();
+        assert_eq!(img.get_pixel(1, 0).0, [200, 200, 200, 255]);
+    }
+    let deep: Vec<u8> = [0x1000u16, 0xffff].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let bytes = tiff(&[image_ifd(1, 1, &[16, 16], 1, 4, &[(338, 3, vec![2])])], &deep);
+    assert_eq!(decode(&bytes).unwrap().into_rgba8().get_pixel(0, 0).0, [16, 16, 16, 255]);
+    // White is zero: inverted when it loads (the decoder may refuse it), never a panic.
+    let bytes = tiff(&[image_ifd(1, 1, &[8, 8], 0, 2, &[(338, 3, vec![2])])], &[10, 255]);
+    if let Ok(img) = decode(&bytes) {
+        assert_eq!(img.into_rgba8().get_pixel(0, 0).0, [245, 245, 245, 255]);
+    }
+}
+
+/// Timing of a pack-sized TIFF (4K RGBA with a Photoshop alpha): decode, the cut-out check
+/// and the 2K converted copy extraction writes. Run by hand (`--ignored --nocapture`).
+#[test]
+#[ignore]
+fn big_tiff_timing() {
+    let (w, h) = (4096u32, 4096u32);
+    let mut pixels = vec![0u8; (w * h * 4) as usize];
+    for (i, p) in pixels.chunks_exact_mut(4).enumerate() {
+        p.copy_from_slice(&[(i % 251) as u8, (i % 241) as u8, (i % 239) as u8, (i % 256) as u8]);
+    }
+    let bytes = tiff(&[image_ifd(w, h, &[8, 8, 8, 8], 2, w * h * 4, &[(338, 3, vec![0])])], &pixels);
+    let t = std::time::Instant::now();
+    let img = decode(&bytes).unwrap().into_rgba8();
+    let decoded = t.elapsed();
+    let t = std::time::Instant::now();
+    let cut = crate::models::named_textures::bytes_have_cutouts(&bytes);
+    let cutouts = t.elapsed();
+    let t = std::time::Instant::now();
+    let small = super::texture::fit(img, 2048);
+    let fitted = t.elapsed();
+    println!("4K TIFF: decode {decoded:?}, cut-out check {cutouts:?} ({cut}), 2K fit {fitted:?}, {}", small.width());
+}
