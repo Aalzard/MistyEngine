@@ -16,9 +16,11 @@ use hecs::Entity;
 
 use super::{Instance, LogKind, ScriptHost};
 
-/// Rounds of OnEnable / OnDisable that switch more objects before the host gives up (an
-/// OnEnable switching its object off and an OnDisable switching it on again never end).
-const MAX_PASSES: usize = 32;
+/// OnEnable / OnDisable one script may get in one look before the host gives up (an OnEnable
+/// switching its object off and an OnDisable switching it on again never end). Counted per
+/// script, not per round: a chain of OnEnables switching on the next object down a deep
+/// hierarchy takes one round per level but switches each script once.
+const MAX_SWITCHES: usize = 32;
 
 impl ScriptHost {
     /// Whether the scripts of `i`'s object hear collisions and triggers: object alive and
@@ -28,41 +30,41 @@ impl ScriptHost {
     }
 
     /// Bring instance `i` in line with its object: OnDisable when it can't run any more (or
-    /// was switched off and on after its `stamp`: `dipped_at`), then Awake (the first time)
-    /// and OnEnable when it can. `flush` runs what each callback queued right after it.
-    pub(super) fn reconcile(&mut self, i: usize, dipped_at: Option<u64>, flush: bool) {
+    /// was switched off and on after its `stamp`: `dipped_at`), Awake the first time its
+    /// object is active (even with the component disabled: such a script hears collisions, so
+    /// it must have woken), then OnEnable when it can run. `flush` runs what each callback
+    /// queued right after it. Returns how many of OnDisable / OnEnable it called.
+    pub(super) fn reconcile(&mut self, i: usize, dipped_at: Option<u64>, flush: bool) -> usize {
+        let mut switched = 0;
         let inst = &self.instances[i];
         let dipped = dipped_at.is_some_and(|at| at > inst.stamp);
-        let enabled = inst.enabled;
-        let run = self.runnable(inst);
-        if enabled && (!run || dipped) {
+        if inst.enabled && (dipped || !self.runnable(inst)) {
             self.set_enabled(i, false);
+            switched += 1;
             self.call(i, "OnDisable", None);
             if flush {
                 self.flush_spawned();
             }
-        } else if !run || enabled {
-            return;
         }
-        if self.instances[i].enabled || !self.runnable(&self.instances[i]) {
-            return;
-        }
-        if !self.instances[i].awoken {
+        if !self.instances[i].awoken && self.hears_contacts(&self.instances[i]) {
             self.instances[i].awoken = true;
             self.call(i, "Awake", None);
             if flush {
                 self.flush_spawned();
             }
-            // Awake may have switched its own object off: no OnEnable then.
-            if self.instances[i].enabled || !self.runnable(&self.instances[i]) {
-                return;
-            }
+        }
+        // Awake may have switched its own object off: no OnEnable then.
+        let inst = &self.instances[i];
+        if inst.enabled || !inst.awoken || !self.runnable(inst) {
+            return switched;
         }
         self.set_enabled(i, true);
+        switched += 1;
         self.call(i, "OnEnable", None);
         if flush {
             self.flush_spawned();
         }
+        switched
     }
 
     fn set_enabled(&mut self, i: usize, on: bool) {
@@ -78,7 +80,11 @@ impl ScriptHost {
         if self.syncing {
             return;
         }
-        for _ in 0..MAX_PASSES {
+        // OnEnable / OnDisable per script in this look (indices only grow meanwhile:
+        // instantiated scripts are added at the end, destroyed ones go between frames).
+        let mut flips: Vec<usize> = Vec::new();
+        let mut rounds = 0;
+        'look: loop {
             let seen = self.seen_activity;
             let (now, changes) = self.with_world(|w| {
                 let now = w.scene.activity();
@@ -88,6 +94,11 @@ impl ScriptHost {
             let Some(changes) = changes else {
                 return;
             };
+            // A chain is at most one round per script; more is a loop the flips missed.
+            rounds += 1;
+            if rounds > self.instances.len() + MAX_SWITCHES {
+                break 'look;
+            }
             self.seen_activity = now;
             self.syncing = true;
             for i in 0..self.instances.len() {
@@ -97,11 +108,22 @@ impl ScriptHost {
                     Some(c) => c.dipped.get(&e).copied(),
                     None => None,
                 };
-                // While Play starts, scripts wake in order (the start pass reaches them).
-                if self.starting && !self.instances[i].awoken {
+                // While Play starts, scripts wake in order (the start pass reaches them); one
+                // it already went by, switched on by a later Awake, wakes now.
+                if self.start_pending.contains(&i) && !self.instances[i].awoken {
                     continue;
                 }
-                self.reconcile(i, dipped_at, true);
+                let n = self.reconcile(i, dipped_at, true);
+                if n > 0 {
+                    if flips.len() <= i {
+                        flips.resize(i + 1, 0);
+                    }
+                    flips[i] += n;
+                    if flips[i] > MAX_SWITCHES {
+                        self.syncing = false;
+                        break 'look;
+                    }
+                }
             }
             self.syncing = false;
         }

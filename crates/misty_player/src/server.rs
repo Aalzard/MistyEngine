@@ -99,6 +99,11 @@ pub fn run(root: &Path, launch: &Launch, args: &Args) -> i32 {
         }
         misty_engine::profiler::end_frame();
     }
+    // Scripts get OnDisable / OnDestroy before PlayerPrefs are saved.
+    game.shutdown();
+    for (kind, text) in game.take_logs() {
+        log.write(kind, &text);
+    }
     log.write(LogKind::Info, "Server stopped (Application.Quit)");
     if let Err(e) = misty_engine::prefs::save() {
         log.write(LogKind::Warning, &format!("PlayerPrefs: {e}"));

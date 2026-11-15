@@ -277,6 +277,9 @@ pub struct ParticleEmitter {
     /// The last step stopped the system for good: not emitting any more and the last
     /// particle gone (the Stop Action runs).
     pub finished: bool,
+    /// Stopped for good, Stop Action not run yet: it waits while the system's sub emitters,
+    /// or the system a sub emitter belongs to, still have particles (`particles::update`).
+    pub stop_pending: bool,
     next_id: u32,
     rng: Rng,
 }
@@ -298,6 +301,7 @@ impl Default for ParticleEmitter {
             emitting: false,
             live: false,
             finished: false,
+            stop_pending: false,
             next_id: 0,
             rng: Rng::new(0),
         }
@@ -341,6 +345,11 @@ impl ParticleEmitter {
         self.particles.len()
     }
 
+    /// Playing (not stopped for good) or still has particles.
+    pub fn is_alive(&self) -> bool {
+        self.live || !self.particles.is_empty()
+    }
+
     /// Play: resumes when paused, otherwise starts a new cycle (keeping live particles).
     pub fn play(&mut self, system: &ParticleSystem, world: &Mat4, gravity: Vec3) {
         match self.state {
@@ -363,6 +372,7 @@ impl ParticleEmitter {
         self.state = PlayState::Playing;
         self.emitting = true;
         self.live = true;
+        self.stop_pending = false;
         self.time = 0.0;
         self.total_time = 0.0;
         self.accumulator = 0.0;
@@ -478,6 +488,7 @@ impl ParticleEmitter {
         if self.live && self.state == PlayState::Stopped && self.particles.is_empty() {
             self.live = false;
             self.finished = true;
+            self.stop_pending = true;
         }
         self.update_trails(system, world);
     }

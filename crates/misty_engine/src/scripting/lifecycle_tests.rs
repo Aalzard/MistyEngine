@@ -617,3 +617,185 @@ fn set_active_off_and_on_in_one_frame_replays_play_on_awake() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ---- Round 81: bug hunt on the lifecycle ----------------------------------------------------
+
+/// An object switched on by a script's Awake while Play starts wakes even when the start pass
+/// already went by it (it comes first in the scene): it used to get no Awake, OnEnable or
+/// Start at all.
+#[test]
+fn an_object_switched_on_by_an_earlier_awake_at_play_start_wakes() {
+    let waker = r#"
+local W = {}
+function W:Awake() GameObject.Find("Panel"):SetActive(true) end
+return W
+"#;
+    let root = project(&[("Waker", waker)]);
+    let mut scene = Scene::new("t");
+    let panel = scripted(&mut scene, "Panel", "Life", None);
+    scene.game_object_mut(panel).active = false;
+    scripted(&mut scene, "Waker", "Waker", None);
+    let mut g = Game::start(scene, root.clone());
+    assert_eq!(g.lines("Panel:"), names("Panel", &["Awake", "OnEnable"]));
+    g.frames(1);
+    assert_eq!(
+        g.lines("Panel:"),
+        names("Panel", &["Awake", "OnEnable", "Start"])
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Each OnEnable switching on the next object of a 40-long chain in one frame is not an
+/// endless loop: every object wakes, with no Console error. The guard counted rounds (32),
+/// and a link to an object the round had already gone by (earlier in the scene) takes one
+/// round each, so the last links got no OnEnable or Start and the Console showed an error.
+/// Objects down one hierarchy wake in the same round and pass either way.
+#[test]
+fn a_long_chain_of_onenable_switches_is_not_an_endless_loop() {
+    let chain = r#"
+local C = {}
+function C:OnEnable()
+    local n = tonumber(string.sub(self.gameObject.name, 2))
+    Debug.Log("Chain:" .. n)
+    local nxt = GameObject.Find("L" .. (n + 1))
+    if nxt ~= nil then nxt:SetActive(true) end
+    if self.transform.childCount > 0 then
+        self.transform:GetChild(0).gameObject:SetActive(true)
+    end
+end
+return C
+"#;
+    let ctl = controller(r#"    if f == 2 then GameObject.Find("L0"):SetActive(true) end"#);
+    let root = project(&[("Chain", chain), ("Ctl", &ctl)]);
+    let mut scene = Scene::new("t");
+    scripted(&mut scene, "Ctl", "Ctl", None);
+    // Later links come first in the scene: each link is switched on after the round passed it.
+    for k in (0..40).rev() {
+        let e = scripted(&mut scene, &format!("L{k}"), "Chain", None);
+        scene.game_object_mut(e).active = false;
+    }
+    // And a 40-deep hierarchy under the last link.
+    let mut parent = scene.find_by_name("L39");
+    for k in 100..140 {
+        let e = scripted(&mut scene, &format!("D{k}"), "Chain", parent);
+        scene.game_object_mut(e).active = false;
+        parent = Some(e);
+    }
+    let mut g = Game::start(scene, root.clone());
+    g.frames(3);
+    let woke = g.lines("Chain:");
+    let want: Vec<String> = (0..40)
+        .chain(100..140)
+        .map(|k| format!("Chain:{k}"))
+        .collect();
+    assert_eq!(woke, want);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A firework: the rocket (Stop Action Destroy) bursts into a sub emitter when it dies. The
+/// sub emitter's own Stop Action waits for its parent (it used to destroy itself when its own
+/// short cycle ended, before the rocket died), and the rocket waits for the burst to finish
+/// before it destroys itself and the sub emitter (it used to cut the burst off at once).
+#[test]
+fn stop_actions_wait_for_sub_emitters_and_their_parents() {
+    use crate::particles::{SubEmitter, SubEmitterTrigger};
+    let stopped = r#"
+local S = {}
+function S:OnParticleSystemStopped() Debug.Log(self.gameObject.name .. ":Stopped") end
+return S
+"#;
+    let root = project(&[("S", stopped)]);
+    let mut scene = Scene::new("t");
+    // The rocket: one particle living 0.5 s; bursts into 8 sparks when it dies.
+    let rocket = scene.spawn("Rocket", None);
+    let mut s = one_shot(StopAction::Destroy);
+    s.main.start_lifetime = crate::particles::MinMax::constant(0.5);
+    s.emission.bursts[0].count = 1;
+    s.sub_emitters.enabled = true;
+    s.sub_emitters.list = vec![SubEmitter {
+        trigger: SubEmitterTrigger::Death,
+        emitter: "Sparks".into(),
+        count: 8,
+        ..Default::default()
+    }];
+    scene.add(rocket, s);
+    // The sparks: a 0.1 s cycle of their own, living 0.3 s; its Stop Action calls back.
+    let sparks = scripted(&mut scene, "Sparks", "S", Some(rocket));
+    let mut sub = one_shot(StopAction::Callback);
+    sub.main.duration = 0.1;
+    sub.main.start_lifetime = crate::particles::MinMax::constant(0.3);
+    sub.emission.bursts.clear();
+    scene.add(sparks, sub);
+    // 0.4 s: the rocket flies; the sparks' own cycle ended long ago.
+    let (mut rt, mut logs) = run(&mut scene, root.clone(), 24);
+    assert!(scene.contains(rocket) && scene.contains(sparks));
+    assert!(logs.iter().all(|(_, t)| !t.contains("Stopped")), "{logs:?}");
+    // 0.6 s: the rocket died and burst; the sparks fly while the rocket waits.
+    let mut time = Time::default();
+    time.advance(0.4);
+    let mut step = |rt: &mut Runtime, scene: &mut Scene, n: u32, logs: &mut Vec<_>| {
+        for _ in 0..n {
+            time.advance(1.0 / 60.0);
+            rt.update(scene, &time, Input::default());
+            logs.extend(rt.take_logs());
+        }
+    };
+    step(&mut rt, &mut scene, 12, &mut logs);
+    let count = |sc: &Scene, e| sc.world.get::<&ParticleEmitter>(e).map_or(0, |m| m.count());
+    assert!(scene.contains(rocket), "the rocket waits for its burst");
+    assert_eq!(count(&scene, sparks), 8, "the burst is alive");
+    // Long after: the sparks died, the sub emitter called back once, the rocket went.
+    step(&mut rt, &mut scene, 60, &mut logs);
+    assert!(!scene.contains(rocket) && !scene.contains(sparks));
+    let calls: Vec<&String> = logs
+        .iter()
+        .inspect(|(k, t)| assert_ne!(*k, LogKind::Error, "{t}"))
+        .map(|(_, t)| t)
+        .filter(|t| t.contains("Stopped"))
+        .collect();
+    assert_eq!(calls, ["Sparks:Stopped"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A script whose component starts disabled still wakes (Awake, not OnEnable or Start) when
+/// its object is active, as in the familiar engine: it hears collisions, and its
+/// OnCollisionEnter used to run on fields its Awake never set (a Console error).
+#[test]
+fn a_disabled_script_wakes_before_it_hears_collisions() {
+    let counter = r#"
+local H = {}
+function H:Awake() self.hits = 0 Debug.Log("H:Awake") end
+function H:OnEnable() Debug.Log("H:OnEnable") end
+function H:Start() Debug.Log("H:Start") end
+function H:OnCollisionEnter(o)
+    self.hits = self.hits + 1
+    Debug.Log("H:hit " .. self.hits)
+end
+function H:OnDestroy() Debug.Log("H:OnDestroy") end
+return H
+"#;
+    let root = project(&[("H", counter)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    scene.add(
+        floor,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/H.lua".into(),
+                enabled: false,
+                ..Default::default()
+            }],
+        },
+    );
+    let crate3 = scene.spawn("Crate", None);
+    scene.set_transform(crate3, Transform::from_position(Vec3::new(0.0, 2.0, 0.0)));
+    scene.add(crate3, BoxCollider::default());
+    scene.add(crate3, Rigidbody::default());
+    let mut g = Game::start(scene, root.clone());
+    g.frames(90);
+    g.host.shutdown(&mut g.scene);
+    g.logs.extend(g.host.take_logs());
+    assert_eq!(g.lines("H:"), ["H:Awake", "H:hit 1", "H:OnDestroy"]);
+    let _ = std::fs::remove_dir_all(&root);
+}

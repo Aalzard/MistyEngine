@@ -293,6 +293,16 @@ impl Game {
     pub fn take_logs(&mut self) -> Vec<(LogKind, String)> {
         std::mem::take(&mut self.logs)
     }
+
+    /// The game ends (`Application.Quit()`, the window closed, the server stopped): scripts
+    /// get OnDisable and OnDestroy while the scene still exists, like a scene unloading, before
+    /// PlayerPrefs are saved (a game saving its state in OnDisable keeps it). No more frames.
+    pub fn shutdown(&mut self) {
+        if let Some(mut rt) = self.runtime.take() {
+            rt.shutdown(&mut self.scene);
+            self.logs.extend(rt.take_logs());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -474,6 +484,47 @@ return Loader
             .filter(|(k, _)| *k == LogKind::Error)
             .collect();
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    /// Quitting (or closing the window) unloads the scene like a scene load does: the
+    /// scripts get OnDisable and OnDestroy before PlayerPrefs are saved. They used to get
+    /// nothing, in the player and in the dedicated server.
+    #[test]
+    fn quitting_calls_ondisable_and_ondestroy() {
+        let _turn = one_game_at_a_time();
+        let root = project("quit_goodbye");
+        std::fs::write(
+            root.join("Assets/Scripts/Quitter.lua"),
+            r#"
+local Q = {}
+function Q:Update() Application.Quit() end
+function Q:OnDisable() Debug.Log("Quitter:OnDisable") end
+function Q:OnDestroy() Debug.Log("Quitter:OnDestroy") end
+return Q
+"#,
+        )
+        .unwrap();
+        let mut game = Game::open(&root).unwrap();
+        game.load_scene(&SceneRef::Name("Level2".into())).unwrap();
+        game.frame(1.0 / 60.0, Input::default());
+        assert!(game.quit);
+        game.shutdown();
+        let logs = game.take_logs();
+        let bye: Vec<&str> = logs
+            .iter()
+            .map(|(_, t)| t.as_str())
+            .filter(|t| t.starts_with("Quitter:"))
+            .collect();
+        assert_eq!(bye, ["Quitter:OnDisable", "Quitter:OnDestroy"], "{logs:?}");
+        // Nothing runs after it.
+        game.frame(1.0 / 60.0, Input::default());
+        game.shutdown();
+        assert!(
+            game.take_logs()
+                .iter()
+                .all(|(_, t)| !t.starts_with("Quitter:"))
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// `LoadScene(name, LoadSceneMode.Additive)` adds a build scene next to the first; its

@@ -158,6 +158,11 @@ fn main() {
     if let Err(e) = event_loop.run_app(&mut app) {
         app.log.write(LogKind::Error, &e.to_string());
     }
+    // Quit or the window closed: scripts get OnDisable / OnDestroy before PlayerPrefs are saved.
+    app.game.shutdown();
+    for (kind, text) in app.game.take_logs() {
+        app.log.write(kind, &text);
+    }
     if let Err(e) = prefs::save() {
         app.log
             .write(LogKind::Warning, &format!("PlayerPrefs: {e}"));
