@@ -5204,8 +5204,10 @@ is flat from the fifth cycle.
   (20 %).
 - Timings (High 1920×1080, quiet GPU): hero 11.83 ms GPU, inside 10.66 ms (round 7: 12.0 /
   11.1). Checks: fmt clean, clippy 0 warnings, editor tests 1019 passed (with
-  `noon_valley_matches_its_generator`); no engine change (golden and workspace tests not
-  needed).
+  `noon_valley_matches_its_generator`) and 1 failed in both full runs:
+  `assets::tests::models_extract_into_their_own_project_whatever_the_global_root` (the global
+  project root held by the autosave `panic` test's folder for its whole retry window; passes
+  alone; not touched by this round). No engine change (golden and workspace tests not run).
 
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
