@@ -1006,7 +1006,10 @@ fn a_snapshot_taken_before_a_save_is_older_than_the_save() {
     assert!(
         scan.leftovers.is_empty(),
         "the backup older than the save is offered back: {:?}",
-        scan.leftovers.iter().map(|l| (l.backup_ms, l.file_ms)).collect::<Vec<_>>()
+        scan.leftovers
+            .iter()
+            .map(|l| (l.backup_ms, l.file_ms))
+            .collect::<Vec<_>>()
     );
     let _ = std::fs::remove_dir_all(&root);
 }

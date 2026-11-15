@@ -381,8 +381,8 @@ pub fn poll_changes() -> Vec<String> {
     lib.entries.retain(|key, e| {
         let abs = Path::new(key);
         // The background file watch's stamps first; a difference is checked on disk.
-        let same = e.modified == mtime_with(abs, crate::vfs::cached_modified)
-            || e.modified == mtime(abs);
+        let same =
+            e.modified == mtime_with(abs, crate::vfs::cached_modified) || e.modified == mtime(abs);
         if !same && !changed.contains(&e.rel) {
             changed.push(e.rel.clone());
         }

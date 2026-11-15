@@ -622,7 +622,10 @@ fn an_unresolved_asset_is_picked_up_once_its_meta_file_can_be_written() {
     let blue_meta = root.join("Assets/Mats/Blue.mat.meta");
     set_read_only(&root, true);
     let (scanned, _) = GuidDatabase::scan(&root);
-    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+    assert!(
+        !blue_meta.exists(),
+        "a read-only project writes no meta file"
+    );
     assert!(scanned.unresolved().any(|p| p == "Assets/Mats/Blue.mat"));
     assert!(scanned.guid_of("Assets/Mats/Blue.mat").is_none());
     let db = RwLock::new(Some(scanned));
@@ -630,7 +633,10 @@ fn an_unresolved_asset_is_picked_up_once_its_meta_file_can_be_written() {
     let guid = |rel: &str| db.read().unwrap().as_ref().unwrap().guid_of(rel);
     // Still read-only: nothing written, nothing new.
     assert!(poll_now_in(&db, &walk).is_none());
-    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+    assert!(
+        !blue_meta.exists(),
+        "a read-only project writes no meta file"
+    );
 
     // The editor holding the lock gives Green a GUID: picked up, still without writing.
     let green = Guid::new();
@@ -641,7 +647,10 @@ fn an_unresolved_asset_is_picked_up_once_its_meta_file_can_be_written() {
     );
     assert!(poll_now_in(&db, &walk).is_some(), "Green's GUID is read");
     assert_eq!(guid("Assets/Mats/Green.mat"), Some(green));
-    assert!(!blue_meta.exists(), "a read-only project writes no meta file");
+    assert!(
+        !blue_meta.exists(),
+        "a read-only project writes no meta file"
+    );
     assert!(guid("Assets/Mats/Blue.mat").is_none());
 
     // The project stops being read-only: Blue gets its meta file and GUID.
@@ -682,7 +691,12 @@ fn an_unresolved_asset_is_picked_up_once_its_meta_file_is_writable_again() {
     set_ro(false);
     let report = poll_now_in(&db, &walk).expect("the meta file is written now");
     assert_eq!(report.created, ["Assets/Level.scene"]);
-    let g = db.read().unwrap().as_ref().unwrap().guid_of("Assets/Level.scene");
+    let g = db
+        .read()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .guid_of("Assets/Level.scene");
     assert!(g.is_some());
     assert_eq!(meta::guid_in(&std::fs::read_to_string(&m).unwrap()), g);
     let _ = std::fs::remove_dir_all(root);

@@ -709,22 +709,33 @@ mod tests {
         std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
         let rel = "Assets/Scripts/Mover.lua";
         let file = root.join(rel);
-        std::fs::write(&file, "local M = { speed = 1 }
+        std::fs::write(
+            &file,
+            "local M = { speed = 1 }
 return M
-").unwrap();
+",
+        )
+        .unwrap();
         // Saved (with a new field) right after the editor read the old text.
         AFTER_READ.with(|hook| {
             *hook.borrow_mut() = Some(Box::new(|path: &Path| {
-                std::fs::write(path, "local M = { speed = 1, jump = 2 }
+                std::fs::write(
+                    path,
+                    "local M = { speed = 1, jump = 2 }
 return M
-").unwrap();
+",
+                )
+                .unwrap();
                 let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
                 let f = std::fs::File::options().write(true).open(path).unwrap();
                 f.set_modified(later).unwrap();
             }));
         });
         let mut db = AssetDatabase::open(&root);
-        assert!(AFTER_READ.with(|h| h.borrow().is_none()), "the save happened");
+        assert!(
+            AFTER_READ.with(|h| h.borrow().is_none()),
+            "the save happened"
+        );
         // The next look at changed scripts reads the saved text.
         db.last_poll = None;
         db.poll_scripts();
@@ -833,7 +844,10 @@ return M
             let _own = misty_engine::assets::scoped_root(&own);
             assert!(models::model(REL).is_ok());
         }
-        assert!(models::model(REL).is_err(), "still not in the other project");
+        assert!(
+            models::model(REL).is_err(),
+            "still not in the other project"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 }
