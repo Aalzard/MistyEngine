@@ -5840,3 +5840,56 @@ warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both 
 1031 passed, engine 1704, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2767).
 Each new test was run against the code without its fix and failed. No render code changed, so
 golden shots were not rerun.
+## Round 81 — Bug hunt 15: the script lifecycle (branch r81-qa15)
+
+Attacked round 79 (Lua OnEnable / OnDisable / OnDestroy, Awake for objects that start inactive,
+`Runtime::shutdown` at Stop and scene loads, contacts reaching disabled scripts, particle Stop
+Action, same-frame toggle replay).
+
+### Bugs fixed
+- **An object switched on by a later script's Awake at Play start never woke.** The start pass
+  wakes scripts in order and the OnEnable pass skipped every script that had not woken yet,
+  "the start pass will reach it"; one the pass had already gone by (earlier in the scene) was
+  skipped for good: no Awake, OnEnable or Start ever, yet its Update ran. The host now keeps the
+  range the start pass has not reached (`start_pending`) and skips only those.
+- **A long chain of OnEnables tripped the endless-loop guard.** The guard counted rounds (32);
+  a link to an object earlier in the scene takes one round each, so a 40-link chain stopped
+  with a Console error and the last links never got OnEnable or Start. The guard now counts
+  OnEnable / OnDisable per script (32 each in one look, plus a round cap of scripts + 32), so
+  the endless pair still stops with one error. (Links down one hierarchy wake in one round and
+  were fine.)
+- **A disabled script heard collisions without ever waking.** Awake waited for the component
+  to be enabled, but round 79 sends collisions and triggers to disabled scripts, so
+  `OnCollisionEnter` ran on fields its Awake never set (a Console error). As in the familiar
+  engine, Awake now runs the first time the object is active even with the component disabled
+  (OnEnable and Start still wait for it), and OnDestroy follows it.
+- **Stop Actions ignored sub emitters.** A sub emitter's own Stop Action ran when its own short
+  cycle ended, long before its parent's particles died and fired it (Destroy removed it, so the
+  burst never showed); and a rocket with Stop Action Destroy destroyed itself (and its sub
+  emitter) the step its last particle died, cutting off the burst that death fired. A stopped
+  system now waits (`ParticleEmitter::stop_pending`) while its sub emitters still have particles
+  or play, and a sub emitter waits while the system it belongs to does.
+- **The built game and the dedicated server never called OnDisable / OnDestroy on quit.**
+  `Application.Quit()` or closing the window dropped the runtime; a game saving PlayerPrefs in
+  OnDisable lost them. `Game::shutdown` runs `Runtime::shutdown` before PlayerPrefs are saved,
+  in the player and the server.
+
+### Checked, not bugs
+- SampleProject and template scripts: only `GuardBrain` and `FirstPersonController` define
+  Awake, nothing defines OnEnable / OnDisable / OnDestroy; none double-initializes. GuardBrain
+  on an object that starts inactive now gets its Awake before the Behaviour Tree calls it.
+- Destroy inside OnDisable / OnDestroy (a child's OnDisable destroying its parent, an object
+  destroying itself again) queues for the end of the frame; nothing runs twice. Instantiate in
+  OnDestroy during Stop only reaches the played scene, which Stop throws away; nothing wakes.
+- LoadScene or `SaveSystem.Load` from OnDisable during an unload lands in the old host and is
+  dropped with it (no recursion); additive unloads go through `process_destroy`.
+- Stop Action Disable then switching back on restarts Play On Awake systems (the emitter is
+  dropped while off, or by the dipped-object restart within one frame).
+- Callback on a disabled script: not called (documented "on its scripts" that run); left as is.
+- Lua cannot enable a script component (no `self.enabled`), so a disabled script cannot
+  re-enable itself in OnCollisionEnter.
+- Cost: 5000 scripted objects (half with Awake/OnEnable/Start/OnDisable/OnDestroy, half with
+  Update): Play start about 47 ms, a frame about 10 ms (the Lua Updates), shutdown about 7 ms;
+  within noise of round 80's code. Nothing switching costs one integer compare per look.
+- The node-only 2D game sample now unloads its stage through `Runtime::shutdown` (as the editor
+  and player do) and still plays both stages with no errors.
