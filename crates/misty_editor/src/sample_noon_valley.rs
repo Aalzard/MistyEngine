@@ -188,6 +188,20 @@ fn cliff_ledge(x: f32, z: f32) -> bool {
     (hill_m(x, z) / step).fract() < 0.9 - face
 }
 
+// TEMP r75 knobs
+fn far_knobs() -> [f32; 7] {
+    static K: std::sync::OnceLock<[f32; 7]> = std::sync::OnceLock::new();
+    *K.get_or_init(|| {
+        let mut k = [110.0, 190.0, 300.0, 120.0, 0.0, 3000.0, 1300.0];
+        if let Ok(v) = std::env::var("NV_FAR") {
+            for (i, x) in v.split(',').enumerate() {
+                k[i] = x.parse().unwrap();
+            }
+        }
+        k
+    })
+}
+
 /// Height in metres at terrain-local (x, z).
 fn height_m(x: f32, z: f32) -> f32 {
     let p = rel(x, z);
@@ -199,6 +213,10 @@ fn height_m(x: f32, z: f32) -> f32 {
         40.0 + 7.0 * rolling + 2.2 * swells + 0.6 * dips + 10.0 * smooth(-200.0, -900.0, p.x);
     // The hillside on the right, with limestone ledges and faces in patches.
     let mut hill = hill_m(x, z);
+    {
+        let k = far_knobs();
+        hill *= 1.0 - k[4] * smooth(k[6], 2500.0, p.y);
+    }
     let (cliffs, step, face) = cliff_steps(x, z);
     if cliffs > 0.0 {
         hill += (terrace(hill, step, face) - hill) * cliffs;
@@ -215,14 +233,15 @@ fn height_m(x: f32, z: f32) -> f32 {
     // Behind the camera the ranges are closer, so lower (else too steep for the forest).
     let behind = 0.45 + 0.55 * smooth(-600.0, 300.0, p.y);
     let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
-    let near = 110.0 * band(1500.0, 300.0) * lump(31) * open_left;
+    let k = far_knobs();
+    let near = k[0] * band(1500.0, 300.0) * lump(31) * open_left;
     h += (near
-        + 190.0 * band(2200.0, 380.0) * lump(37)
-        + 300.0 * smooth(2350.0, 2950.0, r) * lump(47))
+        + k[1] * band(2200.0, 380.0) * lump(37)
+        + k[2] * smooth(2350.0, 2950.0, r) * lump(47))
         * behind;
     // Rims at the terrain's edges (nothing to see past them).
     let edge = x.min(z).min(SIZE.x - x).min(SIZE.z - z);
-    h += 120.0 * smooth(400.0, 0.0, edge);
+    h += k[3] * smooth(400.0, 0.0, edge);
     h
 }
 
@@ -244,7 +263,8 @@ fn forest(x: f32, z: f32) -> f32 {
     f = f.max(ahead);
     // Woods on the far hills (their ring starts ~1.3 km out): closed, blue with distance.
     let r = far_radius(p);
-    let woods = smooth(1150.0, 1350.0, r) * smooth(3000.0, 2700.0, r);
+    let we = far_knobs()[5];
+    let woods = smooth(1150.0, 1350.0, r) * smooth(we, we - 300.0, r);
     f = f.max(woods);
     // Behind the camera, the far treeline 600 m back.
     let behind = smooth(-560.0, -640.0, p.y + 40.0 * noise::fbm(x, z, 80.0, 2, 61))
@@ -1541,22 +1561,26 @@ fn volume() -> PostProcessVolume {
     cs.sample_count = 6;
     // Past the shadow maps (150 m on High) the forests keep their shade.
     cs.far_shadows = 1.0;
-    // Fair-weather cumulus: a few big soft heaps.
+    // Fair-weather cumulus: big white heaps with crisp, rounded outlines (round 59.9: the
+    // photo's heaps are crisper and whiter; Softness blurred and greyed their edges, and
+    // the sharpest Shape erodes them least, so they stay rounded instead of cauliflower).
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Sparse.apply(c);
-    c.coverage = 0.34;
+    c.coverage = 0.29;
     c.density = 0.7;
-    c.shape = 0.45;
+    c.shape = 1.0;
     c.altitude = 1400.0;
     c.thickness = 1500.0;
     c.size = 2.4;
-    c.softness = 0.5;
+    c.softness = 0.0;
     c.wind_direction = 100.0;
     c.wind_speed = 6.0;
     c.silver_lining = 0.5;
     c.cumulus = 1.0;
-    c.shadow_opacity = 0.7;
+    // (Dense heaps cast near-black shadows at 0.7; the photo's meadow under the clouds
+    // stays light.)
+    c.shadow_opacity = 0.35;
     // Aerial perspective: blue-grey haze that layers the distant hills.
     let f = &mut v.fog;
     f.active = true;
@@ -2056,4 +2080,34 @@ fn noon_valley_plays() {
     }
     let physics = misty_engine::physics::Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
     assert!(physics.warnings.is_empty(), "{:?}", physics.warnings);
+}
+
+// TEMP r75: horizon elevation per azimuth from the eye (degrees), from height_m and forest.
+#[test]
+#[ignore = "temp"]
+fn noon_horizon_profile() {
+    let eye = height_m(EYE.0, EYE.1) + 1.7;
+    let mut out = String::new();
+    for yaw in (-180..=180).step_by(10) {
+        let a = (yaw as f32).to_radians();
+        let (s, c) = (a.sin(), a.cos());
+        let (mut best, mut at, mut bh) = (-90.0f32, 0.0f32, 0.0f32);
+        let mut d = 60.0f32;
+        while d < 6000.0 {
+            let (x, z) = (EYE.0 + s * d, EYE.1 + c * d);
+            if x < 0.0 || z < 0.0 || x > SIZE.x || z > SIZE.z {
+                break;
+            }
+            let h = height_m(x, z) + if forest(x, z) > 0.5 { 22.0 } else { 0.0 };
+            let e = ((h - eye) / d).atan().to_degrees();
+            if e > best {
+                best = e;
+                at = d;
+                bh = h - eye;
+            }
+            d += 10.0;
+        }
+        out += &format!("yaw {yaw:4} elev {best:5.2} at {at:5.0} m (+{bh:4.0} m)\n");
+    }
+    eprintln!("{out}");
 }
