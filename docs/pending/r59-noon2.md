@@ -177,6 +177,15 @@ temporary test (removed). Cloud tries via `cl.py` (edits the scene's cloud block
 no regen). Sunlit share still 23 %: gap threshold and leaf density tries failed (see
 progress.md).
 
+## Round 10 (branch r82-noon10, done)
+
+Engine: `CloudsOverride::distance` (2–60 km, out of the file at 60 km) feeds the trace distance
+(`layer.w`, was the constant `MAX_DISTANCE`); clouds fade over its last 40 %. NoonValley 15 km.
+Generator `WOOD_FILL`: one Wood Oak at (−62.6, 519.6), height 0.9: inside sunlit 20 %, median
+0.026. Scripts in the session scratchpad `r82/`: `horizon.py` (cloud share by elevation band),
+`blobs.py` (sun-fleck count and sizes), `patch.py` (flat-ground projection of sunlit pixels:
+wrong here, the pool is a gap between crowns). Experiment knobs (NV_FILL, NV_ADD) removed.
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
