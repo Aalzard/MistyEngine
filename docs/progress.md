@@ -5180,6 +5180,35 @@ is flat from the fifth cycle.
   clippy 0 warnings, editor tests 1009 passed (with `noon_valley_matches_its_generator`),
   workspace tests passed on the round's first state; no engine change since round 6's golden.
 
+### Round 59.8 — lighter olive forest floor, pale blue far haze (branch r74-noon8)
+
+- **Forest floor**: the Forest Floor layer's occlusion 0.5 → 1.0 (the open wood's shade gets
+  the sky between the crowns), the moss patches take 0.6 of the litter instead of 0.92 (the
+  photo's floor is mostly brown litter), and the toned litter is lighter and olive instead of
+  red (`forest_floor_toned` × 0.69 / 0.65 / 0.25 linear, was 0.55 / 0.44 / 0.3).
+  `inside` lower half: median 0.019 → 0.028 (photo 0.028), p75 0.145 → 0.176 (0.163), p95
+  0.73 → 0.77 (0.76), sunlit share 23 % → 23 % (20 %); shaded pixels' median sRGB 30/34/18
+  (dark green) → 50/40/18 (photo 40/38/8). Tries: occlusion alone (0.8 / 1.0) reached only
+  0.022 / 0.024; less moss without a lighter litter went darker (0.013, red-brown).
+  `inside_r7_r8.jpg`.
+- **Most visible difference across the 9 views: the haze.** The far hills and the low sky
+  read grey, an overcast look, where the photo's distant mountains and horizon are a clear pale
+  blue. Measured on the hero view (sRGB): far ridge 115/126/137 → 105/124/148 (photo's far
+  mountains 102/126/154), low sky 115/127/146 → 111/127/151 (photo 103/128/158), sky top
+  74/89/119 → 72/91/121 (76/90/112). Fog albedo 0.62 / 0.69 / 0.8 → 0.5 / 0.66 / 0.92, sky
+  tint 0.18 / 0.24 / 0.32 → 0.22 / 0.26 / 0.3 (the bluer haze tints the sky overhead too). A
+  taller haze layer (maximum height 700 m) greyed the whole sky and was dropped.
+  `hero_r7_r8.jpg`, `away_r7_r8.jpg`, `left_r7_r8.jpg`.
+- Still differs: the photo's clouds are crisper, whiter heaps; the ring of far hills is higher
+  and closer than the photo's (it hides the horizon); the sunlit share in `inside` is 23 %
+  (20 %).
+- Timings (High 1920×1080, quiet GPU): hero 11.83 ms GPU, inside 10.66 ms (round 7: 12.0 /
+  11.1). Checks: fmt clean, clippy 0 warnings, editor tests 1019 passed (with
+  `noon_valley_matches_its_generator`) and 1 failed in both full runs:
+  `assets::tests::models_extract_into_their_own_project_whatever_the_global_root` (the global
+  project root held by the autosave `panic` test's folder for its whole retry window; passes
+  alone; not touched by this round). No engine change (golden and workspace tests not run).
+
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
 - **Record Audio** (new setting, on by default): MP4 and WebM recordings get the game's sound

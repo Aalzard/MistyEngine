@@ -1254,8 +1254,10 @@ fn terrain_data() -> TerrainData {
             normal_scale: 1.2,
             tile_size: [2.0, 2.0],
             smoothness: 0.1,
-            // Sky light reaching the floor (1 = open ground).
-            occlusion: 0.5,
+            // Sky light reaching the floor (1 = open ground; round 59.8: the open wood's shade
+            // is lit by the sky between the crowns and the sunlit leaves, 0.5 left it near
+            // black).
+            occlusion: 1.0,
             ..Default::default()
         },
     ];
@@ -1314,10 +1316,11 @@ fn terrain_data() -> TerrainData {
         out[3] = 255u32.saturating_sub(out[..3].iter().map(|&v| v as u32).sum()) as u8;
         // Patches of moss over the litter in the woods (the dark turf, no grass on it).
         if out[3] > 0 {
-            // (Patches nearly all moss: the litter's height map wins any even blend.)
+            // (Patches nearly all moss: the litter's height map wins any even blend. Round
+            // 59.8: 0.6 of the litter, not 0.92: the photo's floor is mostly brown litter.)
             let moss = smooth(-0.1, 0.2, noise::fbm(x, z, 11.0, 3, 91))
                 * (0.7 + 0.3 * smooth(-0.2, 0.3, noise::fbm(x, z, 3.5, 2, 93)));
-            let moved = (out[3] as f32 * moss * 0.92).round() as u8;
+            let moved = (out[3] as f32 * moss * 0.6).round() as u8;
             out[3] -= moved;
             out[1] = out[1].saturating_add(moved);
         }
@@ -1562,8 +1565,10 @@ fn volume() -> PostProcessVolume {
     f.attenuation_distance = 1300.0;
     f.base_height = 60.0;
     f.maximum_height = 260.0;
-    // (Grey-blue: the photo's far hills and sky are greyer than a clear blue.)
-    f.albedo = [0.62, 0.69, 0.8];
+    // (Round 59.8: pale blue, not grey-blue. Measured, the photo's far mountains and low sky
+    // are a clear pale blue, 102/126/154 and 103/128/158 sRGB; the grey haze made them
+    // 115/126/137, an overcast look.)
+    f.albedo = [0.5, 0.66, 0.92];
     f.anisotropy = 0.2;
     f.sky_haze = 0.9;
     f.volumetric_distance = 300.0;
@@ -1609,8 +1614,9 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_size = 0.04;
     // (A little hazier: the photo's horizon is pale and grey, not saturated blue.)
     rs.skybox.atmosphere_thickness = 1.5;
-    // A deep blue overhead, paler and hazier towards the horizon.
-    rs.skybox.sky_tint = [0.18, 0.24, 0.32];
+    // A deep blue overhead, paler and hazier towards the horizon. (Round 59.8: a little
+    // greyer, against the bluer haze, which tints the sky overhead too.)
+    rs.skybox.sky_tint = [0.22, 0.26, 0.3];
     // (Darker overhead, as in the photo; the meadow keeps its own exposure.)
     rs.skybox.exposure = 0.75;
     // (Misty GI is off: its crown proxies leave the open wood's floor without any sky light;
@@ -1860,7 +1866,8 @@ fn forest_floor_toned(root: &std::path::Path) -> image::RgbImage {
     };
     // Darker, warmer and more saturated (the tone curve's shoulder flattens bright litter to
     // white; colour survives it).
-    let k = [0.55, 0.44, 0.3];
+    // (Round 59.8: lighter and olive, less red: the photo's shaded litter is olive-brown.)
+    let k = [0.69, 0.65, 0.25];
     for px in img.pixels_mut() {
         let c = [lin(px[0]), lin(px[1]), lin(px[2])];
         let luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
