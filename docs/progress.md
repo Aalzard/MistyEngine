@@ -5278,6 +5278,9 @@ is flat from the fifth cycle.
      are sunlit and separate.
 - Timings (High 1920×1080): hero 11.10 ms GPU (round 9 11.25), inside 10.51 ms (10.65;
   clouds 0.40 → 0.25 ms, the shorter rays).
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, `cargo test
+  --workspace --release` 1031 editor (with `noon_valley_matches_its_generator`) + 1717 engine
+  + the rest passed, 0 failed; golden 20 / 20 with the engine change.
 
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
