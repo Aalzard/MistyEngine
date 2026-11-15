@@ -8,7 +8,7 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 9] = [
+pub const NAMES: [&str; 10] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
@@ -17,6 +17,7 @@ pub const NAMES: [&str; 9] = [
     "tree_depth",
     "tree_gpu_cull",
     "tree_occlusion",
+    "tree_skip_empty",
     "glowless",
 ];
 
@@ -28,6 +29,7 @@ static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
 static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 static TREE_GPU_CULL: AtomicBool = AtomicBool::new(true);
 static GLOWLESS: AtomicBool = AtomicBool::new(true);
+static TREE_SKIP_EMPTY: AtomicBool = AtomicBool::new(true);
 // Off by default (see `tree_occlusion`).
 static TREE_OCCLUSION: AtomicBool = AtomicBool::new(false);
 
@@ -41,6 +43,7 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "tree_depth" => Some(&TREE_DEPTH),
         "tree_gpu_cull" => Some(&TREE_GPU_CULL),
         "tree_occlusion" => Some(&TREE_OCCLUSION),
+        "tree_skip_empty" => Some(&TREE_SKIP_EMPTY),
         "glowless" => Some(&GLOWLESS),
         _ => None,
     }
@@ -122,6 +125,13 @@ pub fn tree_depth() -> bool {
 /// the virtual shadow map keeps the CPU lists).
 pub fn tree_gpu_cull() -> bool {
     get(&TREE_GPU_CULL)
+}
+
+/// GPU-culled trees: the draw lists no tree of their prototype can reach this frame (too far
+/// for the level, outside the view or the cascade) get no draw at all (trees.rs `Reach`),
+/// instead of an indirect draw of nothing. Same picture: the test only errs towards drawing.
+pub fn tree_skip_empty() -> bool {
+    get(&TREE_SKIP_EMPTY)
 }
 
 /// GPU-culled trees hidden behind last frame's depth (a Hi-Z pyramid) are left out of the

@@ -6176,3 +6176,37 @@ shots green (procedural trees, textures and materials draw as before).
 Checks for part 2: `cargo fmt --all --check` passes; clippy `--workspace --all-targets
 --release` 0 warnings; `cargo test --workspace --release --no-fail-fast`: editor 1036, engine
 1738, player 12, recorder 19, MCP 1, server 1 (2807), 0 failed; golden shots green.
+
+## Round 85, part 3 — Where a wood's draws go: terrain chunks, empty tree lists (branch r85-autumn)
+
+Profiled a forest scene outside the repo (a 900 m terrain with a 2049 heightmap, 43 tree
+assets, 63 000 placed trees and plants) with the new `project_scene_draws` (ignored test: the
+tree draws of every pass per part and level, the terrain's chunk draws per pass). At eye level,
+1577 draws: **1192 terrain chunks** (three camera passes of 293 chunks in view, 313 in the
+four cascades), 385 trees (43 assets × bark / leaves / impostor × main pass and cascades,
+4 of them empty), 16 for 149 mesh objects (already instanced). The guess of part 2 that the
+fallen trees or the tree prototypes made the count was wrong.
+
+- **Big heightmaps get bigger chunks, not more.** A terrain was cut into 64-cell chunks
+  whatever its size: a 2049 map had 32 × 32 = 1024 chunks and a 4097 map 4096, each a draw in
+  every camera pass that sees it. Maps past 1025 samples now have 16 × 16 chunks
+  (`terrain_lod::chunk_cells`, `MAX_CHUNKS_PER_SIDE`); maps up to 1025 are cut as before (no
+  sample or golden terrain is larger). The levels of detail step by chunk size, so the full
+  detail reaches farther (9.7 → 11.8 M triangles in that view). The scene's draws: 1055 / 1577
+  / 1562 / 2149 → 806 / 936 / 939 / 962 (from above, eye level, into the sun, wide).
+- **GPU-culled trees: no draw for a list no tree can reach** (`render::trees::Reach`, fast
+  path `tree_skip_empty`, on): every (view, prototype, level, part) list got an indirect draw
+  even when the GPU would fill in a count of zero. A coarse grid of where each prototype
+  stands (24 m cells) tells on the CPU which lists can hold a tree this frame, by the culling
+  shader's own rules, erring only towards drawing. In the profiled wood every asset stands
+  everywhere, so it saves only the 4–30 empty lists; a scene whose species grow in their own
+  places saves most of them (the test: 24 clumped prototypes, over half the lists go, never
+  one that a tree reaches).
+- CPU render of that scene on a quiet machine is 7–8 ms a frame (6.8–8.1 after, 9–12.5
+  before in the same session); the 28–35 ms read in part 2's last timing was the machine
+  (other builds running), not the scene. GPU time is unchanged by the draw count (20.7 /
+  27.3 / 29.0 / 26.1 ms against 22.0 / 28.3 / 27.2 / 27.3, another build running both
+  times): it is the trees' 5–6 ms, SSR and the shadow passes.
+
+Tests: chunk sizes for every supported heightmap, the skipped tree lists against the
+shader's rule (property test).
