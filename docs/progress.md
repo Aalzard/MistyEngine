@@ -5263,3 +5263,80 @@ across Play / Stop and scene loads (agents follow entity ids; prefab instances r
 Object overrides), optional package remove / reinstall (assets and Behaviour Tree Agent
 components stay; agents still run), custom themes with a missing font (default font and a
 note), the node game's headless tests.
+
+## Round 72 — Performance: everyday editor CPU (branch r72-perf)
+
+Measured on the sample project copy (warm `Library/`, plus a folder of 3000 small files for the
+Asset Files case), editor capture runs at 1100 × 650 with VSync off, base and new binaries run
+interleaved (A, B, A, B, …) under the GPU lock, 3 runs each; profiler scope medians over the last
+two thirds of each run. Base = main a9532b02 plus the measuring hooks (`MISTY_STOP_AT`,
+`Play.Stop` scopes). Whole-frame times move ±20 % with other jobs on the machine; the per-scope
+numbers are the steadier ones.
+
+- **The asset watcher rescanned the project every few seconds** when one meta file was empty
+  (cut short by a crash or a power cut: the user's test project has one,
+  `Scenes/BehaviourTreeDemo.scene.meta`). The scan refused it ("not a JSON object"), so the
+  asset was never in the GUID database, every walk listed it as new, and every ~4 s the main
+  thread rescanned all meta files and then refreshed every asset list (`refresh_assets`):
+  350–920 ms frames, also the slow frame "after Stop" (the rescan waiting for Edit mode). An
+  empty meta file now gets a GUID like a missing one, and an asset whose meta file still can't
+  be written is remembered as unresolved, so a walk listing it again is no change.
+- **Folder listings** (Asset Files tree and folder, the asset refresh walk) asked the file
+  system whether each entry was a folder: one call per file of the project on every refresh.
+  The type now comes from the listing itself (links are still followed). Names are lower-cased
+  once for sorting instead of at every comparison.
+- **Asset Files with many files**: tiles (and list rows) scrolled out of view skip all their
+  per-tile work (interaction, menus, drag source, hold-to-rename, path strings), and the folder
+  list is shared instead of copied every frame. Tiles stay widgets while something is dragged.
+- **Scene copies and saves** (`Scene::clone`: every undo step, entering Play, autosave; and
+  `scene_to_json`) asked each object for every one of the ~130 registered component types.
+  They now ask the object's archetype which components it has (`registry::present`).
+- **Opening or reloading a scene** hashed the whole scene's JSON on the main thread (to tell
+  later whether it changed): ~100 ms for StressDemo's 5000 objects. The hash is worked out on a
+  worker from a copy of the scene; asking for it waits for the worker. **Saving** wrote the JSON
+  twice (file, then hash): the hash now comes from the text written.
+- **Autosave** hashes a snapshot where it is made (the worker thread for scenes), not on the
+  main thread when the backup is handed to the saver.
+- **Opening a project**: new or changed scripts are inspected (each runs its top level in a Lua
+  state of its own) on a few threads instead of one after another.
+
+### Before / after (medians of 3 interleaved runs unless noted; ranges in brackets)
+
+| What | Before | After |
+|---|---|---|
+| Rescan stalls with one empty meta file (per 6 s editor run) | 1–2 frames of 350–920 ms | none (watcher poll ≤ 6 ms) |
+| Worst frame after start-up, edit mode (NoonValley / MeadowDemo / StressDemo) | 418 / 410 / 398 ms | 97 / 107 / 81 ms |
+| Leaving Play, NoonValley: worst frame after Stop | 389 ms [358–521] | 26 ms [22–26]¹ |
+| Leaving Play: `Play.Stop` | 19.7 ms | 16.8 ms |
+| Asset Files panel, folder of 3000 files | 4.98 ms/frame | 0.61 ms/frame |
+| Editor frame, NoonValley with that folder open | 11.5 ms | 7.3 ms |
+| Opening StressDemo (5000 objects) in a running editor: `Scene.Open` | 197 ms [151–243] | 59 ms [56–89] |
+| Same, worst frame | 438 ms | 64 ms |
+| StressDemo opened at editor start: `Scene.Open` | 155 ms | 62 ms |
+| Opening the project (5 runs): `Editor.ProjectBrowser` | 78.6 ms | 15.7 ms |
+| Opening the project (5 runs): `Editor.State` (asset refresh) | 309 ms | 142 ms |
+| Opening the project (5 runs): first editor frame after launch | 1085 ms | 964 ms |
+| Scene copy (undo step, Play, autosave), StressDemo / NoonValley² | 24.8 / 1.2 ms | 9.2 / 0.5 ms |
+| `scene_to_json`, StressDemo² | 114 ms | 96 ms |
+| Autosave of a changed scene, worst main-thread frame, StressDemo / MeadowDemo / NoonValley³ | 21.4 / 9.5 / 6.7 ms | 7.3 / 7.2 / 6.2 ms |
+| Autosave main-thread total, StressDemo³ | 28.8 ms | 13.3 ms |
+| Entering Play, NoonValley: `Play.Start` | 296 ms | 306 ms (unchanged, physics) |
+| Editor frame NoonValley / MeadowDemo / StressDemo (no big folder open) | 6.5 / 6.1 / 10.9 ms | 7.8 / 6.8 / 11.2 ms (noise: panel scopes unchanged)⁴ |
+
+¹ One further run had a 254 ms frame 15 frames after Stop with no profiled work in it (the
+machine); the Stop frames themselves were 16–18 ms.
+² `whole_scene_operations_bench` (engine, ignored test), medians of 7 × 3 runs.
+³ `autosave_frame_cost_bench` (editor, ignored test), 15 autosaves each; StressDemo's snapshot
+is now under `BIG_SNAPSHOT` (20 ms), so its autosave no longer waits for the user to pause.
+⁴ Not a change of this round: the renderer is untouched and the Scene Tree, Properties and Asset
+Files scopes match base within ±0.1 ms; the first interleaved round of the new binary ran while
+another job was building (8.5 / 8.9 / 14.1 ms), rounds 2–3 match base.
+
+### Not changed
+- Entering Play in NoonValley (~300 ms) is still mostly the physics world: ~100 000 tree-trunk
+  colliders and the zero-length step that fills the broad phase (round 57: compound colliders
+  would change contact events). Leaving Play's own work is ~16 ms (dropping the runtime).
+- StressDemo's editor frame (~11 ms) is CPU-bound in the renderer's culling and batching of
+  5000 draws (`Render.Culling` ~3 ms) and the Scene Tree's 0.6 ms; the renderer was not touched.
+- Opening a project still imports every model in `Assets/` (~85 ms) and scans the GUID
+  database twice (once for the database, once in the first asset refresh).
