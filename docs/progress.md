@@ -5759,3 +5759,10 @@ undo across scene switches, Hierarchy search, Unicode and Arabic names).
   (snapshot undo); only asset-only steps and scene loads are handled above.
 - Animation clip settings changed in the Inspector during Play (Loop Time) are not handed to the
   running game; the Animation window itself is closed in Play.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1031 passed, engine 1704, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2767).
+Each new test was run against the code without its fix and failed. No render code changed, so
+golden shots were not rerun.
