@@ -11,7 +11,7 @@
   "branch_angle": 50.0,
   "branch_curve": 0.35,
   "twigs": 10,
-  "leaf_density": 1.2,
+  "leaf_density": 1.38,
   "leaf_size": 1.1,
   "leaf_color": [
     0.44,

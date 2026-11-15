@@ -146,7 +146,7 @@
           "intensity_from_sun_height": true,
           "kind": "Directional",
           "range": 10.0,
-          "shadow_softness": 0.35,
+          "shadow_softness": 0.7,
           "shadows": "Soft",
           "spot_angle": 30.0
         },

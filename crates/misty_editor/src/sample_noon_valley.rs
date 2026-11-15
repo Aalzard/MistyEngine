@@ -627,14 +627,6 @@ fn meadow_turf() -> [RgbaImage; 3] {
     maps(n, &color, &height, 3.0)
 }
 
-/// Experiment knob (temporary): `NV_<key>` from the environment, or `default`.
-fn nv(key: &str, default: f32) -> f32 {
-    std::env::var(format!("NV_{key}"))
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
 fn tree_path(name: &str) -> String {
     format!("{DIR}/Trees/{name}.tree")
 }
@@ -864,12 +856,14 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 branches: 10,
                 branch_angle: 50.0,
                 twigs: 10,
-                leaf_density: 1.2 * nv("DENS", 1.0),
-                leaf_size: 1.1 * nv("LEAF", 1.0),
+                // (Round 59.11: 1.2 -> 1.38 with the leaf-fine shadows of Near Shadow Detail,
+                // which let more sun through than the lighter mesh's.)
+                leaf_density: 1.38,
+                leaf_size: 1.1,
                 leaf_color: [0.44, 0.49, 0.31],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
-                clumping: nv("CLUMP", 0.5),
+                clumping: 0.5,
                 ..TreeAsset::oak()
             },
         ),
@@ -882,12 +876,12 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 crown_base: 0.5,
                 trunk_radius: 0.27,
                 leader: 0.7,
-                leaf_density: 1.15 * nv("DENS", 1.0),
-                leaf_size: 1.0 * nv("LEAF", 1.0),
+                leaf_density: 1.32,
+                leaf_size: 1.0,
                 leaf_color: [0.46, 0.5, 0.32],
                 leaf_variation: 0.5,
                 crown_shading: 0.6,
-                clumping: nv("CLUMP", 0.5) * 0.9,
+                clumping: 0.45,
                 ..TreeAsset::linden()
             },
         ),
@@ -985,9 +979,9 @@ const LONE: &[(f32, f32, u16, f32)] = &[
     (-420.0, 520.0, 5, 1.0),
 ];
 
-/// Wood Oaks placed by hand in the treeline wood: (right, ahead) of the camera in metres,
-/// height scale.
-const WOOD_FILL: [(f32, f32, f32); 1] = [(-62.6, 519.6, 0.9)];
+/// Trees placed by hand in the treeline wood: (right, ahead) of the camera in metres, height
+/// scale, prototype (9 Wood Oak, 11 Sapling).
+const WOOD_FILL: [(f32, f32, f32, u16); 2] = [(-62.6, 519.6, 0.9, 9), (-58.2, 532.0, 1.0, 11)];
 
 /// One 8 m cell of the treeline wood, the forest you walk into: tall trunks standing apart
 /// under high, open crowns (sun flecks all over the floor), pools of sun where a tree is
@@ -1029,20 +1023,15 @@ fn wood_cell(
     if r(6) < if gap { 0.4 } else { 0.24 } {
         plant(0, 0xb054, 3, [0.4, 0.7], [0.5, 0.8]);
     }
-    // (Experiment: a leafy mid-storey.)
-    let mid = nv("MID", 0.0);
-    for k in 0..(mid + r(12) * mid.min(1.0)) as u32 {
-        plant(k, 0x3d11, nv("MIDP", 11.0) as u16, [nv("MIDH0", 0.4), nv("MIDH1", 0.8)], [0.8, 1.2]);
-    }
     // Ferns everywhere, more in the light of the gaps.
-    for k in 0..((2 + (r(7) * 3.0) as u32 + if gap { 3 } else { 0 }) as f32 * nv("FERN", 1.0)) as u32 {
+    for k in 0..2 + (r(7) * 3.0) as u32 + if gap { 3 } else { 0 } {
         let s = SMALL_SCALE.0;
         plant(k, 0xfe21, 7, [0.7 * s, 1.5 * s], [0.7 * s, 1.4 * s]);
     }
     // Carpets of low broad-leaved plants over most of the floor: flat (a third of a metre
     // high, 1.5 m across), overlapping; scattered plants between them.
     // (Fewer since round 59: the carpets were most of the inside view's cost.)
-    for k in 0..(((carpet * (10.0 + 5.0 * r(8))) as u32 + 1 + (r(9) * 2.0) as u32) as f32 * nv("CARPET", 1.0)) as u32 {
+    for k in 0..(carpet * (10.0 + 5.0 * r(8))) as u32 + 1 + (r(9) * 2.0) as u32 {
         plant(k, 0x6c07, 8, [0.3, 0.55], [1.0, 1.5]);
     }
     if gap || r(1) > 0.7 {
@@ -1213,16 +1202,13 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
     // Round 59.10: a Wood Oak behind the inside view's eye closes part of the canopy gap
     // over its sun patch: the floor's sunlit share 23 % -> 20 % (photo 20 %). (Leaf density
     // and the gap threshold change the whole wood and darkened its floor.)
-    let mut fill = WOOD_FILL.to_vec();
-    let fill_proto = nv("FP", 9.0) as u16;
-    if nv("FH", 0.0) > 0.0 {
-        fill.push((nv("FX", 0.0), nv("FZ", 0.0), nv("FH", 0.0)));
-    }
-    for (k, &(right, ahead, height)) in fill.iter().enumerate() {
+    // Round 59.11: a young tree 2.5 m in front of it, a leafy mid-storey under the gap, breaks
+    // the big pool of sun into flecks.
+    for &(right, ahead, height, prototype) in &WOOD_FILL {
         let p = Vec2::new(EYE.0 + right, EYE.1 + ahead);
         out.push(TreeInstance {
             position: p / size,
-            prototype: if k == 0 { 9 } else { fill_proto },
+            prototype,
             rotation: 1.0,
             height_scale: height,
             width_scale: 1.0,
@@ -1299,8 +1285,8 @@ fn terrain_data() -> TerrainData {
             smoothness: 0.1,
             // Sky light reaching the floor (1 = open ground; round 59.8: the open wood's shade
             // is lit by the sky between the crowns and the sunlit leaves, 0.5 left it near
-            // black).
-            occlusion: nv("OCC", 1.0),
+            // black). Round 59.11: 0.8, the photo's shade is deeper and richer.)
+            occlusion: 0.8,
             ..Default::default()
         },
     ];
@@ -1381,8 +1367,11 @@ fn terrain_data() -> TerrainData {
     // A dense forest: billboards a little sooner, and lighter trees in the shadow cascades
     // (impostors in the far one), which keeps a walk inside the wood real-time.
     d.trees.billboard_start = 80.0;
-    d.trees.shadow_detail = nv("SHD", 0.2);
-    d.trees.near_shadow_detail = nv("NSD", 0.0);
+    d.trees.shadow_detail = 0.2;
+    // Round 59.11: the full meshes in the finest cascade, which shades the floor round the
+    // camera: lacy, leaf-fine sun flecks instead of a few big pools (the lighter mesh's fewer,
+    // bigger leaf cards cast blobs).
+    d.trees.near_shadow_detail = 0.5;
     // Full meshes up to 20 m (the lighter mesh beyond reads the same inside the wood).
     d.trees.lod_distance = 20.0;
     // Ferns and ground cover shade the floor only near the camera (their shadows were most of
@@ -1655,8 +1644,9 @@ fn demo_scene(d: &TerrainData) -> Scene {
         l.color = [1.0, 0.97, 0.92];
         l.intensity = 3.2;
         l.shadows = Shadows::Soft;
-        // Crisp leaf shadows: the dappled light on the forest floor.
-        l.shadow_softness = nv("SOFT", 0.35);
+        // Leaf shadows with a soft edge (round 59.11: 0.35 -> 0.7; the photo's flecks fade
+        // through a warm penumbra into the shade).
+        l.shadow_softness = 0.7;
         l.contact_shadows = true;
         // Bright and white this high; dimmer and warmer if the sun is moved lower.
         l.intensity_from_sun_height = true;
@@ -1919,13 +1909,14 @@ fn forest_floor_toned(root: &std::path::Path) -> image::RgbImage {
     // Darker, warmer and more saturated (the tone curve's shoulder flattens bright litter to
     // white; colour survives it).
     // (Round 59.8: lighter and olive, less red: the photo's shaded litter is olive-brown.)
-    let k = [nv("LR", 0.69), nv("LG", 0.65), nv("LB", 0.25)];
-    let sat = nv("LSAT", 1.7);
+    // (Round 59.11: redder and paler, less saturated: the photo's sunlit litter is a pale
+    // peach, hue ~30 degrees, and its penumbrae a warm orange-brown.)
+    let k = [0.73, 0.56, 0.33];
     for px in img.pixels_mut() {
         let c = [lin(px[0]), lin(px[1]), lin(px[2])];
         let luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
         for i in 0..3 {
-            px[i] = srgb((luma + (c[i] - luma) * sat).max(0.0) * k[i]);
+            px[i] = srgb((luma + (c[i] - luma) * 1.5).max(0.0) * k[i]);
         }
     }
     img
@@ -1963,39 +1954,6 @@ fn write_noon_valley() {
         .unwrap();
     let d = terrain_data();
     eprintln!("{} trees", d.trees.instances.len());
-    {
-        // (Temporary: plants within 20 m of the inside view.)
-        let c = Vec2::new(EYE.0 - 60.0, EYE.1 + 530.0);
-        let mut n = [0u32; 16];
-        for i in &d.trees.instances {
-            let w = i.position * Vec2::new(d.size.x, d.size.z);
-            if w.distance(c) < 20.0 {
-                n[i.prototype as usize] += 1;
-            }
-        }
-        eprintln!("near inside: {n:?}");
-        let trunks: Vec<Vec2> = (d.trees.instances.iter())
-            .filter(|i| i.prototype != 7 && i.prototype != 8)
-            .map(|i| i.position * Vec2::new(d.size.x, d.size.z))
-            .filter(|q| q.distance(c) < 20.0)
-            .collect();
-        let mut best = (f32::MIN, c);
-        for iz in -12..=12 {
-            for ix in -12..=12 {
-                let o = Vec2::new(ix as f32, iz as f32);
-                if o.length() > 12.0 {
-                    continue;
-                }
-                let q = c + o;
-                let clear = trunks.iter().map(|t| t.distance(q)).fold(2.5f32, f32::min);
-                let score = clear - 0.02 * o.length();
-                if score > best.0 {
-                    best = (score, q);
-                }
-            }
-        }
-        eprintln!("inside eye (right, ahead): {:?}", best.1 - Vec2::new(EYE.0, EYE.1));
-    }
     d.save(&root.join(DATA)).unwrap();
     // The new files get their meta files (GUIDs) before the scene refers to them; nothing
     // else in the project is touched.
