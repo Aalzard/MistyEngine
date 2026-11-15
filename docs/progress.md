@@ -6172,3 +6172,7 @@ shots green (procedural trees, textures and materials draw as before).
   preview of the picture, not in the render (the PNG's sky has no step over one level;
   identical renders showed them or not depending on how they were viewed). Clouds needed no
   change.
+
+Checks for part 2: `cargo fmt --all --check` passes; clippy `--workspace --all-targets
+--release` 0 warnings; `cargo test --workspace --release --no-fail-fast`: editor 1036, engine
+1738, player 12, recorder 19, MCP 1, server 1 (2807), 0 failed; golden shots green.
