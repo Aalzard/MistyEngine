@@ -768,10 +768,21 @@ impl ScriptHost {
         self.sync_enabled();
         // Objects created during this pass join from the next one (after their Awake).
         for i in 0..self.instances.len() {
-            if self.runnable(&self.instances[i]) {
-                self.call(i, name, None);
-                self.flush_spawned();
+            if !self.runnable(&self.instances[i]) {
+                continue;
             }
+            // Enabled since this frame's Start pass (in a collision callback, by FixedUpdate):
+            // Start still comes before its first FixedUpdate / Update / LateUpdate.
+            if !self.instances[i].started && self.instances[i].enabled {
+                self.instances[i].started = true;
+                self.call(i, "Start", None);
+                self.flush_spawned();
+                if !self.runnable(&self.instances[i]) {
+                    continue;
+                }
+            }
+            self.call(i, name, None);
+            self.flush_spawned();
         }
     }
 

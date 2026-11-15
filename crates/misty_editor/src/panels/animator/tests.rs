@@ -947,8 +947,14 @@ fn clip_changes_during_play_reach_running_animations_and_animators() {
     );
     let mover = s.scene.spawn("Mover", None);
     crate::play::start(&mut s);
+    // Play steps at most 1/3 s a frame: walk in 0.05 s steps.
+    let run = |s: &mut EditorState, seconds: f32| {
+        for _ in 0..(seconds / 0.05).round() as usize {
+            crate::play::tick(s, 0.05);
+        }
+    };
     crate::play::tick(&mut s, 1.0 / 60.0);
-    crate::play::tick(&mut s, 0.5);
+    run(&mut s, 0.5);
     let y = |s: &EditorState, e| s.scene.transform(e).position.y;
     assert!((y(&s, panel) - 0.5).abs() < 0.05, "{}", y(&s, panel));
     assert_eq!(y(&s, body), 1.0);
@@ -960,7 +966,7 @@ fn clip_changes_during_play_reach_running_animations_and_animators() {
         mover,
         misty_engine::scene::Transform::from_position(glam::Vec3::X * 7.0),
     );
-    crate::play::tick(&mut s, 0.75);
+    run(&mut s, 0.75);
     assert_eq!(y(&s, panel), 1.0, "holds the end instead of wrapping");
     // The Animation window's kind of edit: keys of the clip an Animator plays.
     hold(s.anim_clips.get_mut("Assets/Hold.anim").unwrap(), 3.0);

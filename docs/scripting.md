@@ -51,7 +51,9 @@ component is enabled (the checkbox on its Properties header).
   or `Start` until it is enabled.
 - `OnEnable` runs right after `Awake`, and again every time the script can run after it could
   not: its object (or a parent) is switched on, or its component is enabled.
-- `Start` runs once, before the script's first `Update` (the frame after it was switched on).
+- `Start` runs once, before the script's first `FixedUpdate`, `Update` or `LateUpdate`: at the
+  start of the next frame, or right before that callback when the script was switched on or
+  enabled later in the frame (in a collision callback, by `FixedUpdate`).
 - `OnDisable` runs when it stops running: its object or a parent is switched off, its component
   is disabled, its object is destroyed while running, Play stops, its scene unloads or the
   built game quits.
