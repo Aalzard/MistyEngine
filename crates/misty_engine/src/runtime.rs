@@ -397,6 +397,21 @@ impl Runtime {
         self.host.with_animator(|a| a.status(scene, e))
     }
 
+    /// A new version of the Animator Controller at `path`, edited while playing: Animators
+    /// using it move onto it on their next frame (see `AnimatorPlayer::reload_controller`).
+    pub fn reload_animator_controller(
+        &mut self,
+        path: &str,
+        c: crate::animation::AnimatorController,
+    ) {
+        self.host.with_animator(|a| a.reload_controller(path, c));
+    }
+
+    /// How many times a running Animator moved onto an edited controller (tests).
+    pub fn animator_rebinds(&self) -> u64 {
+        self.host.with_animator(|a| a.controller_rebinds())
+    }
+
     /// Change an Animator parameter from the editor while playing (any parameter type).
     pub fn set_animator_param(&mut self, scene: &Scene, e: hecs::Entity, name: &str, value: f32) {
         use crate::animation::controller::ParamKind;
