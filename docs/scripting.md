@@ -29,7 +29,8 @@ with an error (an endless loop no longer freezes the editor). Editor scripts are
 sandboxed.
 
 ## Callbacks
-`Awake`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
+`Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
+`OnDisable`, `OnDestroy`,
 `OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`
 (`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below),
 `OnAnimatorMove()` (root motion, see Driving an Animator below). Fields starting
@@ -39,6 +40,32 @@ Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleCha
 and Localization below).
 Scripts on network objects get `OnNetworkSpawn`, `OnNetworkDespawn` and the ownership callbacks (see
 Networking below).
+
+### Order: Awake, OnEnable, Start … OnDisable, OnDestroy
+A script *runs* while its object is active in the hierarchy (it and every parent) and its
+component is enabled (the checkbox on its Properties header).
+
+- `Awake` runs once, the first time the script can run: when Play starts, when its object is
+  created (`Instantiate`, an additive scene), or when an object that started inactive is first
+  switched on.
+- `OnEnable` runs right after `Awake`, and again every time the script can run after it could
+  not: its object (or a parent) is switched on, or its component is enabled.
+- `Start` runs once, before the script's first `Update` (the frame after it was switched on).
+- `OnDisable` runs when it stops running: its object or a parent is switched off, its component
+  is disabled, its object is destroyed while running, Play stops or its scene unloads.
+- `OnDestroy` runs when the object is destroyed (after `OnDisable`), when Play stops and when
+  its scene unloads; only for scripts whose `Awake` ran.
+
+`OnEnable` and `OnDisable` always alternate: switching an object off twice, or off while a parent
+is already off, calls nothing more. They run right after the callback that switched the object
+(like `Awake` after `Instantiate`); `SetActive(false)` then `SetActive(true)` in one callback still
+gives `OnDisable` then `OnEnable`. Calling `SetActive` inside them is fine (an `OnEnable` that
+switches its own object off gets its `OnDisable`); two scripts that keep switching each other
+back stop with an error in the Console. Nothing is checked while nothing is switched.
+
+Disabled scripts still get the collision and trigger callbacks (3D and 2D), as in the familiar
+engine, but no `Update`, `FixedUpdate` or `LateUpdate`; scripts on switched-off objects get none.
+Script Graphs keep their own On Enable / On Disable events and hear contacts only while enabled.
 
 ## Field attributes
 List attributes per field in the class's `_attributes` table to change how the Properties panel shows it:
@@ -445,6 +472,20 @@ end
 return Sparks
 ```
 Systems with Play On Awake are already playing in `Awake`/`Start`. Module settings are not scriptable yet.
+
+**Stop Action** (Particle System ▸ main module) says what happens when a system stops for good: a
+non-looping cycle ended (or `Stop()` was called) and its last particle died. **None** (the
+default) does nothing, **Disable** switches the object off, **Destroy** destroys it, **Callback**
+calls `OnParticleSystemStopped()` on the object's scripts:
+```lua
+local Pooled = {}
+function Pooled:OnParticleSystemStopped()
+    self.gameObject:SetActive(false) -- back to the pool
+end
+return Pooled
+```
+An object switched off and on (even within one frame) starts its Play On Awake systems, effects
+and sounds again.
 
 ### Render settings
 

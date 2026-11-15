@@ -86,6 +86,42 @@ wires.
   Vector3**, **Input: GetKey**, **Get** a variable. They run when an action node that needs
   their result runs, and only then.
 
+## When events run: switching on, off and away
+
+An object is *on* while it and all its parents are active (the checkbox at the top of
+**Properties**). When the game starts, each graph on an object that is on gets **On Enable**,
+then **On Start** once, before its first **On Update**.
+
+- **On Disable** runs when the object or one of its parents is switched off, when the graph's
+  own checkbox is cleared, when the object is destroyed while on, and when the game stops.
+- **On Enable** runs again every time it comes back on. The two always take turns: switching
+  something off twice runs **On Disable** only once.
+- **On Destroy** runs when the object is removed, and when the game stops.
+
+Objects you switch off and reuse (bullets, coins, enemies from a pool) are where these shine:
+reset the object in **On Enable** and tidy up in **On Disable**. Switching an object off and on
+again also restarts its sounds and particle effects that play on awake.
+
+> [!TIP]
+> Particle effects can clean up after themselves. On a **Particle System** that does not loop,
+> set **Stop Action** to **Disable** or **Destroy**: the object switches off, or goes away, when
+> its last particle dies. **Callback** calls the Lua function `OnParticleSystemStopped` instead.
+
+> [!PROGRAMMERS]
+> Lua scripts get the same moments as functions, in this order:
+> ```lua
+> function Awake() end
+> function OnEnable() end
+> function Start() end
+> function OnDisable() end
+> function OnDestroy() end
+> ```
+> `Awake` runs once, the first time the script can run; `OnEnable` right after it and on every
+> switch on; `OnDisable` and `OnDestroy` mirror them. They run right after the callback that
+> switched the object, so `SetActive(false)` then `SetActive(true)` in one Update still gives
+> `OnDisable` then `OnEnable`. A disabled script still hears collisions and triggers (not
+> Update), as in the familiar engine. Nothing is checked while nothing is switched.
+
 ## Variables
 
 A variable is a named box that keeps a value between frames: a score, a speed, "is the door

@@ -184,7 +184,13 @@ pub fn update(scene: &mut Scene, dt: f32) {
 pub fn restart_switched(scene: &mut Scene, dipped: &std::collections::HashMap<Entity, u64>) {
     let again: Vec<(Entity, u64)> = dipped
         .keys()
-        .filter_map(|e| scene.world.get::<&EffectInstance>(*e).ok().map(|i| (*e, i.id)))
+        .filter_map(|e| {
+            scene
+                .world
+                .get::<&EffectInstance>(*e)
+                .ok()
+                .map(|i| (*e, i.id))
+        })
         .filter(|(e, _)| scene.active_in_hierarchy(*e))
         .collect();
     for (e, id) in again {

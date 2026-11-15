@@ -1120,8 +1120,7 @@ impl ScriptHost {
                 self.graphs.contact_with(&self.lua, me, &kind, &args);
                 for i in 0..self.instances.len() {
                     // Disabled scripts too, like 3D contacts.
-                    if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i])
-                    {
+                    if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
                     let arg = if c.trigger {

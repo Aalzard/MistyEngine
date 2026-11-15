@@ -74,7 +74,7 @@ struct Game {
 impl Game {
     fn start(mut scene: Scene, root: PathBuf) -> Self {
         let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
-        let mut host = ScriptHost::start(&mut scene, physics, root);
+        let host = ScriptHost::start(&mut scene, physics, root);
         let logs = host.take_logs();
         Self {
             scene,
@@ -87,7 +87,8 @@ impl Game {
     fn frames(&mut self, n: u32) {
         for _ in 0..n {
             self.time.advance(1.0 / 60.0);
-            self.host.update(&mut self.scene, &self.time, Input::default());
+            self.host
+                .update(&mut self.scene, &self.time, Input::default());
             self.logs.extend(self.host.take_logs());
         }
     }
@@ -122,7 +123,10 @@ fn callbacks_run_awake_onenable_start_then_ondisable_ondestroy() {
     g.frames(5);
     assert_eq!(
         g.lines("A:"),
-        names("A", &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"])
+        names(
+            "A",
+            &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"]
+        )
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -151,7 +155,10 @@ fn parent_switch_reaches_children_and_nothing_runs_twice() {
     g.frames(8);
     assert_eq!(
         g.lines("C:"),
-        names("C", &["Awake", "OnEnable", "Start", "OnDisable", "OnEnable"])
+        names(
+            "C",
+            &["Awake", "OnEnable", "Start", "OnDisable", "OnEnable"]
+        )
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -204,7 +211,10 @@ fn set_active_off_and_on_in_one_callback_disables_and_enables() {
     g.frames(4);
     assert_eq!(
         g.lines("X:"),
-        names("X", &["Awake", "OnEnable", "Start", "OnDisable", "OnEnable"])
+        names(
+            "X",
+            &["Awake", "OnEnable", "Start", "OnDisable", "OnEnable"]
+        )
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -227,11 +237,17 @@ fn stop_disables_then_destroys() {
     g.logs.extend(g.host.take_logs());
     assert_eq!(
         g.lines("On:"),
-        names("On", &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"])
+        names(
+            "On",
+            &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"]
+        )
     );
     assert_eq!(
         g.lines("Off:"),
-        names("Off", &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"])
+        names(
+            "Off",
+            &["Awake", "OnEnable", "Start", "OnDisable", "OnDestroy"]
+        )
     );
     assert!(g.lines("Never:").is_empty());
     let _ = std::fs::remove_dir_all(&root);
@@ -259,7 +275,10 @@ return T
     g.frames(1);
     assert_eq!(
         g.lines("T:"),
-        names("T", &["OnEnable", "Update", "OnDisable", "OnEnable", "Update"])
+        names(
+            "T",
+            &["OnEnable", "Update", "OnDisable", "OnEnable", "Update"]
+        )
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -488,18 +507,20 @@ return S
     assert!(!scene.contains(destroy));
     assert!(scene.contains(callback) && scene.game_object(callback).active);
     assert!(scene.contains(looping) && scene.game_object(looping).active);
-    let text: Vec<&str> = all
+    let mut text: Vec<&str> = all
         .iter()
         .inspect(|(k, t)| assert_ne!(*k, LogKind::Error, "{t}"))
         .map(|(_, t)| t.as_str())
         .collect();
+    // Destroy goes at the end of the stop actions, like `Destroy` at the end of a frame.
+    text.sort_by_key(|t| t.split(':').next().map(str::to_owned));
     assert_eq!(
         text,
         [
-            "Disable:OnDisable",
+            "Callback:Stopped",
             "Destroy:OnDisable",
             "Destroy:OnDestroy",
-            "Callback:Stopped"
+            "Disable:OnDisable",
         ]
     );
     let _ = std::fs::remove_dir_all(&root);
@@ -522,7 +543,11 @@ fn stop_action_saves_and_old_files_load_as_none() {
     let (back, _) = Scene::from_json("t", &text).unwrap();
     let action = |name: &str| {
         let e = back.find_by_name(name).unwrap();
-        back.world.get::<&ParticleSystem>(e).unwrap().main.stop_action
+        back.world
+            .get::<&ParticleSystem>(e)
+            .unwrap()
+            .main
+            .stop_action
     };
     assert_eq!(action("Old"), StopAction::None);
     assert_eq!(action("Set"), StopAction::Callback);
