@@ -122,10 +122,22 @@ pub struct Scene {
     /// Bumped by every change that can switch an object on or off (GameObject edits,
     /// re-parenting, removal): physics looks for switched objects only when it moved.
     activity: u64,
-    /// The object of each change since `activity_start` (in order), so physics looks only
-    /// under them; dropped when it grows past [`ACTIVITY_LOG`] (physics then looks at all).
-    activity_log: Vec<Entity>,
+    /// The object of each change since `activity_start` (in order) with its own Active flag
+    /// just before the change, so physics and scripts look only under them, and a switch off
+    /// and on between two looks still shows; dropped when it grows past [`ACTIVITY_LOG`]
+    /// (everything is looked at then).
+    activity_log: Vec<(Entity, bool)>,
     activity_start: u64,
+}
+
+/// What changed since a look at [`Scene::activity`] (see [`Scene::activity_changes`]).
+#[derive(Clone, Debug, Default)]
+pub struct ActivityChanges {
+    /// Objects that may have been switched on or off, with everything under them.
+    pub touched: HashSet<Entity>,
+    /// Objects (with everything under them) that were switched off at some point, with the
+    /// [`Scene::activity`] number of the latest change that found them off.
+    pub dipped: std::collections::HashMap<Entity, u64>,
 }
 
 /// Changes [`Scene::activity_log`] keeps before starting over.
@@ -445,28 +457,81 @@ impl Scene {
             self.activity_start = self.activity;
         }
         self.activity = self.activity.wrapping_add(1);
-        self.activity_log.push(e);
+        // The flag before the change: `false` here means `e` was off at some point.
+        let was_on = self.world.get::<&GameObject>(e).is_ok_and(|g| g.active);
+        self.activity_log.push((e, was_on));
+    }
+
+    /// Note a change to `e` made outside its GameObject (a script component switched on or
+    /// off) so the script host looks at it.
+    pub fn note_change(&mut self, e: Entity) {
+        self.note_activity(e);
+    }
+
+    /// Enable or disable the script in `slot` of `e` (the Inspector's checkbox); scripts get
+    /// OnEnable / OnDisable for it.
+    pub fn set_script_enabled(&mut self, e: Entity, slot: usize, on: bool) {
+        let changed = self
+            .world
+            .get::<&mut Scripts>(e)
+            .ok()
+            .and_then(|mut s| {
+                let r = s.list.get_mut(slot)?;
+                let changed = r.enabled != on;
+                r.enabled = on;
+                Some(changed)
+            })
+            .unwrap_or(false);
+        if changed {
+            self.note_activity(e);
+        }
     }
 
     /// The objects that may have been switched on or off since `activity()` was `seen`: the
     /// changed objects with everything under them (removed ones too). `None` when that is not
     /// known any more (too many changes since): look at every object.
     pub fn activity_scope(&self, seen: u64) -> Option<HashSet<Entity>> {
+        self.activity_changes(seen).map(|c| c.touched)
+    }
+
+    /// [`Scene::activity_scope`] and, of those objects, the ones that were switched off at
+    /// some point since `seen` (`dipped`, with the latest change that ended such a moment): an
+    /// object active then and now, but in `dipped`, was switched off and on in between
+    /// (`SetActive(false)` then `SetActive(true)` in one frame).
+    pub fn activity_changes(&self, seen: u64) -> Option<ActivityChanges> {
         let back = self.activity.wrapping_sub(seen);
         let kept = self.activity.wrapping_sub(self.activity_start);
         if back > kept || kept != self.activity_log.len() as u64 {
             return None;
         }
-        let changed = &self.activity_log[self.activity_log.len() - back as usize..];
-        let mut out = HashSet::new();
-        for &x in changed {
-            if out.contains(&x) {
+        let first = self.activity_log.len() - back as usize;
+        let changed = &self.activity_log[first..];
+        let mut out = ActivityChanges::default();
+        // Latest first: the first dip seen of an object is its latest.
+        let mut dipped_roots = HashSet::new();
+        for (k, &(x, was_on)) in changed.iter().enumerate().rev() {
+            if was_on || !dipped_roots.insert(x) {
+                continue;
+            }
+            // The change number of this entry (`activity` right after it).
+            let at = self.activity_start.wrapping_add((first + k) as u64 + 1);
+            let under = if self.contains(x) {
+                self.subtree(x)
+            } else {
+                vec![x]
+            };
+            for y in under {
+                out.dipped.entry(y).or_insert(at);
+            }
+        }
+        for &(x, _) in changed {
+            if out.touched.contains(&x) {
                 continue;
             }
             if self.contains(x) {
-                out.extend(self.subtree(x));
+                out.touched.extend(self.subtree(x));
             } else {
-                out.insert(x);
+                out.touched.insert(x);
             }
         }
         Some(out)

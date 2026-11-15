@@ -367,6 +367,33 @@ impl SimulationSpace {
     }
 }
 
+/// What happens when a system stops for good: a non-looping cycle ended (or `Stop`) and its
+/// last particle died. Pooled one-shot effects switch themselves off or go away with it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StopAction {
+    #[default]
+    None,
+    /// Switch the object off (`SetActive(false)`).
+    Disable,
+    /// Destroy the object (with its children).
+    Destroy,
+    /// Call `OnParticleSystemStopped()` on the object's scripts.
+    Callback,
+}
+
+impl StopAction {
+    pub const ALL: [Self; 4] = [Self::None, Self::Disable, Self::Destroy, Self::Callback];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Disable => "Disable",
+            Self::Destroy => "Destroy",
+            Self::Callback => "Callback",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MainModule {
@@ -388,6 +415,9 @@ pub struct MainModule {
     pub simulation_space: SimulationSpace,
     pub play_on_awake: bool,
     pub max_particles: u32,
+    /// When the system stops for good (old files: None).
+    #[serde(skip_serializing_if = "is_default")]
+    pub stop_action: StopAction,
 }
 
 impl Default for MainModule {
@@ -406,6 +436,7 @@ impl Default for MainModule {
             simulation_space: SimulationSpace::Local,
             play_on_awake: true,
             max_particles: 1000,
+            stop_action: StopAction::None,
         }
     }
 }

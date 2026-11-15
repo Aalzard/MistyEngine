@@ -156,6 +156,10 @@ fn dynamic_keys() -> Vec<String> {
     add(&mut misty_engine::light2d::Light2DType::ALL
         .iter()
         .map(|k| k.label()));
+    // Particle System ▸ Stop Action choices (translated by `combo`).
+    add(&mut misty_engine::particles::StopAction::ALL
+        .iter()
+        .map(|k| k.label()));
     for t in crate::tutorials::list() {
         v.push(t.title.to_owned());
         v.push(t.description.to_owned());

@@ -1630,6 +1630,13 @@
 "Set the normal map of {name}" = "{name} malzemesinin normal haritası ayarlandı"
 "{name} has no renderer to put a texture on" = "{name} nesnesinde doku uygulanacak bir işleyici yok"
 
+[particles]
+# Round 79: Particle System ▸ Stop Action
+"Stop Action" = "Durma Eylemi"
+"Disable" = "Devre Dışı Bırak"
+"Destroy" = "Yok Et"
+"Callback" = "Geri Çağırma"
+
 [light_glow]
 "Soft Core" = "Yumuşak Çekirdek"
 "Turn on Show Emitter to see the light's glow." = "Işığın ışıltısını görmek için Yayıcıyı Göster'i açın."

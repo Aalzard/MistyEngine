@@ -272,6 +272,11 @@ pub struct ParticleEmitter {
     bursts_fired: Vec<u32>,
     /// True while the cycle is emitting (false after a Stop or when a non-looping cycle ends).
     emitting: bool,
+    /// Played since it last stopped for good (Stop Action not run yet).
+    live: bool,
+    /// The last step stopped the system for good: not emitting any more and the last
+    /// particle gone (the Stop Action runs).
+    pub finished: bool,
     next_id: u32,
     rng: Rng,
 }
@@ -291,6 +296,8 @@ impl Default for ParticleEmitter {
             accumulator: 0.0,
             bursts_fired: Vec::new(),
             emitting: false,
+            live: false,
+            finished: false,
             next_id: 0,
             rng: Rng::new(0),
         }
@@ -355,6 +362,7 @@ impl ParticleEmitter {
         self.reseed(system);
         self.state = PlayState::Playing;
         self.emitting = true;
+        self.live = true;
         self.time = 0.0;
         self.total_time = 0.0;
         self.accumulator = 0.0;
@@ -447,6 +455,7 @@ impl ParticleEmitter {
     pub fn step_with(&mut self, system: &ParticleSystem, world: &Mat4, env: StepEnv, dt: f32) {
         self.events.clear();
         self.events.append(&mut self.pending);
+        self.finished = false;
         if self.state == PlayState::Paused || dt <= 0.0 {
             return;
         }
@@ -464,6 +473,11 @@ impl ParticleEmitter {
             if !self.emitting && self.particles.is_empty() {
                 self.state = PlayState::Stopped;
             }
+        }
+        // Stopped for good (a one-shot ended, or `Stop`) once nothing is left alive.
+        if self.live && self.state == PlayState::Stopped && self.particles.is_empty() {
+            self.live = false;
+            self.finished = true;
         }
         self.update_trails(system, world);
     }

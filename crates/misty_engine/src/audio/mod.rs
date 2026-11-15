@@ -793,6 +793,27 @@ impl Audio {
         }
     }
 
+    /// Play On Awake sources under objects switched off and on again since the last frame
+    /// (`dipped`, see [`Scene::activity_changes`]) play again, like a real switch: the poll in
+    /// [`Audio::update`] only sees them on both times.
+    pub fn replay_switched(&mut self, scene: &Scene, dipped: &HashMap<Entity, u64>) {
+        let again: Vec<Entity> = dipped
+            .keys()
+            .copied()
+            .filter(|e| !self.asleep.contains(e))
+            .filter(|e| {
+                scene
+                    .world
+                    .get::<&AudioSource>(*e)
+                    .is_ok_and(|s| s.play_on_awake && s.enabled)
+            })
+            .filter(|e| scene.active_in_hierarchy(*e))
+            .collect();
+        for e in again {
+            self.play(scene, e);
+        }
+    }
+
     /// Warnings for the Console.
     pub fn take_logs(&mut self) -> Vec<String> {
         std::mem::take(&mut self.logs)

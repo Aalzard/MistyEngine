@@ -178,6 +178,21 @@ pub fn update(scene: &mut Scene, dt: f32) {
     }
 }
 
+/// Effects under objects switched off and on again since the last frame (`dipped`, see
+/// [`Scene::activity_changes`]) start again like a real switch (Play On Awake in the next
+/// [`update`]).
+pub fn restart_switched(scene: &mut Scene, dipped: &std::collections::HashMap<Entity, u64>) {
+    let again: Vec<(Entity, u64)> = dipped
+        .keys()
+        .filter_map(|e| scene.world.get::<&EffectInstance>(*e).ok().map(|i| (*e, i.id)))
+        .filter(|(e, _)| scene.active_in_hierarchy(*e))
+        .collect();
+    for (e, id) in again {
+        forget_stats(id);
+        let _ = scene.world.remove_one::<EffectInstance>(e);
+    }
+}
+
 /// Step one effect.
 pub fn step_one(scene: &mut Scene, e: Entity, dt: f32) {
     ensure_instance(scene, e);
