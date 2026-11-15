@@ -202,8 +202,8 @@ impl UndoStack {
         self.reset_interaction();
     }
 
-    /// An edit of an asset only (an Animator Controller, an Avatar Mask): undo puts `asset`
-    /// back and leaves the scene as it is then.
+    /// An edit of an asset only (an Animator Controller, Avatar Mask or Audio Mixer): undo puts
+    /// `asset` back and leaves the scene as it is then.
     pub fn push_asset(&mut self, label: &str, selection: &Selection, asset: ClipSnapshot) {
         let mut snap = Snapshot::new(label, &Scene::default(), selection);
         snap.clip = Some(asset);

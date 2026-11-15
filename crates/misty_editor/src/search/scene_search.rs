@@ -14,7 +14,11 @@ pub fn passes_filters(scene: &Scene, tl: &TagsAndLayers, e: Entity, q: &Query) -
         return true;
     }
     let go = scene.game_object(e);
-    let tag_ok = q.tags.is_empty() || q.tags.iter().any(|t| go.tag.eq_ignore_ascii_case(t));
+    // Query values are lower-cased with Unicode rules ("tag:Çit" → "çit"), so the tag is too.
+    let tag_ok = q.tags.is_empty() || {
+        let tag = go.tag.to_lowercase();
+        q.tags.iter().any(|t| *t == tag)
+    };
     let layer_ok = q.layers.is_empty() || {
         let name = tl.layer_name(go.layer as i32).to_lowercase();
         let number = go.layer.to_string();
@@ -124,6 +128,23 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    /// `tag:` values are lower-cased with Unicode rules but tags were compared ignoring ASCII
+    /// case only: a tag with a non-ASCII capital (Turkish "Çit", "İz") never matched.
+    #[test]
+    fn tag_filter_ignores_case_beyond_ascii() {
+        let (mut s, tl) = scene();
+        let fence = s.spawn("Fence", None);
+        s.game_object_mut(fence).tag = "Çit".into();
+        let wall = s.spawn("جدار", None);
+        s.game_object_mut(wall).tag = "عدو".into();
+        let hits = search(&s, &tl, &Query::parse("tag:Çit"), Mode::Contains, 0);
+        assert_eq!(names(&s, &hits), ["Fence"]);
+        let hits = search(&s, &tl, &Query::parse("tag:çit"), Mode::Contains, 0);
+        assert_eq!(names(&s, &hits), ["Fence"]);
+        let hits = search(&s, &tl, &Query::parse("جدار tag:عدو"), Mode::Contains, 0);
+        assert_eq!(names(&s, &hits), ["جدار"]);
     }
 
     #[test]
