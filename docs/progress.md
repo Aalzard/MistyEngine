@@ -5637,3 +5637,9 @@ regression test that fails without it (checked by running the tests before the f
   sources; additive loads start Play On Awake sources through `add_objects`.
 - Visual Effects with zero-count spawns (stopped, Rate 0, bursts of 0, a 0 s step): the renderer
   skips the emit dispatch; capacity 0 is a compile error, not an empty buffer.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1024 passed, engine 1690, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2746).
+No render code changed, so golden shots were not rerun.
