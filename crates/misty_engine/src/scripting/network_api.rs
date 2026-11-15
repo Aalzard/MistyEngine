@@ -117,10 +117,18 @@ pub(super) fn prepare_instance(
         })?;
         t.raw_set(name.as_str(), wrapper)?;
     }
-    if networked || !info.is_empty() {
-        let class = class.clone();
+    if (networked || !info.is_empty())
+        && let Some(meta) = t.metatable()
+    {
+        // What the instance looked up before (the class, `self.enabled`), then the network
+        // properties.
+        let before: Value = meta.get("__index")?;
         let index = lua.create_function(move |lua, (me, key): (Table, Value)| {
-            let v: Value = class.get(key.clone())?;
+            let v: Value = match &before {
+                Value::Function(f) => f.call((me.clone(), key.clone()))?,
+                Value::Table(c) => c.get(key.clone())?,
+                _ => Value::Nil,
+            };
             if !v.is_nil() {
                 return Ok(v);
             }
@@ -129,9 +137,7 @@ pub(super) fn prepare_instance(
                 _ => Ok(Value::Nil),
             }
         })?;
-        if let Some(meta) = t.metatable() {
-            meta.set("__index", index)?;
-        }
+        meta.set("__index", index)?;
     }
     Ok(())
 }

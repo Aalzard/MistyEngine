@@ -436,6 +436,13 @@ impl Runtime {
         self.host.with_animator(|a| a.reload_controller(path, c));
     }
 
+    /// A new version of the animation clip at `path`, changed while playing (Loop Time in the
+    /// Inspector, a file changed outside the editor): Animators, Animation components and
+    /// Timelines playing it use it from their next frame, keeping their time.
+    pub fn reload_animation_clip(&mut self, path: &str, c: crate::animation::AnimationClip) {
+        self.host.reload_animation_clip(path, c);
+    }
+
     /// A new version of the Avatar Mask at `path`, edited while playing: Animator layers
     /// using it filter with it from their next frame.
     pub fn reload_avatar_mask(&mut self, path: &str, m: crate::animation::AvatarMask) {

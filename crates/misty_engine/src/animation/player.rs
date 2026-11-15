@@ -127,6 +127,12 @@ impl AnimationPlayer {
         self.clips.get(path).cloned().flatten()
     }
 
+    /// A new version of the clip at `path` (its settings or keys changed while playing):
+    /// Animations playing it use it from their next update, keeping their time.
+    pub fn insert_clip(&mut self, path: &str, c: AnimationClip) {
+        self.clips.insert(path.to_owned(), Some(Arc::new(c)));
+    }
+
     /// Start every enabled Animation with Play Automatically (below `under`, or in the whole scene).
     pub fn play_automatically(&mut self, scene: &Scene, under: Option<Entity>) {
         let starters: Vec<Entity> = scene

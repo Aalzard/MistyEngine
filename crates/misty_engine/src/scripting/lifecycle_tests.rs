@@ -799,3 +799,145 @@ return H
     assert_eq!(g.lines("H:"), ["H:Awake", "H:hit 1", "H:OnDestroy"]);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ---- Round 83: `self.enabled` ----------------------------------------------------------------
+
+/// `self.enabled` reads the script component's checkbox and sets it: `self.enabled = false`
+/// calls OnDisable (after the callback, like SetActive) and stops Update; the Inspector
+/// switching it back on calls OnEnable and `self.enabled` reads true again. Another script
+/// reaches it through `GetComponent`.
+#[test]
+fn self_enabled_reads_and_sets_the_script_component() {
+    let ticker = r#"
+local T = { n = 0 }
+function T:OnEnable() Debug.Log("T:OnEnable " .. tostring(self.enabled)) end
+function T:OnDisable() Debug.Log("T:OnDisable " .. tostring(self.enabled)) end
+function T:Update()
+    self.n = self.n + 1
+    Debug.Log("T:Update " .. tostring(self.enabled))
+    if self.n == 2 then self.enabled = false end
+end
+return T
+"#;
+    let other = r#"
+local O = { f = 0 }
+function O:Update()
+    self.f = self.f + 1
+    local t = GameObject.Find("T"):GetComponent("T")
+    if self.f == 3 then Debug.Log("O:sees " .. tostring(t.enabled)) end
+    if self.f == 5 then t.enabled = true end
+end
+return O
+"#;
+    let root = project(&[("T", ticker), ("O", other)]);
+    let mut scene = Scene::new("t");
+    let t = scripted(&mut scene, "T", "T", None);
+    scripted(&mut scene, "O", "O", None);
+    let mut g = Game::start(scene, root.clone());
+    g.frames(3);
+    let enabled = |s: &Scene| s.world.get::<&Scripts>(t).unwrap().list[0].enabled;
+    assert!(!enabled(&g.scene), "the component itself is disabled");
+    g.scene.set_script_enabled(t, 0, true);
+    g.frames(1);
+    g.scene.set_script_enabled(t, 0, false);
+    g.frames(2);
+    assert!(enabled(&g.scene), "another script enabled it");
+    assert_eq!(
+        g.lines("T:"),
+        [
+            "T:OnEnable true",
+            "T:Update true",
+            "T:Update true",
+            "T:OnDisable false",
+            "T:OnEnable true",
+            "T:Update true",
+            "T:OnDisable false",
+            "T:OnEnable true",
+            "T:Update true",
+        ]
+    );
+    assert_eq!(g.lines("O:"), ["O:sees false"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A disabled script (which hears collisions, round 79) enables itself in OnCollisionEnter:
+/// OnEnable follows, then Start and Update.
+#[test]
+fn a_disabled_script_enables_itself_in_on_collision_enter() {
+    let waker = r#"
+local H = {}
+function H:Awake() Debug.Log("H:Awake " .. tostring(self.enabled)) end
+function H:OnEnable() Debug.Log("H:OnEnable") end
+function H:Start() Debug.Log("H:Start") end
+function H:OnCollisionEnter(o)
+    Debug.Log("H:hit " .. o.name)
+    self.enabled = true
+end
+function H:Update()
+    if not self.updated then self.updated = true Debug.Log("H:Update") end
+end
+return H
+"#;
+    let root = project(&[("H", waker)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    scene.add(
+        floor,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/H.lua".into(),
+                enabled: false,
+                ..Default::default()
+            }],
+        },
+    );
+    let crate3 = scene.spawn("Crate", None);
+    scene.set_transform(crate3, Transform::from_position(Vec3::new(0.0, 2.0, 0.0)));
+    scene.add(crate3, BoxCollider::default());
+    scene.add(crate3, Rigidbody::default());
+    let mut g = Game::start(scene, root.clone());
+    g.frames(90);
+    assert_eq!(
+        g.lines("H:"),
+        [
+            "H:Awake false",
+            "H:hit Crate",
+            "H:OnEnable",
+            "H:Start",
+            "H:Update"
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Fields and methods still work through the new `__index` (class methods, fields set from the
+/// Inspector, new fields); a script with network RPCs keeps its network properties.
+#[test]
+fn self_enabled_keeps_fields_methods_and_network_properties() {
+    let s = r#"
+local S = { speed = 1 }
+function S:Twice() return self.speed * 2 end
+function S:PingServerRpc() end
+function S:Start()
+    self.extra = 5
+    Debug.Log("S:" .. self:Twice() .. " " .. self.extra .. " " .. tostring(self.enabled)
+        .. " " .. tostring(self.IsServer ~= nil))
+end
+return S
+"#;
+    let root = project(&[("S", s)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("S", None);
+    let mut r = ScriptRef {
+        path: "Assets/Scripts/S.lua".into(),
+        ..Default::default()
+    };
+    r.fields
+        .insert("speed".into(), crate::scene::ScriptValue::Number(4.0));
+    scene.add(e, Scripts { list: vec![r] });
+    let mut g = Game::start(scene, root.clone());
+    g.frames(1);
+    assert_eq!(g.lines("S:"), ["S:8.0 5 true true"]);
+    let _ = std::fs::remove_dir_all(&root);
+}

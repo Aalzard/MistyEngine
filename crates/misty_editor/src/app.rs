@@ -768,6 +768,10 @@ impl EditorApp {
         {
             r.release_cursor();
         }
+        // Animator Controllers and clips changed outside the editor (git, another tool).
+        if crate::live_reload::frame(s, Vec::new()) {
+            ctx.request_repaint();
+        }
         {
             misty_engine::profile_scope!("Play.Tick");
             play::tick(s, ctx.input(|i| i.stable_dt));

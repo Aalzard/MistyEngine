@@ -607,6 +607,16 @@ impl ScriptHost {
         self.with_world(|w| f(&mut w.animator))
     }
 
+    /// A new version of the animation clip at `path` (changed while playing): Animators,
+    /// Animation components and Timelines playing it use it from their next frame.
+    pub fn reload_animation_clip(&self, path: &str, c: crate::animation::AnimationClip) {
+        self.with_world(|w| {
+            w.animator.insert_clip(path, c.clone());
+            w.timeline.replace_clip(path, c.clone());
+            w.animation.insert_clip(path, c);
+        });
+    }
+
     /// The Playable Directors of this game (between frames).
     pub fn with_timeline<R>(&self, f: impl FnOnce(&mut crate::timeline::DirectorPlayer) -> R) -> R {
         self.with_world(|w| f(&mut w.timeline))
@@ -682,12 +692,19 @@ impl ScriptHost {
         let build = || -> mlua::Result<Table> {
             let t = self.lua.create_table()?;
             for (k, v) in &script.fields {
-                t.set(k.as_str(), to_lua(&self.lua, v)?)?;
+                // `self.enabled` is the component's checkbox, never a field.
+                if k != "enabled" {
+                    t.set(k.as_str(), to_lua(&self.lua, v)?)?;
+                }
             }
             t.set("gameObject", LGameObject(e))?;
             t.set("transform", LTransform(e))?;
+            // Methods and defaults come from the class; `self.enabled` is the component's
+            // checkbox (lifecycle.rs).
+            let (index, newindex) = lifecycle::instance_meta(&self.lua, &class, e, slot)?;
             let meta = self.lua.create_table()?;
-            meta.set("__index", class.clone())?;
+            meta.set("__index", index)?;
+            meta.set("__newindex", newindex)?;
             t.set_metatable(Some(meta))?;
             Ok(t)
         };

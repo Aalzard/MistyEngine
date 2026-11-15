@@ -158,7 +158,7 @@ pub fn reloaded_text(n: usize) -> String {
     }
 }
 
-/// Once per editor frame in Edit mode. `renderer` = paths the renderer reloaded this frame
+/// Once per editor frame (in Play mode only animation assets are checked). `renderer` = paths the renderer reloaded this frame
 /// (textures, models, shaders, effect graphs). Returns true when something was reloaded.
 pub fn frame(s: &mut EditorState, renderer: Vec<String>) -> bool {
     let due = s.live.last_poll.is_none_or(|t| t.elapsed() >= POLL);
@@ -166,7 +166,12 @@ pub fn frame(s: &mut EditorState, renderer: Vec<String>) -> bool {
         return false;
     }
     let mut reloaded = renderer;
-    if due {
+    if due && s.play.in_play_mode() {
+        // Animator Controllers and clips changed outside the editor reach the running game.
+        s.live.last_poll = Some(Instant::now());
+        misty_engine::profile_scope!("LiveReload.PlayAssets");
+        reloaded.extend(assets::poll_play(s));
+    } else if due {
         s.live.last_poll = Some(Instant::now());
         {
             misty_engine::profile_scope!("LiveReload.Scenes");

@@ -6,8 +6,13 @@
 //! reloaded by `Renderer::reload_changed_assets`; scripts by `AssetDatabase::poll_scripts`.
 //! The editor's own saves rewrite files with what it already holds, so they compare equal and
 //! count as no change.
+//!
+//! In Play mode only Animator Controllers and animation clips are checked (the ones the editor
+//! holds and the ones the playing scene's Animators use): a change made outside the editor (git,
+//! another tool) reaches the running Animators like an edit in the Animator window (see
+//! `play::sync_controllers`). The other kinds wait for Edit mode.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use misty_engine::scene::prefab::Prefab;
@@ -23,6 +28,8 @@ pub struct AssetWatch {
     /// Each prefab used by an open scene as it was last read: instances that matched it had
     /// no overrides, so they take the new version.
     prefabs: HashMap<String, Rc<Prefab>>,
+    /// Controllers of playing Animators already held, with their clips (`poll_play`).
+    held_controllers: HashSet<String>,
 }
 
 /// Kinds of editor-held assets.
@@ -69,8 +76,68 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
     if s.play.in_play_mode() {
         return Vec::new();
     }
+    let list = watched(s);
+    let mut reloaded = check(s, list);
+    // Terrain data lives in the engine's store (shared with the renderer and physics).
+    let root = s.project.root.clone();
+    misty_engine::profile_scope!("LiveReload.Terrains");
+    for path in misty_engine::terrain::store::poll_changes() {
+        reloaded.push(crate::scene_files::relative(&root, &path));
+    }
+    reloaded
+}
+
+/// Play mode: check the Animator Controllers and clips the editor holds, after holding the
+/// ones the playing scene's Animators use. Changed ones reach the game through the stores'
+/// generation counters. Returns the paths reloaded.
+pub fn poll_play(s: &mut EditorState) -> Vec<String> {
+    if !s.play.in_play_mode() {
+        return Vec::new();
+    }
+    hold_animator_assets(s);
+    let list = watched(s)
+        .into_iter()
+        .filter(|(k, _)| matches!(k, Kind::Clip | Kind::Controller))
+        .collect();
+    check(s, list)
+}
+
+/// Hold (so they are watched) the controllers of the playing scene's Animators and the clips
+/// those controllers play. A controller is looked into once per editor session.
+fn hold_animator_assets(s: &mut EditorState) {
+    let mut paths: Vec<String> = s
+        .scene
+        .world
+        .query::<&misty_engine::scene::Animator>()
+        .iter()
+        .filter_map(|a| a.controller.clone())
+        .collect();
+    paths.sort();
+    paths.dedup();
+    for path in paths {
+        if !s.live.assets.held_controllers.insert(path.clone()) {
+            continue;
+        }
+        let Ok(c) = s.anim_clips.controllers.get(&path) else {
+            continue;
+        };
+        let clips: Vec<String> = c
+            .clone()
+            .asset_paths_mut()
+            .into_iter()
+            .filter(|p| misty_engine::animation::is_clip(p))
+            .map(std::mem::take)
+            .collect();
+        for clip in clips {
+            let _ = s.anim_clips.get(&clip);
+        }
+    }
+}
+
+/// Look at `list` and reload what changed on disk.
+fn check(s: &mut EditorState, list: Vec<(Kind, String)>) -> Vec<String> {
     let mut reloaded = Vec::new();
-    for (kind, rel) in watched(s) {
+    for (kind, rel) in list {
         let abs = s.project.root.join(&rel);
         let w = &mut s.live.assets;
         let Some(seen) = w.known.get(&rel).copied() else {
@@ -99,12 +166,6 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
             Ok(false) => {}
             Err(e) => s.console.warn(format!("Could not reload {rel}: {e}")),
         }
-    }
-    // Terrain data lives in the engine's store (shared with the renderer and physics).
-    let root = s.project.root.clone();
-    misty_engine::profile_scope!("LiveReload.Terrains");
-    for path in misty_engine::terrain::store::poll_changes() {
-        reloaded.push(crate::scene_files::relative(&root, &path));
     }
     reloaded
 }

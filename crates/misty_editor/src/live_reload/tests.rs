@@ -554,3 +554,71 @@ fn changed_stamp_reports_only_real_changes() {
     assert_eq!(changed_stamp(&path, now), Some(None), "deleted file");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Round 83: an Animator Controller (or a clip it plays) changed outside the editor during
+/// Play (git, another tool) was not picked up until Play was entered again: the asset watch
+/// ran in Edit mode only. In Play it now checks the controllers the playing scene's Animators
+/// use and their clips, and the change reaches the running Animator.
+#[test]
+fn animator_assets_changed_on_disk_during_play_reach_the_game() {
+    use misty_engine::animation::clip::Property;
+    use misty_engine::animation::controller::{State, StateMachine};
+    use misty_engine::animation::{AnimationClip, AnimatorController};
+    let mut s = state("play_anim");
+    let root = s.project.root.clone();
+    let clip = |y: f32| {
+        let mut c = AnimationClip {
+            length: 1.0,
+            ..Default::default()
+        };
+        c.set_key("Body", Property::Position(1), 0.0, y);
+        c.set_key("Body", Property::Position(1), 1.0, y);
+        c
+    };
+    clip(1.0).save(&root.join("Assets/Hold.anim")).unwrap();
+    let ctrl = |name: &str| AnimatorController {
+        base: StateMachine {
+            states: vec![State {
+                name: name.into(),
+                motion: Some("Assets/Hold.anim".into()),
+                ..Default::default()
+            }],
+            default_state: Some(name.into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    // Written by "someone else": the editor never opened it.
+    let rel = "Assets/Hero.controller";
+    ctrl("Idle").save(&root.join(rel)).unwrap();
+    let hero = s.scene.spawn("Hero", None);
+    let body = s.scene.spawn("Body", Some(hero));
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(rel.into()),
+            ..Default::default()
+        },
+    );
+    crate::play::start(&mut s);
+    settle(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    let current = |s: &EditorState| {
+        let st = s.runtime.as_ref().unwrap().animator_status(&s.scene, hero);
+        st.unwrap().current.unwrap().name
+    };
+    assert_eq!(current(&s), "Idle");
+    assert_eq!(s.scene.transform(body).position.y, 1.0);
+    // git checks out a version with the state renamed and the clip changed.
+    ctrl("Rest").save(&root.join(rel)).unwrap();
+    bump(&root.join(rel), 5);
+    clip(4.0).save(&root.join("Assets/Hold.anim")).unwrap();
+    bump(&root.join("Assets/Hold.anim"), 5);
+    settle(&mut s);
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert_eq!(current(&s), "Rest", "the renamed state keeps playing");
+    assert_eq!(s.scene.transform(body).position.y, 4.0, "the new clip plays");
+    assert!(s.play.in_play_mode());
+    crate::play::stop(&mut s);
+    let _ = std::fs::remove_dir_all(root);
+}

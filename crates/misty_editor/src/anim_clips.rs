@@ -31,6 +31,11 @@ pub struct ClipStore {
     pub timelines: crate::timelines::TimelineStore,
     /// Avatar Masks being edited.
     pub masks: crate::avatar_masks::MaskStore,
+    /// Bumped every time a clip's file changes (a save, or a change on disk read back): Play
+    /// mode hands the changed clips to the game (see `play::sync_controllers`).
+    generation: u64,
+    /// The generation of each clip's last change.
+    versions: BTreeMap<String, u64>,
 }
 
 impl ClipStore {
@@ -54,6 +59,30 @@ impl ClipStore {
         Ok(&self.clips[path])
     }
 
+    /// Bumped every time a clip's file changes.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn touch(&mut self, path: &str) {
+        self.generation += 1;
+        self.versions.insert(path.to_owned(), self.generation);
+    }
+
+    /// Clips whose files changed after generation `since`, as their files read back (so the
+    /// running game gets exactly what is on disk).
+    pub fn changed_since(&self, since: u64) -> Vec<(String, AnimationClip)> {
+        self.versions
+            .iter()
+            .filter(|(_, v)| **v > since)
+            .filter_map(|(p, _)| {
+                let c = self.clips.get(p)?;
+                let saved = AnimationClip::from_json(&c.to_json()).ok()?;
+                Some((p.clone(), saved))
+            })
+            .collect()
+    }
+
     /// Clips read so far (watched for changes on disk).
     pub fn loaded_paths(&self) -> Vec<String> {
         self.clips.keys().cloned().collect()
@@ -70,6 +99,7 @@ impl ClipStore {
             return Ok(false);
         }
         self.clips.insert(path.to_owned(), clip);
+        self.touch(path);
         Ok(true)
     }
 
@@ -109,6 +139,7 @@ impl ClipStore {
     pub fn create(&mut self, path: &str, clip: AnimationClip) -> Result<(), String> {
         clip.save(&self.root.join(path))?;
         self.clips.insert(path.to_owned(), clip);
+        self.touch(path);
         Ok(())
     }
 
@@ -134,10 +165,12 @@ impl ClipStore {
     pub fn save_dirty(&mut self) -> Vec<String> {
         let mut errors = Vec::new();
         for path in std::mem::take(&mut self.dirty) {
-            if let Some(c) = self.clips.get(&path)
-                && let Err(e) = c.save(&self.root.join(&path))
-            {
-                errors.push(format!("Could not save {path}: {e}"));
+            let Some(c) = self.clips.get(&path) else {
+                continue;
+            };
+            match c.save(&self.root.join(&path)) {
+                Ok(()) => self.touch(&path),
+                Err(e) => errors.push(format!("Could not save {path}: {e}")),
             }
         }
         errors

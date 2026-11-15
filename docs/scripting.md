@@ -70,6 +70,28 @@ Disabled scripts still get the collision and trigger callbacks (3D and 2D), as i
 engine, but no `Update`, `FixedUpdate` or `LateUpdate`; scripts on switched-off objects get none.
 Script Graphs keep their own On Enable / On Disable events and hear contacts only while enabled.
 
+### `self.enabled`
+`self.enabled` is the script component's checkbox: read it, or set it to switch the script off
+and on from code (another script reaches it as `obj:GetComponent("Rotator").enabled`). Setting
+it works like `SetActive`: `OnDisable` / `OnEnable` run right after the callback that set it,
+and a script that was never enabled gets its `Start` before its first `Update`. Because a
+disabled script still hears collisions, it can wake itself up:
+
+```lua
+local Mine = {}
+function Mine:OnCollisionEnter(other)
+    if other:CompareTag("Player") then self.enabled = true end -- starts ticking
+end
+function Mine:OnEnable() Debug.Log("armed") end
+function Mine:Update() --[[ countdown ]] end
+return Mine
+```
+
+`enabled` is the component's own flag (`activeSelf`-like): a script on a switched-off object
+still reads `true` when its checkbox is on. The name is reserved: a field called `enabled` in
+the class table is not read through `self` any more. Script Graphs have no node for their
+Script Machine's checkbox yet.
+
 ## Field attributes
 List attributes per field in the class's `_attributes` table to change how the Properties panel shows it:
 

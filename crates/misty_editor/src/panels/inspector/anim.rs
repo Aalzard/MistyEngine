@@ -160,13 +160,22 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.weak(format!("{:.3} s  {}()", ev.time, ev.function));
         }
     }
-    if changed && let Some(snap) = state.anim_clips.snapshot(rel) {
-        let (scene, selection) = (&state.scene, &state.selection);
-        state
-            .undo
-            .push_with_clip("Change Loop Time", scene, selection, Some(snap));
-        if let Some(c) = state.anim_clips.get_mut(rel) {
-            c.looping = looping;
-        }
+    if changed {
+        set_loop_time(state, rel, looping);
+    }
+}
+
+/// Loop Time of the clip at `rel`, with undo; the clip is saved at the end of the frame and,
+/// while playing, reaches the running game (`play::sync_controllers`). The undo step holds
+/// only the clip, so undoing it during Play leaves the running scene alone.
+pub fn set_loop_time(state: &mut EditorState, rel: &str, looping: bool) {
+    let Some(snap) = state.anim_clips.snapshot(rel) else {
+        return;
+    };
+    state
+        .undo
+        .push_asset("Change Loop Time", &state.selection, snap);
+    if let Some(c) = state.anim_clips.get_mut(rel) {
+        c.looping = looping;
     }
 }

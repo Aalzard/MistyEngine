@@ -1,7 +1,7 @@
 //! Inspector panel: GameObject header and one foldout per component.
 //! With several objects selected, edits apply to all of them (only shared components are shown).
 
-mod anim;
+pub(crate) mod anim;
 mod animator;
 mod audio_editors;
 mod call_methods;

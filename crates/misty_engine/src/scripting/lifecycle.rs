@@ -13,8 +13,70 @@
 //! Callbacks run after the one that switched the object, like `Awake` after `Instantiate`.
 
 use hecs::Entity;
+use mlua::{Function, Lua, Table, Value};
 
 use super::{Instance, LogKind, ScriptHost};
+
+/// Builds the `__index` / `__newindex` pair of a script instance: `enabled` reads and sets the
+/// script component's checkbox (through `Scene::set_script_enabled`, so OnEnable / OnDisable
+/// follow after the callback, like SetActive), anything else reads the class and writes the
+/// instance. Plain Lua functions, so a method lookup costs no call into Rust.
+const INSTANCE_META: &str = r#"
+local get, set, raw = ...
+return function(class, id, slot)
+    return function(_, k)
+        if k == "enabled" then return get(id, slot) end
+        return class[k]
+    end, function(t, k, v)
+        if k == "enabled" then set(id, slot, v) else raw(t, k, v) end
+    end
+end
+"#;
+
+const INSTANCE_META_KEY: &str = "misty.instance_meta";
+
+/// The `__index` and `__newindex` functions of the script in `slot` of `e` (see
+/// [`INSTANCE_META`]).
+pub(super) fn instance_meta(
+    lua: &Lua,
+    class: &Table,
+    e: Entity,
+    slot: usize,
+) -> mlua::Result<(Function, Function)> {
+    let make = match lua.named_registry_value::<Option<Function>>(INSTANCE_META_KEY)? {
+        Some(f) => f,
+        None => {
+            let entity = |id: i64| Entity::from_bits(id as u64);
+            let get = lua.create_function(move |lua, (id, slot): (i64, usize)| {
+                let Some(e) = entity(id) else {
+                    return Ok(false);
+                };
+                super::api::with_world(lua, |w| {
+                    w.scene
+                        .world
+                        .get::<&crate::scene::Scripts>(e)
+                        .ok()
+                        .and_then(|s| s.list.get(slot).map(|r| r.enabled))
+                        .unwrap_or(false)
+                })
+            })?;
+            let set = lua.create_function(move |lua, (id, slot, on): (i64, usize, bool)| {
+                let e = entity(id).ok_or_else(|| mlua::Error::runtime("not a script"))?;
+                super::api::with_world(lua, |w| {
+                    super::api::alive(w, e)?;
+                    w.scene.set_script_enabled(e, slot, on);
+                    Ok(())
+                })?
+            })?;
+            let raw = lua.create_function(|_, (t, k, v): (Table, Value, Value)| t.raw_set(k, v))?;
+            let make: Function = lua.load(INSTANCE_META).call((get, set, raw))?;
+            lua.set_named_registry_value(INSTANCE_META_KEY, make.clone())?;
+            make
+        }
+    };
+    let id = e.to_bits().get() as i64;
+    make.call((class.clone(), id, slot))
+}
 
 /// OnEnable / OnDisable one script may get in one look before the host gives up (an OnEnable
 /// switching its object off and an OnDisable switching it on again never end). Counted per
