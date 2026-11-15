@@ -5388,3 +5388,68 @@ project root shared with another test running alongside; passes alone 3/3), play
 `the_picker_searches_assigns_and_clears` (a thumbnail repaint exceeding the harness's step limit
 under load), the next passed in full (1018 passed). The renderer is untouched, so golden shots
 were not rerun.
+
+## Round 73 — Bug hunt 11: round 72's threads and caches (branch r73-qa11)
+
+Checked round 72's changes for correctness under concurrency and caching. Each fix has a
+regression test that fails without it (checked by putting the old code back).
+
+### Fixes
+- **Autosave backup older than a save offered back after a crash**: a scene backup's header
+  carried the time the worker's snapshot reached the saver, not the time the scene was copied.
+  Saving (with more changes) while the worker was still writing the snapshot made the file look
+  older than the backup, so after a crash recovery offered the older contents over the save. A
+  snapshot now carries the time its copy was made on the main thread (`DocSnapshot::taken_ms`).
+  Test: `a_snapshot_taken_before_a_save_is_older_than_the_save`.
+- **Unresolved meta files never retried**: round 72 stopped the watcher rescanning the project
+  for an asset whose meta file can't be written, but nothing tried it again. Once its meta file
+  became writable (the read-only project lock gone, the file's permissions fixed) or another
+  editor wrote it a GUID, the asset still had no GUID until something else changed under
+  `Assets/`. The watcher now retries just those assets when a walk finds nothing new: it reads a
+  GUID another editor wrote, and writes one only when the project is not read-only. Failures
+  stay quiet (the scan reported them). Tests: `an_unresolved_asset_is_picked_up_once_its_meta_file_can_be_written`
+  (read-only lock, another editor's GUID, lock released) and `..._is_writable_again` (Windows,
+  read-only file).
+- **Model cache shared between projects (the flaky model-extraction test)**: the model cache was
+  keyed by the "Assets/…" path alone. A model looked up in a project without it (a game session,
+  another test's project, through a global root another test had just moved) cached "not found",
+  and every project with a model at that path then got that back: no materials extracted, no
+  mesh. The cache is now keyed by the file's full path (runtime meshes keep their own keys), and
+  `AssetDatabase::refresh` reads its models, textures and scripts with its own project as this
+  thread's root (`assets::scoped_root`). `models_extract_into_their_own_project_whatever_the_global_root`
+  no longer sets the global root in a loop (it moved it under every test running alongside): it
+  scopes the other project to its own thread, and refreshes once. The source scan
+  `tests_never_move_the_global_project_root` skipped all of `assets.rs`; it now scans its tests
+  (only `AssetDatabase::open` may set the root there). Test:
+  `a_model_missing_from_another_project_is_still_imported_in_this_one`.
+- **Thumbnail decoding budget held frames back by wall time** (`the_picker_searches_assigns_and_clears`
+  hitting the harness step limit): the 12 ms budget was per 16 ms of wall time, not per frame. A
+  decode that ran over it on a loaded machine made every frame of the next 16 ms skip decoding and
+  ask for another frame; the harness's fast steps used up its step limit. Not an endless loop in
+  the editor (wall time moves on), but frames were wasted. The budget is now per egui pass: the
+  next frame always decodes at least one preview. Test:
+  `a_frame_over_the_decoding_budget_holds_back_only_itself`.
+- **Script saved while being inspected kept its old fields**: `inspect` read a script's
+  modification time after running it, so a save in between (the project opening, a refresh)
+  looked already inspected and the new fields never showed until the next edit. The time is now
+  taken before reading. Test: `a_script_saved_while_it_is_inspected_is_read_again`.
+
+### Checked, no bug found
+- `registry::present`: every registered component has its own type, so asking the archetype
+  names exactly what probing each component did (script-added components, Behaviour Tree Agent
+  with its package removed, prefab links and overrides are all registered types; unregistered
+  components were never copied or saved). Guard test `present_names_what_has_finds`.
+- Scene JSON hashed on a worker at open/reload: the worker hashes a copy made on the main thread
+  at that moment, so edits right after opening can't leak into the "saved" hash; saves hash the
+  text written; reload replaces the hashes; autosave never touches them.
+- Asset Files off-screen skipping: placeholder rows/tiles take the same size as drawn ones;
+  renamed items are always drawn (and scrolled to), everything is drawn while dragging,
+  thumbnails are asked for only by visible tiles, before and after round 72.
+- Parallel script inspection: results keep the walk's order in a sorted map; a script's error
+  stays its own; the scoped project root goes along to the workers.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1024 passed, engine 1675, player 11, recorder 19, MCP end-to-end 1, dedicated server 1 (2731).
+No render code changed, so golden shots were not rerun.
