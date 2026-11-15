@@ -181,9 +181,8 @@ pub fn spawn_with_clips(
                         scene.spawn(&model.meshes[i].name, Some(object))
                     };
                     add_mesh(scene, target, i);
-                    // Every renderer of the level (a second material's mesh is a child).
-                    levels[level].push(target);
                 }
+                levels[level].push(object);
             }
             ids.push(e);
             continue;
@@ -340,7 +339,8 @@ f 4 6 5
     /// holding every level's renderers.
     #[test]
     fn lod_named_nodes_become_a_lod_group() {
-        let root = std::env::temp_dir().join(format!("misty_model_lods_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("misty_model_file_lods_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("Assets/Models")).unwrap();
         let file = root.join("Assets/Models/Tree.obj");

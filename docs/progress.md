@@ -5983,8 +5983,7 @@ everything made from it and the scene are not in the repo; what the import neede
   it; leaf cards and fences came in opaque. Checked once per texture (header first, then the
   share of clear texels: an RGBA file that is opaque everywhere stays opaque).
 - **Top nodes named `…_LOD0`, `…_LOD1`, … become one LOD Group** when the model is put in a
-  scene (they all drew on top of each other). Generated LODs of meshes with several materials
-  now list every renderer in their level too (only the first part of each level switched).
+  scene (they all drew on top of each other), every part of a level in it.
 
 ### Trees from model files
 - **A tree asset can name a model** (`TreeAsset::model`, the tree asset's new Model slot): the
@@ -6009,3 +6008,7 @@ New: TIFF loading (8 / 16 bits, the unspecified alpha), Unity meta files in a sc
 found by material name, cut-out detection, the FBX material mapping with extraction, LOD
 Groups from node names, a model tree (levels, leaves, wind weights, variation, impostor, a
 missing model), gloss packing.
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings; `cargo test --workspace --release --no-fail-fast`: editor 1032 passed, engine 1731,
+player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2796; 11 new), 0 failed; golden
+shots green (procedural trees, textures and materials draw as before).
