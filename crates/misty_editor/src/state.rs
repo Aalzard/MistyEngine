@@ -638,6 +638,7 @@ impl EditorState {
 
     /// Re-scan the Project window and the asset database (Assets ▸ Refresh, Ctrl+R).
     pub fn refresh_assets(&mut self) {
+        misty_engine::profile_scope!("Editor.RefreshAssetsAll");
         self.project.refresh();
         self.assets.refresh();
         self.search.index.invalidate();

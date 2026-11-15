@@ -553,3 +553,58 @@ fn read_only_projects_refuse_the_saves_round_70_missed() {
     assert_ne!(std::fs::read_to_string(&settings).unwrap(), "before");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// r72: a meta file cut short by a crash (empty) gets a GUID like a missing one. It used to be
+/// refused ("not a JSON object") on every scan.
+#[test]
+fn an_empty_meta_file_gets_a_guid() {
+    let root = temp("empty_meta");
+    write(&root, "Assets/Scenes/Level.scene", "{}");
+    write(&root, "Assets/Scenes/Level.scene.meta", "");
+    let (db, report) = GuidDatabase::scan(&root);
+    assert!(report.errors.is_empty(), "{report:?}");
+    // (The folder gets its first meta file too.)
+    assert!(
+        report
+            .created
+            .iter()
+            .any(|p| p == "Assets/Scenes/Level.scene"),
+        "{report:?}"
+    );
+    let guid = db.guid_of("Assets/Scenes/Level.scene").expect("a GUID");
+    let text = std::fs::read_to_string(root.join("Assets/Scenes/Level.scene.meta")).unwrap();
+    assert_eq!(meta::guid_in(&text), Some(guid));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// r72: an asset whose meta file can't be given a GUID (not a JSON object) is not "new" to
+/// every later walk: the watcher rescanned the whole project (and the editor refreshed every
+/// asset list, 100-650 ms on the main thread) every few seconds, failing on it each time.
+#[test]
+fn an_unfixable_meta_file_does_not_rescan_the_project_again_and_again() {
+    let root = temp("unfixable_meta");
+    write(&root, "Assets/Mats/Red.mat", "{}");
+    write(&root, "Assets/Mats/Broken.mat", "{}");
+    write(&root, "Assets/Mats/Broken.mat.meta", "[1, 2, 3]");
+    let (scanned, report) = GuidDatabase::scan(&root);
+    assert_eq!(report.errors.len(), 1, "{report:?}");
+    assert!(scanned.guid_of("Assets/Mats/Broken.mat").is_none());
+    assert!(scanned.unresolved().any(|p| p == "Assets/Mats/Broken.mat"));
+    let db = RwLock::new(Some(scanned));
+    let walk = Mutex::new(None);
+    for _ in 0..3 {
+        assert!(
+            poll_now_in(&db, &walk).is_none(),
+            "nothing changed on disk: no rescan"
+        );
+    }
+    // A real change still rescans (and the broken one stays unresolved).
+    write(&root, "Assets/Mats/Blue.mat", "{}");
+    let report = poll_now_in(&db, &walk).expect("a rescan for the new file");
+    assert!(
+        report.created.iter().any(|p| p.contains("Blue.mat")),
+        "{report:?}"
+    );
+    assert!(poll_now_in(&db, &walk).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}

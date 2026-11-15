@@ -126,13 +126,20 @@ pub fn stop(s: &mut EditorState) {
     let Some(session) = s.play_session.take() else {
         return;
     };
+    misty_engine::profile_scope!("Play.Stop");
     crate::multiplayer::on_play_stopped(s);
-    s.runtime = None;
+    {
+        misty_engine::profile_scope!("Play.Stop.Runtime");
+        s.runtime = None;
+    }
     crate::game_input::stop_rumble();
     let mut scene = session.scene;
-    // Objects spawned while playing must not lend their handles to new editor objects.
-    scene.retire_ids_of(&s.scene);
-    s.scene = scene;
+    {
+        misty_engine::profile_scope!("Play.Stop.Scene");
+        // Objects spawned while playing must not lend their handles to new editor objects.
+        scene.retire_ids_of(&s.scene);
+        s.scene = scene;
+    }
     s.selection = session.selection;
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;

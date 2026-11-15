@@ -288,6 +288,8 @@ pub struct ComponentInfo {
     pub removable: bool,
     /// `size_of` the component struct (Memory Profiler estimates).
     pub size: usize,
+    /// The component's Rust type (see [`present`]).
+    pub type_id: std::any::TypeId,
     pub has: fn(&World, Entity) -> bool,
     pub add_default: fn(&mut World, Entity),
     pub remove: fn(&mut World, Entity),
@@ -305,6 +307,7 @@ impl ComponentInfo {
             category: T::CATEGORY,
             removable: T::REMOVABLE,
             size: std::mem::size_of::<T>(),
+            type_id: std::any::TypeId::of::<T>(),
             has: |w, e| w.entity(e).is_ok_and(|r| r.has::<T>()),
             add_default: |w, e| {
                 let _ = w.insert_one(e, T::default());
@@ -482,6 +485,33 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::HierarchyFolder>(),
         ]
     })
+}
+
+/// The registry entries of the components `e` has, in registry order (none when `e` is not
+/// in `world`). Asks the entity's archetype for its component types instead of probing every
+/// registered component: a few lookups per object instead of one per registered component,
+/// which made whole-scene copies (undo steps, Play, autosave) and saves cost tens of
+/// milliseconds in scenes with thousands of objects.
+pub fn present(world: &World, e: Entity) -> Vec<&'static ComponentInfo> {
+    static BY_TYPE: OnceLock<std::collections::HashMap<std::any::TypeId, usize>> = OnceLock::new();
+    let by_type = BY_TYPE.get_or_init(|| {
+        let mut map = std::collections::HashMap::new();
+        for (i, info) in components().iter().enumerate() {
+            // The first entry of a type wins, as `find` would.
+            map.entry(info.type_id).or_insert(i);
+        }
+        map
+    });
+    let Ok(entity) = world.entity(e) else {
+        return Vec::new();
+    };
+    let mut found: Vec<usize> = entity
+        .component_types()
+        .filter_map(|ty| by_type.get(&ty).copied())
+        .collect();
+    found.sort_unstable();
+    let all = components();
+    found.into_iter().map(|i| &all[i]).collect()
 }
 
 /// Components added together with `name` (like a RequireComponent attribute).

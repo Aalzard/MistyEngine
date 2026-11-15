@@ -2,6 +2,8 @@
 
 pub mod animator_component;
 pub mod audio_components;
+#[cfg(test)]
+mod bench_tests;
 pub mod cloth_component;
 pub mod clouds;
 pub mod components;
@@ -165,7 +167,7 @@ impl Clone for Scene {
             match next.next_if(|e| e.id() == id) {
                 Some(&e) => {
                     let mut b = EntityBuilder::new();
-                    for info in registry::components() {
+                    for info in registry::present(&self.world, e) {
                         (info.clone_into)(&self.world, e, &mut b);
                     }
                     world.spawn_at(e, b.build());
@@ -571,7 +573,7 @@ impl Scene {
         map: &mut std::collections::HashMap<Entity, Entity>,
     ) -> Entity {
         let mut b = EntityBuilder::new();
-        for info in registry::components() {
+        for info in registry::present(&self.world, e) {
             (info.clone_into)(&self.world, e, &mut b);
         }
         let copy = self.world.spawn(b.build());

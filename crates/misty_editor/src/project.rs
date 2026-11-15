@@ -75,7 +75,9 @@ pub struct ProjectBrowser {
     /// Icon size slider; at the minimum the grid becomes a list.
     pub icon_size: f32,
     pub tree: FolderNode,
-    pub entries: Vec<AssetEntry>,
+    /// The open folder's contents (shared: the Asset Files panel draws from it every frame
+    /// without copying thousands of paths).
+    pub entries: std::sync::Arc<Vec<AssetEntry>>,
     /// Folder contents area last frame (drop target for Hierarchy rows -> new prefab).
     pub drop_rect: egui::Rect,
     /// The folder (tile, row or tree row) under the pointer this frame and its rect: where
@@ -104,7 +106,7 @@ pub struct ProjectBrowser {
     /// Package folders that came from a registry: no renaming, moving or deleting inside.
     pub read_only: Vec<PathBuf>,
     /// The last search's text, when it ran and its results (see [`Self::cached_search_results`]).
-    search_cache: Option<(String, std::time::Instant, Vec<AssetEntry>)>,
+    search_cache: Option<(String, std::time::Instant, std::sync::Arc<Vec<AssetEntry>>)>,
     /// Every listed folder (the Assets tree and the open folder): its modification time and
     /// entry names when last listed (see [`Self::poll_disk`]).
     listings: std::collections::HashMap<PathBuf, Listing>,
@@ -152,7 +154,7 @@ impl ProjectBrowser {
                 name: "Assets".into(),
                 children: Vec::new(),
             },
-            entries: Vec::new(),
+            entries: Default::default(),
             drop_rect: egui::Rect::NOTHING,
             os_drop_folder: None,
             thumbnails: Default::default(),
@@ -181,7 +183,7 @@ impl ProjectBrowser {
     pub fn refresh(&mut self) {
         self.search_cache = None;
         self.tree = build_tree(&self.assets_dir(), "Assets");
-        self.entries = list_dir(&self.current);
+        self.entries = std::sync::Arc::new(list_dir(&self.current));
         self.packages = package_trees(&self.packages_dir());
         self.read_only = crate::packages::read_only_roots(&self.root);
         self.record_listings();
@@ -264,7 +266,7 @@ impl ProjectBrowser {
         }
         self.current = path;
         self.selected = None;
-        self.entries = list_dir(&self.current);
+        self.entries = std::sync::Arc::new(list_dir(&self.current));
         if !self.listings.contains_key(&self.current) {
             let l = Listing::read(&self.current);
             self.listings.insert(self.current.clone(), l);
@@ -330,14 +332,20 @@ impl ProjectBrowser {
 
     /// [`Self::search_results`], walked again when the text changes, the browser refreshes
     /// (assets added, moved, renamed or deleted) or after [`SEARCH_CACHE`].
+    #[cfg(test)]
     pub fn cached_search_results(&mut self) -> Vec<AssetEntry> {
+        self.cached_search_shared().as_ref().clone()
+    }
+
+    /// [`Self::cached_search_results`] without copying them (the panel asks every frame).
+    pub fn cached_search_shared(&mut self) -> std::sync::Arc<Vec<AssetEntry>> {
         if let Some((text, at, results)) = &self.search_cache
             && *text == self.search
             && at.elapsed() < SEARCH_CACHE
         {
             return results.clone();
         }
-        let results = self.search_results();
+        let results = std::sync::Arc::new(self.search_results());
         self.search_cache = Some((
             self.search.clone(),
             std::time::Instant::now(),
@@ -424,6 +432,16 @@ fn listed_names(dir: &Path) -> Vec<String> {
     names
 }
 
+/// Whether a directory entry is a folder, from the listing itself: no extra file-system call
+/// per entry (a project refresh listed every folder of the tree, a call for each of its files).
+/// A link is followed, as `Path::is_dir` does.
+pub(crate) fn entry_is_dir(e: &std::fs::DirEntry, path: &Path) -> bool {
+    match e.file_type() {
+        Ok(t) if !t.is_symlink() => t.is_dir(),
+        _ => path.is_dir(),
+    }
+}
+
 fn list_dir(dir: &Path) -> Vec<AssetEntry> {
     let mut out: Vec<AssetEntry> = std::fs::read_dir(dir)
         .into_iter()
@@ -435,19 +453,16 @@ fn list_dir(dir: &Path) -> Vec<AssetEntry> {
             if name.starts_with('.') || name.ends_with(".meta") {
                 return None;
             }
+            let path = e.path();
             Some(AssetEntry {
-                is_dir: e.path().is_dir(),
-                path: e.path(),
+                is_dir: entry_is_dir(&e, &path),
+                path,
                 name,
             })
         })
         .collect();
-    // Folders first, then alphabetical.
-    out.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    // Folders first, then alphabetical (each name lower-cased once, not at every comparison).
+    out.sort_by_cached_key(|e| (!e.is_dir, e.name.to_lowercase()));
     out
 }
 

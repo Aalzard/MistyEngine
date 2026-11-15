@@ -42,6 +42,9 @@ struct FrameClock {
     /// Frame Play was pressed on (`MISTY_PLAY_AT`) and the worst frame since: (frame, ms).
     play_at: Option<u32>,
     play_worst: (u32, f32),
+    /// Frame Stop was pressed on (`MISTY_STOP_AT`) and the worst frame since: (frame, ms).
+    stop_at: Option<u32>,
+    stop_worst: (u32, f32),
     /// Frame the scene was opened on (`MISTY_OPEN_SCENE_AT`) and the worst frame since.
     open_at: Option<u32>,
     open_worst: (u32, f32),
@@ -63,8 +66,11 @@ impl FrameClock {
                 if ms > self.worst.1 {
                     self.worst = (self.frames, ms);
                 }
-                if self.play_at.is_some() && ms > self.play_worst.1 {
+                if self.play_at.is_some() && self.stop_at.is_none() && ms > self.play_worst.1 {
                     self.play_worst = (self.frames, ms);
+                }
+                if self.stop_at.is_some() && ms > self.stop_worst.1 {
+                    self.stop_worst = (self.frames, ms);
                 }
                 if self.open_at.is_some() && ms > self.open_worst.1 {
                     self.open_worst = (self.frames, ms);
@@ -98,6 +104,12 @@ impl FrameClock {
             eprintln!(
                 "entering Play at frame {at}: worst frame since {} at {:.0} ms",
                 self.play_worst.0, self.play_worst.1
+            );
+        }
+        if let Some(at) = self.stop_at {
+            eprintln!(
+                "leaving Play at frame {at}: worst frame since {} at {:.0} ms",
+                self.stop_worst.0, self.stop_worst.1
             );
         }
         if let Some((frame, t)) = self.last_loading {
@@ -157,6 +169,19 @@ impl Capture {
             .is_some_and(|at| at == self.frames);
         if due {
             self.clock.play_at = Some(self.frames);
+        }
+        due
+    }
+
+    /// `MISTY_STOP_AT=<frame>`: press Stop on that editor frame (after `MISTY_PLAY_AT`), to
+    /// time leaving Play on its own.
+    pub fn stop_due(&mut self) -> bool {
+        let due = std::env::var("MISTY_STOP_AT")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .is_some_and(|at| at == self.frames);
+        if due {
+            self.clock.stop_at = Some(self.frames);
         }
         due
     }

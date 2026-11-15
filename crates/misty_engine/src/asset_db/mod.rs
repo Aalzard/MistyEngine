@@ -302,11 +302,16 @@ fn poll_in(
     report
 }
 
-/// The root of the database in `db` and every asset path it knows.
+/// The root of the database in `db` and every asset path it knows (with the ones its last
+/// scan could not give a GUID: a walk listing them again is no change).
 fn known(db: &RwLock<Option<GuidDatabase>>) -> Option<(PathBuf, BTreeSet<String>)> {
     let guard = db.read().unwrap_or_else(|e| e.into_inner());
     guard.as_ref().map(|db| {
-        let known: BTreeSet<String> = db.paths().map(str::to_owned).collect();
+        let known: BTreeSet<String> = db
+            .paths()
+            .chain(db.unresolved())
+            .map(str::to_owned)
+            .collect();
         (db.root().to_path_buf(), known)
     })
 }
