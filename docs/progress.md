@@ -5944,3 +5944,76 @@ failed. `cargo fmt --all --check` passes; `cargo clippy --workspace --all-target
 warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
 1031 passed, engine 1720, player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2784;
 5 new). No render code changed, so golden shots were not rerun.
+
+## Round 83 — Known gaps from rounds 76–81 (branch r83-qa16)
+
+Closed the gaps earlier rounds left open. Each change has a test that failed without it
+(checked by running the tests with the change switched off).
+
+### Lua `self.enabled`
+- Scripts can read and set their own component's checkbox: `self.enabled` (and another
+  script's through `GetComponent("Name").enabled`). Setting it goes through
+  `Scene::set_script_enabled`, so the round 79/81 lifecycle (`scripting/lifecycle.rs`) delivers
+  OnDisable / OnEnable right after the callback that set it (as for SetActive), and a script
+  enabled for the first time gets Start before its first Update. Because disabled scripts hear
+  collisions (round 79), a disabled script can now re-enable itself in OnCollisionEnter.
+- How: each instance's metatable gets an `__index` / `__newindex` pair built by one shared Lua
+  factory (`INSTANCE_META`): `enabled` calls into Rust, every other key reads the class / writes
+  the instance in plain Lua, so method lookups don't call into Rust. Scripts with network RPCs
+  or on network objects keep their network properties: their `__index` now falls back to the
+  instance's previous one instead of the class. `enabled` is reserved: an Inspector field of that
+  name is not copied onto the instance.
+- **Found by the test: a script enabled mid-frame got Update before Start.** Start ran only in
+  the Start pass at the top of the frame, so a script enabled in OnCollisionEnter (or switched
+  on, or instantiated, in FixedUpdate) got its Update that frame and Start the next. The
+  FixedUpdate / Update / LateUpdate passes now run a pending Start first, as in the familiar
+  engine.
+- Script Graphs: there is no node set for a component's checkbox (only GameObject
+  `activeSelf` / `SetActive`), and a disabled graph hears nothing, so nothing was mirrored.
+- docs/scripting.md: new "`self.enabled`" section.
+- Tests (`lifecycle_tests`): `self_enabled_reads_and_sets_the_script_component`,
+  `a_disabled_script_enables_itself_in_on_collision_enter`,
+  `self_enabled_keeps_fields_methods_and_network_properties`.
+
+### Quit while a graph save prompt is open
+Closing the editor while "Save before opening the other asset?" (Script Graph, Effect Graph,
+Behaviour Tree; round 70) was up waited for the answer, which then opened the other asset and
+left the editor running: the quit was lost. The open question now becomes the quit's question
+(the other asset would only open to close again): Save or Don't Save goes on closing, Cancel
+keeps the editor and the changes. (The scene, Shader Graph and Code Editor prompts already
+replace their question with the quit's.) Test:
+`quitting_while_the_open_question_is_up_folds_into_the_quit`.
+
+### Clip settings reach the running game
+Animation clips changed during Play (Loop Time in the Inspector, keys, a file changed on disk)
+reached nothing until Play was entered again. `ClipStore` now has a generation counter like
+controllers and masks (bumped when a clip is saved, created or read back from disk), and
+`play::sync_controllers` hands changed clips to `Runtime::reload_animation_clip`, which replaces
+the clip in the Animator player, the Animation component player and the Timelines that already
+hold it; running playback keeps its time. Note that an Animator state loops by its own Loop flag
+(the controller's), so for Animators the visible change is the keys and events; Loop Time
+changes Animation components (Wrap Mode Default) and Timelines. Undoing Loop Time in Play no
+longer rewinds the running scene: it is an asset-only undo step now (`push_asset`, round 80).
+Test: `clip_changes_during_play_reach_running_animations_and_animators`.
+
+### Animator assets changed outside the editor during Play
+The asset watch (`live_reload::assets`) ran in Edit mode only. In Play it now checks Animator
+Controllers and clips only: the ones the editor holds, plus the controllers the playing scene's
+Animators use and the clips they play (held on first sight). A change made by git or another
+tool goes through the same path as an Animator window edit (the stores' generation counters),
+so running Animators keep their state, renamed states included. Other asset kinds still wait for
+Edit mode. Test: `animator_assets_changed_on_disk_during_play_reach_the_game`.
+
+### BehaviourTreeDemo metas
+`BehaviourTreeDemo.scene`, its `BehaviourTreeDemo` folder and `NavMesh.navmesh` had no committed
+`.meta`, so every clone gave them new GUIDs. Added in the asset database's format (random
+32-hex GUID, the same text `meta::compose` writes). Test: `behaviour_tree_demo_files_have_meta_files`.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast` runs: editor 1035 passed,
+engine 1724, player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2792; 7 new). Two
+runs were green; one run in between had `video::tests::seeking_shows_the_requested_frame` fail
+once (frame 0 instead of 25 after its 10 s wait, under full-suite load; video code is untouched
+here, and it passed 5 of 5 alone and in the next full run). No render code changed, so golden
+shots were not rerun.

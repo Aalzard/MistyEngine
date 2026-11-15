@@ -29,6 +29,8 @@ pub struct PlaySession {
     controllers_seen: u64,
     /// `MaskStore::generation` the running game has caught up with.
     masks_seen: u64,
+    /// `ClipStore::generation` the running game has caught up with.
+    clips_seen: u64,
 }
 
 impl PlaySession {
@@ -81,6 +83,7 @@ pub fn start(s: &mut EditorState) {
         expanded: s.hierarchy.expanded.clone(),
         controllers_seen: s.anim_clips.controllers.generation(),
         masks_seen: s.anim_clips.masks.generation(),
+        clips_seen: s.anim_clips.generation(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -173,6 +176,7 @@ pub fn stop(s: &mut EditorState) {
 /// follows an edit at once.
 pub fn sync_controllers(s: &mut EditorState) {
     sync_masks(s);
+    sync_clips(s);
     let generation = s.anim_clips.controllers.generation();
     let Some(session) = s.play_session.as_mut() else {
         return;
@@ -188,6 +192,25 @@ pub fn sync_controllers(s: &mut EditorState) {
     if let Some(runtime) = s.runtime.as_mut() {
         for (path, c) in changed {
             runtime.reload_animator_controller(&path, c);
+        }
+    }
+}
+
+/// Animation clips changed while playing (Loop Time in the Inspector, a file changed outside
+/// the editor) reach the running Animators, Animation components and Timelines.
+fn sync_clips(s: &mut EditorState) {
+    let generation = s.anim_clips.generation();
+    let Some(session) = s.play_session.as_mut() else {
+        return;
+    };
+    if session.clips_seen == generation {
+        return;
+    }
+    let changed = s.anim_clips.changed_since(session.clips_seen);
+    session.clips_seen = generation;
+    if let Some(runtime) = s.runtime.as_mut() {
+        for (path, c) in changed {
+            runtime.reload_animation_clip(&path, c);
         }
     }
 }

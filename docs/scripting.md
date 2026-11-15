@@ -51,7 +51,9 @@ component is enabled (the checkbox on its Properties header).
   or `Start` until it is enabled.
 - `OnEnable` runs right after `Awake`, and again every time the script can run after it could
   not: its object (or a parent) is switched on, or its component is enabled.
-- `Start` runs once, before the script's first `Update` (the frame after it was switched on).
+- `Start` runs once, before the script's first `FixedUpdate`, `Update` or `LateUpdate`: at the
+  start of the next frame, or right before that callback when the script was switched on or
+  enabled later in the frame (in a collision callback, by `FixedUpdate`).
 - `OnDisable` runs when it stops running: its object or a parent is switched off, its component
   is disabled, its object is destroyed while running, Play stops, its scene unloads or the
   built game quits.
@@ -69,6 +71,28 @@ back stop with an error in the Console. Nothing is checked while nothing is swit
 Disabled scripts still get the collision and trigger callbacks (3D and 2D), as in the familiar
 engine, but no `Update`, `FixedUpdate` or `LateUpdate`; scripts on switched-off objects get none.
 Script Graphs keep their own On Enable / On Disable events and hear contacts only while enabled.
+
+### `self.enabled`
+`self.enabled` is the script component's checkbox: read it, or set it to switch the script off
+and on from code (another script reaches it as `obj:GetComponent("Rotator").enabled`). Setting
+it works like `SetActive`: `OnDisable` / `OnEnable` run right after the callback that set it,
+and a script that was never enabled gets its `Start` before its first `Update`. Because a
+disabled script still hears collisions, it can wake itself up:
+
+```lua
+local Mine = {}
+function Mine:OnCollisionEnter(other)
+    if other:CompareTag("Player") then self.enabled = true end -- starts ticking
+end
+function Mine:OnEnable() Debug.Log("armed") end
+function Mine:Update() --[[ countdown ]] end
+return Mine
+```
+
+`enabled` is the component's own flag (`activeSelf`-like): a script on a switched-off object
+still reads `true` when its checkbox is on. The name is reserved: a field called `enabled` in
+the class table is not read through `self` any more. Script Graphs have no node for their
+Script Machine's checkbox yet.
 
 ## Field attributes
 List attributes per field in the class's `_attributes` table to change how the Properties panel shows it:

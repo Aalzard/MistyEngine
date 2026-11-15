@@ -598,6 +598,18 @@ fn behaviour_tree_demo_matches_its_generator() {
     );
 }
 
+/// Round 83: the demo scene (with its folder and nav mesh) had no committed `.meta`, so each
+/// clone gave it a new GUID and references to it by GUID broke between machines.
+#[test]
+fn behaviour_tree_demo_files_have_meta_files() {
+    let root = project();
+    let folder = SCENE.trim_end_matches(".scene");
+    for rel in [SCENE, folder, NAV_MESH] {
+        let guid = misty_engine::asset_db::meta::read_guid(&root.join(rel));
+        assert!(guid.is_some(), "{rel} has no meta file with a GUID");
+    }
+}
+
 /// Frames of the demo with the guard's states and the logs gathered.
 struct Sim {
     host: misty_engine::scripting::ScriptHost,

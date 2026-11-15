@@ -878,3 +878,114 @@ fn mask_edits_during_play_reach_running_animator_layers() {
     crate::play::stop(&mut s);
     std::fs::remove_dir_all(root).ok();
 }
+
+// ---- Round 83: clip settings during Play -----------------------------------------------------
+
+/// Loop Time changed in the Inspector during Play reached nothing: Animations kept the clip
+/// they read at Play start until Play was entered again. Clip changes (Loop Time, keys) now
+/// reach running Animation components and Animators; undoing Loop Time in Play leaves the
+/// running scene alone (the step holds only the clip).
+#[test]
+fn clip_changes_during_play_reach_running_animations_and_animators() {
+    use misty_engine::animation::AnimationClip;
+    use misty_engine::animation::clip::Property;
+    let (mut s, root) = project("live_clip");
+    // Panel.y goes 0 -> 1 over one second (Loop Time on); Body.y held at `y`.
+    let ramp = {
+        let mut c = AnimationClip {
+            length: 1.0,
+            looping: true,
+            ..Default::default()
+        };
+        c.set_key("Panel", Property::Position(1), 0.0, 0.0);
+        c.set_key("Panel", Property::Position(1), 1.0, 1.0);
+        c
+    };
+    ramp.save(&root.join("Assets/Ramp.anim")).unwrap();
+    let hold = |c: &mut AnimationClip, y: f32| {
+        c.curves.clear();
+        c.set_key("Body", Property::Position(1), 0.0, y);
+        c.set_key("Body", Property::Position(1), 1.0, y);
+    };
+    let mut held = AnimationClip {
+        length: 1.0,
+        ..Default::default()
+    };
+    hold(&mut held, 1.0);
+    held.save(&root.join("Assets/Hold.anim")).unwrap();
+    let ctrl = "Assets/Hold.controller";
+    let c = AnimatorController {
+        base: StateMachine {
+            states: vec![State {
+                name: "Hold".into(),
+                motion: Some("Assets/Hold.anim".into()),
+                ..Default::default()
+            }],
+            default_state: Some("Hold".into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    s.anim_clips.controllers.create(ctrl, c).unwrap();
+    let door = s.scene.spawn("Door", None);
+    let panel = s.scene.spawn("Panel", Some(door));
+    s.scene.add(
+        door,
+        misty_engine::scene::Animation {
+            clip: Some("Assets/Ramp.anim".into()),
+            ..Default::default()
+        },
+    );
+    let hero = s.scene.spawn("Hero", None);
+    let body = s.scene.spawn("Body", Some(hero));
+    s.scene.add(
+        hero,
+        misty_engine::scene::Animator {
+            controller: Some(ctrl.into()),
+            ..Default::default()
+        },
+    );
+    let mover = s.scene.spawn("Mover", None);
+    crate::play::start(&mut s);
+    // Play steps at most 1/3 s a frame: walk in 0.05 s steps.
+    let run = |s: &mut EditorState, seconds: f32| {
+        for _ in 0..(seconds / 0.05).round() as usize {
+            crate::play::tick(s, 0.05);
+        }
+    };
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    run(&mut s, 0.5);
+    let y = |s: &EditorState, e| s.scene.transform(e).position.y;
+    assert!((y(&s, panel) - 0.5).abs() < 0.05, "{}", y(&s, panel));
+    assert_eq!(y(&s, body), 1.0);
+    // Loop Time off in the Inspector (saved at the end of the frame).
+    crate::panels::inspector::anim::set_loop_time(&mut s, "Assets/Ramp.anim", false);
+    assert!(s.anim_clips.save_dirty().is_empty());
+    // The game moves something meanwhile.
+    s.scene.set_transform(
+        mover,
+        misty_engine::scene::Transform::from_position(glam::Vec3::X * 7.0),
+    );
+    run(&mut s, 0.75);
+    assert_eq!(y(&s, panel), 1.0, "holds the end instead of wrapping");
+    // The Animation window's kind of edit: keys of the clip an Animator plays.
+    hold(s.anim_clips.get_mut("Assets/Hold.anim").unwrap(), 3.0);
+    assert!(s.anim_clips.save_dirty().is_empty());
+    crate::play::tick(&mut s, 1.0 / 60.0);
+    assert_eq!(
+        y(&s, body),
+        3.0,
+        "the running Animator samples the new keys"
+    );
+    // Undo Loop Time: the clip goes back, the running scene stays.
+    commands::apply(&mut s, Action::Undo);
+    assert!(s.anim_clips.save_dirty().is_empty());
+    assert!(s.anim_clips.get("Assets/Ramp.anim").unwrap().looping);
+    assert_eq!(
+        s.scene.transform(mover).position.x,
+        7.0,
+        "scene not rewound"
+    );
+    crate::play::stop(&mut s);
+    std::fs::remove_dir_all(root).ok();
+}

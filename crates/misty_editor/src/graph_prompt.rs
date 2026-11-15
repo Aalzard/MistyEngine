@@ -109,7 +109,10 @@ pub fn ask_before_open(s: &mut EditorState, kind: Kind, rel: &str) -> bool {
 /// The editor is closing: true (and the question is up) while one of the windows has unsaved
 /// changes.
 pub fn cancel_close(s: &mut EditorState) -> bool {
-    if s.graph_prompt.is_some() {
+    if let Some(prompt) = s.graph_prompt.as_mut() {
+        // "Save before opening the other asset?" is up: it becomes the quit's question (the
+        // other asset would only open to close again), so answering it goes on closing.
+        prompt.after = After::Quit;
         return true;
     }
     let Some(kind) = Kind::ALL.into_iter().find(|k| k.dirty(s)) else {
@@ -289,6 +292,42 @@ mod tests {
         assert!(!cancel_close(&mut s));
         let on_disk = BehaviourTree::load(&root.join("Assets/AI/A.btree")).unwrap();
         assert_eq!(on_disk, BehaviourTree::new_default());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Round 83: closing the editor while the "open another graph?" question was up lost the
+    /// quit: the close waited for the answer, which then opened the other graph and stayed.
+    /// The question becomes the quit's question; answering it goes on closing.
+    #[test]
+    fn quitting_while_the_open_question_is_up_folds_into_the_quit() {
+        let (mut s, root) = project("open_quit");
+        crate::panels::script_graph::open(&mut s, "Assets/AI/A.vgraph");
+        s.script_graph.graph.variables.push(Variable::new(
+            "Unsaved",
+            PinType::Bool,
+            Literal::Bool(true),
+        ));
+        crate::panels::script_graph::open(&mut s, "Assets/AI/B.vgraph");
+        assert!(cancel_close(&mut s), "the close waits for the answer");
+        assert_eq!(
+            s.graph_prompt.as_ref().map(|p| (p.kind, p.after.clone())),
+            Some((Kind::ScriptGraph, After::Quit))
+        );
+        assert!(answer(&mut s, Some(true)), "Save goes on closing");
+        assert_eq!(s.script_graph.path.as_deref(), Some("Assets/AI/A.vgraph"));
+        let on_disk = ScriptGraph::load(&root.join("Assets/AI/A.vgraph")).unwrap();
+        assert_eq!(on_disk.variables.len(), 1, "saved before quitting");
+        assert!(!cancel_close(&mut s), "nothing left to ask: closes");
+        // Cancel still keeps the editor open with the changes.
+        s.script_graph.graph.variables.push(Variable::new(
+            "Again",
+            PinType::Bool,
+            Literal::Bool(true),
+        ));
+        crate::panels::script_graph::open(&mut s, "Assets/AI/B.vgraph");
+        assert!(cancel_close(&mut s));
+        assert!(!answer(&mut s, None));
+        assert!(s.script_graph.dirty());
         let _ = std::fs::remove_dir_all(root);
     }
 }

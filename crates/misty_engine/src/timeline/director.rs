@@ -133,6 +133,14 @@ impl DirectorPlayer {
         }
     }
 
+    /// A new version of the animation clip at `path`, when a timeline already uses it
+    /// (clips no timeline has loaded are read when one does).
+    pub fn replace_clip(&mut self, path: &str, c: AnimationClip) {
+        if let Some(held) = self.clips.get_mut(path) {
+            *held = Arc::new(c);
+        }
+    }
+
     /// A loaded timeline (cached; a broken file warns once) with its animation clips.
     pub fn asset(&mut self, path: &str) -> Option<Arc<TimelineAsset>> {
         if !self.assets.contains_key(path) {
