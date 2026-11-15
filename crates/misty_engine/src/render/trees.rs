@@ -586,12 +586,24 @@ impl GpuMesh {
     }
 }
 
+/// A packed texture on the GPU, held by every tree drawn with it.
+struct SharedTexture {
+    view: wgpu::TextureView,
+}
+
+/// The packed textures on the GPU by what they were made from (and whether they went up as
+/// blocks): trees made from the same files draw with one texture. An entry goes with the last
+/// tree that holds it.
+type SharedTextures = HashMap<String, std::sync::Weak<SharedTexture>>;
+
 /// A tree asset on the GPU.
 struct GpuTree {
     built: Arc<Built>,
     lods: [GpuMesh; 2],
     /// Bark, bark normal, leaves, leaf normal, impostor, impostor normal.
     textures: [wgpu::TextureView; 6],
+    /// Keeps the shared ones alive.
+    _shared: [Arc<SharedTexture>; 6],
     /// Meshes and textures.
     bytes: u64,
     texture_bytes: u64,
@@ -703,12 +715,76 @@ fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback:
     }
 }
 
+/// One packed texture of a tree asset. Assets made from the same files (a pack's trees share
+/// one bark and one leaf atlas; colour variants of a tree share everything but a tint) share
+/// it: decoded and packed once ([`shared_texture`]), uploaded once ([`SharedTextures`]).
+pub(super) struct Packed {
+    /// What it was made from (files and their dates, recipe, formats).
+    key: String,
+    layers: Layers,
+}
+
+impl std::ops::Deref for Packed {
+    type Target = Layers;
+
+    fn deref(&self) -> &Layers {
+        &self.layers
+    }
+}
+
+/// How long a packed texture nobody asked for again is kept (seconds): long enough for every
+/// asset of a scene being loaded to find it.
+const SHARED_KEEP: f32 = 60.0;
+
+type SharedCell = Arc<std::sync::OnceLock<Arc<Packed>>>;
+
+/// The packed texture for `key`, made by `make` the first time; other threads asking for the
+/// same key meanwhile wait for it instead of making their own.
+fn shared_texture(key: String, make: impl FnOnce() -> Layers) -> Arc<Packed> {
+    use std::time::Instant;
+    static MADE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, (SharedCell, Instant)>>> =
+        std::sync::LazyLock::new(Default::default);
+    let cell = {
+        let mut made = MADE.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        made.retain(|_, (_, used)| now.duration_since(*used).as_secs_f32() < SHARED_KEEP);
+        // Made while its blocks were still being encoded (RGBA8 meanwhile): made again once
+        // they are there.
+        let stale = made.get(&key).and_then(|(c, _)| c.get()).is_some_and(|p| {
+            !p.layers.waiting.is_empty() && !generated::waiting(&p.layers.waiting)
+        });
+        if stale {
+            made.remove(&key);
+        }
+        let entry = made
+            .entry(key.clone())
+            .or_insert_with(|| (Default::default(), now));
+        entry.1 = now;
+        entry.0.clone()
+    };
+    cell.get_or_init(|| {
+        Arc::new(Packed {
+            key,
+            layers: make(),
+        })
+    })
+    .clone()
+}
+
+/// Modification time of a project file as text (part of a shared texture's key).
+fn stamp(rel: &str) -> String {
+    if rel.is_empty() {
+        return String::new();
+    }
+    format!("{:?}", crate::vfs::modified(&crate::assets::absolute(rel)))
+}
+
 /// A tree's textures (decoded, packed and mip-mapped on any thread), ready to upload.
 pub(super) struct TreeTextures {
     built: Arc<Built>,
-    /// Bark, bark normal, leaves, leaf normal, impostor albedo, impostor normal: blocks
+    /// Bark, bark normal, leaves, leaf normal, impostor, impostor normal: blocks
     /// (`Library/TextureCache`) or RGBA8 mip chains.
-    pub(super) textures: [Layers; 6],
+    pub(super) textures: [Arc<Packed>; 6],
 }
 
 impl TreeTextures {
@@ -723,15 +799,17 @@ impl TreeTextures {
         // The material maps ride in the spare channels (one texture pair per draw): bark
         // albedo alpha = height; normal maps = (x, y, roughness, occlusion / translucency),
         // z rebuilt in the shader.
-        let mut bark = texture_or(&a.bark_texture, false);
-        pack_channel(&mut bark, &a.bark_height, 3, 128, false);
-        let mut bark_n = texture_or(&a.bark_normal, true);
-        pack_channel(&mut bark_n, &a.bark_roughness, 2, 222, a.gloss_maps);
-        pack_channel(&mut bark_n, &a.bark_occlusion, 3, 255, false);
-        let mut leaf_n = texture_or(&a.leaf_normal, true);
-        pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150, a.gloss_maps);
-        pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255, false);
-        let leaf = texture_or(&a.leaf_texture, false);
+        // Each packed map by what it is made from: another asset with the same files finds
+        // it made (the project's root is in `ctx`, the files' dates follow edits).
+        let key = |name: &str, files: &[&String]| {
+            let mut k = format!("{name}|{ctx:?}|{}", a.gloss_maps);
+            for f in files.iter().filter(|f| !f.is_empty()) {
+                // (The full path: two projects may hold a file of the same name and date.)
+                let path = crate::assets::absolute(f);
+                k.push_str(&format!("|{}@{}", path.display(), stamp(f)));
+            }
+            k
+        };
         let colour = |rel: &str| TexSpec {
             recipe: "tree box srgb",
             format: ctx.format(Role::ColorAlpha, rel),
@@ -746,35 +824,77 @@ impl TreeTextures {
         };
         let srgb_mips = |i| super::texture::mip_chain(i, true);
         let linear_mips = |i| super::texture::mip_chain(i, false);
-        let leaves = if leaf.width() >= 64 {
-            let spec = TexSpec {
-                recipe: "tree coverage 2x2",
-                coverage: true,
-                ..colour(&a.leaf_texture)
-            };
-            generated::make_one(leaf, &spec, ctx, |i| coverage_mips(i, 2, 2))
-        } else {
-            let spec = TexSpec {
-                recipe: "tree one level",
-                coverage: true,
-                ..colour(&a.leaf_texture)
-            };
-            generated::make_one(leaf, &spec, ctx, |i| vec![i])
-        };
+        let leaves = shared_texture(key("leaves", &[&a.leaf_texture]), || {
+            let leaf = texture_or(&a.leaf_texture, false);
+            if leaf.width() >= 64 {
+                let spec = TexSpec {
+                    recipe: "tree coverage 2x2",
+                    coverage: true,
+                    ..colour(&a.leaf_texture)
+                };
+                generated::make_one(leaf, &spec, ctx, |i| coverage_mips(i, 2, 2))
+            } else {
+                let spec = TexSpec {
+                    recipe: "tree one level",
+                    coverage: true,
+                    ..colour(&a.leaf_texture)
+                };
+                generated::make_one(leaf, &spec, ctx, |i| vec![i])
+            }
+        });
         let impostor = TexSpec {
             recipe: "tree impostor coverage",
             coverage: true,
             ..colour("")
         };
+        // The impostor is the asset's own (baked from its mesh and tints).
+        let own = |name: &str, layers: Layers| {
+            Arc::new(Packed {
+                key: format!("{name}|{}", built.version),
+                layers,
+            })
+        };
         let textures = [
-            generated::make_one(bark, &colour(&a.bark_texture), ctx, srgb_mips),
-            generated::make_one(bark_n, &packed(&a.bark_normal), ctx, linear_mips),
-            leaves,
-            generated::make_one(leaf_n, &packed(&a.leaf_normal), ctx, linear_mips),
-            generated::make_one(m.impostor.albedo.clone(), &impostor, ctx, |i| {
-                coverage_mips(i, impostor::VIEWS, 1)
+            shared_texture(key("bark", &[&a.bark_texture, &a.bark_height]), || {
+                let mut bark = texture_or(&a.bark_texture, false);
+                pack_channel(&mut bark, &a.bark_height, 3, 128, false);
+                generated::make_one(bark, &colour(&a.bark_texture), ctx, srgb_mips)
             }),
-            generated::make_one(m.impostor.normal.clone(), &packed(""), ctx, linear_mips),
+            shared_texture(
+                key(
+                    "bark normal",
+                    &[&a.bark_normal, &a.bark_roughness, &a.bark_occlusion],
+                ),
+                || {
+                    let mut bark_n = texture_or(&a.bark_normal, true);
+                    pack_channel(&mut bark_n, &a.bark_roughness, 2, 222, a.gloss_maps);
+                    pack_channel(&mut bark_n, &a.bark_occlusion, 3, 255, false);
+                    generated::make_one(bark_n, &packed(&a.bark_normal), ctx, linear_mips)
+                },
+            ),
+            leaves,
+            shared_texture(
+                key(
+                    "leaf normal",
+                    &[&a.leaf_normal, &a.leaf_roughness, &a.leaf_translucency],
+                ),
+                || {
+                    let mut leaf_n = texture_or(&a.leaf_normal, true);
+                    pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150, a.gloss_maps);
+                    pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255, false);
+                    generated::make_one(leaf_n, &packed(&a.leaf_normal), ctx, linear_mips)
+                },
+            ),
+            own(
+                "impostor",
+                generated::make_one(m.impostor.albedo.clone(), &impostor, ctx, |i| {
+                    coverage_mips(i, impostor::VIEWS, 1)
+                }),
+            ),
+            own(
+                "impostor normal",
+                generated::make_one(m.impostor.normal.clone(), &packed(""), ctx, linear_mips),
+            ),
         ];
         Self { built, textures }
     }
@@ -794,12 +914,17 @@ impl TreeTextures {
 pub(crate) fn bake_textures(path: &str, ctx: &Ctx) -> Result<Vec<String>, String> {
     let asset = crate::trees::TreeAsset::load(&crate::assets::absolute(path))?;
     let t = TreeTextures::build(Arc::new(store::build(asset)), ctx);
-    Ok(t.textures.iter().flat_map(Layers::entries).collect())
+    Ok(t.textures.iter().flat_map(|t| t.entries()).collect())
 }
 
 impl GpuTree {
     /// Upload a built tree: meshes and textures.
-    fn new(device: &wgpu::Device, queue: &wgpu::Queue, t: TreeTextures) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        t: TreeTextures,
+        shared: &mut SharedTextures,
+    ) -> Self {
         let waiting = t.waiting();
         let TreeTextures { built, textures } = t;
         let m = &built.model;
@@ -822,27 +947,43 @@ impl GpuTree {
             .iter()
             .zip(&textures)
             {
-                let l = &t.layers[0];
+                let l = &t.layers.layers[0];
                 eprintln!(
                     "tree texture {name}: {:?} {:?} × {} layers, {:.2} MB",
                     l.format(),
                     l.size(),
-                    t.layers.len(),
+                    t.layers.layers.len(),
                     t.bytes() as f64 / 1048576.0
                 );
             }
         }
-        let textures = textures.map(|t| {
-            let (view, b) =
-                super::texture::upload_made(device, queue, "misty tree texture", &t.layers, false);
+        shared.retain(|_, s| s.strong_count() > 0);
+        let held = textures.map(|t| {
+            let blocks = t.layers.layers.iter().all(generated::Made::is_compressed);
+            let key = format!("{}|{blocks}", t.key);
+            if let Some(s) = shared.get(&key).and_then(std::sync::Weak::upgrade) {
+                // (Counted by the tree that uploaded it.)
+                return s;
+            }
+            let (view, b) = super::texture::upload_made(
+                device,
+                queue,
+                "misty tree texture",
+                &t.layers.layers,
+                false,
+            );
             texture_bytes += b;
-            view
+            let s = Arc::new(SharedTexture { view });
+            shared.insert(key, Arc::downgrade(&s));
+            s
         });
+        let textures = std::array::from_fn(|i| held[i].view.clone());
         bytes += texture_bytes;
         Self {
             built,
             lods,
             textures,
+            _shared: held,
             bytes,
             texture_bytes,
             waiting,
@@ -946,6 +1087,8 @@ pub(super) struct TreeRenderer {
     /// render; the path and MSAA samples they were built for).
     wire: Option<(super::WirePath, u32, [wgpu::RenderPipeline; 3])>,
     trees: HashMap<String, GpuTree>,
+    /// Packed textures the trees share.
+    shared: SharedTextures,
     /// Texture chains being built on worker threads, per tree asset (while streaming).
     pending: HashMap<String, Pending>,
     /// Tree assets of the last frame not drawn yet: being built or uploaded.
@@ -1050,6 +1193,7 @@ impl TreeRenderer {
             background: false,
             wire: None,
             trees: HashMap::new(),
+            shared: HashMap::new(),
             pending: HashMap::new(),
             loading: 0,
             uploaded: false,
@@ -1199,8 +1343,8 @@ impl TreeRenderer {
         if !super::grass_streaming() {
             crate::profile_scope!("Trees.Upload");
             let t = TreeTextures::build(built, &ctx);
-            self.trees
-                .insert(path.to_owned(), GpuTree::new(device, queue, t));
+            let tree = GpuTree::new(device, queue, t, &mut self.shared);
+            self.trees.insert(path.to_owned(), tree);
             return true;
         }
         let ready = match self.pending.get_mut(path) {
@@ -1234,8 +1378,8 @@ impl TreeRenderer {
             crate::profile_scope!("Trees.Upload");
             self.uploaded = true;
             self.pending.remove(path);
-            self.trees
-                .insert(path.to_owned(), GpuTree::new(device, queue, t));
+            let tree = GpuTree::new(device, queue, t, &mut self.shared);
+            self.trees.insert(path.to_owned(), tree);
         } else {
             self.loading += 1;
         }
@@ -2096,6 +2240,94 @@ mod tests {
         super::pack_channel(&mut dst, "", 3, 150, true);
         assert!(dst.pixels().all(|p| p.0 == [1, 2, 55, 150]));
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Tree assets made from the same texture files share their packed textures (a pack's
+    /// trees with one bark and one leaf atlas, colour variants of one tree); each keeps its
+    /// own impostor, and a changed file is packed again.
+    #[test]
+    fn trees_from_the_same_files_share_their_packed_textures() {
+        use crate::sprites::compress::generated::Ctx;
+        use crate::trees::TreeAsset;
+        use std::sync::Arc;
+        let root = std::env::temp_dir().join(format!("misty_tree_share_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets")).unwrap();
+        // (This thread's root only: other tests set the process-wide one.)
+        let _scope = crate::assets::scoped_root(&root);
+        let png = |name: &str, c: [u8; 4]| {
+            let path = root.join("Assets").join(name);
+            if !path.exists() {
+                image::RgbaImage::from_pixel(8, 8, image::Rgba(c))
+                    .save(path)
+                    .unwrap();
+            }
+            format!("Assets/{name}")
+        };
+        let asset = |leaf: &str, tint: [f32; 3]| TreeAsset {
+            bark_texture: png("Bark.png", [120, 100, 80, 255]),
+            bark_normal: png("BarkN.png", [128, 128, 255, 255]),
+            bark_roughness: String::new(),
+            bark_occlusion: String::new(),
+            bark_height: String::new(),
+            leaf_texture: leaf.to_owned(),
+            leaf_normal: String::new(),
+            leaf_roughness: String::new(),
+            leaf_translucency: String::new(),
+            leaf_color: tint,
+            ..TreeAsset::oak()
+        };
+        let autumn = png("Autumn.png", [200, 120, 40, 255]);
+        let green = png("Green.png", [60, 140, 40, 255]);
+        let build = |a: TreeAsset| {
+            super::TreeTextures::build(Arc::new(crate::trees::store::build(a)), &Ctx::off())
+        };
+        let plain = build(asset(&autumn, [1.0; 3]));
+        let red = build(asset(&autumn, [1.0, 0.7, 0.5]));
+        let other = build(asset(&green, [1.0; 3]));
+        // Bark, bark normal, leaves, leaf normal: one copy for the two autumn trees.
+        for k in 0..4 {
+            assert!(
+                Arc::ptr_eq(&plain.textures[k], &red.textures[k]),
+                "texture {k}"
+            );
+        }
+        // The impostors are each tree's own (the red tree's is tinted).
+        for k in 4..6 {
+            assert!(
+                !Arc::ptr_eq(&plain.textures[k], &red.textures[k]),
+                "texture {k}"
+            );
+        }
+        // Other leaves: its own leaf atlas, the same bark.
+        assert!(Arc::ptr_eq(&plain.textures[0], &other.textures[0]));
+        assert!(!Arc::ptr_eq(&plain.textures[2], &other.textures[2]));
+        // The file changed: packed again.
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("Assets/Bark.png"))
+            .unwrap();
+        file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        drop(file);
+        let again = super::TreeTextures::build(
+            Arc::new(crate::trees::store::build(TreeAsset {
+                bark_texture: "Assets/Bark.png".into(),
+                bark_normal: "Assets/BarkN.png".into(),
+                bark_roughness: String::new(),
+                bark_occlusion: String::new(),
+                bark_height: String::new(),
+                leaf_texture: autumn.clone(),
+                leaf_normal: String::new(),
+                leaf_roughness: String::new(),
+                leaf_translucency: String::new(),
+                ..TreeAsset::oak()
+            })),
+            &Ctx::off(),
+        );
+        assert!(!Arc::ptr_eq(&plain.textures[0], &again.textures[0]));
+        assert!(Arc::ptr_eq(&plain.textures[2], &again.textures[2]));
+        std::fs::remove_dir_all(root).ok();
     }
 
     /// The tree shaders parse and validate (no GPU needed).

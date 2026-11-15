@@ -651,6 +651,27 @@ fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainD
                 |ui| texture_slot(ui, "terrain_layer_height", &mut layer.height_map, &textures),
             )
             .0;
+            let (c, reset) = kit::row(
+                ui,
+                &tr!("Relief"),
+                &tr!(
+                    "Draws the height map as real relief this deep close to the camera (parallax): leaves lying on leaves, stones standing out. 0 = flat"
+                ),
+                Some(layer.parallax == 0.0),
+                |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut layer.parallax)
+                            .speed(0.005)
+                            .range(0.0..=0.5)
+                            .suffix(" m"),
+                    )
+                    .changed()
+                },
+            );
+            if reset {
+                layer.parallax = 0.0;
+            }
+            ch |= c || reset;
         },
     );
     kit::section_closed(ui, "layer_tiling", Icon::Layers, &tr!("Tiling"), |ui| {
