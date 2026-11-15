@@ -487,7 +487,14 @@ fn an_empty_meta_file_gets_a_guid() {
     write(&root, "Assets/Scenes/Level.scene.meta", "");
     let (db, report) = GuidDatabase::scan(&root);
     assert!(report.errors.is_empty(), "{report:?}");
-    assert_eq!(report.created, ["Assets/Scenes/Level.scene"]);
+    // (The folder gets its first meta file too.)
+    assert!(
+        report
+            .created
+            .iter()
+            .any(|p| p == "Assets/Scenes/Level.scene"),
+        "{report:?}"
+    );
     let guid = db.guid_of("Assets/Scenes/Level.scene").expect("a GUID");
     let text = std::fs::read_to_string(root.join("Assets/Scenes/Level.scene.meta")).unwrap();
     assert_eq!(meta::guid_in(&text), Some(guid));
