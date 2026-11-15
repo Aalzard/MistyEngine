@@ -5282,6 +5282,71 @@ is flat from the fifth cycle.
   --workspace --release` 1031 editor (with `noon_valley_matches_its_generator`) + 1717 engine
   + the rest passed, 0 failed; golden 20 / 20 with the engine change.
 
+### Round 59.11 — sun flecks and warm penumbrae on the wood floor (branch r84-noon11)
+
+- **Near Shadow Detail** (new Tree Rendering setting): the Shadow Detail of the finest sun
+  cascade only, the one that shades the ground round the camera. 0 (the default, left out of
+  files) = the same as Shadow Detail, so other scenes and the golden shots are unchanged
+  (golden 20 / 20, all 0.00 % changed). NoonValley keeps Shadow Detail 0.2 and sets Near
+  Shadow Detail 0.5: the finest cascade draws the full tree meshes instead of the lighter
+  mesh, whose fewer, bigger leaf cards (one in three, grown) cast a few solid blobs and big
+  pools; the full mesh casts lacy, leaf-fine flecks. Shadow Detail 0.5 everywhere looked the
+  same on the floor but cost 2.1 ms (the second cascade went from impostors to meshes); the
+  first cascade alone costs ~0.6 ms. (`MISTY_NOON_GRASS=nearshadow:..` in the noon tests.)
+- **Wood (generator)**: Wood Oak / Wood Beech leaf density × 1.15 (1.38 / 1.32; the full-mesh
+  shadows let more sun through), and a Sapling placed by hand 2.5 m in front of round 10's
+  filler oak, a leafy mid-storey under the canopy gap that broke the inside view's big pool.
+  Only placement of existing assets (no new asset). Full meshes to 15 m (was 20) pays for part
+  of the near shadows (inside the wood the lighter mesh reads the same). Billboards from 65 m
+  instead of 80 saved another 0.25 ms but turned the forest view's sunlit edge crowns into a
+  dark wall, so they stay at 80 m.
+- **Penumbra and litter**: sun Shadow Softness 0.35 → 0.7 (the flecks fade through a soft
+  edge; 1.0–2.0 smeared the small flecks and took the bright cores away: no pixel above lum
+  0.7 at 1.5); Forest Floor occlusion 1.0 → 0.8 (deeper, richer shade: floor median back to
+  0.026); `forest_floor_toned` × 0.73 / 0.56 / 0.33 with saturation × 1.5 (was 0.69 / 0.65 /
+  0.25, × 1.7): redder and paler sunlit litter, a warm orange-brown band in the penumbrae.
+- **Measured** (`inside` lower half, 960×540; photo / round 10 / round 11): sunlit share
+  20 / 20 / 21 %, median 0.028 / 0.026 / 0.026, p75 0.163 / 0.067 / 0.179, p95 0.757 / 0.738
+  / 0.701. Bright patches (lum > 0.3, ≥ 4 px): count 332 / 34 / 57, largest share of the sun
+  19 / 60 / 75 %, top three 50 / 93 / 91 %, median patch 12 / 56 / 22 px. The flecks are
+  smaller and the floor's patches many more, but the soft edges join the near flecks into one
+  lacy region, so the largest-patch share went up; the photo's flecks are both soft and
+  separate (a denser, more even canopy than ours). `inside2`: sunlit 9 / 9 %, median 0.018 →
+  0.025 (photo 0.028), patches 425 → 478.
+- **Warm edge** (non-green ground pixels in the lower-right quarter at 1920×1080, binned by
+  linear luminance: share of the ground, median HSV hue / saturation): photo / round 10 /
+  round 11:
+  - < 0.05: 42 % h39 s0.83 / 82 % h39 s0.67 / 65 % h33 s0.63
+  - 0.05–0.15: 14 % h38 s0.49 / 8 % h40 s0.66 / 11 % h31 s0.57
+  - 0.15–0.3: 8 % h35 s0.32 / 1 % h34 s0.53 / 7 % h31 s0.50
+  - 0.3–0.5: 8 % h32 s0.23 / 2 % h35 s0.43 / 7 % h32 s0.41
+  - 0.5–0.7: 12 % h30 s0.18 / 4 % h37 s0.27 / 7 % h34 s0.28
+  - 0.7–0.8: 10 % h30 s0.15 / 3 % h38 s0.23 / 3 % h36 s0.22
+  - ≥ 0.8: 6 % h32 s0.14 / 0 % h42 s0.19 / 0 % h38 s0.18
+  - mid-tones 0.3–0.7: 19 % / 6 % / 13 %.
+  The penumbra band is twice as wide and the lit litter redder; still differs: the photo's
+  sunlit litter is brighter (16 % above 0.7, ours 3 %) and paler, and its deep shade more
+  saturated (s 0.83, ours 0.63). A redder albedo moved the deep shade's hue the wrong way
+  (39° → 33°; the photo's shade stays 39°): the lit and shaded litter would need different
+  hues, which one albedo can't give.
+- Meadow views unchanged (hero, down, away, left, treeline, forest, sun: mean absolute
+  difference to round 10 ≤ 0.1 of 255 at 1920×1080; hero meadow mid 72/87/34, sky top
+  72/90/119 as before).
+- Tries (temporary generator knobs, removed): softness 1.0 / 2.0 alone (wider edges, the same
+  pools, 32 / 60 patches); finer leaves, less clumping (clumping 0.15: 40 % sun in one
+  sheet); more saplings and bushes in every cell (no change in this view: none landed under
+  the gap); a Wood Beech or a taller sapling over the pool (2–6 % sun); denser leaves
+  (1.25–1.3) without the sapling (fewer, not more, flecks as the holes closed).
+- Timings (High 1920×1080, same quiet window, round 10 → 11): hero GPU 11.1–11.5 → 11.3–12.4 ms (sum of parts 11.14 → 11.3), inside 10.5–10.9 → 11.3–12.3 ms (sum of parts
+  10.55 → 11.25: shadow maps 1.6 → 2.25 ms). The GPU was shared during the round (other jobs'
+  loads gave 19–21 ms runs), so the spread is wide; by the sum of parts the inside view is
+  +0.7 ms, at the ~11.5 ms budget by its parts and up to 0.8 ms over it in the noisier runs.
+  `inside_r10_r11.jpg`, `inside_floor_r10_r11.jpg` (lower half, full resolution),
+  `inside2_r10_r11.jpg`, `hero_r10_r11.jpg`, `treeline_r10_r11.jpg` in `docs/screenshots/r84/`.
+- Checks: fmt clean, clippy (workspace, all targets, release) 0 warnings, `cargo test
+  --workspace --release` 1031 editor (with `noon_valley_matches_its_generator`) + 1722 engine
+  + the rest passed, 0 failed; golden 20 / 20 (all 0.00 % changed) with the engine change.
+
 ## Round 69 — The Recorder records sound (branch r69-recaudio)
 
 - **Record Audio** (new setting, on by default): MP4 and WebM recordings get the game's sound

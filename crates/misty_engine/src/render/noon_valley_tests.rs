@@ -182,6 +182,7 @@ fn noon_view_with(name: &str, edit: impl Fn(&mut Scene)) -> Option<GameView> {
                 "billboards" => d.trees.billboard_start = v,
                 "treelod" => d.trees.lod_distance = v,
                 "shadowdetail" => d.trees.shadow_detail = v,
+                "nearshadow" => d.trees.near_shadow_detail = v,
                 "plantshadow" => d.trees.plant_shadow_distance = v,
                 "farfield" => d.details.far_field = v,
                 "farbright" => d.details.far_field_brightness = v,

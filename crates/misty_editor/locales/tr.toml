@@ -989,6 +989,8 @@
 "Trees cast shadows" = "Ağaçlar gölge düşürür"
 "Shadow Detail" = "Gölge Ayrıntısı"
 "Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)" = "Güneş gölgelerindeki ağaçların ayrıntısı (düşük: daha hafif örgüler ve daha erken panolar; sık bir ormanın gölgeleri çok daha ucuza gelir)"
+"Near Shadow Detail" = "Yakın Gölge Ayrıntısı"
+"Shadow Detail in the finest sun cascade only, round the camera: leaf-fine shadows on the ground nearby for little cost (0 = the same as Shadow Detail)" = "Yalnızca en ince güneş gölgesi katmanında, kameranın çevresinde Gölge Ayrıntısı: yakındaki zeminde yaprak inceliğinde gölgeler, düşük maliyetle (0 = Gölge Ayrıntısı ile aynı)"
 "Plant Shadow Distance" = "Bitki Gölge Mesafesi"
 "Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)" = "Küçük bitkiler (eğrelti otları, yer örtücüler) yalnızca kameraya bu kadar yakınken gölge düşürür (0 = ağaçlar kadar uzak)"
 "Prefabs" = "Prefablar"

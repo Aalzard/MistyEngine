@@ -987,6 +987,8 @@
 "Trees cast shadows" = "تلقي الأشجار ظلالًا"
 "Shadow Detail" = "تفاصيل الظلال"
 "Detail of the trees in the sun's shadows (lower: lighter meshes and billboards sooner; a dense forest's shadows cost much less)" = "تفاصيل الأشجار في ظلال الشمس (أقل: شبكات أخف ولوحات أبكر؛ ظلال الغابة الكثيفة تكلّف أقل بكثير)"
+"Near Shadow Detail" = "تفاصيل الظلال القريبة"
+"Shadow Detail in the finest sun cascade only, round the camera: leaf-fine shadows on the ground nearby for little cost (0 = the same as Shadow Detail)" = "تفاصيل الظلال في أدق طبقة من ظلال الشمس فقط، حول الكاميرا: ظلال دقيقة بدقة الأوراق على الأرض القريبة بتكلفة قليلة (0 = مثل تفاصيل الظلال)"
 "Plant Shadow Distance" = "مسافة ظلال النباتات"
 "Small plants (ferns, ground cover) cast shadows only this close to the camera (0 = as far as the trees)" = "تُلقي النباتات الصغيرة (السراخس والغطاء الأرضي) ظلالًا فقط على هذا القرب من الكاميرا (0 = بقدر بُعد الأشجار)"
 "Prefabs" = "القوالب الجاهزة"

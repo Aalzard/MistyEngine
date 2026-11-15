@@ -186,6 +186,39 @@ Generator `WOOD_FILL`: one Wood Oak at (−62.6, 519.6), height 0.9: inside sunl
 `blobs.py` (sun-fleck count and sizes), `patch.py` (flat-ground projection of sunlit pixels:
 wrong here, the pool is a gap between crowns). Experiment knobs (NV_FILL, NV_ADD) removed.
 
+## Round 11 (branch r84-noon11, done)
+
+Engine: `TreeSettings::near_shadow_detail` (0.1..1, 0 = off and out of the file): the shadow
+detail of sun cascade 0 only (`TreeSettings::cascade_shadow_detail(slot)`, used by the CPU
+lists and the GPU cull's per-cascade LOD), Tree Rendering ▸ Near Shadow Detail; noon test knob
+`nearshadow:`. NoonValley: near 0.5 (cascade 0 full meshes), Wood Oak / Beech leaf density
+1.38 / 1.32, a Sapling by hand at (−58.2, 532) (`WOOD_FILL` now carries the prototype), tree
+LOD distance 15 m, sun softness 0.7, Forest Floor occlusion 0.8, toned litter × (0.73, 0.56,
+0.33), saturation × 1.5. Scripts in the session scratchpad `r84/`: `warm.py` (non-green ground
+in the lower-right quarter binned by linear luminance: share, hue, saturation), `ins.sh`
+(inside views + stats + blobs with `MISTY_NOON_GRASS` knobs), `soft.sh` (sun softness edited in
+the scene), `exp.sh` (regen with `NV_*` generator knobs: removed again), `ab.sh` (interleaved
+timings). User decisions this round: no new assets (no generated twigs, roots, undergrowth or
+tree types; placement of existing ones only); focus on the sun patches' light.
+
+| | photo | round 10 | round 11 |
+|---|---|---|---|
+| inside sunlit / median | 20 % / 0.028 | 20 % / 0.026 | 21 % / 0.026 |
+| patches / largest / top 3 | 332 / 19 % / 50 % | 34 / 60 % / 93 % | 57 / 75 % / 91 % |
+| mid-tones 0.3–0.7 (warm.py) | 19 % | 6 % | 13 % |
+| lit 0.7–0.8 hue / sat | 30° / 0.15 | 38° / 0.23 | 36° / 0.22 |
+| deep shade < 0.05 hue / sat | 39° / 0.83 | 39° / 0.67 | 33° / 0.63 |
+
+Findings: the canopy's coarse shadows came from Shadow Detail 0.2 (cascade 0 drew the lighter
+mesh); 0.5 in all cascades cost +2.1 ms inside, cascade 0 alone ~+0.6 ms. Softness above ~0.8
+merges the near flecks into one region (the largest-patch share rises) and removes the bright
+cores; the photo's flecks stay separate with soft edges (an evener canopy than ours). The sun
+share swings with every tree near the inside view's light path (a sapling 1 m further left
+moved the camera's clear spot and gave 13 %, a Wood Beech 2 %). The eye adaptation moves the
+lum > 0.3 threshold too: thinner leaves elsewhere made the view's sun share fall.
+Not done: the photo's brighter, paler sunlit litter (16 % of the ground above lum 0.7, ours
+3 %) and its saturated deep shade with the same hue as the lit litter.
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
