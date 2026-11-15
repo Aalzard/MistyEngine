@@ -6008,3 +6008,12 @@ Edit mode. Test: `animator_assets_changed_on_disk_during_play_reach_the_game`.
 `BehaviourTreeDemo.scene`, its `BehaviourTreeDemo` folder and `NavMesh.navmesh` had no committed
 `.meta`, so every clone gave them new GUIDs. Added in the asset database's format (random
 32-hex GUID, the same text `meta::compose` writes). Test: `behaviour_tree_demo_files_have_meta_files`.
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast` runs: editor 1035 passed,
+engine 1724, player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2792; 7 new). Two
+runs were green; one run in between had `video::tests::seeking_shows_the_requested_frame` fail
+once (frame 0 instead of 25 after its 10 s wait, under full-suite load; video code is untouched
+here, and it passed 5 of 5 alone and in the next full run). No render code changed, so golden
+shots were not rerun.
