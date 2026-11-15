@@ -51,6 +51,11 @@ pub struct TerrainLayer {
     /// at 1, so terrains saved before it stay as they were.
     #[serde(skip_serializing_if = "is_one")]
     pub occlusion: f32,
+    /// Relief depth in metres (parallax): the layer's height map is drawn as real relief
+    /// that deep, close to the camera (leaves lying on leaves, stones standing out of soil).
+    /// 0 = flat, as before; left out of the file then.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub parallax: f32,
     /// Auto Paint rules; `rules.enabled` marks the layer rule-driven (Generate repaints it).
     pub rules: AutoPaintRules,
 }
@@ -68,6 +73,7 @@ impl Default for TerrainLayer {
             smoothness: 0.0,
             height_map: None,
             occlusion: 1.0,
+            parallax: 0.0,
             rules: AutoPaintRules::default(),
         }
     }
@@ -75,6 +81,10 @@ impl Default for TerrainLayer {
 
 fn is_one(v: &f32) -> bool {
     *v == 1.0
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 #[derive(Clone, Debug, PartialEq)]

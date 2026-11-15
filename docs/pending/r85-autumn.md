@@ -69,3 +69,27 @@ sun 17.8, wide 16.0 ms. Milestone 1's scene, GPU idle: 11.6 / 14.3 / 14.2 / 12.9
 
 Open: eye level and into-sun over 16 ms (trees 4.6-5.4 ms: sprigs and 33 prototypes);
 clouds off (banding towards a low sun); not opened in the editor window yet.
+
+## Milestone 2 (scene + three engine changes)
+
+Engine: shared packed tree textures, Terrain Layer ▸ Relief (parallax), no trunk colliders
+under 1.5 m, shots harness switches (see progress.md "Round 85, part 2").
+
+"Cloud banding" was NOT a bug: the stripes were in how the 1080p PNG was previewed, the file
+has none (sky steps of at most one level). Look at crops or half-size copies of big shots.
+
+Scene (generator in the project's `Tools/forest_tools`): terrain 900 m, heightmap 2049,
+mounds and root humps under trunks, litter layers with Relief 0.07 m and normal scale 2.2;
+Misty GI on (High, intensity 2.0), ambient 2.0, SSR High full resolution, volumetric fog
+(mean free path 100 m, max 320 m, anisotropy 0.6, sun volumetric ×1.6), sun shafts, clouds
+on, a global Weather (Drizzle, sun and ambient dimming 0, clouds and haze not driven, wet
+surfaces, puddles 0.25); bark tint ×1.5 against the wet darkening; stronger red / yellow
+variants; sprigs fewer and taller (dry seedlings); LOD 20 m, impostors from 58 m.
+
+Timings High 1080p (ms GPU): overhead 21.9, eye level 23.7, into sun 26.8, wide 21.3. Parts at
+eye level: trees 5.3, SSR 3.4, shadow maps 2.2, shadow mask 2.0, terrain 1.6, Misty GI 1.3,
+prepass 1.05, sun shafts 1.0, GTAO 0.6, TAA 0.5, weather 0.5, clouds 0.2, froxel fog 0.07.
+CPU render 9–22 ms (1000–2250 draws: the fallen trees in every cascade).
+
+Open: over 16 ms everywhere (the user put look first); trees 5–6 ms; CPU draw count; the
+shade in the view from above is still deep; rain streaks barely read in stills.

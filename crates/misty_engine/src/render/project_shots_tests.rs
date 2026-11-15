@@ -11,7 +11,8 @@
 //!   and level.
 //!
 //! `MISTY_SHOT_AE=off` switches eye adaptation off; `MISTY_SHOT_TIME` sets the wind clock
-//! (seconds, default 3).
+//! (seconds, default 3); `MISTY_SHOT_WEATHER=<seconds>` runs the scene's Weather that long first;
+//! `MISTY_SHOT_OFF=fog,clouds,shafts,terrain,meshes` leaves those out.
 
 use std::path::PathBuf;
 
@@ -41,7 +42,19 @@ fn view(name: &str) -> Option<GameView> {
     crate::assets::set_project_root(&root);
     crate::asset_db::install(crate::asset_db::GuidDatabase::read(&root));
     let rel = std::env::var("MISTY_SHOT_SCENE").expect("MISTY_SHOT_SCENE");
-    let (scene, _) = Scene::load(&root.join(rel)).expect("scene");
+    let (mut scene, _) = Scene::load(&root.join(rel)).expect("scene");
+    // `MISTY_SHOT_WEATHER=120`: the scene's Weather run for that many seconds first (rain has
+    // wetted the ground, snow has settled), as after that long in Play.
+    if let Some(seconds) = std::env::var("MISTY_SHOT_WEATHER")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+    {
+        let eye =
+            crate::render_scene::game_camera(&scene).map_or(glam::Vec3::ZERO, |c| c.0.position);
+        for _ in 0..(seconds / 0.25).ceil() as usize {
+            crate::weather::update_scene(&mut scene, 0.25, eye);
+        }
+    }
     let materials = crate::assets::AssetCache::open(&root);
     let mut gv = GameView::new(&scene, &materials).expect("camera");
     let time = std::env::var("MISTY_SHOT_TIME")
@@ -57,6 +70,22 @@ fn view(name: &str) -> Option<GameView> {
     }
     if std::env::var("MISTY_SHOT_AE").is_ok_and(|v| v == "off") {
         gv.post.auto_exposure.active = false;
+    }
+    // `MISTY_SHOT_OFF=fog,clouds,shafts,terrain,meshes`: the view without these (to find
+    // which part of a picture something comes from).
+    for part in std::env::var("MISTY_SHOT_OFF")
+        .unwrap_or_default()
+        .split(',')
+    {
+        match part.trim() {
+            "fog" => gv.post.fog = Default::default(),
+            "clouds" => gv.post.clouds.active = false,
+            "shafts" => gv.post.sun_shafts = Default::default(),
+            "terrain" => gv.terrains.clear(),
+            "meshes" => gv.meshes = Default::default(),
+            "" => {}
+            other => eprintln!("(MISTY_SHOT_OFF: {other} unknown)"),
+        }
     }
     Some(gv)
 }

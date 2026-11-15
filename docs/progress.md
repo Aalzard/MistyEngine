@@ -6149,3 +6149,30 @@ missing model), gloss packing.
 warnings; `cargo test --workspace --release --no-fail-fast`: editor 1032 passed, engine 1731,
 player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2796; 11 new), 0 failed; golden
 shots green (procedural trees, textures and materials draw as before).
+
+## Round 85, part 2 — Shared tree textures, terrain relief, no trunks on ground cover (branch r85-autumn)
+
+- **Tree assets made from the same texture files share their packed textures.** Every tree
+  asset decoded, packed, mip-mapped and uploaded its own bark and leaf maps: a pack of 15
+  trees with one bark and one leaf atlas (33 assets with their colour variants) held 33
+  copies of each on the GPU and took as many times as long to load. The packed maps are now
+  made once per set of source files (`render::trees::shared_texture`, kept a minute after
+  their last use, made again when a file changes or its blocks finish encoding) and uploaded
+  once (`SharedTextures`); the impostors stay each asset's own.
+- **Terrain layers have Relief** (`TerrainLayer::parallax`, Terrain Layer ▸ Relief, 0–0.5 m,
+  0 = off and out of the file): the layer's height map drawn as real relief close to the
+  camera (parallax occlusion, 8 steps, fading out between 12 and 30 m; the top projection
+  only), so leaves lie on leaves and stones stand out of the soil.
+- **Ground cover placed as terrain plants has no trunk collider.** Plants under 1.5 m as
+  placed (ferns, seedlings, a pack's sprigs) got an invisible capsule to walk into
+  (`terrain::trees::MIN_TRUNK_TREE`).
+- `project_shots_tests`: `MISTY_SHOT_OFF=fog,clouds,shafts,terrain,meshes` renders a view
+  without those parts, `MISTY_SHOT_WEATHER=<seconds>` runs the scene's Weather first.
+- Checked, not a bug: "stripes across the sky" seen in round 85's wide view were in the
+  preview of the picture, not in the render (the PNG's sky has no step over one level;
+  identical renders showed them or not depending on how they were viewed). Clouds needed no
+  change.
+
+Checks for part 2: `cargo fmt --all --check` passes; clippy `--workspace --all-targets
+--release` 0 warnings; `cargo test --workspace --release --no-fail-fast`: editor 1036, engine
+1738, player 12, recorder 19, MCP 1, server 1 (2807), 0 failed; golden shots green.

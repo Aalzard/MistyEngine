@@ -78,11 +78,57 @@ struct LayerSample {
     height: f32,
 };
 
+// Relief (parallax) of the projection being sampled: xyz = unit direction towards the eye in
+// the projection's frame (x along u, y along v, z out of the surface), w = strength (1 close
+// to the camera, 0 far away and for the side projections).
+var<private> terrain_relief_view: vec4<f32> = vec4<f32>(0.0, 0.0, 1.0, 0.0);
+
+// Height (0..1) of layer `i` at tile uv `uv` (the normal map's alpha).
+fn layer_height(i: u32, uv: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> f32 {
+    return textureSampleGrad(layer_normal, layer_sampler, uv, i, gx, gy).a;
+}
+
+// Where the view ray meets layer `i`'s height field of `depth` metres, as a shift of the
+// point `p` (metres) it is sampled at: a few steps down the ray, then the crossing between
+// the last two (parallax occlusion mapping).
+fn layer_relief(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>, depth: f32) -> vec2<f32> {
+    let t = terrain.tiles[i];
+    let v = terrain_relief_view.xyz;
+    // The whole way from the top of the relief to its floor (grazing views limited).
+    let reach = -v.xy / max(v.z, 0.3) * depth * terrain_relief_view.w;
+    let steps = 8.0;
+    var prev_h = 1.0;
+    var prev_surface = layer_height(i, (p + t.zw) / t.xy, gx / t.xy, gy / t.xy);
+    var shift = vec2<f32>(0.0);
+    for (var k = 1.0; k <= steps; k += 1.0) {
+        let ray_h = 1.0 - k / steps;
+        let q = p + reach * (k / steps);
+        let surface = layer_height(i, (q + t.zw) / t.xy, gx / t.xy, gy / t.xy);
+        if (surface >= ray_h) {
+            // Crossed between the last step and this one.
+            let a = prev_surface - prev_h;
+            let b = surface - ray_h;
+            let f = clamp(b / max(b - a, 1e-4), 0.0, 1.0);
+            shift = reach * ((k - f) / steps);
+            return shift;
+        }
+        prev_h = ray_h;
+        prev_surface = surface;
+        shift = reach * (k / steps);
+    }
+    return shift;
+}
+
 // One projection of layer `i`: tiled uv `p` (metres) with its screen gradients. A second
 // copy, rotated and a little larger, is blended in by a noise of a few tiles, so the tile's
 // repeat does not show as a grid.
-fn layer_projection(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> LayerSample {
+fn layer_projection(i: u32, p_flat: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> LayerSample {
     let t = terrain.tiles[i];
+    var p = p_flat;
+    let depth = terrain.relief[i].x;
+    if (depth > 0.0 && terrain_relief_view.w > 0.0) {
+        p += layer_relief(i, p_flat, gx, gy, depth);
+    }
     let w = smoothstep(0.3, 0.7, grass_noise(p / (max(t.x, 0.1) * 2.3) + 3.7));
     // Where the noise saturates, one copy alone makes the result (mix by 0 or 1).
     var a: LayerSample;
@@ -129,6 +175,10 @@ fn layer_tile(i: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> LayerSampl
     return s;
 }
 
+// xyz = unit direction from the fragment towards the eye, w = relief strength there (set by
+// `terrain_surface`; 0 = no relief).
+var<private> terrain_eye: vec4<f32> = vec4<f32>(0.0, 1.0, 0.0, 0.0);
+
 // Layer `i` at terrain-local point `p` with geometric normal `n`; `pw` = weights of the
 // x, y (top) and z projections. Normal maps are combined with a whiteout blend per axis.
 fn layer_sample(i: u32, p: vec3<f32>, dx: vec3<f32>, dy: vec3<f32>, n: vec3<f32>, pw: vec3<f32>) -> LayerSample {
@@ -138,7 +188,9 @@ fn layer_sample(i: u32, p: vec3<f32>, dx: vec3<f32>, dy: vec3<f32>, n: vec3<f32>
     out.height = 0.0;
     if (pw.y > 0.0) {
         // Top: u = +x, v = +z (green points to -z).
+        terrain_relief_view = vec4<f32>(terrain_eye.x, terrain_eye.z, terrain_eye.y, terrain_eye.w);
         let s = layer_projection(i, p.xz, dx.xz, dy.xz);
+        terrain_relief_view.w = 0.0;
         let wn = vec3<f32>(s.normal.x + n.x, s.normal.z * n.y, -s.normal.y + n.z);
         out.albedo += s.albedo * pw.y;
         out.normal += wn * pw.y;
@@ -282,6 +334,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
         ids = top.ids;
         w = top.w;
     }
+    // Relief close to the camera only (it fades out by 30 m: a texel is a leaf's width there).
+    let to_eye = view.camera_pos.xyz - in.world;
+    let eye_dist = length(to_eye);
+    terrain_eye = vec4<f32>(to_eye / max(eye_dist, 1e-4), 1.0 - smoothstep(12.0, 30.0, eye_dist));
     var layers: array<LayerSample, 4>;
     for (var i = 0u; i < 4u; i++) {
         if (w[i] > 0.002) {

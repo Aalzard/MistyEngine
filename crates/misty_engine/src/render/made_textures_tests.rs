@@ -215,7 +215,7 @@ fn meadow_samples() -> Vec<Sample> {
                 role,
                 with_z,
                 cutout,
-                layers.layers,
+                layers.layers.clone(),
             );
         }
     }

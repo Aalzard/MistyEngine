@@ -279,7 +279,8 @@ fn dump_impostors() {
         return;
     };
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-    crate::assets::set_project_root(&root);
+    // (This thread's root only: other tests set the process-wide one.)
+    let _scope = crate::assets::scoped_root(&root);
     for name in ["Oak", "Oak Broad", "Linden", "Birch", "Young Oak"] {
         let t = TreeAsset::load(&root.join(format!("Assets/Trees/{name}.tree"))).unwrap();
         let b = super::store::build(t);
@@ -373,7 +374,8 @@ fn lod_levels_are_read_from_names() {
 #[test]
 fn a_tree_can_come_from_a_model_file() {
     let (root, t) = model_tree("build");
-    crate::assets::set_project_root(&root);
+    // (This thread's root only: other tests set the process-wide one.)
+    let _scope = crate::assets::scoped_root(&root);
     let built = store::try_build(t.clone()).expect("model tree");
     let m = &built.model;
     // LOD 0: 12 bark triangles and 2 leaf cards; LOD 1: 6 and 1; the billboard card is out.
@@ -417,7 +419,8 @@ fn a_tree_can_come_from_a_model_file() {
 #[test]
 fn a_missing_model_is_reported_and_the_generated_tree_stands_in() {
     let (root, mut t) = model_tree("missing");
-    crate::assets::set_project_root(&root);
+    // (This thread's root only: other tests set the process-wide one.)
+    let _scope = crate::assets::scoped_root(&root);
     t.model = "Assets/T/gone.obj".into();
     assert!(store::try_build(t.clone()).is_err());
     let stand_in = store::build(t.clone());
@@ -430,5 +433,51 @@ fn a_missing_model_is_reported_and_the_generated_tree_stands_in() {
         TreeAsset::from_json(&json).unwrap().model,
         "Assets/T/gone.obj"
     );
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// Ground cover placed as terrain plants (ferns, seedlings, a pack's sprigs) has no trunk
+/// collider to walk into; trees keep theirs.
+#[test]
+fn small_plants_get_no_trunk_collider() {
+    use crate::terrain::trees::{TreeInstance, TreePrototype, trunks};
+    let root = std::env::temp_dir().join(format!("misty_small_plants_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("Assets")).unwrap();
+    // (This thread's root only: other tests set the process-wide one.)
+    let _scope = crate::assets::scoped_root(&root);
+    let sprig = TreeAsset {
+        height: 1.0,
+        ..TreeAsset::oak()
+    };
+    sprig.save(&root.join("Assets/Sprig.tree")).unwrap();
+    TreeAsset::oak()
+        .save(&root.join("Assets/Oak.tree"))
+        .unwrap();
+    let mut d = crate::terrain::TerrainData::new(33, Vec3::new(100.0, 10.0, 100.0), 32);
+    d.trees.prototypes = vec![
+        TreePrototype {
+            tree: "Assets/Sprig.tree".into(),
+        },
+        TreePrototype {
+            tree: "Assets/Oak.tree".into(),
+        },
+    ];
+    let at = |x: f32, prototype: u16, height_scale: f32| TreeInstance {
+        position: glam::Vec2::new(x, 0.5),
+        prototype,
+        height_scale,
+        ..Default::default()
+    };
+    // A sprig, a sprig grown to 1.4 m, one grown past the limit, and an oak.
+    d.trees.instances = vec![
+        at(0.2, 0, 1.0),
+        at(0.4, 0, 1.4),
+        at(0.6, 0, 1.6),
+        at(0.8, 1, 1.0),
+    ];
+    let found = trunks(&d);
+    let xs: Vec<f32> = found.iter().map(|t| t.foot.x.round()).collect();
+    assert_eq!(xs, [60.0, 80.0]);
     std::fs::remove_dir_all(root).ok();
 }

@@ -257,8 +257,12 @@ pub struct Trunk {
     pub height: f32,
 }
 
+/// Plants shorter than this (metres, as placed) have no trunk to walk into: ground cover,
+/// ferns, seedlings.
+pub const MIN_TRUNK_TREE: f32 = 1.5;
+
 /// The trunks of every placed tree (the recipes are read once per prototype; trees whose
-/// asset can't be read get none).
+/// asset can't be read get none, nor do plants under [`MIN_TRUNK_TREE`]).
 pub fn trunks(d: &TerrainData) -> Vec<Trunk> {
     let recipes: Vec<Option<crate::trees::TreeAsset>> = d
         .trees
@@ -271,6 +275,9 @@ pub fn trunks(d: &TerrainData) -> Vec<Trunk> {
         .iter()
         .filter_map(|t| {
             let r = recipes.get(t.prototype as usize)?.as_ref()?;
+            if r.height * t.height_scale < MIN_TRUNK_TREE {
+                return None;
+            }
             Some(Trunk {
                 foot: local_position(d, t),
                 radius: (r.trunk_radius * t.width_scale).max(0.05),

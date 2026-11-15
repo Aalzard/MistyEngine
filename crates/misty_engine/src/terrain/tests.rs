@@ -651,3 +651,25 @@ fn garbage_resolution_with_holes_loads() {
     assert_eq!(back.heightmap_resolution, 4097);
     assert!(back.holes.is_empty() || back.holes.len() == 4096 * 4096);
 }
+
+/// A layer's Relief (parallax depth) stays out of files while it is 0 and round-trips.
+#[test]
+fn layer_relief_is_optional_in_files() {
+    let flat = TerrainLayer::default();
+    let text = serde_json::to_string(&flat).unwrap();
+    assert!(!text.contains("parallax"), "{text}");
+    let deep = TerrainLayer {
+        parallax: 0.07,
+        ..Default::default()
+    };
+    let text = serde_json::to_string(&deep).unwrap();
+    assert_eq!(
+        serde_json::from_str::<TerrainLayer>(&text)
+            .unwrap()
+            .parallax,
+        0.07
+    );
+    // Files from before the setting load flat.
+    let old: TerrainLayer = serde_json::from_str(r#"{ "name": "Soil" }"#).unwrap();
+    assert_eq!(old.parallax, 0.0);
+}

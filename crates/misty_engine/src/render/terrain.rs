@@ -58,6 +58,8 @@ struct TerrainParams {
     ground_front: [f32; 4],
     /// x = chunks per side (the chunk layer masks of terrains with more than four layers).
     chunks: [f32; 4],
+    /// Per layer: x = relief (parallax) depth in metres (0 = flat).
+    relief: [[f32; 4]; MAX_LAYERS],
 }
 
 /// Quality ▸ Grass Ground Cover (terrain_layers.wgsl `grass_ground_cover`), fitted against
@@ -1929,6 +1931,7 @@ fn params(
         ground_tint: ground_cover_values()[1],
         ground_front: ground_cover_values()[2],
         chunks: [1.0, 0.0, 0.0, 0.0],
+        relief: [[0.0; 4]; MAX_LAYERS],
     };
     let g = &d.details;
     if g.enabled && d.detail_map.len() == d.alphamap_resolution.pow(2) {
@@ -1961,6 +1964,13 @@ fn params(
             0.0
         };
         p.surface[i] = [l.metallic, l.smoothness, scale, l.occlusion.clamp(0.0, 1.0)];
+        // (Its height rides in the normal map's alpha: none without a height or normal map.)
+        let relief = if l.height_map.is_some() || l.normal_map.is_some() {
+            l.parallax.clamp(0.0, 0.5)
+        } else {
+            0.0
+        };
+        p.relief[i] = [relief, 0.0, 0.0, 0.0];
     }
     if d.harmony.enabled {
         let count = d.layers.len().min(MAX_LAYERS);
