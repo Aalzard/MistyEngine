@@ -157,6 +157,16 @@ After the pause: crowns Wood Oak 0.47 / 1.2, Wood Beech 0.45 / 1.15, gaps at fbm
 GPU (11.8 parts), inside 11.1 (10.8). Eye level far / past crest / grass 86/97/63, 81/90/45,
 77/89/35. fmt, clippy 0, editor tests 1009 passed; workspace tests passed earlier this round.
 
+## Round 8 (branch r74-noon8, done)
+
+Forest Floor occlusion 1.0, moss 0.6 of the litter, toned litter × (0.69, 0.65, 0.25); fog
+albedo (0.5, 0.66, 0.92), sky tint (0.22, 0.26, 0.3). `inside` median 0.028, p75 0.176, sunlit
+23 %. Hero far ridge 105/124/148 (photo 102/126/154). Hero 11.83 ms, inside 10.66 ms.
+Tries (env knobs in the generator, removed): occlusion 0.8 → median 0.022, 1.0 → 0.024; moss
+0.3 + occlusion 0.8 → 0.013 (red); moss 0.6 + occlusion 1.0 + litter × 1.3 → 0.027 (red-brown);
+× 1.3 olive → 0.030; × 1.15 olive, occlusion 0.9 → 0.023; × 1.25 olive → 0.028 (kept).
+Next: crisper cumulus; the far hill ring lower / farther on the left of the first view.
+
 ## Later rounds
 
 - Clouds (engine in the round-1 commit): `CloudsOverride::size` (0.25..4, out of the file at
