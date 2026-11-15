@@ -984,7 +984,7 @@ fn autosave_frame_cost_bench() {
         return;
     };
     let scenes = std::env::var("MISTY_BENCH_SCENES")
-        .unwrap_or_else(|_| "NoonValley,MeadowDemo".to_owned());
+        .unwrap_or_else(|_| "NoonValley,MeadowDemo,StressDemo".to_owned());
     for name in scenes.split(',') {
         let rel = format!("Assets/Scenes/{name}.scene");
         let mut s = state(&root);

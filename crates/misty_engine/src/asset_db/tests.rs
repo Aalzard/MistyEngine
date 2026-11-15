@@ -518,7 +518,10 @@ fn an_unfixable_meta_file_does_not_rescan_the_project_again_and_again() {
     // A real change still rescans (and the broken one stays unresolved).
     write(&root, "Assets/Mats/Blue.mat", "{}");
     let report = poll_now_in(&db, &walk).expect("a rescan for the new file");
-    assert!(report.created.iter().any(|p| p.contains("Blue.mat")), "{report:?}");
+    assert!(
+        report.created.iter().any(|p| p.contains("Blue.mat")),
+        "{report:?}"
+    );
     assert!(poll_now_in(&db, &walk).is_none());
     let _ = std::fs::remove_dir_all(root);
 }

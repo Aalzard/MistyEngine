@@ -493,8 +493,7 @@ pub fn components() -> &'static [ComponentInfo] {
 /// which made whole-scene copies (undo steps, Play, autosave) and saves cost tens of
 /// milliseconds in scenes with thousands of objects.
 pub fn present(world: &World, e: Entity) -> Vec<&'static ComponentInfo> {
-    static BY_TYPE: OnceLock<std::collections::HashMap<std::any::TypeId, usize>> =
-        OnceLock::new();
+    static BY_TYPE: OnceLock<std::collections::HashMap<std::any::TypeId, usize>> = OnceLock::new();
     let by_type = BY_TYPE.get_or_init(|| {
         let mut map = std::collections::HashMap::new();
         for (i, info) in components().iter().enumerate() {

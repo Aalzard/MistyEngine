@@ -623,7 +623,10 @@ fn inspect_all(list: Vec<(PathBuf, String)>) -> Vec<(String, ScriptMeta)> {
             .collect();
         let mut out = Vec::with_capacity(list.len());
         for (worker, part) in workers.into_iter().zip(list.chunks(chunk)) {
-            match worker.map_err(|_| ()).and_then(|w| w.join().map_err(|_| ())) {
+            match worker
+                .map_err(|_| ())
+                .and_then(|w| w.join().map_err(|_| ()))
+            {
                 Ok(done) => out.extend(done),
                 // No thread, or it panicked: this part here, as before.
                 Err(()) => out.extend(

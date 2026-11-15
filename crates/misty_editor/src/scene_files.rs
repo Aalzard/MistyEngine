@@ -323,11 +323,10 @@ impl SavedHash {
                 let _ = cell.set(h);
             }
         }
-        let out: Vec<(SceneId, SavedHash)> = ids
-            .iter()
-            .map(|id| (*id, Self(Cell::default())))
-            .collect();
-        let jobs = || -> Vec<(SceneId, Cell)> { out.iter().map(|(id, h)| (*id, h.0.clone())).collect() };
+        let out: Vec<(SceneId, SavedHash)> =
+            ids.iter().map(|id| (*id, Self(Cell::default()))).collect();
+        let jobs =
+            || -> Vec<(SceneId, Cell)> { out.iter().map(|(id, h)| (*id, h.0.clone())).collect() };
         let (copy, worker_jobs) = (scene.clone(), jobs());
         let spawned = std::thread::Builder::new()
             .name("misty scene hash".into())

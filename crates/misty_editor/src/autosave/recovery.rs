@@ -333,7 +333,9 @@ fn restore_scene(s: &mut EditorState, header: &Header, body: &str) -> Result<(),
     // Instances follow their prefabs as when the file is opened.
     crate::prefabs::catch_up(s, Some(id));
     // Changed: what the file holds is something else (never matches a real hash).
-    s.files.saved.insert(id, crate::scene_files::SavedHash::ready(0));
+    s.files
+        .saved
+        .insert(id, crate::scene_files::SavedHash::ready(0));
     s.scene_dirty = true;
     s.selection.retain_existing(&s.scene);
     let scene = &s.scene;

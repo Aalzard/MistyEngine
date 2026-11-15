@@ -2,6 +2,8 @@
 
 pub mod animator_component;
 pub mod audio_components;
+#[cfg(test)]
+mod bench_tests;
 pub mod cloth_component;
 pub mod clouds;
 pub mod components;
@@ -17,8 +19,6 @@ pub mod lod_group;
 pub mod multi_scene;
 pub mod occlusion_area;
 mod order;
-#[cfg(test)]
-mod bench_tests;
 pub mod physics2d_components;
 pub mod physics_components;
 pub mod playable_director;
