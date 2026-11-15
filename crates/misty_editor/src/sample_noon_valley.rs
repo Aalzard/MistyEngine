@@ -977,6 +977,10 @@ const LONE: &[(f32, f32, u16, f32)] = &[
     (-420.0, 520.0, 5, 1.0),
 ];
 
+/// Wood Oaks placed by hand in the treeline wood: (right, ahead) of the camera in metres,
+/// height scale.
+const WOOD_FILL: [(f32, f32, f32); 1] = [(-62.6, 519.6, 0.9)];
+
 /// One 8 m cell of the treeline wood, the forest you walk into: tall trunks standing apart
 /// under high, open crowns (sun flecks all over the floor), pools of sun where a tree is
 /// missing, slim birches and saplings between, bushes, ferns, and carpets of broad-leaved
@@ -1004,7 +1008,7 @@ fn wood_cell(
             color: q(6),
         });
     };
-    let gap = (open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.66) && !CLOSED.with(|c| c.get());
+    let gap = open || noise::fbm(p.x, p.y, 26.0, 2, 63) > 0.66;
     let carpet = 0.45 + 0.55 * smooth(-0.3, 0.1, noise::fbm(p.x, p.y, 21.0, 2, 67));
     // Slim trunks between the big ones: birches and young trees (saplings only in the gaps).
     for k in 0..1 + (r(5) * if gap { 1.2 } else { 2.2 }) as u32 {
@@ -1047,19 +1051,6 @@ fn wood_cell(
     });
 }
 
-thread_local! { static CLOSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-fn wood_cell_closed(out: &mut Vec<TreeInstance>, ix: i32, iz: i32, p: Vec2, size: Vec2, cell: f32) {
-    CLOSED.with(|c| c.set(true));
-    let n = out.len();
-    wood_cell(out, ix, iz, p, size, cell, false);
-    // A gap cell's last roll may skip the big tree (r(1) > 0.7): force one.
-    if out[n..].iter().all(|t| ![6u16, 9, 10].contains(&t.prototype) || t.height_scale < 0.8) {
-        let r = |salt: u32| noise::hash(ix, iz, 0x3d0f + salt);
-        out.push(TreeInstance { position: p / size, prototype: 9, rotation: r(10) * std::f32::consts::TAU, height_scale: 0.9 + 0.3 * r(3), width_scale: 1.0, color: r(11) });
-    }
-    CLOSED.with(|c| c.set(false));
-}
-
 /// Every tree (deterministic): the forest on a jittered grid where [`forest`] says so (never
 /// on cliff faces), then the lone trees.
 fn trees(d: &TerrainData) -> Vec<TreeInstance> {
@@ -1089,17 +1080,6 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 * smooth(-10.0, -40.0, hill_side(p.x, p.y));
             if near_wood > 0.5 {
                 let open = r(3) > f * 0.97;
-                // EXPERIMENT KNOB (remove): NV_FILL=right,ahead,radius;... closes gaps there.
-                let fill = std::env::var("NV_FILL").ok().is_some_and(|v| {
-                    v.split(';').any(|c| {
-                        let n: Vec<f32> = c.split(',').filter_map(|x| x.trim().parse().ok()).collect();
-                        n.len() == 3 && (rel(p.x, p.y) - Vec2::new(n[0], n[1])).length() < n[2]
-                    })
-                });
-                if fill {
-                    wood_cell_closed(&mut out, ix, iz, p, size, cell);
-                    continue;
-                }
                 wood_cell(&mut out, ix, iz, p, size, cell, open);
                 continue;
             }
@@ -1216,6 +1196,20 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
                 });
             }
         }
+    }
+    // Round 59.10: a Wood Oak behind the inside view's eye closes part of the canopy gap
+    // over its sun patch: the floor's sunlit share 23 % -> 20 % (photo 20 %). (Leaf density
+    // and the gap threshold change the whole wood and darkened its floor.)
+    for &(right, ahead, height) in &WOOD_FILL {
+        let p = Vec2::new(EYE.0 + right, EYE.1 + ahead);
+        out.push(TreeInstance {
+            position: p / size,
+            prototype: 9,
+            rotation: 1.0,
+            height_scale: height,
+            width_scale: 1.0,
+            color: 0.5,
+        });
     }
     for (k, &(right, ahead, kind, scale)) in LONE.iter().enumerate() {
         let p = Vec2::new(EYE.0 + right, EYE.1 + ahead);
