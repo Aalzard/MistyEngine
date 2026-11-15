@@ -66,7 +66,11 @@ fn wind_and_layer() {
 #[test]
 fn distance_defaults_to_the_old_trace_distance_and_is_clamped() {
     let mut o = CloudsOverride::default();
-    assert_eq!(uniforms::trace_distance(&o), 60_000.0, "old scenes unchanged");
+    assert_eq!(
+        uniforms::trace_distance(&o),
+        60_000.0,
+        "old scenes unchanged"
+    );
     o.distance = 18_000.0;
     assert_eq!(uniforms::trace_distance(&o), 18_000.0);
     o.distance = 10.0;
