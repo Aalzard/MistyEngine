@@ -682,9 +682,11 @@ fn inspect(path: &Path, rel: &str) -> ScriptMeta {
 mod tests {
     use super::*;
 
+    type Hook = Box<dyn FnOnce(&Path)>;
+
     thread_local! {
         /// Run once right after `inspect` has read a script's text (this thread's next one).
-        pub(super) static AFTER_READ: std::cell::RefCell<Option<Box<dyn FnOnce(&Path)>>> =
+        pub(super) static AFTER_READ: std::cell::RefCell<Option<Hook>> =
             const { std::cell::RefCell::new(None) };
     }
 

@@ -413,8 +413,8 @@ pub fn cache_memory() -> Vec<(String, u64, u64)> {
     let lib = library();
     let mut out: Vec<(String, u64, u64)> = lib
         .entries
-        .iter()
-        .filter_map(|(_, e)| {
+        .values()
+        .filter_map(|e| {
             let m = e.model.as_ref().ok()?;
             let meshes = m
                 .meshes
