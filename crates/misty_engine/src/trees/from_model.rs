@@ -192,8 +192,8 @@ fn vary_pieces(m: &mut TreeMesh, first: usize, range: std::ops::Range<u32>) {
         .to_vec();
     for t in &tris {
         let a = find(&mut parent, t[0] - first as u32);
-        for k in 1..3 {
-            let b = find(&mut parent, t[k] - first as u32);
+        for &v in &t[1..] {
+            let b = find(&mut parent, v - first as u32);
             parent[b as usize] = a;
         }
     }

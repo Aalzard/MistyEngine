@@ -147,8 +147,9 @@ pub fn find(dir: &Path, material: &str) -> NamedTextures {
 /// texels (an RGBA file that is opaque everywhere has none). The answer is kept per file (and
 /// its modification time): the check decodes the image once.
 pub fn has_cutouts(path: &Path) -> bool {
-    static KNOWN: LazyLock<Mutex<HashMap<PathBuf, (Option<SystemTime>, bool)>>> =
-        LazyLock::new(Default::default);
+    /// Per file: its modification time when checked, and the answer.
+    type Known = HashMap<PathBuf, (Option<SystemTime>, bool)>;
+    static KNOWN: LazyLock<Mutex<Known>> = LazyLock::new(Default::default);
     let stamp = crate::vfs::modified(path);
     if let Some((s, v)) = KNOWN.lock().unwrap_or_else(|e| e.into_inner()).get(path)
         && *s == stamp

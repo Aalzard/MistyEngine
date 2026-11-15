@@ -2070,6 +2070,29 @@ impl CachedGroups {
 mod tests {
     use wgpu::naga;
 
+    /// A grayscale map is packed into a spare channel, resized, and inverted for assets whose
+    /// roughness maps hold gloss (Gloss Maps).
+    #[test]
+    fn material_maps_pack_into_a_channel_gloss_inverted() {
+        let dir = std::env::temp_dir().join(format!("misty_tree_pack_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let map = dir.join("gloss.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 0, 0, 255]))
+            .save(&map)
+            .unwrap();
+        // (An absolute path resolves to itself whatever the project is.)
+        let rel = map.to_string_lossy().into_owned();
+        let mut dst = image::RgbaImage::from_pixel(4, 4, image::Rgba([1, 2, 3, 4]));
+        super::pack_channel(&mut dst, &rel, 2, 150, false);
+        assert!(dst.pixels().all(|p| p.0 == [1, 2, 200, 4]));
+        super::pack_channel(&mut dst, &rel, 2, 150, true);
+        assert!(dst.pixels().all(|p| p.0 == [1, 2, 55, 4]));
+        // No map: the plain value, never inverted.
+        super::pack_channel(&mut dst, "", 3, 150, true);
+        assert!(dst.pixels().all(|p| p.0 == [1, 2, 55, 150]));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
     /// The tree shaders parse and validate (no GPU needed).
     #[test]
     fn tree_shaders_validate() {
