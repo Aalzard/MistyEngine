@@ -79,6 +79,9 @@ pub struct Physics2D {
     dormant_set: HashSet<Entity>,
     /// `Scene::activity` when `sync_active` last looked.
     activity_seen: Option<u64>,
+    /// Colliders of objects switched off since the last step, with their objects: rapier
+    /// reports their contacts as stopped and the step turns them into Exit contacts.
+    departed: HashMap<rp::ColliderHandle, Entity>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -123,6 +126,7 @@ impl Physics2D {
             dormant: Vec::new(),
             dormant_set: HashSet::new(),
             activity_seen: None,
+            departed: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
@@ -239,8 +243,14 @@ impl Physics2D {
                 body.set_angvel(w, true);
             }
         }
-        self.contacts
-            .update(&self.world, &self.colliders, events.take(), &before)
+        let departed = std::mem::take(&mut self.departed);
+        self.contacts.update(
+            &self.world,
+            &self.colliders,
+            &departed,
+            events.take(),
+            &before,
+        )
     }
 
     /// Linear velocities of the bodies before a step (for relative velocities of new contacts).
@@ -461,7 +471,23 @@ impl Physics2D {
                 }
                 cur = scene.parent(c);
             }
-            for x in scene.subtree(top) {
+            let subtree = scene.subtree(top);
+            // Their contacts end with Exit (the familiar engine's Physics 2D calls back when
+            // a collider is switched off): keep the colliders' objects until the next step.
+            let gone: HashSet<Entity> = subtree
+                .iter()
+                .copied()
+                .filter(|x| self.owners.contains(x))
+                .collect();
+            if !gone.is_empty() {
+                self.departed.extend(
+                    self.colliders
+                        .iter()
+                        .filter(|(_, o)| gone.contains(*o))
+                        .map(|(h, o)| (*h, *o)),
+                );
+            }
+            for x in subtree {
                 self.remove(x);
                 if self.dormant_set.insert(x) {
                     self.dormant.push(x);

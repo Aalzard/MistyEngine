@@ -152,34 +152,43 @@ impl Physics {
             .get_or_insert_with(|| self.world.insert_body(rp::RigidBodyBuilder::fixed()))
     }
 
-    /// The connected body of a joint on `e`, or the world.
-    fn connection(&mut self, scene: &Scene, e: Entity, target: Option<Entity>) -> Connection {
+    /// The connected body of a joint on `e`, or the world; `None` while the connected body is
+    /// switched off (the joint comes back with it, see [`Physics::rejoin`]).
+    fn connection(
+        &mut self,
+        scene: &Scene,
+        e: Entity,
+        target: Option<Entity>,
+    ) -> Option<Connection> {
         if let Some(c) = target {
+            if c != e && scene.contains(c) && self.dormant_set.contains(&c) {
+                return None;
+            }
             if c != e
                 && scene.contains(c)
                 && let Some(b) = self.bodies.get(&c)
             {
                 let (pos, rot, scale) = world_pose(scene, c);
-                return Connection {
+                return Some(Connection {
                     entity: Some(c),
                     handle: b.handle,
                     pos,
                     rot,
                     scale: scale * world_mirror(scene, c),
-                };
+                });
             }
             self.warnings.push(format!(
                 "'{}': the joint's Connected Body has no Rigidbody; connected to the world.",
                 scene.name(e)
             ));
         }
-        Connection {
+        Some(Connection {
             entity: None,
             handle: self.world_anchor(),
             pos: Vec3::ZERO,
             rot: Quat::IDENTITY,
             scale: Vec3::ONE,
-        }
+        })
     }
 
     /// Insert a rapier joint and remember it.
@@ -251,20 +260,23 @@ impl Physics {
                     continue;
                 }
             };
-            if let Some(j) = fixed {
-                let to = self.connection(scene, e, j.connected_body);
+            if let Some(j) = fixed
+                && let Some(to) = self.connection(scene, e, j.connected_body)
+            {
                 let data = fixed_joint(scene, e, &to, j.enable_collision);
                 let breaks = (j.break_force, j.break_torque);
                 self.insert_joint(e, "Fixed Joint", body, &to, data, breaks, None, Vec::new());
             }
-            if let Some(j) = hinge {
-                let to = self.connection(scene, e, j.connected_body);
+            if let Some(j) = hinge
+                && let Some(to) = self.connection(scene, e, j.connected_body)
+            {
                 let data = hinge_joint(scene, e, &to, &j);
                 let breaks = (j.break_force, j.break_torque);
                 self.insert_joint(e, "Hinge Joint", body, &to, data, breaks, None, Vec::new());
             }
-            if let Some(j) = config {
-                let to = self.connection(scene, e, j.connected_body);
+            if let Some(j) = config
+                && let Some(to) = self.connection(scene, e, j.connected_body)
+            {
                 let frames = joint_frames(
                     scene,
                     e,
@@ -297,8 +309,9 @@ impl Physics {
                     soft,
                 );
             }
-            if let Some(j) = character {
-                let to = self.connection(scene, e, j.connected_body);
+            if let Some(j) = character
+                && let Some(to) = self.connection(scene, e, j.connected_body)
+            {
                 let frames = joint_frames(
                     scene,
                     e,
@@ -330,8 +343,9 @@ impl Physics {
                     soft,
                 );
             }
-            if let Some(j) = spring {
-                let to = self.connection(scene, e, j.connected_body);
+            if let Some(j) = spring
+                && let Some(to) = self.connection(scene, e, j.connected_body)
+            {
                 let (anchor, connected_anchor) = anchors(
                     scene,
                     e,
@@ -402,6 +416,64 @@ impl Physics {
         }
         self.joints
             .retain(|j| j.entity != e && j.connected_entity != Some(e));
+    }
+
+    /// Objects switched on (`on`) bring back the joints other objects have to them: those left
+    /// the world with their body, and a joint added while its connected body was off waited.
+    /// The joints of the objects connected to them are built again.
+    pub(super) fn rejoin(&mut self, scene: &Scene, on: &[Entity]) {
+        let on: HashSet<Entity> = on.iter().copied().collect();
+        let mut again: Vec<Entity> = Vec::new();
+        let mut look = |e: Entity, target: Option<Entity>| {
+            if target.is_some_and(|t| on.contains(&t)) && !on.contains(&e) && !again.contains(&e)
+            {
+                again.push(e);
+            }
+        };
+        let w = &scene.world;
+        for (e, j) in w.query::<&FixedJoint>().iter() {
+            look(e, j.connected_body);
+        }
+        for (e, j) in w.query::<&HingeJoint>().iter() {
+            look(e, j.connected_body);
+        }
+        for (e, j) in w.query::<&SpringJoint>().iter() {
+            look(e, j.connected_body);
+        }
+        for (e, j) in w.query::<&ConfigurableJoint>().iter() {
+            look(e, j.connected_body);
+        }
+        for (e, j) in w.query::<&CharacterJoint>().iter() {
+            look(e, j.connected_body);
+        }
+        again.retain(|e| self.bodies.contains_key(e));
+        if again.is_empty() {
+            return;
+        }
+        for &e in &again {
+            self.drop_joints(e);
+        }
+        self.add_joints(scene, &again);
+    }
+
+    /// Remove the joints and springs on `e` (its body stays).
+    fn drop_joints(&mut self, e: Entity) {
+        let mut handles = Vec::new();
+        self.joints.retain(|j| {
+            if j.entity == e {
+                handles.push(j.handle);
+            }
+            j.entity != e
+        });
+        self.springs.retain(|s| {
+            if s.body == e {
+                handles.extend(s.no_contacts);
+            }
+            s.body != e
+        });
+        for h in handles {
+            self.world.remove_impulse_joint(h);
+        }
     }
 
     /// Joint coordinates of `r` now (`None` once a body is gone).

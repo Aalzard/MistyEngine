@@ -99,6 +99,7 @@ impl Tracker {
         &mut self,
         world: &rp::PhysicsWorld,
         owners: &HashMap<rp::ColliderHandle, Entity>,
+        departed: &HashMap<rp::ColliderHandle, Entity>,
         events: Vec<rp::CollisionEvent>,
         before: &HashMap<rp::RigidBodyHandle, Vec2>,
     ) -> Vec<Contact2D> {
@@ -121,8 +122,25 @@ impl Tracker {
                     };
                     let trigger = self.touching.remove(&key).unwrap_or(ev.sensor());
                     stays.retain(|p| *p != key);
+                    let was_new = entered.contains(&key);
                     entered.retain(|p| *p != key);
-                    if let Some(c) = contact(world, owners, key, Phase::Exit, trigger, before) {
+                    let gone = |h| departed.contains_key(&h);
+                    if gone(key.0) || gone(key.1) {
+                        // A collider switched off: its colliders are gone from the world.
+                        let owner = |h| owners.get(&h).or_else(|| departed.get(&h)).copied();
+                        if !was_new && let (Some(a), Some(b)) = (owner(key.0), owner(key.1)) {
+                            out.push(Contact2D {
+                                a,
+                                b,
+                                phase: Phase::Exit,
+                                trigger,
+                                point: Vec2::ZERO,
+                                normal: Vec2::ZERO,
+                                relative_velocity: Vec2::ZERO,
+                            });
+                        }
+                    } else if let Some(c) = contact(world, owners, key, Phase::Exit, trigger, before)
+                    {
                         out.push(c);
                     }
                 }

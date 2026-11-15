@@ -134,6 +134,10 @@ pub struct Physics {
     dormant_set: HashSet<Entity>,
     /// `Scene::activity` when `sync_active` last looked (`None`: never).
     activity_seen: Option<u64>,
+    /// Colliders of objects switched off in this step, with their objects: rapier reports
+    /// their contacts as stopped, and the step turns those into exits (OnTriggerExit /
+    /// OnCollisionExit) instead of dropping them.
+    departed: HashMap<rp::ColliderHandle, Entity>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -222,6 +226,7 @@ impl Physics {
             dormant: Vec::new(),
             dormant_set: HashSet::new(),
             activity_seen: None,
+            departed: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -454,20 +459,24 @@ impl Physics {
         self.project_joints();
         let mut raw = std::mem::take(&mut self.pending);
         raw.extend(events.0.into_inner().unwrap_or_default());
-        raw.into_iter()
+        let contacts = raw
+            .into_iter()
             .filter_map(|ev| {
                 let (h1, h2, started) = match ev {
                     rp::CollisionEvent::Started(a, b, _) => (a, b, true),
                     rp::CollisionEvent::Stopped(a, b, _) => (a, b, false),
                 };
+                let owner = |h| self.colliders.get(&h).or_else(|| self.departed.get(&h));
                 Some(Contact {
-                    a: *self.colliders.get(&h1)?,
-                    b: *self.colliders.get(&h2)?,
+                    a: *owner(h1)?,
+                    b: *owner(h2)?,
                     started,
                     trigger: ev.sensor(),
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        self.departed.clear();
+        contacts
     }
 
     /// Dynamic bodies drive their Transform (interpolated ones are blended between steps).
@@ -672,7 +681,23 @@ impl Physics {
                 }
                 cur = scene.parent(c);
             }
-            for x in scene.subtree(top) {
+            let subtree = scene.subtree(top);
+            // Its contacts end with exits: keep the colliders' objects for this step (a body
+            // takes its children's colliders with it, so they are listed first).
+            let gone: HashSet<Entity> = subtree
+                .iter()
+                .copied()
+                .filter(|x| self.owners.contains(x))
+                .collect();
+            if !gone.is_empty() {
+                self.departed.extend(
+                    self.colliders
+                        .iter()
+                        .filter(|(_, o)| gone.contains(*o))
+                        .map(|(h, o)| (*h, *o)),
+                );
+            }
+            for x in subtree {
                 self.remove(x);
                 if self.dormant_set.insert(x) {
                     self.dormant.push(x);
@@ -701,6 +726,7 @@ impl Physics {
         self.dormant.retain(|e| set.contains(e));
         if !on.is_empty() {
             self.add_objects(scene, &on);
+            self.rejoin(scene, &on);
         }
     }
 

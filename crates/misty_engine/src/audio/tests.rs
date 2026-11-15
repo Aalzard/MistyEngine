@@ -158,3 +158,83 @@ fn audio_files_are_clips() {
     assert!(is_clip("Assets/a.WAV") && is_clip("x.ogg") && is_clip("x.mp3"));
     assert!(!is_clip("x.lua"));
 }
+
+/// A Play On Awake source plays whenever its object is switched on (or the component is
+/// enabled again), like the familiar engine's OnEnable: a pooled explosion switched off and on
+/// again stayed silent, and so did a source whose object started inactive.
+#[test]
+fn play_on_awake_sources_play_when_switched_on() {
+    let (mut scene, e) = scene_with_source(beep());
+    let late = scene.spawn("Late", None);
+    scene.add(late, beep());
+    scene.game_object_mut(late).active = false;
+    let (mut audio, log) = Audio::null("root".into());
+    audio.play_on_awake(&scene, None);
+    audio.update(&scene);
+    assert!(audio.is_playing(e) && !audio.is_playing(late));
+
+    scene.game_object_mut(e).active = false;
+    audio.update(&scene);
+    assert!(!audio.is_playing(e), "switched off: stopped");
+    scene.game_object_mut(e).active = true;
+    scene.game_object_mut(late).active = true;
+    audio.update(&scene);
+    assert!(audio.is_playing(e), "switched on again: plays from the start");
+    assert!(audio.is_playing(late), "first switched on while playing: plays");
+    assert_eq!(log.lock().unwrap().played.len(), 3);
+
+    // The component disabled and enabled again.
+    scene.world.get::<&mut AudioSource>(e).unwrap().enabled = false;
+    audio.update(&scene);
+    assert!(!audio.is_playing(e));
+    scene.world.get::<&mut AudioSource>(e).unwrap().enabled = true;
+    audio.update(&scene);
+    assert!(audio.is_playing(e));
+
+    // A source that finished (or that a script stopped) stays quiet while it stays on.
+    audio.stop(late);
+    audio.update(&scene);
+    audio.update(&scene);
+    assert!(!audio.is_playing(late));
+    assert_eq!(log.lock().unwrap().played.len(), 4);
+}
+
+/// Switching to another Audio Listener (a cut to another camera) moved the "ear" across the
+/// level in one frame: Doppler took that jump as the listener's speed and bent the pitch of
+/// every 3D sound for a frame.
+#[test]
+fn switching_listener_does_not_bend_the_pitch() {
+    let (mut scene, e) = scene_with_source(AudioSource {
+        spatial_blend: 1.0,
+        looping: true,
+        ..beep()
+    });
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 1.0, 40.0)));
+    let first = scene
+        .world
+        .query::<(Entity, &AudioListener)>()
+        .iter()
+        .map(|(l, _)| l)
+        .next()
+        .unwrap();
+    let other = scene.spawn("Far Camera", None);
+    scene.set_transform(other, Transform::from_position(Vec3::new(0.0, 1.0, 100.0)));
+    scene.add(other, AudioListener::default());
+    scene.game_object_mut(other).active = false;
+    let (mut audio, log) = Audio::null("root".into());
+    audio.play(&scene, e);
+    let pitch = |log: &std::sync::Arc<std::sync::Mutex<NullLog>>| {
+        log.lock().unwrap().voices.values().next().unwrap().params.pitch
+    };
+    for _ in 0..3 {
+        audio.tick(1.0 / 60.0);
+        audio.update(&scene);
+    }
+    assert!((pitch(&log) - 1.0).abs() < 1e-4);
+    scene.game_object_mut(first).active = false;
+    scene.game_object_mut(other).active = true;
+    audio.tick(1.0 / 60.0);
+    audio.update(&scene);
+    let p = pitch(&log);
+    assert!((p - 1.0).abs() < 1e-4, "no Doppler from the cut, pitch {p}");
+}
