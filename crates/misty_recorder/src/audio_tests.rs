@@ -382,3 +382,45 @@ fn probe_a_recording() {
     );
     assert!(!packets.is_empty());
 }
+
+/// Round 71: a tap the mix closed mid-session (the sound device changed rate) left the
+/// recording silent to the end. The feed says it lost its tap so the editor takes a new one; a
+/// tap that never got any sound (no sound device) doesn't count, or a new one would be taken
+/// every frame.
+#[test]
+fn the_feed_asks_for_a_new_tap_when_a_live_one_closes() {
+    let ones = vec![
+        Sample {
+            left: 1.0,
+            right: 1.0
+        };
+        4800
+    ];
+    let mut feed = AudioFeed::new();
+    feed.begin(0.0);
+    let (w, r) = tap(10_000);
+    feed.add_tap(r);
+    drop(w);
+    feed.pull(0.1);
+    assert!(!feed.needs_tap(), "never fed: no device, nothing to gain");
+    let (mut w, r) = tap(10_000);
+    feed.add_tap(r);
+    w.write(0, 48_000.0, &ones);
+    feed.pull(0.1);
+    assert!(!feed.needs_tap(), "alive");
+    drop(w);
+    feed.pull(0.2);
+    assert!(feed.needs_tap(), "the mix closed a tap that was feeding it");
+    let (mut w, r) = tap(10_000);
+    feed.add_tap(r);
+    assert!(!feed.needs_tap());
+    w.write(9600, 48_000.0, &ones);
+    let got = feed.pull(0.3);
+    assert_eq!(
+        got.len(),
+        9600 * 2,
+        "silence up to the new tap, then its sound"
+    );
+    assert_eq!(feed.written(), 14_400, "the new tap lands at its own time");
+    assert_eq!(got[got.len() - 1], 1.0);
+}

@@ -67,6 +67,12 @@ pub fn valid_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refused when the project is open read-only (another editor holds its lock): the file or
+/// folder at `path`, or one about to be made there, is the other editor's to change.
+fn writable(path: &Path) -> Result<(), String> {
+    misty_engine::asset_db::check_writable(path).map_err(|e| e.to_string())
+}
+
 /// Rename `from` to `new_stem` (keeping its extension). Returns the new path.
 pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
     // A save still on its way would write the file back at its old place.
@@ -93,6 +99,8 @@ pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
 /// asset would be moved on disk while the error left the database and references on the old
 /// path, and its GUID behind in a stray meta).
 fn move_with_meta(from: &Path, to: &Path) -> Result<(), String> {
+    writable(from)?;
+    writable(to)?;
     std::fs::rename(from, to).map_err(|e| e.to_string())?;
     if let Err(e) = move_meta(from, to) {
         return Err(match std::fs::rename(to, from) {
@@ -140,6 +148,7 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
         (stem, ext)
     };
     let to = unique_path(dir, strip_number(&stem), &ext);
+    writable(&to)?;
     copy_all(from, &to).map_err(|e| e.to_string())?;
     copy_meta(from, &to)?;
     Ok(to)
@@ -151,6 +160,9 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
     // A save still on its way would write the file back at its old place.
     misty_engine::asset_db::saver::flush();
+    for p in paths {
+        writable(p)?;
+    }
     trash::delete_all(with_metas(paths)).map_err(|e| e.to_string())
 }
 
@@ -159,6 +171,9 @@ pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
     // A save still on its way would write the file back at its old place.
     misty_engine::asset_db::saver::flush();
+    for p in paths {
+        writable(p)?;
+    }
     let bin = std::env::temp_dir().join("misty_test_trash");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
     for p in with_metas(paths) {
@@ -340,7 +355,8 @@ pub fn rewrite_references(root: &Path, old: &str, new: &str) -> Result<Vec<Strin
             continue;
         }
         if let Some(updated) = rewrite_text(&text, old, new) {
-            std::fs::write(&path, updated).map_err(|e| format!("{}: {e}", path.display()))?;
+            misty_engine::asset_db::write_asset(&path, updated)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
             changed.push(rel(root, &path));
         }
     }
@@ -627,6 +643,38 @@ mod tests {
             r#"{"m":"Assets/Crimson.mat","s":"Assets/Crimson.mat#0"}"#,
             "sub-asset references are rewritten too"
         );
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Round 71: a project open read-only (another editor holds its lock) still let the
+    /// Project window rename, move, duplicate and delete its assets, and a rename rewrote the
+    /// paths in other scenes and prefabs with `std::fs::write`, under the first editor's feet.
+    #[test]
+    fn read_only_projects_refuse_file_operations() {
+        let root = temp("read_only");
+        let a = root.join("Assets");
+        let red = a.join("Red.mat");
+        std::fs::write(&red, "{}").unwrap();
+        std::fs::create_dir_all(a.join("Props")).unwrap();
+        let scene = r#"{"m":"Assets/Red.mat"}"#;
+        std::fs::write(a.join("Old.scene"), scene).unwrap();
+        misty_engine::asset_db::set_read_only(&root, true);
+        assert!(rename(&red, "Crimson").is_err());
+        assert!(move_into(&red, &a.join("Props")).is_err());
+        assert!(duplicate(&red).is_err());
+        assert!(delete_to_trash(std::slice::from_ref(&red)).is_err());
+        assert!(rewrite_references(&root, "Assets/Red.mat", "Assets/Crimson.mat").is_err());
+        assert!(red.exists(), "the file stays where it is");
+        assert!(!a.join("Crimson.mat").exists() && !a.join("Props/Red.mat").exists());
+        assert!(!a.join("Red 1.mat").exists());
+        assert_eq!(std::fs::read_to_string(a.join("Old.scene")).unwrap(), scene);
+        misty_engine::asset_db::set_read_only(&root, false);
+        let to = rename(&red, "Crimson").unwrap();
+        assert_eq!(
+            rewrite_references(&root, "Assets/Red.mat", "Assets/Crimson.mat").unwrap(),
+            ["Assets/Old.scene"]
+        );
+        assert!(to.exists());
         std::fs::remove_dir_all(root).ok();
     }
 }

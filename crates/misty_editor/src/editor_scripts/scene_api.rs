@@ -273,7 +273,7 @@ fn register_assets(lua: &Lua) -> Result<()> {
             if let Some(dir) = abs.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| mlua::Error::runtime(e.to_string()))?;
             }
-            std::fs::write(&abs, text)
+            misty_engine::asset_db::write_asset(&abs, text)
                 .map_err(|e| mlua::Error::runtime(format!("CreateAsset: {rel}: {e}")))?;
             created(lua, &rel)?;
             Ok(rel)

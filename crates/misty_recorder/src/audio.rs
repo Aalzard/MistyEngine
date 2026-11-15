@@ -112,6 +112,9 @@ pub struct AudioFeed {
     taps: Vec<Placed>,
     /// Samples (per channel) handed out so far.
     written: u64,
+    /// A tap that had delivered sound closed while no other tap is left (see
+    /// [`AudioFeed::needs_tap`]).
+    lost: bool,
 }
 
 impl AudioFeed {
@@ -121,6 +124,7 @@ impl AudioFeed {
 
     /// A tap on the mix (one per game session: Play mode and scene swaps make new ones).
     pub fn add_tap(&mut self, tap: MixTap) {
+        self.lost = false;
         self.taps.push(Placed {
             tap,
             resampler: None,
@@ -135,6 +139,13 @@ impl AudioFeed {
     /// The first frame was captured at capture-time second `at` (later calls change nothing).
     pub fn begin(&mut self, at: f64) {
         self.origin.get_or_insert(at);
+    }
+
+    /// A tap that was feeding sound closed and none is left: the mix dropped it mid-session
+    /// (the sound device changed rate), so a new tap is wanted. Taps that never got any sound
+    /// (no sound device) don't count, or a new one would be asked for every frame.
+    pub fn needs_tap(&self) -> bool {
+        self.lost && self.taps.is_empty()
     }
 
     pub fn started(&self) -> bool {
@@ -232,7 +243,12 @@ impl AudioFeed {
         }
         self.written = written;
         // Taps whose game is gone and that are drained.
-        self.taps.retain(|p| !p.done);
+        let mut lost = false;
+        self.taps.retain(|p| {
+            lost |= p.done && p.tap.start().is_some();
+            !p.done
+        });
+        self.lost |= lost;
     }
 }
 

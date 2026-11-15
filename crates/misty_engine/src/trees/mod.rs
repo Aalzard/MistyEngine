@@ -321,7 +321,7 @@ impl TreeAsset {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+        crate::asset_db::write_asset(path, crate::asset_db::embed_json(&self.to_json()))
             .map_err(|e| e.to_string())
     }
 

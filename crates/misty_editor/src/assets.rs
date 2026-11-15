@@ -378,7 +378,7 @@ impl AssetDatabase {
             })
             .find(|(_, p)| !p.exists())
             .expect("some name is free");
-        std::fs::write(&path, misty_engine::scripting::template(&name))
+        misty_engine::asset_db::write_asset(&path, misty_engine::scripting::template(&name))
             .map_err(|e| e.to_string())?;
         let rel = self.relative(&path);
         self.scripts.insert(rel.clone(), inspect(&path, &rel));
