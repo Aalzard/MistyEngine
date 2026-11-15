@@ -617,7 +617,11 @@ fn animator_assets_changed_on_disk_during_play_reach_the_game() {
     settle(&mut s);
     crate::play::tick(&mut s, 1.0 / 60.0);
     assert_eq!(current(&s), "Rest", "the renamed state keeps playing");
-    assert_eq!(s.scene.transform(body).position.y, 4.0, "the new clip plays");
+    assert_eq!(
+        s.scene.transform(body).position.y,
+        4.0,
+        "the new clip plays"
+    );
     assert!(s.play.in_play_mode());
     crate::play::stop(&mut s);
     let _ = std::fs::remove_dir_all(root);

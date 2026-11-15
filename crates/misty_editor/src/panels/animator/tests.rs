@@ -972,12 +972,20 @@ fn clip_changes_during_play_reach_running_animations_and_animators() {
     hold(s.anim_clips.get_mut("Assets/Hold.anim").unwrap(), 3.0);
     assert!(s.anim_clips.save_dirty().is_empty());
     crate::play::tick(&mut s, 1.0 / 60.0);
-    assert_eq!(y(&s, body), 3.0, "the running Animator samples the new keys");
+    assert_eq!(
+        y(&s, body),
+        3.0,
+        "the running Animator samples the new keys"
+    );
     // Undo Loop Time: the clip goes back, the running scene stays.
     commands::apply(&mut s, Action::Undo);
     assert!(s.anim_clips.save_dirty().is_empty());
     assert!(s.anim_clips.get("Assets/Ramp.anim").unwrap().looping);
-    assert_eq!(s.scene.transform(mover).position.x, 7.0, "scene not rewound");
+    assert_eq!(
+        s.scene.transform(mover).position.x,
+        7.0,
+        "scene not rewound"
+    );
     crate::play::stop(&mut s);
     std::fs::remove_dir_all(root).ok();
 }
