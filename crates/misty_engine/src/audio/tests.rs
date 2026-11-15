@@ -179,8 +179,14 @@ fn play_on_awake_sources_play_when_switched_on() {
     scene.game_object_mut(e).active = true;
     scene.game_object_mut(late).active = true;
     audio.update(&scene);
-    assert!(audio.is_playing(e), "switched on again: plays from the start");
-    assert!(audio.is_playing(late), "first switched on while playing: plays");
+    assert!(
+        audio.is_playing(e),
+        "switched on again: plays from the start"
+    );
+    assert!(
+        audio.is_playing(late),
+        "first switched on while playing: plays"
+    );
     assert_eq!(log.lock().unwrap().played.len(), 3);
 
     // The component disabled and enabled again.
@@ -224,7 +230,14 @@ fn switching_listener_does_not_bend_the_pitch() {
     let (mut audio, log) = Audio::null("root".into());
     audio.play(&scene, e);
     let pitch = |log: &std::sync::Arc<std::sync::Mutex<NullLog>>| {
-        log.lock().unwrap().voices.values().next().unwrap().params.pitch
+        log.lock()
+            .unwrap()
+            .voices
+            .values()
+            .next()
+            .unwrap()
+            .params
+            .pitch
     };
     for _ in 0..3 {
         audio.tick(1.0 / 60.0);

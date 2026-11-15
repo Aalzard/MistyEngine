@@ -160,6 +160,19 @@ pub fn with_instance<R>(
 
 /// Step every active effect by `dt` (Play mode, and the Scene view in Edit mode).
 pub fn update(scene: &mut Scene, dt: f32) {
+    // Effects on objects switched off lose their particles and start again (Play On Awake)
+    // when switched on, like the familiar engine reinitialises an effect on enable.
+    let off: Vec<(Entity, u64)> = scene
+        .world
+        .query::<(Entity, &EffectInstance)>()
+        .iter()
+        .map(|(e, i)| (e, i.id))
+        .filter(|(e, _)| !scene.active_in_hierarchy(*e))
+        .collect();
+    for (e, id) in off {
+        forget_stats(id);
+        let _ = scene.world.remove_one::<EffectInstance>(e);
+    }
     for e in active(scene) {
         step_one(scene, e, dt);
     }

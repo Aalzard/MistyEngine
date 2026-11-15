@@ -219,6 +219,19 @@ pub fn world_colliders(scene: &Scene) -> Vec<Collider> {
 /// Advance every active system by `dt` (Play mode). Systems seen for the first time start if
 /// Play On Awake is set, so objects created while playing behave like scene objects.
 pub fn update(scene: &mut Scene, dt: f32, gravity: Vec3) {
+    // Systems on objects switched off lose their particles and start again (Play On Awake)
+    // when switched on, as the familiar engine stops and clears a system when it is disabled
+    // and plays it again on enable (pooled one-shot effects rely on it).
+    let off: Vec<Entity> = scene
+        .world
+        .query::<(Entity, &ParticleEmitter)>()
+        .iter()
+        .map(|(e, _)| e)
+        .filter(|e| !scene.active_in_hierarchy(*e))
+        .collect();
+    for e in off {
+        let _ = scene.world.remove_one::<ParticleEmitter>(e);
+    }
     let colliders = world_colliders(scene);
     let subs = sub_emitters(scene);
     for (e, world) in active_systems(scene) {

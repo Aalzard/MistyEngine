@@ -139,7 +139,8 @@ impl Tracker {
                                 relative_velocity: Vec2::ZERO,
                             });
                         }
-                    } else if let Some(c) = contact(world, owners, key, Phase::Exit, trigger, before)
+                    } else if let Some(c) =
+                        contact(world, owners, key, Phase::Exit, trigger, before)
                     {
                         out.push(c);
                     }

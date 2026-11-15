@@ -73,7 +73,7 @@ pub fn apply(
     for (e, on) in active {
         let was = scene.game_object(e).active;
         base.active.entry(e).or_insert(was);
-        scene.game_object_mut(e).active = on;
+        scene.set_active(e, on);
     }
     if depth + 1 >= MAX_DEPTH {
         return;
@@ -117,6 +117,6 @@ pub fn finish(scene: &mut Scene, track: &Track, resolver: &dyn Resolver, base: &
             },
             PostPlayback::LeaveAsIs => continue,
         };
-        scene.game_object_mut(e).active = on;
+        scene.set_active(e, on);
     }
 }

@@ -957,16 +957,22 @@ fn an_effect_switched_off_and_on_starts_again() {
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("Sparks.effect");
     EffectGraph::new_default().save(&file).unwrap();
-    let rel = file.to_string_lossy().replace('\', "/");
+    let rel = file.to_string_lossy().replace('\\', "/");
     let mut scene = crate::scene::Scene::new("t");
     let e = scene.spawn("Sparks", None);
     scene.add(e, VisualEffect::with_effect(&rel));
     super::update(&mut scene, 0.5);
     let first = scene.world.get::<&EffectInstance>(e).unwrap().id;
-    assert_eq!(scene.world.get::<&EffectInstance>(e).unwrap().spawn_count, 10);
+    assert_eq!(
+        scene.world.get::<&EffectInstance>(e).unwrap().spawn_count,
+        10
+    );
     super::with_instance(&mut scene, e, |i, _| i.stop());
     super::update(&mut scene, 0.5);
-    assert_eq!(scene.world.get::<&EffectInstance>(e).unwrap().spawn_count, 0);
+    assert_eq!(
+        scene.world.get::<&EffectInstance>(e).unwrap().spawn_count,
+        0
+    );
 
     scene.game_object_mut(e).active = false;
     super::update(&mut scene, 0.5);
@@ -975,7 +981,10 @@ fn an_effect_switched_off_and_on_starts_again() {
     super::update(&mut scene, 0.5);
     let i = scene.world.get::<&EffectInstance>(e).unwrap();
     assert_ne!(i.id, first, "a fresh instance: the old particles are gone");
-    assert!(i.playing && i.spawn_count == 10, "Play On Awake spawns again");
+    assert!(
+        i.playing && i.spawn_count == 10,
+        "Play On Awake spawns again"
+    );
     drop(i);
     let _ = std::fs::remove_dir_all(&dir);
 }

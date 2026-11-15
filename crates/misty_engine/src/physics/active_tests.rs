@@ -163,7 +163,11 @@ fn switching_off_sends_the_exit_for_its_contacts() {
         .unwrap()
         .is_trigger = true;
     let guest = cube(&mut scene, "Guest", Vec3::new(5.0, 1.0, 0.0), true);
-    scene.world.get::<&mut Rigidbody>(guest).unwrap().is_kinematic = true;
+    scene
+        .world
+        .get::<&mut Rigidbody>(guest)
+        .unwrap()
+        .is_kinematic = true;
     let crate_ = cube(&mut scene, "Crate", Vec3::new(0.0, 1.0, 0.0), true);
     let mut physics = Physics::build(&scene, G);
     let first = run(&mut physics, &mut scene, 30);
@@ -197,7 +201,11 @@ fn a_joint_comes_back_with_its_connected_body() {
     use crate::scene::FixedJoint;
     let mut scene = Scene::new("t");
     let hook = cube(&mut scene, "Hook", Vec3::new(0.0, 5.0, 0.0), true);
-    scene.world.get::<&mut Rigidbody>(hook).unwrap().is_kinematic = true;
+    scene
+        .world
+        .get::<&mut Rigidbody>(hook)
+        .unwrap()
+        .is_kinematic = true;
     let lamp = cube(&mut scene, "Lamp", Vec3::new(0.0, 3.0, 0.0), true);
     scene.add(
         lamp,
@@ -213,7 +221,10 @@ fn a_joint_comes_back_with_its_connected_body() {
 
     scene.game_object_mut(hook).active = false;
     run(&mut physics, &mut scene, 1);
-    assert!(!physics.has_joint(lamp, "Fixed Joint"), "no body to hold on to");
+    assert!(
+        !physics.has_joint(lamp, "Fixed Joint"),
+        "no body to hold on to"
+    );
     scene.game_object_mut(hook).active = true;
     run(&mut physics, &mut scene, 60);
     assert!(physics.has_joint(lamp, "Fixed Joint"), "the joint is back");
@@ -238,7 +249,10 @@ fn a_joint_comes_back_with_its_connected_body() {
     scene.set_transform(hook, t);
     run(&mut physics, &mut scene, 60);
     let x = scene.world_position(lamp).x;
-    assert!(x > 1.5, "the lamp follows the hook it is joined to, x = {x}");
+    assert!(
+        x > 1.5,
+        "the lamp follows the hook it is joined to, x = {x}"
+    );
 }
 
 /// Writing the Active flag it already has (an animated Active property or a Timeline
@@ -265,28 +279,32 @@ fn writing_the_same_active_flag_is_no_activity() {
     assert!(scene.game_object(e).active);
 }
 
+/// What `Scene::activity_scope` hands physics: the switched object and what is under it, or
+/// everything once too many changes went by; physics follows both ways.
 #[test]
-#[ignore]
-fn zz_bench_toggle_one_of_many() {
+fn the_activity_scope_covers_the_switched_objects() {
     let mut scene = Scene::new("t");
     cube(&mut scene, "Floor", Vec3::ZERO, false);
-    for i in 0..10_000 {
-        let p = scene.spawn("P", None);
-        let c = cube(&mut scene, "C", Vec3::new((i % 100) as f32 * 3.0, 2.0 + (i / 100) as f32 * 3.0, 500.0), true);
-        scene.set_parent(c, Some(p), None, true);
+    let parent = scene.spawn("Parent", None);
+    let child = cube(&mut scene, "Child", Vec3::new(0.0, 3.0, 0.0), true);
+    scene.set_parent(child, Some(parent), None, true);
+    let other = cube(&mut scene, "Other", Vec3::new(5.0, 3.0, 0.0), true);
+    let seen = scene.activity();
+    scene.game_object_mut(parent).active = false;
+    let scope = scene.activity_scope(seen).unwrap();
+    assert!(scope.contains(&parent) && scope.contains(&child));
+    assert!(!scope.contains(&other), "{scope:?}");
+    assert!(scene.activity_scope(seen.wrapping_sub(1_000_000)).is_none());
+
+    let mut physics = Physics::build(&scene, G);
+    run(&mut physics, &mut scene, 2);
+    assert!(!physics.has_body(child) && physics.has_body(other));
+    // Thousands of changes between two steps: physics looks at every object.
+    for _ in 0..5000 {
+        scene.game_object_mut(other).name = "Other".into();
     }
-    let blink = cube(&mut scene, "Blink", Vec3::new(-50.0, 0.0, 0.0), false);
-    let mut physics = Physics::build(&scene, Vec3::ZERO);
-    run(&mut physics, &mut scene, 5);
-    let t = std::time::Instant::now();
-    for i in 0..100 {
-        scene.game_object_mut(blink).active = i % 2 == 0;
-        physics.sync_active(&scene);
-    }
-    eprintln!("sync_active toggling: {:?} per frame", t.elapsed() / 100);
-    let t = std::time::Instant::now();
-    for _ in 0..100 {
-        physics.step(&scene);
-    }
-    eprintln!("step (sleeping world): {:?}", t.elapsed() / 100);
+    scene.game_object_mut(parent).active = true;
+    scene.game_object_mut(other).active = false;
+    run(&mut physics, &mut scene, 2);
+    assert!(physics.has_body(child) && !physics.has_body(other));
 }

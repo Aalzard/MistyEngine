@@ -1052,7 +1052,11 @@ fn a_system_switched_off_and_on_starts_again() {
     // Switched off mid-life: the particles go with it, the system starts over when back.
     scene.game_object_mut(e).active = false;
     update(&mut scene, DT, DEFAULT_GRAVITY);
-    assert_eq!(count(&scene), 0, "an object switched off keeps no particles");
+    assert_eq!(
+        count(&scene),
+        0,
+        "an object switched off keeps no particles"
+    );
     scene.game_object_mut(e).active = true;
     update(&mut scene, DT, DEFAULT_GRAVITY);
     assert_eq!(count(&scene), 5);

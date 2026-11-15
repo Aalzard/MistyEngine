@@ -653,16 +653,28 @@ impl Physics {
     /// while playing: a switched-off floor held boxes up and its triggers kept firing, and a
     /// switched-on Rigidbody hung in the air.
     pub fn sync_active(&mut self, scene: &Scene) {
-        if self.activity_seen == Some(scene.activity()) {
+        let now = scene.activity();
+        let seen = self.activity_seen.replace(now);
+        if seen == Some(now) {
             return;
         }
-        self.activity_seen = Some(scene.activity());
-        let off: Vec<Entity> = self
-            .owners
-            .iter()
-            .copied()
-            .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
-            .collect();
+        // Only under the objects changed since the last look (one object switched on and off
+        // every frame walked every body of a big scene); everything when that isn't known.
+        let scope = seen.and_then(|s| scene.activity_scope(s));
+        let off: Vec<Entity> = match &scope {
+            Some(near) => near
+                .iter()
+                .copied()
+                .filter(|e| self.owners.contains(e))
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+            None => self
+                .owners
+                .iter()
+                .copied()
+                .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+                .collect(),
+        };
         for e in off {
             // Already gone with a switched-off object above it.
             if !self.owners.contains(&e) {
@@ -709,21 +721,43 @@ impl Physics {
             return;
         }
         let mut on = Vec::new();
-        for &e in &self.dormant {
-            if !self.dormant_set.contains(&e) {
-                continue;
+        match &scope {
+            Some(near) => {
+                for &e in near {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) {
+                        on.push(e);
+                    }
+                }
+                // A fixed order (bodies are added in it).
+                on.sort_unstable_by_key(|e| e.to_bits());
             }
-            if !scene.contains(e) {
-                self.dormant_set.remove(&e);
-            } else if scene.active_in_hierarchy(e) {
-                on.push(e);
+            None => {
+                for &e in &self.dormant {
+                    if !self.dormant_set.contains(&e) {
+                        continue;
+                    }
+                    if !scene.contains(e) {
+                        self.dormant_set.remove(&e);
+                    } else if scene.active_in_hierarchy(e) && self.dormant_set.remove(&e) {
+                        // (Listed once even if the list holds it twice.)
+                        on.push(e);
+                    }
+                }
             }
         }
         for e in &on {
             self.dormant_set.remove(e);
         }
-        let set = &self.dormant_set;
-        self.dormant.retain(|e| set.contains(e));
+        // The list keeps objects that left the set until it is mostly stale.
+        if self.dormant.len() > 2 * self.dormant_set.len() + 64 {
+            let set = &self.dormant_set;
+            self.dormant.retain(|e| set.contains(e));
+        }
         if !on.is_empty() {
             self.add_objects(scene, &on);
             self.rejoin(scene, &on);

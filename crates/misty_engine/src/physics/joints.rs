@@ -425,25 +425,24 @@ impl Physics {
         let on: HashSet<Entity> = on.iter().copied().collect();
         let mut again: Vec<Entity> = Vec::new();
         let mut look = |e: Entity, target: Option<Entity>| {
-            if target.is_some_and(|t| on.contains(&t)) && !on.contains(&e) && !again.contains(&e)
-            {
+            if target.is_some_and(|t| on.contains(&t)) && !on.contains(&e) && !again.contains(&e) {
                 again.push(e);
             }
         };
         let w = &scene.world;
-        for (e, j) in w.query::<&FixedJoint>().iter() {
+        for (e, j) in w.query::<(Entity, &FixedJoint)>().iter() {
             look(e, j.connected_body);
         }
-        for (e, j) in w.query::<&HingeJoint>().iter() {
+        for (e, j) in w.query::<(Entity, &HingeJoint)>().iter() {
             look(e, j.connected_body);
         }
-        for (e, j) in w.query::<&SpringJoint>().iter() {
+        for (e, j) in w.query::<(Entity, &SpringJoint)>().iter() {
             look(e, j.connected_body);
         }
-        for (e, j) in w.query::<&ConfigurableJoint>().iter() {
+        for (e, j) in w.query::<(Entity, &ConfigurableJoint)>().iter() {
             look(e, j.connected_body);
         }
-        for (e, j) in w.query::<&CharacterJoint>().iter() {
+        for (e, j) in w.query::<(Entity, &CharacterJoint)>().iter() {
             look(e, j.connected_body);
         }
         again.retain(|e| self.bodies.contains_key(e));
