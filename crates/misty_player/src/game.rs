@@ -519,7 +519,11 @@ return Q
         // Nothing runs after it.
         game.frame(1.0 / 60.0, Input::default());
         game.shutdown();
-        assert!(game.take_logs().iter().all(|(_, t)| !t.starts_with("Quitter:")));
+        assert!(
+            game.take_logs()
+                .iter()
+                .all(|(_, t)| !t.starts_with("Quitter:"))
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

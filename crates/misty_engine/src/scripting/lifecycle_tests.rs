@@ -645,15 +645,20 @@ return W
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Each OnEnable switching on the next object down a 40-deep hierarchy in one frame is not an
-/// endless loop: every object wakes, with no Console error (the 32-round guard tripped and
-/// left the deepest ones without OnEnable or Start).
+/// Each OnEnable switching on the next object of a 40-long chain in one frame is not an
+/// endless loop: every object wakes, with no Console error. The guard counted rounds (32),
+/// and a link to an object the round had already gone by (earlier in the scene) takes one
+/// round each, so the last links got no OnEnable or Start and the Console showed an error.
+/// Objects down one hierarchy wake in the same round and pass either way.
 #[test]
-fn a_deep_chain_of_onenable_switches_is_not_an_endless_loop() {
+fn a_long_chain_of_onenable_switches_is_not_an_endless_loop() {
     let chain = r#"
 local C = {}
 function C:OnEnable()
-    Debug.Log("Chain:" .. self.gameObject.name)
+    local n = tonumber(string.sub(self.gameObject.name, 2))
+    Debug.Log("Chain:" .. n)
+    local nxt = GameObject.Find("L" .. (n + 1))
+    if nxt ~= nil then nxt:SetActive(true) end
     if self.transform.childCount > 0 then
         self.transform:GetChild(0).gameObject:SetActive(true)
     end
@@ -664,16 +669,25 @@ return C
     let root = project(&[("Chain", chain), ("Ctl", &ctl)]);
     let mut scene = Scene::new("t");
     scripted(&mut scene, "Ctl", "Ctl", None);
-    let mut parent = None;
-    for k in 0..40 {
-        let e = scripted(&mut scene, &format!("L{k}"), "Chain", parent);
+    // Later links come first in the scene: each link is switched on after the round passed it.
+    for k in (0..40).rev() {
+        let e = scripted(&mut scene, &format!("L{k}"), "Chain", None);
+        scene.game_object_mut(e).active = false;
+    }
+    // And a 40-deep hierarchy under the last link.
+    let mut parent = scene.find_by_name("L39");
+    for k in 100..140 {
+        let e = scripted(&mut scene, &format!("D{k}"), "Chain", parent);
         scene.game_object_mut(e).active = false;
         parent = Some(e);
     }
     let mut g = Game::start(scene, root.clone());
     g.frames(3);
     let woke = g.lines("Chain:");
-    let want: Vec<String> = (0..40).map(|k| format!("Chain:L{k}")).collect();
+    let want: Vec<String> = (0..40)
+        .chain(100..140)
+        .map(|k| format!("Chain:{k}"))
+        .collect();
     assert_eq!(woke, want);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -783,33 +797,5 @@ return H
     g.host.shutdown(&mut g.scene);
     g.logs.extend(g.host.take_logs());
     assert_eq!(g.lines("H:"), ["H:Awake", "H:hit 1", "H:OnDestroy"]);
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-// TEMP-PERF
-#[test]
-#[ignore]
-fn temp_perf_5000() {
-    let spin = r#"
-local R = { speed = 1 }
-function R:Update() self.transform:Rotate(0, self.speed, 0) end
-return R
-"#;
-    let root = project(&[("Spin", spin)]);
-    let mut scene = Scene::new("t");
-    for k in 0..5000 {
-        let p = scene.spawn(&format!("G{}", k / 25), None);
-        scripted(&mut scene, &format!("S{k}"), if k % 2 == 0 { "Spin" } else { "Life" }, Some(p));
-    }
-    let t = std::time::Instant::now();
-    let mut g = Game::start(scene, root.clone());
-    eprintln!("PERF start {:?}", t.elapsed());
-    g.frames(5);
-    let t = std::time::Instant::now();
-    g.frames(100);
-    eprintln!("PERF frame {:?}", t.elapsed() / 100);
-    let t = std::time::Instant::now();
-    g.host.shutdown(&mut g.scene);
-    eprintln!("PERF shutdown {:?}", t.elapsed());
     let _ = std::fs::remove_dir_all(&root);
 }

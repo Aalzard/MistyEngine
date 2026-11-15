@@ -236,7 +236,7 @@ impl Session {
             assert!(kind == LogKind::Info, "unloading: {kind:?}: {text}");
         }
         let (audio, _) = Audio::null(self.root.clone());
-        self.rt =Runtime::start_with_audio(&mut scene, self.root.clone(), &self.settings, audio);
+        self.rt = Runtime::start_with_audio(&mut scene, self.root.clone(), &self.settings, audio);
         self.scene = scene;
         self.time = Time::new(&self.settings.time);
         rel
