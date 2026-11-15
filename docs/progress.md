@@ -5893,3 +5893,13 @@ Action, same-frame toggle replay).
   within noise of round 80's code. Nothing switching costs one integer compare per look.
 - The node-only 2D game sample now unloads its stage through `Runtime::shutdown` (as the editor
   and player do) and still plays both stages with no errors.
+
+### Tests and checks
+`scripting::lifecycle_tests`: an object switched on by a later Awake at Play start wakes; a
+40-link OnEnable chain (plus a 40-deep hierarchy) wakes with no error; a disabled script wakes
+before it hears collisions; Stop Actions wait for sub emitters and their parents. Player:
+quitting calls OnDisable and OnDestroy. Each was run against the code without its fix and
+failed. `cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Two full `cargo test --workspace --release --no-fail-fast` runs, both green: editor
+1031 passed, engine 1720, player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2784;
+5 new). No render code changed, so golden shots were not rerun.
