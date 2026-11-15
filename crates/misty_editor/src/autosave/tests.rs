@@ -975,6 +975,45 @@ fn an_unsaved_behaviour_tree_is_backed_up_and_restored() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Round 73: a scene backup carried the time it was written, not the time its copy was made.
+/// Saved while the worker was still writing the snapshot, the file then looked older than the
+/// backup of the earlier contents, which a crash then offered back over the newer save.
+#[test]
+fn a_snapshot_taken_before_a_save_is_older_than_the_save() {
+    let root = project("snap_before_save");
+    let rel = "Assets/Scenes/Level.scene";
+    let mut a = state(&root);
+    begin_session(&mut a, DEAD_PID_A, Duration::from_secs(600));
+    dirty_scene(&mut a, rel, "Saved", "Unsaved");
+    let todo = docs::dirty_docs(&a);
+    assert_eq!(todo.len(), 1);
+    // The autosave copies the scene and hands it to its worker...
+    let docs::Started::Worker(rx) = docs::start_snapshot(&mut a, &todo[0]) else {
+        panic!("scenes are snapshotted on a worker");
+    };
+    std::thread::sleep(Duration::from_millis(30));
+    // ...the user saves (with one more change) before the snapshot reaches the saver...
+    a.scene.spawn("Saved Later", None);
+    assert!(crate::scene_files::write(&mut a, 0, rel));
+    std::thread::sleep(Duration::from_millis(30));
+    let snap = rx.recv().unwrap();
+    assert!(write_backup(&mut a, &snap, false).is_some());
+    misty_engine::asset_db::saver::flush();
+    drop(a); // the editor crashes
+
+    // The file is newer than what the backup holds: nothing to recover.
+    let scan = recovery::scan(&root, None);
+    assert!(
+        scan.leftovers.is_empty(),
+        "the backup older than the save is offered back: {:?}",
+        scan.leftovers
+            .iter()
+            .map(|l| (l.backup_ms, l.file_ms))
+            .collect::<Vec<_>>()
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Main-thread cost of an autosave of a big scene, frame by frame (round 72's measure; run
 /// with `MISTY_BENCH_PROJECT=<a copy of SampleProject>` and `--ignored --nocapture`).
 #[test]

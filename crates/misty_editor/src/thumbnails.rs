@@ -13,8 +13,6 @@ const KEEP: Duration = Duration::from_secs(120);
 /// Decoding time the previews may take per frame (about one frame at 60 Hz) before the rest
 /// wait for the next frames: opening a folder of 4K images decoded them all in one frame.
 const DECODE_BUDGET: Duration = Duration::from_millis(12);
-/// What counts as one frame for the budget.
-const FRAME: Duration = Duration::from_millis(16);
 
 struct Thumb {
     modified: Option<SystemTime>,
@@ -28,8 +26,10 @@ pub struct Thumbnails {
     cache: HashMap<PathBuf, Thumb>,
     /// When the stale previews were last looked for.
     swept: Option<Instant>,
-    /// Start of the current budget window and the decoding time spent in it.
-    window: Option<(Instant, Duration)>,
+    /// The frame (egui pass) of the current budget and the decoding time spent in it. Per
+    /// frame, not per 16 ms of wall time: a decode that ran over the budget held every frame of
+    /// the next 16 ms back, each asking for another (round 73).
+    window: Option<(u64, Duration)>,
     /// Material thumbnails and the Inspector's preview sphere.
     pub materials: crate::material_preview::MaterialPreviews,
     /// The Terrain Inspector's palette previews (grass tufts, trees, detail meshes, prefabs).
@@ -51,13 +51,14 @@ impl Thumbnails {
             }
         }
         // Over this frame's decoding budget: next frame (the first one always decodes).
-        let (start, spent) = match self.window {
-            Some((start, spent)) if now.duration_since(start) < FRAME => (start, spent),
-            _ => (now, Duration::ZERO),
+        let pass = ctx.cumulative_pass_nr();
+        let spent = match self.window {
+            Some((p, spent)) if p == pass => spent,
+            _ => Duration::ZERO,
         };
         if spent >= DECODE_BUDGET {
             ctx.request_repaint();
-            self.window = Some((start, spent));
+            self.window = Some((pass, spent));
             return self.cache.get(path).and_then(|t| t.texture.clone());
         }
         let tex = decode(path).map(|img| {
@@ -67,7 +68,7 @@ impl Thumbnails {
                 egui::TextureOptions::LINEAR,
             )
         });
-        self.window = Some((start, spent + now.elapsed()));
+        self.window = Some((pass, spent + now.elapsed()));
         self.cache.insert(
             path.to_path_buf(),
             Thumb {
@@ -77,6 +78,12 @@ impl Thumbnails {
             },
         );
         tex
+    }
+
+    /// Use up this frame's decoding budget (tests).
+    #[cfg(test)]
+    fn spend_budget(&mut self, ctx: &egui::Context) {
+        self.window = Some((ctx.cumulative_pass_nr(), DECODE_BUDGET));
     }
 
     /// Drop the previews nobody asked for in [`KEEP`] (looked for every few seconds).
@@ -151,6 +158,36 @@ mod tests {
         assert!(t.get(&ctx, &paths[2]).is_some());
         assert_eq!(t.cache.len(), 1);
         assert!(t.cache.contains_key(&paths[2]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 73: the decoding budget was "per 16 ms of wall time", not per frame. A decode that
+    /// ran over it (a loaded machine) held every frame of the next 16 ms back, each asking for
+    /// another frame: the material picker test ran out of the harness's frames that way. The
+    /// next frame decodes, however soon it comes.
+    #[test]
+    fn a_frame_over_the_decoding_budget_holds_back_only_itself() {
+        let dir = std::env::temp_dir().join(format!("misty_tex_budget_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("T.png");
+        misty_engine::image::RgbaImage::from_pixel(
+            8,
+            8,
+            misty_engine::image::Rgba([20, 100, 50, 255]),
+        )
+        .save(&p)
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut t = Thumbnails::default();
+        // This frame's budget is used up: the preview waits for the next frame.
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            t.spend_budget(ui.ctx());
+            assert!(t.get(ui.ctx(), &p).is_none(), "over the budget: next frame");
+        });
+        // The next frame decodes it.
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            assert!(t.get(ui.ctx(), &p).is_some(), "decoded in the next frame");
+        });
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -131,6 +131,9 @@ impl AssetDatabase {
     /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
         misty_engine::profile_scope!("Assets.Refresh");
+        // Models, textures and scripts are read from this project, whatever the global root
+        // says meanwhile (other work moves it: tests opening their own projects).
+        let _root = misty_engine::assets::scoped_root(&self.root);
         // The files are read back below: saves still on their way go first.
         misty_engine::asset_db::saver::flush();
         // Keep the GUID map in step: new assets get meta files, copies get new GUIDs. Only this
@@ -640,6 +643,10 @@ fn inspect_all(list: Vec<(PathBuf, String)>) -> Vec<(String, ScriptMeta)> {
 }
 
 fn inspect(path: &Path, rel: &str) -> ScriptMeta {
+    // The modification time of what is read, taken before reading: a save in between leaves an
+    // older time, so the next look at changed scripts reads the file again (taken after, the
+    // save looked already inspected and its fields never showed).
+    let modified = mtime(path);
     if misty_engine::visual_script::is_graph_path(rel) {
         let fields = misty_engine::visual_script::ScriptGraph::load(path)
             .map(|g| misty_engine::visual_script::inspect_fields(&g))
@@ -647,10 +654,17 @@ fn inspect(path: &Path, rel: &str) -> ScriptMeta {
         return ScriptMeta {
             fields,
             attributes: Default::default(),
-            modified: mtime(path),
+            modified,
         };
     }
-    let info = std::fs::read_to_string(path)
+    let src = std::fs::read_to_string(path);
+    #[cfg(test)]
+    tests::AFTER_READ.with(|hook| {
+        if let Some(f) = hook.borrow_mut().take() {
+            f(path);
+        }
+    });
+    let info = src
         .map_err(|e| e.to_string())
         .and_then(|src| misty_engine::scripting::inspect_script(&src, rel));
     let (fields, attributes) = match info {
@@ -660,13 +674,76 @@ fn inspect(path: &Path, rel: &str) -> ScriptMeta {
     ScriptMeta {
         fields,
         attributes,
-        modified: mtime(path),
+        modified,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    type Hook = Box<dyn FnOnce(&Path)>;
+
+    thread_local! {
+        /// Run once right after `inspect` has read a script's text (this thread's next one).
+        pub(super) static AFTER_READ: std::cell::RefCell<Option<Hook>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    fn field_names(db: &AssetDatabase, rel: &str) -> Vec<String> {
+        db.scripts[rel]
+            .fields
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect()
+    }
+
+    /// Round 73: a script saved while it was being inspected (opening the project, a refresh)
+    /// kept the fields of the text read before the save: its modification time was taken after
+    /// the inspection, so the newer save looked already inspected and the Properties view
+    /// showed the old fields until the script changed again.
+    #[test]
+    fn a_script_saved_while_it_is_inspected_is_read_again() {
+        let root = std::env::temp_dir().join(format!("misty_inspect_race_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        let rel = "Assets/Scripts/Mover.lua";
+        let file = root.join(rel);
+        std::fs::write(
+            &file,
+            "local M = { speed = 1 }
+return M
+",
+        )
+        .unwrap();
+        // Saved (with a new field) right after the editor read the old text.
+        AFTER_READ.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(|path: &Path| {
+                std::fs::write(
+                    path,
+                    "local M = { speed = 1, jump = 2 }
+return M
+",
+                )
+                .unwrap();
+                let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+                let f = std::fs::File::options().write(true).open(path).unwrap();
+                f.set_modified(later).unwrap();
+            }));
+        });
+        let mut db = AssetDatabase::open(&root);
+        assert!(
+            AFTER_READ.with(|h| h.borrow().is_none()),
+            "the save happened"
+        );
+        // The next look at changed scripts reads the saved text.
+        db.last_poll = None;
+        db.poll_scripts();
+        assert_eq!(field_names(&db, rel), ["speed", "jump"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn create_find_and_update_materials() {
@@ -704,23 +781,18 @@ mod tests {
             std::fs::create_dir_all(p.join("Assets/Models")).unwrap();
         }
         let mut db = AssetDatabase::open(&own);
-        // Another project becomes the global root (a test running alongside), then a model
-        // appears in this one.
-        misty_engine::assets::set_project_root(&other);
+        // Another project becomes the root project paths resolve against here (as a test
+        // running alongside moves the global one; scoped to this thread, so this test moves
+        // nothing under the others), then a model appears in this one.
+        let _other = misty_engine::assets::scoped_root(&other);
         let crate_fbx = crate::test_sample::repo_sample().join("Assets/Models/Crate.fbx");
         for p in [&own, &other] {
             std::fs::copy(&crate_fbx, p.join("Assets/Models/Crate.fbx")).unwrap();
         }
-        // (Other tests move the global root too: the model itself may not be found under the
-        // root they set; try again until it is read. Nothing must ever land in `other`.)
-        for _ in 0..50 {
-            misty_engine::assets::set_project_root(&other);
-            db.refresh();
-            if own.join("Assets/Models/Crate_Wood.mat").is_file() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        // Read from this project whatever the root says (round 73: through the global root, a
+        // model missing from the project another test had just opened could come back as
+        // "not found" from the model cache). Nothing must ever land in `other`.
+        db.refresh();
         assert!(
             own.join("Assets/Models/Crate_Wood.mat").is_file(),
             "{:?}",
@@ -735,6 +807,48 @@ mod tests {
         assert!(
             stray.is_empty(),
             "written into the other project: {stray:?}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Round 73: the model cache kept models by their "Assets/…" path alone, whatever the
+    /// project. A model looked up in a project that doesn't have it (a game session, another
+    /// test's project) left "not found" in the cache, which every project with a model at that
+    /// path then got back: its materials were never extracted and its objects had no mesh.
+    /// (The flaky `models_extract_into_their_own_project_whatever_the_global_root`.)
+    #[test]
+    fn a_model_missing_from_another_project_is_still_imported_in_this_one() {
+        const REL: &str = "Assets/Models/Crate.fbx";
+        let base = std::env::temp_dir().join(format!("misty_model_cache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (own, other) = (base.join("Own"), base.join("Other"));
+        for p in [&own, &other] {
+            std::fs::create_dir_all(p.join("Assets/Models")).unwrap();
+        }
+        let crate_fbx = crate::test_sample::repo_sample().join(REL);
+        std::fs::copy(&crate_fbx, own.join(REL)).unwrap();
+        {
+            // The other project has no such model.
+            let _other = misty_engine::assets::scoped_root(&other);
+            assert!(models::model(REL).is_err());
+        }
+        // Opened with the other project still current on this thread (a game session's).
+        let _other = misty_engine::assets::scoped_root(&other);
+        let db = AssetDatabase::open(&own);
+        assert!(
+            matches!(db.models.get(REL), Some(Ok(_))),
+            "{:?} {:?}",
+            db.models.get(REL),
+            db.messages
+        );
+        assert!(own.join("Assets/Models/Crate_Wood.mat").is_file());
+        {
+            let _own = misty_engine::assets::scoped_root(&own);
+            assert!(models::model(REL).is_ok());
+        }
+        assert!(
+            models::model(REL).is_err(),
+            "still not in the other project"
         );
         let _ = std::fs::remove_dir_all(&base);
     }

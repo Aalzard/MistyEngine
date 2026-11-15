@@ -83,6 +83,7 @@ fn store_parts(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool, parts:
     let replaced = lib.entries.insert(
         path.clone(),
         Entry {
+            rel: path.clone(),
             modified: None,
             model: Ok(Arc::new(model)),
         },
@@ -157,6 +158,7 @@ pub fn register_new(name: &str, data: MeshData) -> String {
     library().entries.insert(
         path.clone(),
         Entry {
+            rel: path.clone(),
             modified: None,
             model: Ok(Arc::new(model)),
         },

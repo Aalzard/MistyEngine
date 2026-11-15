@@ -85,18 +85,28 @@ mod tests {
     /// it. Lumo's Leap's play test lost its ground's tile collider that way ("the player stands
     /// on the ground: [1.5, -3.2, 0]"). Tests take `assets::scoped_root` (this thread only,
     /// handed on to the background jobs it queues); game sessions scope their own root. Only
-    /// the editor's project opening (`AssetDatabase::open`), the race tests next to it and the
-    /// ignored generators set it.
+    /// the editor's project opening (`AssetDatabase::open`) and the ignored generators set it.
     #[test]
     fn tests_never_move_the_global_project_root() {
         let mut bad = Vec::new();
         for f in sources() {
-            if f.ends_with("test_sample.rs") || f.ends_with("assets.rs") {
+            if f.ends_with("test_sample.rs") {
                 continue;
             }
             let text = std::fs::read_to_string(&f).unwrap();
             let lines: Vec<&str> = text.lines().collect();
-            for (i, l) in lines.iter().enumerate() {
+            // `assets.rs` sets it when the editor opens a project (`AssetDatabase::open`); its
+            // tests are scanned like any other (round 73: the model-extraction test there set
+            // it in a loop, moving it under every test running alongside).
+            let tests_from = if f.ends_with("assets.rs") {
+                lines
+                    .iter()
+                    .position(|l| l.trim() == "#[cfg(test)]")
+                    .unwrap_or(lines.len())
+            } else {
+                0
+            };
+            for (i, l) in lines.iter().enumerate().skip(tests_from) {
                 if !l.contains("set_project_root(") || l.trim_start().starts_with("//") {
                     continue;
                 }
