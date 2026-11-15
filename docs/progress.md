@@ -5340,3 +5340,15 @@ another job was building (8.5 / 8.9 / 14.1 ms), rounds 2–3 match base.
   5000 draws (`Render.Culling` ~3 ms) and the Scene Tree's 0.6 ms; the renderer was not touched.
 - Opening a project still imports every model in `Assets/` (~85 ms) and scans the GUID
   database twice (once for the database, once in the first asset refresh).
+
+### Checks
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. Full `cargo test --workspace --release --no-fail-fast`: engine 1668 passed, 1 failed
+(the new `an_empty_meta_file_gets_a_guid`, whose expectation forgot the folder's own new meta
+file: fixed, `asset_db` tests 18/18 after), editor 1017 passed, 1 failed
+(`models_extract_into_their_own_project_whatever_the_global_root`: the global model cache and
+project root shared with another test running alongside; passes alone 3/3), player 11, recorder
+18, MCP end-to-end 1, dedicated server 1. Two more runs of the editor suite: one failed
+`the_picker_searches_assigns_and_clears` (a thumbnail repaint exceeding the harness's step limit
+under load), the next passed in full (1018 passed). The renderer is untouched, so golden shots
+were not rerun.
