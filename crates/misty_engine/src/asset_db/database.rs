@@ -78,38 +78,48 @@ impl GuidDatabase {
         // The meta files are read (and missing ones written, below) on several threads: one
         // at a time, a first open of a project of 850 files spent most of its scan waiting
         // for the disk (each new meta file is flushed to it).
-        let mut found: Vec<(String, Option<Guid>, Option<SystemTime>)> = assets
+        // (path, GUID, GUID of a Unity meta file to take over, meta file time).
+        type Found = (String, Option<Guid>, Option<Guid>, Option<SystemTime>);
+        let mut found: Vec<Found> = assets
             .par_iter()
             .map(|asset| {
                 let m = meta::meta_path(asset);
-                let guid = std::fs::read_to_string(&m)
-                    .ok()
-                    .and_then(|t| meta::guid_in(&t));
+                let text = std::fs::read_to_string(&m).ok();
+                let guid = text.as_deref().and_then(meta::guid_in);
+                let unity = text.as_deref().and_then(meta::unity_guid);
                 // Copies keep the modification time (Explorer, `fs::copy`) but get a new
                 // creation time.
                 let time = std::fs::metadata(&m)
                     .and_then(|x| x.created().or_else(|_| x.modified()))
                     .ok();
-                (rel(root, asset), guid, time)
+                (rel(root, asset), guid, unity, time)
             })
             .collect();
         // Oldest meta first, then the shorter path ("Red" before "Red 1"), so the original of a
         // copied pair keeps its GUID.
-        found.sort_by(|a, b| (a.2, a.0.len(), &a.0).cmp(&(b.2, b.0.len(), &b.0)));
+        found.sort_by(|a, b| (a.3, a.0.len(), &a.0).cmp(&(b.3, b.0.len(), &b.0)));
         let mut db = Self::new(root);
         // (path, new GUID, it replaces a taken one) for the meta files to write.
         let mut new: Vec<(String, Guid, bool)> = Vec::new();
-        for (rel, guid, _) in found {
+        // Assets without a GUID of their own: given one once every Misty meta file's GUID is
+        // known.
+        let mut without: Vec<(String, Option<Guid>, bool)> = Vec::new();
+        for (rel, guid, unity, _) in found {
             let taken = guid.is_some_and(|g| db.by_guid.contains_key(&g));
             match guid {
                 Some(g) if !taken => db.insert(&rel, g),
-                _ => {
-                    let g = Guid::new();
-                    // Reserved now, so a later copy of the same GUID is seen as taken too.
-                    db.insert(&rel, g);
-                    new.push((rel, g, taken));
-                }
+                _ => without.push((rel, unity, taken)),
             }
+        }
+        for (rel, unity, taken) in without {
+            // A Unity meta file's GUID is kept (copying the pack in again changes no GUID),
+            // unless another asset has it.
+            let g = unity
+                .filter(|g| !db.by_guid.contains_key(g))
+                .unwrap_or_else(Guid::new);
+            // Reserved now, so a later copy of the same GUID is seen as taken too.
+            db.insert(&rel, g);
+            new.push((rel, g, taken));
         }
         let written: Vec<Result<(), String>> = new
             .par_iter()

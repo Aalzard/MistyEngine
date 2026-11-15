@@ -4363,6 +4363,8 @@ mod noon_valley_tests;
 #[cfg(test)]
 mod project_shots_tests;
 #[cfg(test)]
+mod tiff_tests;
+#[cfg(test)]
 mod rocks_gpu_tests;
 #[cfg(test)]
 mod shadow_stutter_tests;

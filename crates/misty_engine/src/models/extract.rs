@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{Model, TextureSource};
+use super::{ExtraMap, Model, TextureSource};
 use crate::assets;
 
 /// File-name-safe version of a name.
@@ -140,18 +140,24 @@ fn extract_materials_at(root: Root, model_rel: &str, model: &Model) -> Result<Ve
             let rel = match source {
                 // Maps the material reads differently (gloss, translucency): a converted
                 // copy next to the material.
+                // A map that can't be read is left out (the material is still extracted):
+                // without its gloss map the material keeps the usual smoothness.
                 source if map.converted() => {
                     let png = dir.join(format!("{stem}_{}.png", map.label()));
                     if !png.exists() {
-                        let bytes = match source {
-                            TextureSource::File(p) => {
-                                crate::vfs::read(p).map_err(|e| format!("{}: {e}", p.display()))?
-                            }
-                            TextureSource::Embedded(bytes) => bytes.clone(),
+                        let read = match source {
+                            TextureSource::File(p) => crate::vfs::read(p).ok(),
+                            TextureSource::Embedded(bytes) => Some(bytes.clone()),
                         };
-                        let img = crate::render::texture::decode(&bytes)
-                            .map_err(|e| format!("{}: {e}", png.display()))?
-                            .into_rgba8();
+                        let Some(img) = read
+                            .and_then(|b| crate::render::texture::decode(&b).ok())
+                            .map(|i| i.into_rgba8())
+                        else {
+                            if matches!(map, ExtraMap::Gloss | ExtraMap::Roughness) {
+                                material.smoothness = crate::assets::Material::default().smoothness;
+                            }
+                            continue;
+                        };
                         // (The 2K the material would be drawn at.)
                         let img = crate::render::texture::fit(img, 2048);
                         map.convert(&img)

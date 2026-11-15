@@ -233,29 +233,30 @@ pub fn spawn_with_clips(
     root
 }
 
-/// The LOD level of each node of a model whose file brings its own levels: static top nodes
-/// named "…LOD<n>" (their children with them), at least two different levels, none above the
-/// LOD Group's limit. Empty when the model has no such levels.
+/// The LOD level of each node of a model whose file brings its own levels: static nodes named
+/// "…LOD<n>" (their children with them; top nodes or under a group node), at least two
+/// different levels, no more than the LOD Group holds. The levels are counted from 0 in the
+/// order of their numbers (LOD0 and LOD2 alone are levels 0 and 1; LOD1..LOD3 are 0..2), so no
+/// level of the group is empty. Empty when the model has no such levels.
 fn file_lod_levels(model: &models::Model) -> Vec<Option<usize>> {
-    let mut out: Vec<Option<usize>> = Vec::with_capacity(model.nodes.len());
+    let mut out: Vec<Option<u32>> = Vec::with_capacity(model.nodes.len());
     for (n, node) in model.nodes.iter().enumerate() {
-        let level = match node.parent {
-            Some(p) => out.get(p).copied().flatten(),
-            None => misty_engine::trees::from_model::lod_level(&node.name).map(|l| l as usize),
-        };
+        let inherited = node.parent.and_then(|p| out.get(p).copied().flatten());
+        let level = inherited.or_else(|| misty_engine::trees::from_model::lod_level(&node.name));
         if level.is_some() && skinning::is_skinned_node(model, n) {
             return Vec::new();
         }
         out.push(level);
     }
-    let mut found: Vec<usize> = out.iter().flatten().copied().collect();
+    let mut found: Vec<u32> = out.iter().flatten().copied().collect();
     found.sort_unstable();
     found.dedup();
-    let top = found.last().copied().unwrap_or(0);
-    if found.len() < 2 || top >= LodGroup::MAX_LEVELS {
+    if found.len() < 2 || found.len() > LodGroup::MAX_LEVELS {
         return Vec::new();
     }
-    out
+    out.into_iter()
+        .map(|l| l.and_then(|l| found.binary_search(&l).ok()))
+        .collect()
 }
 
 /// Screen heights of `count` levels a file brought (the usual defaults: a quarter of the
@@ -376,6 +377,71 @@ f 4 6 5
             .to_string_lossy()
             .replace('\\', "/");
         assert!(file_lod_levels(&models::model(&ramp).unwrap()).is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// LOD names as packs really have them: a level missing between two (LOD0, LOD2), levels
+    /// counted from 1, the levels under a group node, a name that only holds "lod".
+    #[test]
+    fn lod_named_nodes_with_gaps_and_groups() {
+        let root =
+            std::env::temp_dir().join(format!("misty_model_lod_gaps_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets")).unwrap();
+        let load = |file: &str, names: &[&str]| {
+            let path = root.join("Assets").join(file);
+            let mut obj = String::new();
+            for (k, name) in names.iter().enumerate() {
+                let y = k as f32;
+                obj.push_str(&format!(
+                    "o {name}\nv 0 {y} 0\nv 1 {y} 0\nv 0 {y} 1\nf {} {} {}\n",
+                    k * 3 + 1,
+                    k * 3 + 3,
+                    k * 3 + 2
+                ));
+            }
+            std::fs::write(&path, obj).unwrap();
+            let rel = path.to_string_lossy().replace('\\', "/");
+            let model = models::model(&rel).unwrap();
+            (rel, model)
+        };
+        // Every level of the group draws something: no empty level in the middle (the tree
+        // vanished between two distances) or at the front (it was invisible up close).
+        for (file, names) in [
+            ("Gap.obj", vec!["Rock_LOD0", "Rock_LOD2"]),
+            ("FromOne.obj", vec!["Rock_LOD1", "Rock_LOD2", "Rock_LOD3"]),
+        ] {
+            let (rel, model) = load(file, &names);
+            let mut scene = Scene::default();
+            let e = spawn(&mut scene, &rel, &model, &[], None);
+            let group = scene.world.get::<&LodGroup>(e).expect("LOD Group");
+            assert_eq!(group.lods.len(), names.len(), "{file}");
+            assert!(group.lods.iter().all(|l| !l.renderers.is_empty()), "{file}");
+            assert_eq!(group.lods.last().unwrap().screen_height, 0.01);
+        }
+        // "Flodder", "Melody" hold no level; one level alone is no group.
+        let (_, model) = load("Words.obj", &["Flodder", "Melody", "Lodge_LOD"]);
+        assert!(file_lod_levels(&model).is_empty());
+        let (_, model) = load("One.obj", &["Rock_LOD0", "Base"]);
+        assert!(file_lod_levels(&model).is_empty());
+        // Levels under a group node (the pack's "Tree" holding "Tree_LOD0", "Tree_LOD1").
+        let mut model = models::Model::default();
+        let node = |name: &str, parent: Option<usize>, meshes: Vec<usize>| models::ModelNode {
+            name: name.into(),
+            parent,
+            position: glam::Vec3::ZERO,
+            rotation: glam::Quat::IDENTITY,
+            scale: glam::Vec3::ONE,
+            meshes,
+            skin: None,
+            lods: Vec::new(),
+        };
+        model.nodes = vec![
+            node("Tree", None, vec![]),
+            node("Tree_LOD0", Some(0), vec![]),
+            node("Tree_LOD1", Some(0), vec![]),
+        ];
+        assert_eq!(file_lod_levels(&model), [None, Some(0), Some(1)]);
         std::fs::remove_dir_all(root).ok();
     }
 

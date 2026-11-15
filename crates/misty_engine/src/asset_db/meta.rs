@@ -91,7 +91,17 @@ pub fn write_guid(asset: &Path, guid: Guid) -> Result<(), String> {
 
 /// Whether `text` is a Unity `.meta` file (YAML; they come along with Unity asset packs).
 pub fn is_unity(text: &str) -> bool {
-    text.trim_start().starts_with("fileFormatVersion:")
+    text.trim_start_matches('\u{feff}')
+        .trim_start()
+        .starts_with("fileFormatVersion:")
+}
+
+/// The GUID of a Unity meta file (32 hex digits, the same form as Misty's).
+pub fn unity_guid(text: &str) -> Option<Guid> {
+    if !is_unity(text) {
+        return None;
+    }
+    unity_value(text, "guid")?.parse().ok()
 }
 
 /// The first `key: value` line of a Unity meta file.
