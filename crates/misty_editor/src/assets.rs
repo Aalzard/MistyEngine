@@ -643,6 +643,10 @@ fn inspect_all(list: Vec<(PathBuf, String)>) -> Vec<(String, ScriptMeta)> {
 }
 
 fn inspect(path: &Path, rel: &str) -> ScriptMeta {
+    // The modification time of what is read, taken before reading: a save in between leaves an
+    // older time, so the next look at changed scripts reads the file again (taken after, the
+    // save looked already inspected and its fields never showed).
+    let modified = mtime(path);
     if misty_engine::visual_script::is_graph_path(rel) {
         let fields = misty_engine::visual_script::ScriptGraph::load(path)
             .map(|g| misty_engine::visual_script::inspect_fields(&g))
@@ -650,7 +654,7 @@ fn inspect(path: &Path, rel: &str) -> ScriptMeta {
         return ScriptMeta {
             fields,
             attributes: Default::default(),
-            modified: mtime(path),
+            modified,
         };
     }
     let src = std::fs::read_to_string(path);
@@ -670,7 +674,7 @@ fn inspect(path: &Path, rel: &str) -> ScriptMeta {
     ScriptMeta {
         fields,
         attributes,
-        modified: mtime(path),
+        modified,
     }
 }
 
