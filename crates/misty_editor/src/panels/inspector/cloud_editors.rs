@@ -100,6 +100,20 @@ pub fn clouds_override(ui: &mut Ui, c: &mut CloudsOverride) -> bool {
         "From the base to the tallest tops.",
         |ui| metres(ui, &mut c.thickness, 50.0..=10_000.0),
     );
+    ch |= row(
+        ui,
+        "Distance",
+        "How far away clouds are drawn; they thin out over its last 40 %. Shorter clears the sky just above the horizon.",
+        |ui| {
+            ui.add(
+                DragValue::new(&mut c.distance)
+                    .speed(100.0)
+                    .range(2000.0..=60_000.0)
+                    .suffix(" m"),
+            )
+            .changed()
+        },
+    );
 
     group(ui, "Wind");
     ch |= row(

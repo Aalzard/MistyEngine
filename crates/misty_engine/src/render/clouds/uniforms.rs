@@ -5,6 +5,11 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
 
 use super::settings::{CloudQuality, EXTINCTION, HAZE_DISTANCE, MAX_DISTANCE, PLANET_RADIUS};
+
+/// Trace distance of `o` (metres): its Distance, at most [`MAX_DISTANCE`].
+pub(super) fn trace_distance(o: &CloudsOverride) -> f32 {
+    o.distance.clamp(2000.0, MAX_DISTANCE)
+}
 use crate::render::{Frame, srgb_to_linear};
 use crate::scene::CloudsOverride;
 
@@ -176,7 +181,7 @@ pub(super) fn march_uniform(m: &MarchInputs) -> MarchUniform {
         inv_rays: m.rays.to_cols_array_2d(),
         prev_view_proj: m.prev_view_proj.to_cols_array_2d(),
         eye: eye.extend((m.frame_index % 1024) as f32).to_array(),
-        layer: [PLANET_RADIUS, base, top, MAX_DISTANCE],
+        layer: [PLANET_RADIUS, base, top, trace_distance(o)],
         shape: [
             o.coverage.clamp(0.0, 1.0),
             o.density.clamp(0.0, 2.0) * EXTINCTION,
