@@ -15,10 +15,7 @@ pub fn passes_filters(scene: &Scene, tl: &TagsAndLayers, e: Entity, q: &Query) -
     }
     let go = scene.game_object(e);
     // Query values are lower-cased with Unicode rules ("tag:Çit" → "çit"), so the tag is too.
-    let tag_ok = q.tags.is_empty() || {
-        let tag = go.tag.to_lowercase();
-        q.tags.iter().any(|t| *t == tag)
-    };
+    let tag_ok = q.tags.is_empty() || q.tags.contains(&go.tag.to_lowercase());
     let layer_ok = q.layers.is_empty() || {
         let name = tl.layer_name(go.layer as i32).to_lowercase();
         let number = go.layer.to_string();
