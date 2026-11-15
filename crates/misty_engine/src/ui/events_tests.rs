@@ -387,3 +387,29 @@ fn layout_group_content_and_navigation() {
     assert_eq!(ev, [UiEvent::Click(b)]);
     assert_eq!(d.ui.state(&s, b), ButtonState::Selected);
 }
+
+/// A button selected by a click (or the gamepad) and then hidden with its menu stayed selected:
+/// Submit clicked the hidden button (a closed pause menu's "Resume" fired again on every Enter
+/// during play), and arrow keys navigated from it.
+#[test]
+fn a_hidden_selected_button_is_deselected_and_never_clicked() {
+    let (mut s, c) = canvas();
+    let menu = s.spawn("Menu", Some(c));
+    s.add(menu, RectTransform::sized(200.0, 200.0));
+    s.add(menu, VerticalLayoutGroup::default());
+    let resume = presets::button(&mut s, "Resume", menu);
+    presets::button(&mut s, "Quit", menu);
+    let mut d = Driver::new(&mut s);
+    let p = centre(&s, resume);
+    d.click(&mut s, p);
+    assert_eq!(d.ui.selected, Some(resume));
+    s.game_object_mut(menu).active = false;
+    let ev = d.keys(&mut s, &["return"], "");
+    assert!(!ev.contains(&UiEvent::Click(resume)), "{ev:?}");
+    assert_eq!(d.ui.selected, None, "hiding the menu deselects its button");
+    assert_eq!(d.ui.pressed, None);
+    // Shown again, it is not selected until clicked or navigated to.
+    s.game_object_mut(menu).active = true;
+    let ev = d.keys(&mut s, &["return"], "");
+    assert!(ev.is_empty(), "{ev:?}");
+}

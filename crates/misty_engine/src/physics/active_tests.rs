@@ -44,7 +44,10 @@ fn a_floor_switched_off_while_playing_lets_the_cube_fall() {
     scene.game_object_mut(floor).active = false;
     run(&mut physics, &mut scene, 60);
     let y = scene.world_position(c).y;
-    assert!(y < 0.0, "the cube falls through the switched-off floor, y = {y}");
+    assert!(
+        y < 0.0,
+        "the cube falls through the switched-off floor, y = {y}"
+    );
     assert!(
         physics
             .raycast(Vec3::new(-5.0, 0.0, 0.0), Vec3::X, 10.0, ALL_LAYERS)
@@ -64,7 +67,11 @@ fn a_body_switched_on_while_playing_falls() {
     let mut physics = Physics::build(&scene, G);
     assert!(!physics.has_body(c));
     run(&mut physics, &mut scene, 30);
-    assert_eq!(scene.world_position(c).y, 4.0, "inactive objects don't move");
+    assert_eq!(
+        scene.world_position(c).y,
+        4.0,
+        "inactive objects don't move"
+    );
     scene.game_object_mut(c).active = true;
     run(&mut physics, &mut scene, 120);
     assert!(physics.has_body(c));
@@ -94,7 +101,9 @@ fn a_parent_switched_off_and_on_brings_its_children_back() {
     let first = run(&mut physics, &mut scene, 30);
     let enters = |cs: &[Contact]| {
         cs.iter()
-            .filter(|k| k.trigger && k.started && (k.a == zone || k.b == zone))
+            .filter(|k| {
+                k.trigger && k.started && ([k.a, k.b] == [zone, body] || [k.b, k.a] == [zone, body])
+            })
             .count()
     };
     assert_eq!(enters(&first), 1);
@@ -102,15 +111,26 @@ fn a_parent_switched_off_and_on_brings_its_children_back() {
     scene.game_object_mut(parent).active = false;
     run(&mut physics, &mut scene, 5);
     assert!(!physics.has_body(parent));
-    assert_eq!(physics.collider_count(), colliders - 1, "the child's collider left too");
+    assert_eq!(
+        physics.collider_count(),
+        colliders - 1,
+        "the child's collider left too"
+    );
 
     scene.game_object_mut(parent).active = true;
     let again = run(&mut physics, &mut scene, 30);
     assert!(physics.has_body(parent));
-    assert_eq!(physics.collider_count(), colliders, "no duplicate colliders");
+    assert_eq!(
+        physics.collider_count(),
+        colliders,
+        "no duplicate colliders"
+    );
     assert_eq!(enters(&again), 1, "the trigger fires again: {again:?}");
     let y = scene.world_position(parent).y;
-    assert!((y - 1.0).abs() < 0.05, "the child collider rests on the floor, y = {y}");
+    assert!(
+        (y - 1.0).abs() < 0.05,
+        "the child collider rests on the floor, y = {y}"
+    );
 
     // Switching an active object on again changes nothing.
     scene.game_object_mut(parent).active = true;

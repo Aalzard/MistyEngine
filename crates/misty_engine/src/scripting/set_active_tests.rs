@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use hecs::Entity;
 
 use crate::physics::Physics;
@@ -62,10 +62,20 @@ fn set_active_while_playing_reaches_3d_and_2d_physics() {
     scene.add(box2, BoxCollider2D::default());
     scene.add(box2, Rigidbody2D::default());
     let holder = object(&mut scene, "Holder", Vec3::ZERO, None);
-    let ball3 = object(&mut scene, "Ball3D", Vec3::new(40.0, 4.0, 0.0), Some(holder));
+    let ball3 = object(
+        &mut scene,
+        "Ball3D",
+        Vec3::new(40.0, 4.0, 0.0),
+        Some(holder),
+    );
     scene.add(ball3, BoxCollider::default());
     scene.add(ball3, Rigidbody::default());
-    let ball2 = object(&mut scene, "Ball2D", Vec3::new(60.0, 4.0, 0.0), Some(holder));
+    let ball2 = object(
+        &mut scene,
+        "Ball2D",
+        Vec3::new(60.0, 4.0, 0.0),
+        Some(holder),
+    );
     scene.add(ball2, BoxCollider2D::default());
     scene.add(ball2, Rigidbody2D::default());
     for b in [ball3, ball2] {
@@ -93,7 +103,11 @@ fn set_active_while_playing_reaches_3d_and_2d_physics() {
     frame(&mut scene, &mut host, 59);
     for (e, y) in [(box3, 1.0), (box2, 1.0), (ball3, 4.0), (ball2, 4.0)] {
         let p = scene.world_position(e).y;
-        assert!((p - y).abs() < 0.05, "{} at {p} before the switch", scene.name(e));
+        assert!(
+            (p - y).abs() < 0.05,
+            "{} at {p} before the switch",
+            scene.name(e)
+        );
     }
     frame(&mut scene, &mut host, 60);
     for (text, e, below) in [

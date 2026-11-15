@@ -80,6 +80,7 @@ impl Physics2D {
             None => self.world.insert_collider(b.position(world).build(), None),
         };
         self.colliders.insert(h, e);
+        self.owners.insert(e);
     }
 
     /// The object whose body `e`'s colliders attach to: itself or the closest parent with one.

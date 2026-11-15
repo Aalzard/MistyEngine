@@ -10,7 +10,7 @@ mod colliders;
 mod contacts;
 mod queries;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use glam::{Quat, Vec2, Vec3};
 use hecs::Entity;
@@ -72,6 +72,13 @@ pub struct Physics2D {
     contacts: contacts::Tracker,
     /// Content signature of each Tilemap Collider 2D's tilemap (rebuilt when it changes).
     tilemaps: HashMap<Entity, u64>,
+    /// Objects with a body or colliders in the world, and objects left out because they were
+    /// inactive (in the order they came): see [`Physics2D::sync_active`].
+    owners: HashSet<Entity>,
+    dormant: Vec<Entity>,
+    dormant_set: HashSet<Entity>,
+    /// `Scene::activity` when `sync_active` last looked.
+    activity_seen: Option<u64>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -112,6 +119,10 @@ impl Physics2D {
             warnings: Vec::new(),
             contacts: Default::default(),
             tilemaps: HashMap::new(),
+            owners: HashSet::new(),
+            dormant: Vec::new(),
+            dormant_set: HashSet::new(),
+            activity_seen: None,
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
@@ -133,11 +144,16 @@ impl Physics2D {
     }
 
     fn add_objects(&mut self, scene: &Scene, objects: &[Entity]) {
-        let objects: Vec<Entity> = objects
-            .iter()
-            .copied()
-            .filter(|e| scene.active_in_hierarchy(*e))
-            .collect();
+        let mut active = Vec::with_capacity(objects.len());
+        for &e in objects {
+            if scene.active_in_hierarchy(e) {
+                self.dormant_set.remove(&e);
+                active.push(e);
+            } else if self.dormant_set.insert(e) {
+                self.dormant.push(e);
+            }
+        }
+        let objects = active;
         for &e in &objects {
             self.add_body(scene, e);
         }
@@ -181,6 +197,7 @@ impl Physics2D {
             .additional_mass(rb.mass.max(1e-4))
             .build();
         let handle = self.world.insert_body(body);
+        self.owners.insert(e);
         self.bodies.insert(
             e,
             Body {
@@ -392,6 +409,10 @@ impl Physics2D {
 
     /// Remove an object's body and colliders (Destroy).
     pub fn remove(&mut self, e: Entity) {
+        // Objects without a body or colliders: nothing to walk the colliders for.
+        if !self.owners.remove(&e) {
+            return;
+        }
         if let Some(b) = self.bodies.remove(&e) {
             self.world.remove_body_with_colliders(b.handle, true);
         }
@@ -408,6 +429,64 @@ impl Physics2D {
         self.colliders
             .retain(|h, _| world.colliders.get(*h).is_some());
         self.contacts.forget(&self.colliders);
+    }
+
+    /// Objects switched off since the last call leave the world (with everything under the
+    /// object that was switched off), objects switched on join it (see
+    /// `Physics::sync_active`). Call before a step.
+    pub fn sync_active(&mut self, scene: &Scene) {
+        if self.activity_seen == Some(scene.activity()) {
+            return;
+        }
+        self.activity_seen = Some(scene.activity());
+        let off: Vec<Entity> = self
+            .owners
+            .iter()
+            .copied()
+            .filter(|e| !scene.contains(*e) || !scene.active_in_hierarchy(*e))
+            .collect();
+        for e in off {
+            if !self.owners.contains(&e) {
+                continue;
+            }
+            if !scene.contains(e) {
+                self.remove(e);
+                continue;
+            }
+            let mut top = e;
+            let mut cur = Some(e);
+            while let Some(c) = cur {
+                if !scene.game_object(c).active {
+                    top = c;
+                }
+                cur = scene.parent(c);
+            }
+            for x in scene.subtree(top) {
+                self.remove(x);
+                if self.dormant_set.insert(x) {
+                    self.dormant.push(x);
+                }
+            }
+        }
+        let mut on = Vec::new();
+        for &e in &self.dormant {
+            if !self.dormant_set.contains(&e) {
+                continue;
+            }
+            if !scene.contains(e) {
+                self.dormant_set.remove(&e);
+            } else if scene.active_in_hierarchy(e) {
+                on.push(e);
+            }
+        }
+        for e in &on {
+            self.dormant_set.remove(e);
+        }
+        let set = &self.dormant_set;
+        self.dormant.retain(|e| set.contains(e));
+        if !on.is_empty() {
+            self.add_objects(scene, &on);
+        }
     }
 
     /// Rebuild the colliders of Tilemap Collider 2D objects whose tiles changed (scripts painting

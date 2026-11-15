@@ -43,6 +43,7 @@ impl Physics {
                     .active_events(rp::ActiveEvents::COLLISION_EVENTS);
                 let h = self.world.insert_collider(c.build(), None);
                 self.colliders.insert(h, e);
+                self.owners.insert(e);
             }
             // Its trees' trunks (static capsules).
             let trunks = {
@@ -53,6 +54,7 @@ impl Physics {
                 let c = c.collision_groups(groups);
                 let h = self.world.insert_collider(c.build(), None);
                 self.colliders.insert(h, e);
+                self.owners.insert(e);
             }
         }
     }
@@ -79,6 +81,7 @@ impl Physics {
             }
         };
         self.colliders.insert(h, e);
+        self.owners.insert(e);
         h
     }
 

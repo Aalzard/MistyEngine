@@ -45,6 +45,15 @@ const JSON_ASSETS: &[&str] = &[
     "tree",
     // Script Graphs name subgraph assets and prefabs.
     "vgraph",
+    // Shader Graphs name their subgraphs and default textures (subgraphs nest too).
+    "shadergraph",
+    "shadersubgraph",
+    // Behaviour Trees name the Lua scripts of their actions and conditions.
+    "btree",
+    // VFX operator subgraphs, like effects.
+    "vfxoperator",
+    // Physics Materials (`.physicmat`; `.physicmaterial` above is the old name).
+    "physicmat",
 ];
 
 fn ext(rel: &str) -> String {

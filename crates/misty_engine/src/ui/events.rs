@@ -257,7 +257,10 @@ impl UiInteraction {
     }
 
     fn forget_missing(&mut self, scene: &Scene) {
-        let alive = |e: &Option<Entity>| e.filter(|x| scene.contains(*x));
+        // Hidden objects are let go too, like removed ones: a selected button hidden with its
+        // menu took Submit (clicked while invisible) and arrow keys navigated from it.
+        let alive =
+            |e: &Option<Entity>| e.filter(|x| scene.contains(*x) && scene.active_in_hierarchy(*x));
         self.hovered = alive(&self.hovered);
         self.pressed = alive(&self.pressed);
         self.selected = alive(&self.selected);

@@ -1203,6 +1203,7 @@ impl ScriptHost {
             self.flush_spawned();
             self.joint_breaks();
             let contacts_2d = self.with_world(|w| {
+                w.physics2d.sync_active(&w.scene);
                 w.physics2d.refresh_tilemaps(&w.scene);
                 w.physics2d.step()
             });

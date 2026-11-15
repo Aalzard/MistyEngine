@@ -73,6 +73,7 @@ impl Physics {
                 .pose(pose(pos, rot))
                 .build(),
         );
+        self.owners.insert(e);
         self.bodies.insert(
             e,
             Body {
