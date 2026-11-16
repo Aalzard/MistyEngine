@@ -1371,6 +1371,15 @@ impl TerrainCache {
         self.grass_atlas.as_ref().map_or(0, |(a, _)| a.bytes) + flowers.sum::<u64>()
     }
 
+    /// Chunk draws of every terrain pass since the list was last cleared: (kind, draws), in
+    /// the order the passes were encoded (a profile of where a scene's draw count comes from).
+    #[cfg(test)]
+    pub(super) fn pass_draws() -> &'static std::sync::Mutex<Vec<(&'static str, u32)>> {
+        static DRAWS: std::sync::Mutex<Vec<(&'static str, u32)>> =
+            std::sync::Mutex::new(Vec::new());
+        &DRAWS
+    }
+
     /// Draw the frame's terrains `filter(i)` keeps (`first` = draw index of terrain 0).
     /// The camera pass (`camera`) skips chunks outside the view; shadow passes draw them all.
     /// Groups 0–2 and the pipeline are bound by the caller.
@@ -1383,6 +1392,8 @@ impl TerrainCache {
         filter: impl Fn(usize) -> bool,
         stats: &mut RenderStats,
     ) {
+        #[cfg(test)]
+        let before = stats.batches;
         for (i, t) in terrains.iter().enumerate() {
             let (Some(gpu), Some(Some(group)), Some(chunks)) = (
                 self.entries.get(&t.key),
@@ -1444,6 +1455,15 @@ impl TerrainCache {
                 stats.draw(1, count, count / 6 + 1);
             }
         }
+        #[cfg(test)]
+        if let Ok(mut d) = Self::pass_draws().lock() {
+            let kind = if camera {
+                "camera pass (chunks in view)"
+            } else {
+                "shadow pass (every chunk)"
+            };
+            d.push((kind, stats.batches - before));
+        }
     }
 
     /// Draw the chunks of the frame's terrains `filter(i)` keeps that meet `frustum` (a virtual
@@ -1457,6 +1477,8 @@ impl TerrainCache {
         frustum: &Frustum,
         stats: &mut RenderStats,
     ) {
+        #[cfg(test)]
+        let before = stats.batches;
         for (i, t) in terrains.iter().enumerate() {
             let (Some(gpu), Some(Some(group)), Some(chunks)) = (
                 self.entries.get(&t.key),
@@ -1510,6 +1532,10 @@ impl TerrainCache {
                 pass.draw_indexed(range.clone(), c.base, index..index + 1);
                 stats.draw(1, count, count / 6 + 1);
             }
+        }
+        #[cfg(test)]
+        if let Ok(mut d) = Self::pass_draws().lock() {
+            d.push(("shadow pass (chunks in its box)", stats.batches - before));
         }
     }
 

@@ -185,3 +185,46 @@ fn project_scene_times() {
         }
     }
 }
+
+/// Where a view's draws come from: the tree draws of every pass (per part and mesh level,
+/// how many hold no tree) and the frame's counters, per view at High.
+#[test]
+#[ignore = "profile of a project's scene, prints only"]
+fn project_scene_draws() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let (w, h) = size();
+    for name in views() {
+        let Some(v) = view(&name) else {
+            continue;
+        };
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(&device, &QualityLevel::high());
+        let target = r.create_view_target(&device, w, h);
+        let frame = v.frame();
+        for _ in 0..12 {
+            r.render(&device, &queue, &target, &frame);
+        }
+        // The last frame's terrain passes alone.
+        let terrain = crate::render::terrain::TerrainCache::pass_draws();
+        terrain.lock().unwrap().clear();
+        r.render(&device, &queue, &target, &frame);
+        let stats = r.stats();
+        for (kind, draws) in terrain.lock().unwrap().iter() {
+            eprintln!("   terrain {kind}: {draws} draws");
+        }
+        eprintln!(
+            "== {}: {} draws, {} pipeline changes, {} mesh objects, CPU {:.2} ms",
+            slug(&name),
+            stats.batches,
+            stats.set_pass,
+            v.meshes.len(),
+            stats.cpu_ms
+        );
+        for line in r.trees.draw_report() {
+            eprintln!("   {line}");
+        }
+    }
+}

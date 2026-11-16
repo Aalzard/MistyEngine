@@ -1018,6 +1018,95 @@ struct TerrainTrees {
     version: u64,
     position: Vec3,
     placed: Vec<Placed>,
+    /// Where each prototype stands ([`Reach`]), for skipping draws that can hold no tree.
+    reach: Vec<Reach>,
+}
+
+/// Side of a cell of [`Reach`] (metres).
+const REACH_CELL: f32 = 24.0;
+
+/// Where the trees of one prototype stand, coarsely: the occupied cells of a grid over the
+/// terrain, each a box round the feet of its trees with their largest scale. GPU-culled
+/// terrains draw every (view, prototype, level, part) list with an indirect draw whose count
+/// the GPU fills in, so a list that ends up empty still costs a draw; with dozens of
+/// prototypes most lists of a view are empty. A list is left out when no cell of its
+/// prototype can put a tree into it ([`Reach::may_draw`]): never a tree less on screen, as
+/// the test only errs towards drawing.
+#[derive(Clone, Debug, Default)]
+struct Reach {
+    /// (box of the feet, largest height / width scale).
+    cells: Vec<(Aabb, f32)>,
+}
+
+/// What a draw list takes, as the culling shader decides it (trees_cull.wgsl `cull`).
+#[derive(Clone, Copy, Debug)]
+enum ListRange {
+    /// The camera's list of a level: trees between `near` and `far` metres from the eye.
+    Camera { near: f32, far: f32 },
+    /// A cascade's list: trees within `reach` of the eye; small plants only when the
+    /// cascade's texels (`texel` metres) resolve them.
+    Cascade { reach: f32, texel: f32 },
+}
+
+impl Reach {
+    fn of(placed: &[Placed], prototypes: usize) -> Vec<Reach> {
+        let mut cells: Vec<HashMap<(i32, i32), (Aabb, f32)>> = vec![HashMap::new(); prototypes];
+        for p in placed {
+            let Some(map) = cells.get_mut(p.prototype as usize) else {
+                continue;
+            };
+            let key = (
+                (p.foot.x / REACH_CELL).floor() as i32,
+                (p.foot.z / REACH_CELL).floor() as i32,
+            );
+            let scale = p.height.max(p.width);
+            let e = map.entry(key).or_insert((Aabb::new(p.foot, p.foot), scale));
+            e.0 = Aabb::new(e.0.min.min(p.foot), e.0.max.max(p.foot));
+            e.1 = e.1.max(scale);
+        }
+        cells
+            .into_iter()
+            .map(|m| Reach {
+                cells: m.into_values().collect(),
+            })
+            .collect()
+    }
+
+    /// Can a tree of this prototype (model centre height `center`, bounding radius
+    /// `model_radius`) land in a list of `range` seen through `frustum` from `eye`? False
+    /// only when the culling shader would certainly append none.
+    fn may_draw(
+        &self,
+        center: f32,
+        model_radius: f32,
+        eye: Vec3,
+        frustum: &Frustum,
+        range: ListRange,
+    ) -> bool {
+        self.cells.iter().any(|(feet, scale)| {
+            // Every tree of the cell: its centre inside `box`, its radius at most `radius`.
+            let radius = model_radius * scale;
+            let lift = Vec3::Y * center * scale;
+            let centres = Aabb::new(feet.min, feet.max + lift);
+            let grown = Aabb::new(
+                centres.min - Vec3::splat(radius),
+                centres.max + Vec3::splat(radius),
+            );
+            if !frustum.intersects(&grown) {
+                return false;
+            }
+            // Nearest and farthest a centre can be from the eye.
+            let nearest = eye.clamp(centres.min, centres.max).distance(eye);
+            let corner = (eye - centres.min).abs().max((eye - centres.max).abs());
+            let farthest = corner.length();
+            match range {
+                ListRange::Camera { near, far } => nearest < far && farthest >= near,
+                ListRange::Cascade { reach, texel } => {
+                    nearest < reach + radius && casts_into(model_radius, radius, texel)
+                }
+            }
+        })
+    }
 }
 
 /// Instances of a frame per (bind group, tree, part, LOD).
@@ -1478,7 +1567,7 @@ impl TreeRenderer {
                 .get(&t.key)
                 .is_some_and(|c| c.version == t.version && c.position == t.position);
             if !cached {
-                let placed = s
+                let placed: Vec<Placed> = s
                     .instances
                     .iter()
                     .map(|i| Placed {
@@ -1490,12 +1579,14 @@ impl TreeRenderer {
                         prototype: i.prototype,
                     })
                     .collect();
+                let reach = Reach::of(&placed, s.prototypes.len());
                 self.terrains.insert(
                     t.key.clone(),
                     TerrainTrees {
                         version: t.version,
                         position: t.position,
                         placed,
+                        reach,
                     },
                 );
             }
@@ -1977,6 +2068,57 @@ impl TreeRenderer {
         }
     }
 
+    /// This frame's tree draws per pass ("main", "shadow 0", …): per (part, mesh level) the
+    /// draws issued, how many of them hold no tree at all, their trees, and the distinct tree
+    /// assets (a profile of where a scene's draw count comes from).
+    #[cfg(test)]
+    pub(super) fn draw_report(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let passes = std::iter::once(("main".to_owned(), &self.main)).chain(
+            self.shadows
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (format!("shadow {i}"), l)),
+        );
+        for (name, list) in passes {
+            // (part, level) → (draws, empty draws, instances).
+            let mut rows: std::collections::BTreeMap<(usize, usize), (u32, u32, u64)> =
+                Default::default();
+            let mut assets = std::collections::BTreeSet::new();
+            for b in list {
+                let count = match b.list {
+                    Some((t, l)) => (self.gpu_frame.get(t))
+                        .and_then(|k| self.gpu_terrains.get(k))
+                        .map_or(0, |t| {
+                            let cap = t.lists.get(l).map_or(0, |i| i.capacity);
+                            t.counts.get(l).copied().unwrap_or(0).min(cap)
+                        }),
+                    None => b.instances.len() as u32,
+                };
+                let row = rows.entry((part_index(b.part), b.lod.min(1))).or_default();
+                row.0 += 1;
+                row.1 += u32::from(count == 0);
+                row.2 += count as u64;
+                if count > 0 {
+                    assets.insert(b.tree);
+                }
+            }
+            let total: u32 = rows.values().map(|r| r.0).sum();
+            let empty: u32 = rows.values().map(|r| r.1).sum();
+            out.push(format!(
+                "{name}: {total} draws ({empty} without a tree), {} tree assets drawn",
+                assets.len()
+            ));
+            for ((part, lod), (draws, empty, instances)) in rows {
+                let part = ["bark", "leaves", "impostor"][part];
+                out.push(format!(
+                    "   {part:<9} level {lod}: {draws:4} draws, {empty:4} empty, {instances:7} trees"
+                ));
+            }
+        }
+        out
+    }
+
     /// Shadow casters of cascade `slot` (groups 0 and 1 bound by the caller).
     pub fn draw_shadow(&self, pass: &mut wgpu::RenderPass, slot: usize, stats: &mut RenderStats) {
         if let (Some(p), Some(list)) = (&self.pipelines, self.shadows.get(slot)) {
@@ -2081,13 +2223,51 @@ impl TreeRenderer {
                 _ => [0..0, 0..0],
             },
         );
+        // The lists that can hold a tree this frame ([`Reach`]): the others get no draw.
+        let reach = &self.terrains[&t.key].reach;
+        let fade = lod[3].clamp(0.0, 0.9);
+        let plant_reach = s.plant_shadow_distance.max(0.0);
+        let skip_empty = fast_paths::tree_skip_empty();
         let batches = |view: usize, out: &mut Vec<Batch>, only: Option<u8>| {
+            let frustum = match view {
+                0 => Frustum::from_matrix(f.view_proj),
+                v => Frustum::from_matrix(&cascades[v - 1].0),
+            };
             for (proto, p) in protos.iter().enumerate() {
                 let Some((group, tree)) = *p else {
                     continue;
                 };
+                let m = &self.trees[&self.frame_trees[tree]].built.model;
+                let (center, model_radius) = (m.max.y * 0.5, m.bounding_radius());
+                let k = size_factor(model_radius);
+                // The level switches of this prototype (small plants: nearer), as the shader
+                // has them; a level also takes the trees fading in from the one before.
+                let edges = [0.0, lod[0] * k, lod[1] * k, lod[2] * k];
                 for lod in 0..3 {
                     if only.is_some_and(|l| l as usize != lod) {
+                        continue;
+                    }
+                    let range = match view {
+                        0 => ListRange::Camera {
+                            near: edges[lod] * (1.0 - fade),
+                            far: edges[lod + 1],
+                        },
+                        v => {
+                            let small = model_radius < SMALL_PLANT && plant_reach > 0.0;
+                            ListRange::Cascade {
+                                reach: if small {
+                                    shadow_reach.min(plant_reach)
+                                } else {
+                                    shadow_reach
+                                },
+                                texel: cascades[v - 1].2,
+                            }
+                        }
+                    };
+                    let may = (reach.get(proto)).is_none_or(|r| {
+                        r.may_draw(center, model_radius, f.camera, &frustum, range)
+                    });
+                    if skip_empty && !may {
                         continue;
                     }
                     let parts: &[Part] = if lod == 2 {
@@ -2328,6 +2508,144 @@ mod tests {
         assert!(!Arc::ptr_eq(&plain.textures[0], &again.textures[0]));
         assert!(Arc::ptr_eq(&plain.textures[2], &again.textures[2]));
         std::fs::remove_dir_all(root).ok();
+    }
+
+    /// GPU-culled terrains leave out the draw lists no tree can reach, and never one that a
+    /// tree does reach: checked against the culling shader's own rule for every tree, over
+    /// many cameras, levels and cascades. With many prototypes standing in their own corners
+    /// most lists go (the draw count of a wood of many tree assets).
+    #[test]
+    fn lists_no_tree_can_reach_are_skipped_and_no_other() {
+        use super::{ListRange, Placed, Reach, casts_into, size_factor};
+        use crate::render::culling::{Aabb, Frustum};
+        use glam::{Mat4, Vec3};
+        let mut seed = 0x2545_f491u32;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        // 24 prototypes, each a clump of trees somewhere on a 600 m terrain.
+        let protos = 24usize;
+        let mut placed = Vec::new();
+        for p in 0..protos {
+            let c = Vec3::new(rnd() * 600.0, 0.0, rnd() * 600.0);
+            for _ in 0..40 {
+                let h = 0.7 + 0.8 * rnd();
+                placed.push(Placed {
+                    foot: c + Vec3::new(rnd() * 90.0 - 45.0, rnd() * 6.0, rnd() * 90.0 - 45.0),
+                    yaw: 0.0,
+                    height: h,
+                    width: h * (0.8 + 0.4 * rnd()),
+                    color: 0.5,
+                    prototype: p as u16,
+                });
+            }
+        }
+        let reach = Reach::of(&placed, protos);
+        assert_eq!(reach.len(), protos);
+        // Models: big trees and small plants (half height, bounding radius).
+        let model = |p: usize| {
+            if p.is_multiple_of(3) {
+                (0.4, 0.9)
+            } else {
+                (9.0, 12.0)
+            }
+        };
+        let (lod, bb, draw, fade) = (20.0f32, 60.0, 400.0, 0.1);
+        let (mut kept, mut all) = (0usize, 0usize);
+        for _ in 0..40 {
+            let eye = Vec3::new(rnd() * 600.0, 2.0 + rnd() * 30.0, rnd() * 600.0);
+            let dir = Vec3::new(rnd() - 0.5, -0.2 * rnd(), rnd() - 0.5).normalize();
+            let camera = crate::camera::Camera {
+                position: eye,
+                rotation: glam::Quat::from_rotation_arc(Vec3::Z, dir),
+                projection: crate::camera::Projection::Perspective { fov_y: 60.0 },
+                near: 0.1,
+                far: 2000.0,
+            }
+            .view_projection(1.6);
+            // A cascade: a box round the eye seen from above.
+            let half = 20.0 + rnd() * 120.0;
+            let texel = half * 2.0 / 2048.0 * (1.0 + 30.0 * rnd());
+            let above = Mat4::from_rotation_translation(
+                glam::Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                eye + Vec3::Y * 100.0,
+            );
+            let cascade =
+                glam::camera::lh::proj::directx::orthographic(-half, half, -half, half, 0.0, 600.0)
+                    * above.inverse();
+            let shadow_reach = 40.0 + rnd() * 150.0;
+            let frusta = [
+                Frustum::from_matrix(&camera),
+                Frustum::from_matrix(&cascade),
+            ];
+            for (p, cells) in reach.iter().enumerate() {
+                let (center, radius) = model(p);
+                let k = size_factor(radius);
+                let edges = [0.0, lod * k, bb * k, draw * k];
+                // The shader's rule for every tree of the prototype: which lists it joins.
+                let mut member = [false; 4];
+                for t in placed.iter().filter(|t| t.prototype as usize == p) {
+                    let scale = t.height.max(t.width);
+                    let c = t.foot + Vec3::Y * center * t.height;
+                    let r = radius * scale;
+                    let dist = c.distance(eye);
+                    if dist > draw * k + r {
+                        continue;
+                    }
+                    let sphere = Aabb::new(c - Vec3::splat(r), c + Vec3::splat(r));
+                    if frusta[0].intersects(&sphere) {
+                        for level in 0..3 {
+                            let from = edges[level] * (1.0 - fade);
+                            member[level] |= dist >= from && dist < edges[level + 1];
+                        }
+                    }
+                    member[3] |= dist < shadow_reach + r
+                        && casts_into(radius, r, texel)
+                        && frusta[1].intersects(&sphere);
+                }
+                for (list, is_member) in member.into_iter().enumerate() {
+                    let (frustum, range) = match list {
+                        3 => (
+                            &frusta[1],
+                            ListRange::Cascade {
+                                reach: shadow_reach,
+                                texel,
+                            },
+                        ),
+                        level => (
+                            &frusta[0],
+                            ListRange::Camera {
+                                near: edges[level] * (1.0 - fade),
+                                far: edges[level + 1],
+                            },
+                        ),
+                    };
+                    let may = cells.may_draw(center, radius, eye, frustum, range);
+                    assert!(
+                        may || !is_member,
+                        "prototype {p} list {list}: a tree was dropped"
+                    );
+                    all += 1;
+                    kept += usize::from(may);
+                }
+            }
+        }
+        // Clumps far from the camera, behind it or past the level's band: most lists go.
+        assert!(kept * 2 < all, "{kept} of {all} lists kept");
+        // A prototype with no tree at all draws nothing.
+        assert!(!Reach::default().may_draw(
+            1.0,
+            1.0,
+            Vec3::ZERO,
+            &Frustum::from_matrix(&Mat4::IDENTITY),
+            ListRange::Camera {
+                near: 0.0,
+                far: 1e9
+            }
+        ));
     }
 
     /// The tree shaders parse and validate (no GPU needed).

@@ -17,9 +17,22 @@ pub const FRONT: u8 = 8;
 /// Distance (in chunk sizes) covered by each LOD before the next one starts.
 const LOD_DISTANCE: f32 = 1.5;
 
-/// Cells per chunk side for a heightmap resolution.
+/// Most chunks along a side of a terrain with more than 1024 cells a side.
+pub const MAX_CHUNKS_PER_SIDE: usize = 16;
+
+/// Cells per chunk side for a heightmap resolution: 64 (fewer on small maps), and more on
+/// maps past 1025 samples so a terrain never has more than [`MAX_CHUNKS_PER_SIDE`]² chunks.
+/// Every chunk in view is a draw in each camera pass (and in the cascades it reaches): a 2049
+/// map cut into 64-cell chunks had 1024 of them, and a view across it spent some 900 draws on
+/// the ground alone (three camera passes of ~300 chunks). The levels of detail step by chunk
+/// size ([`select`]), so bigger chunks keep full detail farther out.
 pub fn chunk_cells(res: usize) -> usize {
-    (res - 1).clamp(2, 64)
+    let cells = res - 1;
+    if cells > 64 * MAX_CHUNKS_PER_SIDE {
+        cells / MAX_CHUNKS_PER_SIDE
+    } else {
+        cells.clamp(2, 64)
+    }
 }
 
 /// Coarsest LOD a chunk of `cells` supports (at least 2×2 cells).
@@ -310,6 +323,33 @@ pub fn masks_across(
 
 #[cfg(test)]
 mod tests {
+    /// Every supported heightmap is cut into whole chunks, 16 × 16 at most (the draws a big
+    /// terrain costs per pass), and maps up to 1025 samples keep their 64-cell chunks.
+    #[test]
+    fn big_heightmaps_get_bigger_chunks_not_more() {
+        use super::{MAX_CHUNKS_PER_SIDE, chunk_cells, max_lod, patterns};
+        for res in crate::terrain::HEIGHTMAP_RESOLUTIONS {
+            let cells = chunk_cells(res);
+            assert!(cells.is_power_of_two(), "{res}: {cells} cells");
+            assert_eq!((res - 1) % cells, 0, "{res}");
+            let per_side = (res - 1) / cells;
+            assert!(
+                per_side <= MAX_CHUNKS_PER_SIDE,
+                "{res}: {per_side} chunks a side"
+            );
+            if res <= 1025 {
+                assert_eq!(cells, (res - 1).min(64), "{res}: as before");
+            }
+        }
+        assert_eq!(chunk_cells(2049), 128);
+        assert_eq!(chunk_cells(4097), 256);
+        // The bigger chunk has its patterns: every level down to 2 × 2 cells, 16 edge variants.
+        let (indices, ranges) = patterns(2049, 128);
+        assert_eq!(ranges.len(), max_lod(128) as usize + 1);
+        assert_eq!(ranges[0][0].len(), 128 * 128 * 6);
+        assert!(indices.iter().all(|i| (*i as usize) < 2049 * 129));
+    }
+
     /// Two tiles side by side at different distances: the LODs across their shared edge
     /// differ by at most one level, and the finer side snaps onto the coarser one.
     #[test]

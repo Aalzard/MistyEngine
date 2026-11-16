@@ -93,3 +93,35 @@ CPU render 9–22 ms (1000–2250 draws: the fallen trees in every cascade).
 
 Open: over 16 ms everywhere (the user put look first); trees 5–6 ms; CPU draw count; the
 shade in the view from above is still deep; rain streaks barely read in stills.
+
+## Milestone 3 (scene only)
+
+Sepia: measured on the eye-level shot (hue.py in the TMP folder: colourfulness-weighted hue
+histogram), m2 had 99 % of its colour in the 20-45 degree orange bin, hue spread 4 degrees. The
+causes were the warm fog albedo over 100 m fog, the warm ambient gradient, Misty GI at 2.0,
+saturation -6 and the bark tint. Now: fog albedo [0.86, 0.91, 0.98], ambient sky [0.4, 0.56,
+0.86] / equator [0.46, 0.5, 0.56] / ground [0.42, 0.34, 0.24] at 1.65, GI 1.2, saturation +6,
+sky tint [0.36, 0.47, 0.64], bark tint greyer ([1.12, 1.22, 1.5] x variant), more Turning and
+Green trees. m3: hue spread 28 degrees, 86 % orange, 5 % red, 2 % yellow, 7 % blue / purple.
+Into sun: sun volumetric 0.85, anisotropy 0.45, shafts 0.3, bloom 0.12, haze 130 m. Sun 5.6.
+Rain: density x5, opacity 1.0, streaks 1.6, drops 1.2 mm (shows in the open; under the trees
+the weather's occlusion hides most of it).
+
+Performance did not improve: 150 fallen trees without shadows, LOD 17 m / impostors 50 m,
+fewer sprigs gave GPU 21.8 / 24.2 / 24.4 / 20.0 ms (GPU 40 % busy elsewhere while measuring)
+against 21.9 / 23.7 / 26.8 / 21.3, and the draw count stayed (1063-2303): the draws are the
+tree batches (36 prototypes x parts x levels x cascades), not the fallen trees. CPU render
+read 28-35 ms in this run (9-22 before; not understood, the machine was busy). Next: fewer
+prototypes in view (merge the colour variants into per-instance tints), or batch across
+prototypes.
+
+## After part 3 (draw profile)
+
+- Tree draws are still one indirect draw per (view, prototype, level, part): a wood where every
+  asset grows everywhere (40+ assets) keeps ~370 tree draws a frame. Batching across
+  prototypes (multi-draw indirect, or one mesh pool with per-draw offsets) is not done.
+- GPU time of the profiled wood at High 1080p is 21–29 ms; the trees' own passes are 5–6 ms
+  and SSR 3.4 ms. The draw count was not what cost GPU time.
+- Terrains past 1025 samples have chunks of more than 64 cells, so their finest level
+  reaches farther (more triangles near the camera). A finer first LOD distance for big chunks
+  could win that back.
