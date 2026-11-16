@@ -2546,7 +2546,13 @@ mod tests {
         let reach = Reach::of(&placed, protos);
         assert_eq!(reach.len(), protos);
         // Models: big trees and small plants (half height, bounding radius).
-        let model = |p: usize| if p % 3 == 0 { (0.4, 0.9) } else { (9.0, 12.0) };
+        let model = |p: usize| {
+            if p.is_multiple_of(3) {
+                (0.4, 0.9)
+            } else {
+                (9.0, 12.0)
+            }
+        };
         let (lod, bb, draw, fade) = (20.0f32, 60.0, 400.0, 0.1);
         let (mut kept, mut all) = (0usize, 0usize);
         for _ in 0..40 {
@@ -2575,7 +2581,7 @@ mod tests {
                 Frustum::from_matrix(&camera),
                 Frustum::from_matrix(&cascade),
             ];
-            for p in 0..protos {
+            for (p, cells) in reach.iter().enumerate() {
                 let (center, radius) = model(p);
                 let k = size_factor(radius);
                 let edges = [0.0, lod * k, bb * k, draw * k];
@@ -2617,7 +2623,7 @@ mod tests {
                             },
                         ),
                     };
-                    let may = reach[p].may_draw(center, radius, eye, frustum, range);
+                    let may = cells.may_draw(center, radius, eye, frustum, range);
                     assert!(
                         may || !is_member,
                         "prototype {p} list {list}: a tree was dropped"

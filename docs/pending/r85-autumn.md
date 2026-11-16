@@ -114,3 +114,14 @@ tree batches (36 prototypes x parts x levels x cascades), not the fallen trees. 
 read 28-35 ms in this run (9-22 before; not understood, the machine was busy). Next: fewer
 prototypes in view (merge the colour variants into per-instance tints), or batch across
 prototypes.
+
+## After part 3 (draw profile)
+
+- Tree draws are still one indirect draw per (view, prototype, level, part): a wood where every
+  asset grows everywhere (40+ assets) keeps ~370 tree draws a frame. Batching across
+  prototypes (multi-draw indirect, or one mesh pool with per-draw offsets) is not done.
+- GPU time of the profiled wood at High 1080p is 21–29 ms; the trees' own passes are 5–6 ms
+  and SSR 3.4 ms. The draw count was not what cost GPU time.
+- Terrains past 1025 samples have chunks of more than 64 cells, so their finest level
+  reaches farther (more triangles near the camera). A finer first LOD distance for big chunks
+  could win that back.
