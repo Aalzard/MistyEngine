@@ -6223,3 +6223,9 @@ New: `asset_db::tests::unity_meta_guids_are_kept`, `models::named_textures` edge
 an ignored 4K timing), `trees::tests::odd_models_make_trees_or_clear_errors`, editor
 `model_import::tests::lod_named_nodes_with_gaps_and_groups`. Each bug's test was run against
 the code without its fix and failed.
+`cargo fmt --all --check` passes; `cargo clippy --workspace --all-targets --release`: 0
+warnings. `cargo test --workspace --release --no-fail-fast`: editor 1037 passed, engine 1744,
+player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2814; 10 new), 0 failed. The
+second full run was stopped early when the work paused, so it still has to be done. Only TIFF
+decoding changed in render code (PNG and JPEG take the same path as before), so golden shots
+were not rerun.
