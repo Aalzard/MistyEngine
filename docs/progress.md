@@ -6149,3 +6149,77 @@ missing model), gloss packing.
 warnings; `cargo test --workspace --release --no-fail-fast`: editor 1032 passed, engine 1731,
 player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2796; 11 new), 0 failed; golden
 shots green (procedural trees, textures and materials draw as before).
+
+## Round 86 — Bug hunt 17: the asset-pack imports of round 85 (branch r86-qa)
+
+Attacked round 85 part 1 (TIFF textures, Unity `.meta` takeover, FBX materials finding their
+textures by name, cut-out leaves, LOD groups from node names, trees from model files) with
+generated files in temporary projects; no bought asset was used.
+
+### Bugs fixed
+- **Copying a Unity pack in again broke every reference to it.** The takeover threw away the
+  Unity meta file's GUID and gave the asset a new one; copying the pack over the project again
+  (its `.meta` files overwrite Misty's) gave every asset yet another GUID, and the scenes,
+  materials and tree assets naming them lost them. The scan now keeps the Unity GUID (the same
+  32-digit form as Misty's) unless another asset has it: a Misty meta file's GUID always wins,
+  and of two copies of a pack the first keeps it. Folder metas keep theirs too, and a Unity
+  meta file starting with a byte order mark is taken over (it stayed unresolved).
+- **Another material's maps became a material's albedo.** A material `Leaf` without
+  `Leaf_Alb` took the first "colour variant" alphabetically, which could be `Leaf_Red_AO` or
+  `Leaf_Red_NM` (the maps of a `Leaf_Red`). A variant whose suffix ends in a known map kind is
+  no variant now. The order was also case-sensitive (`Leaf_Zed` before `leaf_yellow`) and
+  non-ASCII names never matched (`Écorce` vs `écorce_alb`); both fixed. Blender's copies
+  (`Bark.001`) take the textures of `Bark`.
+- **The texture lookup left the project.** For a model in `Assets/`, the "Textures folders up to
+  two levels above" were the project root's and its parent folder's: textures outside the
+  project were used (outside `Assets`, so never packed into a build) or copied in from a
+  neighbouring project. Nothing above `Assets` is searched now.
+- **LOD levels with a gap left the object invisible.** `LOD0` + `LOD2` made a group with an
+  empty middle level (the model vanished at middle distance), and levels counted from 1
+  (`LOD1`..`LOD3`) an empty first level (invisible up close). The levels found are numbered
+  from 0 in order now. Levels under a group node (`Tree` holding `Tree_LOD0`, `Tree_LOD1`) form
+  the group as well; they all drew on top of each other.
+- **One unreadable gloss or translucency map stopped the extraction of every material of the
+  model.** The map is left out now (and the material keeps the usual smoothness instead of a
+  mirror finish meant for the missing map).
+- **Associated (premultiplied) TIFF alpha drew too dark.** ExtraSamples 1 (GIMP and others)
+  was read as straight alpha; the colours are divided by alpha now (8 and 16 bits, float).
+- **Greyscale TIFFs with alpha did not load at all**, though round 85 listed them: the image
+  crate refuses grey plus extra channels. **RGB TIFFs with two extra channels** (Photoshop with
+  a second alpha or a spot channel) loaded without their alpha, so leaf cards were solid. Both
+  are decoded with the TIFF decoder directly now (`render::texture::decode`), the first extra
+  channel as alpha; the cut-out check and the size read without a decode know them too.
+
+### Faster
+- A gloss or translucency map is converted once per session: the next model of the pack
+  copies the converted file. A 4K TIFF took about 50 ms to decode and 850 ms to scale to 2K
+  (Lanczos), per model of the pack before.
+
+### Checked, not bugs
+- Hostile TIFFs (`render::tiff_tests`): 16-bit, float, CMYK, multi-page, tiled, PackBits load;
+  palette, JPEG-in-TIFF and 4-bit grey fail with a message; 65535 × 65535 and 4-billion-pixel
+  headers stop at the memory limit; truncated strips, IFDs past the end or in a loop, 65535
+  entries, zero sizes and samples, broken LZW / Deflate / PackBits data and every prefix of a
+  good file fail or decode, none panics or hangs. A 4K RGBA TIFF decodes in about 50 ms and
+  its cut-out check (cached per file) takes about 60 ms.
+- Meta takeover: malformed Unity YAML or a broken GUID gets a fresh GUID; a meta file whose
+  asset is gone is left alone; settings edited after the takeover are never overwritten (only
+  an asset without a GUID is taken over); nothing is deleted.
+- Names: a material name holding a path (`../Textures/Secret`) matches nothing; "Flodder",
+  "Melody", "Lodge_LOD" hold no level; one level alone makes no group.
+- Trees from models: bark only and leaves only build; an empty model, points without faces,
+  only the pack's billboard, a flat model, broken FBX files and a texture in the Model slot
+  give errors naming the file (shown in the tree inspector and the terrain's tree palette); a
+  model with NaN / infinite / 1e30 coordinates builds or errors without panicking. The Model
+  slot saves like every other tree setting (tree assets have no undo; Play reads the rebuilt
+  asset), and scene reloads keep it.
+- Every converted map still writes its own file per material (shared GPU textures across tree
+  assets stay open from round 85).
+
+### Tests and checks
+New: `asset_db::tests::unity_meta_guids_are_kept`, `models::named_textures` edge cases,
+`models::fbx_tests` (unreadable named maps, converted maps shared between models),
+`render::tiff_tests` (hostile files, associated alpha, two extra channels, grey with alpha,
+an ignored 4K timing), `trees::tests::odd_models_make_trees_or_clear_errors`, editor
+`model_import::tests::lod_named_nodes_with_gaps_and_groups`. Each bug's test was run against
+the code without its fix and failed.

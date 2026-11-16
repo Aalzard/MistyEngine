@@ -5,7 +5,9 @@
 //! A texture belongs to a material when its file name is the material's name, alone or
 //! followed by `_`, `-`, `.` or a space and a suffix (case does not matter). The suffix says
 //! what the map is; an unknown suffix (`Leave_Autumn`) is taken for a colour variant, the
-//! first in alphabetical order when there are several.
+//! first in alphabetical order when there are several, unless it ends in a known map kind
+//! (`Leaf_Red_AO` is the occlusion map of a material `Leaf_Red`). A Blender copy `Bark.001`
+//! takes the textures of `Bark`.
 //!
 //! Also here: whether an albedo texture has cut-outs (leaf cards, fences), which FBX
 //! materials do not say.

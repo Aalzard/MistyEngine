@@ -125,7 +125,7 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
     let px = |n: usize| (0..n).map(|i| (i * 37 % 251) as u8).collect::<Vec<u8>>();
     let rgb8 = image_ifd(4, 4, &[8, 8, 8], 2, 48, &[]);
     let mut cases: Vec<(&str, Vec<u8>)> = vec![
-        ("rgb8", tiff(&[rgb8.clone()], &px(48))),
+        ("rgb8", tiff(std::slice::from_ref(&rgb8), &px(48))),
         // Float RGB (HDR paint exports).
         (
             "float32",
@@ -288,7 +288,7 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
             tiff(&[image_ifd(0, 0, &[8, 8, 8], 2, 0, &[])], &[]),
         ),
         ("strip past the end", {
-            let mut b = tiff(&[rgb8.clone()], &px(48));
+            let mut b = tiff(std::slice::from_ref(&rgb8), &px(48));
             b.truncate(b.len() - 20);
             b
         }),
@@ -312,7 +312,7 @@ fn hostile_tiffs_decode_or_fail_cleanly() {
             vec![b'I', b'I', 42, 0, 0xff, 0xff, 0xff, 0x7f],
         ),
         ("ifd loop", {
-            let mut b = tiff(&[rgb8.clone()], &px(48));
+            let mut b = tiff(std::slice::from_ref(&rgb8), &px(48));
             // Next-IFD offset of the only IFD points back at itself.
             let n = rgb8.len();
             let at = 8 + 2 + n * 12;
@@ -585,7 +585,7 @@ fn tiff_grey_with_alpha_loads() {
 fn big_tiff_timing() {
     let (w, h) = (4096u32, 4096u32);
     let mut pixels = vec![0u8; (w * h * 4) as usize];
-    for (i, p) in pixels.chunks_exact_mut(4).enumerate() {
+    for (i, p) in pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         p.copy_from_slice(&[
             (i % 251) as u8,
             (i % 241) as u8,

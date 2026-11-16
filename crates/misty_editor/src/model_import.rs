@@ -130,7 +130,7 @@ pub fn spawn_with_clips(
 
     // Generated LODs need a root for the LOD Group.
     let lods = !model.lod_heights.is_empty() && model.nodes.iter().any(|n| !n.lods.is_empty());
-    // Levels the file brings itself: top nodes named "…_LOD0", "…_LOD1", … (how other engines'
+    // Levels the file brings itself: nodes named "…_LOD0", "…_LOD1", … (how other engines
     // asset packs ship their levels) become one LOD Group, as generated ones do.
     let file_levels = if lods {
         Vec::new()
