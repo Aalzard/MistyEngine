@@ -86,15 +86,14 @@ pub fn mip_chain(image: RgbaImage, srgb: bool) -> Vec<RgbaImage> {
     }
 }
 
-/// TIFF files whose fourth channel is marked "unspecified" (ExtraSamples 0: how Photoshop
-/// saves an alpha channel, so most asset-pack TIFFs) would decode without it; `bytes` with
-/// that channel marked as alpha (unassociated). Any other data comes back as it is.
-pub fn tiff_alpha(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
-    use std::borrow::Cow;
+/// The one ExtraSamples value of a TIFF's first image with grey + 1 or RGB + 1 samples: where
+/// it is stored, the value (0 unspecified, 1 associated alpha, 2 unassociated alpha) and
+/// whether the file is little-endian.
+fn tiff_extra_sample(bytes: &[u8]) -> Option<(usize, u16, bool)> {
     let le = match bytes.get(..4) {
         Some([b'I', b'I', 42, 0]) => true,
         Some([b'M', b'M', 0, 42]) => false,
-        _ => return Cow::Borrowed(bytes),
+        _ => return None,
     };
     let u16_at = |at: usize| {
         let b = bytes.get(at..at + 2)?;
@@ -113,26 +112,33 @@ pub fn tiff_alpha(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
         })
     };
     // The first image's tags: (tag, type, count, value) of 12 bytes each.
-    let find = || {
-        let ifd = u32_at(4)? as usize;
-        let n = u16_at(ifd)? as usize;
-        let (mut samples, mut extra) = (0u16, None);
-        for i in 0..n {
-            let at = ifd + 2 + i * 12;
-            let (tag, kind, count) = (u16_at(at)?, u16_at(at + 2)?, u32_at(at + 4)?);
-            match tag {
-                // SamplesPerPixel.
-                277 => samples = u16_at(at + 8)?,
-                // ExtraSamples: one SHORT, stored in the entry itself.
-                338 if kind == 3 && count == 1 && u16_at(at + 8)? == 0 => extra = Some(at + 8),
-                _ => {}
-            }
+    let ifd = u32_at(4)? as usize;
+    let n = u16_at(ifd)? as usize;
+    let (mut samples, mut extra) = (0u16, None);
+    for i in 0..n {
+        let at = ifd + 2 + i * 12;
+        let (tag, kind, count) = (u16_at(at)?, u16_at(at + 2)?, u32_at(at + 4)?);
+        match tag {
+            // SamplesPerPixel.
+            277 => samples = u16_at(at + 8)?,
+            // ExtraSamples: one SHORT, stored in the entry itself.
+            338 if kind == 3 && count == 1 => extra = Some((at + 8, u16_at(at + 8)?)),
+            _ => {}
         }
-        // Grey + 1 or RGB + 1.
-        extra.filter(|_| samples == 2 || samples == 4)
-    };
-    match find() {
-        Some(at) => {
+    }
+    // Grey + 1 or RGB + 1.
+    extra
+        .filter(|_| samples == 2 || samples == 4)
+        .map(|(at, v)| (at, v, le))
+}
+
+/// TIFF files whose fourth channel is marked "unspecified" (ExtraSamples 0: how Photoshop
+/// saves an alpha channel, so most asset-pack TIFFs) would decode without it; `bytes` with
+/// that channel marked as alpha (unassociated). Any other data comes back as it is.
+pub fn tiff_alpha(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    use std::borrow::Cow;
+    match tiff_extra_sample(bytes) {
+        Some((at, 0, le)) => {
             let mut fixed = bytes.to_vec();
             // 2 = unassociated alpha.
             let alpha = if le {
@@ -143,14 +149,240 @@ pub fn tiff_alpha(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
             fixed[at..at + 2].copy_from_slice(&alpha);
             Cow::Owned(fixed)
         }
-        None => Cow::Borrowed(bytes),
+        _ => Cow::Borrowed(bytes),
+    }
+}
+
+/// Colours divided by alpha (premultiplied data made straight; clear texels stay black).
+fn unpremultiply(img: image::DynamicImage) -> image::DynamicImage {
+    use image::DynamicImage as D;
+    fn straight<P: image::Pixel>(img: &mut image::ImageBuffer<P, Vec<P::Subpixel>>)
+    where
+        P::Subpixel: Into<f64> + subpixel::FromF64,
+    {
+        let max = <P::Subpixel as image::Primitive>::DEFAULT_MAX_VALUE.into();
+        for p in img.pixels_mut() {
+            let c = p.channels_mut();
+            let (colour, alpha) = c.split_at_mut(c.len() - 1);
+            let a: f64 = alpha[0].into();
+            if a <= 0.0 {
+                continue;
+            }
+            for v in colour {
+                let x: f64 = (*v).into();
+                *v = subpixel::FromF64::from_f64((x * max / a).min(max));
+            }
+        }
+    }
+    match img {
+        D::ImageRgba8(mut i) => {
+            straight(&mut i);
+            D::ImageRgba8(i)
+        }
+        D::ImageLumaA8(mut i) => {
+            straight(&mut i);
+            D::ImageLumaA8(i)
+        }
+        D::ImageRgba16(mut i) => {
+            straight(&mut i);
+            D::ImageRgba16(i)
+        }
+        D::ImageLumaA16(mut i) => {
+            straight(&mut i);
+            D::ImageLumaA16(i)
+        }
+        D::ImageRgba32F(mut i) => {
+            straight(&mut i);
+            D::ImageRgba32F(i)
+        }
+        other => other,
+    }
+}
+
+/// Subpixels made from a float (rounded and clamped for integers).
+mod subpixel {
+    pub trait FromF64 {
+        fn from_f64(v: f64) -> Self;
+    }
+    impl FromF64 for u8 {
+        fn from_f64(v: f64) -> Self {
+            v.round().clamp(0.0, 255.0) as u8
+        }
+    }
+    impl FromF64 for u16 {
+        fn from_f64(v: f64) -> Self {
+            v.round().clamp(0.0, 65535.0) as u16
+        }
+    }
+    impl FromF64 for f32 {
+        fn from_f64(v: f64) -> Self {
+            v as f32
+        }
     }
 }
 
 /// Decode image bytes (PNG, JPEG, TIFF, ...; the format is found from the data), keeping a
-/// TIFF's alpha channel ([`tiff_alpha`]).
+/// TIFF's alpha channel ([`tiff_alpha`]) and making premultiplied (associated) TIFF alpha
+/// straight.
 pub fn decode(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
-    image::load_from_memory(&tiff_alpha(bytes))
+    if let Some(layout) = extra_channel_layout(bytes) {
+        let img = decode_extra_channels(bytes, &layout)
+            .map_err(|e| image::ImageError::IoError(std::io::Error::other(e)))?;
+        return Ok(if layout.associated {
+            unpremultiply(img)
+        } else {
+            img
+        });
+    }
+    let img = image::load_from_memory(&tiff_alpha(bytes))?;
+    Ok(match tiff_extra_sample(bytes) {
+        Some((_, 1, _)) => unpremultiply(img),
+        _ => img,
+    })
+}
+
+/// A TIFF whose channels the image crate cannot take: grey plus extra channels (it refuses
+/// them), or RGB plus two or more (it drops them all, alpha too). Photoshop writes both: a
+/// Grayscale document with transparency, an RGB one with a second alpha or a spot channel.
+/// Whether `bytes` is a TIFF with extra channels the image crate cannot take, decoded with
+/// the first one as alpha by [`decode`].
+pub fn tiff_extra_alpha(bytes: &[u8]) -> bool {
+    extra_channel_layout(bytes).is_some()
+}
+
+struct ExtraChannels {
+    /// Where the PhotometricInterpretation value is stored.
+    photometric_at: usize,
+    little_endian: bool,
+    /// 1 (grey) or 3 (RGB) colour channels; the next one is the alpha.
+    colour: usize,
+    samples: usize,
+    /// White is zero (grey inverted).
+    inverted: bool,
+    /// The alpha is premultiplied (ExtraSamples 1).
+    associated: bool,
+}
+
+fn extra_channel_layout(bytes: &[u8]) -> Option<ExtraChannels> {
+    let le = match bytes.get(..4) {
+        Some([b'I', b'I', 42, 0]) => true,
+        Some([b'M', b'M', 0, 42]) => false,
+        _ => return None,
+    };
+    let u16_at = |at: usize| {
+        let b = bytes.get(at..at + 2)?;
+        Some(if le {
+            u16::from_le_bytes([b[0], b[1]])
+        } else {
+            u16::from_be_bytes([b[0], b[1]])
+        })
+    };
+    let u32_at = |at: usize| {
+        let b = bytes.get(at..at + 4)?;
+        Some(if le {
+            u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+        } else {
+            u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+        })
+    };
+    let ifd = u32_at(4)? as usize;
+    let n = u16_at(ifd)? as usize;
+    let (mut photometric, mut samples, mut first_extra) = (None, 1u16, None);
+    for i in 0..n {
+        let at = ifd + 2 + i * 12;
+        let (tag, kind, count) = (u16_at(at)?, u16_at(at + 2)?, u32_at(at + 4)?);
+        match tag {
+            262 if kind == 3 => photometric = Some((at + 8, u16_at(at + 8)?)),
+            277 => samples = u16_at(at + 8)?,
+            338 if kind == 3 && count >= 1 => {
+                // Up to two SHORTs sit in the entry itself, more at an offset.
+                let values = if count <= 2 {
+                    at + 8
+                } else {
+                    u32_at(at + 8)? as usize
+                };
+                first_extra = u16_at(values);
+            }
+            _ => {}
+        }
+    }
+    let (photometric_at, photometric) = photometric?;
+    let samples = usize::from(samples);
+    let colour = match photometric {
+        0 | 1 if samples >= 2 => 1,
+        2 if samples >= 5 => 3,
+        _ => return None,
+    };
+    Some(ExtraChannels {
+        photometric_at,
+        little_endian: le,
+        colour,
+        samples,
+        inverted: photometric == 0,
+        associated: first_extra == Some(1),
+    })
+}
+
+/// Decode a file of [`extra_channel_layout`] with the TIFF decoder as plain channels (marked
+/// "black is zero", so it hands them all over), the first extra channel as alpha.
+fn decode_extra_channels(bytes: &[u8], l: &ExtraChannels) -> Result<image::DynamicImage, String> {
+    let mut patched = bytes.to_vec();
+    let one = if l.little_endian {
+        1u16.to_le_bytes()
+    } else {
+        1u16.to_be_bytes()
+    };
+    patched[l.photometric_at..l.photometric_at + 2].copy_from_slice(&one);
+    let mut d =
+        tiff::decoder::Decoder::new(std::io::Cursor::new(patched)).map_err(|e| e.to_string())?;
+    let (w, h) = d.dimensions().map_err(|e| e.to_string())?;
+    match d.colortype().map_err(|e| e.to_string())? {
+        tiff::ColorType::Multiband {
+            bit_depth: 8 | 16,
+            num_samples,
+        } if usize::from(num_samples) == l.samples => {}
+        other => return Err(format!("TIFF channels {other:?} are not supported")),
+    }
+    let pixels = w as usize * h as usize;
+    // One pixel's channels as RGBA, `max` the white value.
+    fn rgba<T: Copy + std::ops::Sub<Output = T>>(s: &[T], l: &ExtraChannels, max: T) -> [T; 4] {
+        if l.colour == 1 {
+            let g = if l.inverted { max - s[0] } else { s[0] };
+            [g, g, g, s[1]]
+        } else {
+            [s[0], s[1], s[2], s[3]]
+        }
+    }
+    let short = || format!("the TIFF holds less than {w} × {h} pixels");
+    match d.read_image().map_err(|e| e.to_string())? {
+        tiff::decoder::DecodingResult::U8(v) => {
+            if v.len() < pixels * l.samples {
+                return Err(short());
+            }
+            let raw: Vec<u8> = v
+                .chunks_exact(l.samples)
+                .take(pixels)
+                .flat_map(|s| rgba(s, l, 255))
+                .collect();
+            image::RgbaImage::from_raw(w, h, raw)
+                .map(image::DynamicImage::ImageRgba8)
+                .ok_or_else(short)
+        }
+        tiff::decoder::DecodingResult::U16(v) => {
+            if v.len() < pixels * l.samples {
+                return Err(short());
+            }
+            let raw: Vec<u16> = v
+                .chunks_exact(l.samples)
+                .take(pixels)
+                .flat_map(|s| rgba(s, l, 65535))
+                .collect();
+            image::ImageBuffer::from_raw(w, h, raw)
+                .map(image::DynamicImage::ImageRgba16)
+                .ok_or_else(short)
+        }
+        _ => Err("TIFF sample format not supported".into()),
+    }
 }
 
 /// Decode an image file on disk ([`decode`]).
@@ -173,6 +405,11 @@ pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
 /// Pixel size of an image file without decoding it.
 pub fn image_size(path: &Path) -> Option<[u32; 2]> {
     let bytes = crate::vfs::read(path).ok()?;
+    if extra_channel_layout(&bytes).is_some() {
+        let mut d = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes)).ok()?;
+        let (w, h) = d.dimensions().ok()?;
+        return Some([w, h]);
+    }
     let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .ok()?

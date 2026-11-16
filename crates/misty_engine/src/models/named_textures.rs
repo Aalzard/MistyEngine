@@ -5,7 +5,9 @@
 //! A texture belongs to a material when its file name is the material's name, alone or
 //! followed by `_`, `-`, `.` or a space and a suffix (case does not matter). The suffix says
 //! what the map is; an unknown suffix (`Leave_Autumn`) is taken for a colour variant, the
-//! first in alphabetical order when there are several.
+//! first in alphabetical order when there are several, unless it ends in a known map kind
+//! (`Leaf_Red_AO` is the occlusion map of a material `Leaf_Red`). A Blender copy `Bark.001`
+//! takes the textures of `Bark`.
 //!
 //! Also here: whether an albedo texture has cut-outs (leaf cards, fences), which FBX
 //! materials do not say.
@@ -63,6 +65,8 @@ fn kind(suffix: &str) -> Kind {
 
 /// The folders searched, nearest first: the model's own, a `Textures` folder in it, and
 /// `Textures` folders up to two levels above it.
+/// For a model in the project's `Assets` folder, nothing above that folder is searched (the
+/// project root and its neighbours are not the project's assets).
 fn folders(dir: &Path) -> Vec<PathBuf> {
     let mut out = vec![dir.to_path_buf(), dir.join("Textures")];
     let mut up = dir.parent();
@@ -71,7 +75,21 @@ fn folders(dir: &Path) -> Vec<PathBuf> {
         out.push(u.join("Textures"));
         up = u.parent();
     }
+    if let Some(assets) = crate::assets::project_root().map(|r| r.join("Assets"))
+        && dir.starts_with(&assets)
+    {
+        out.retain(|f| f.starts_with(&assets));
+    }
     out
+}
+
+/// The kind of map a colour-variant suffix ends in (`red_ao` → occlusion): such a file is
+/// another material's map (`Leaf_Red_AO` belongs to `Leaf_Red`), not a variant of this one.
+fn last_kind(suffix: &str) -> Kind {
+    suffix
+        .rsplit(['_', '-', '.', ' '])
+        .next()
+        .map_or(Kind::Unknown, kind)
 }
 
 /// The files directly in `folder` (on disk, or in the mounted pak of a built game).
@@ -93,26 +111,36 @@ fn list(folder: &Path) -> Vec<PathBuf> {
 
 /// The textures named after `material` near the model folder `dir`.
 pub fn find(dir: &Path, material: &str) -> NamedTextures {
+    let found = find_exact(dir, material);
+    // Blender names the copies of a material "Bark.001", "Bark.002": the textures are named
+    // after the original.
+    if found == NamedTextures::default()
+        && let Some((base, n)) = material.trim().rsplit_once('.')
+        && n.len() == 3
+        && n.bytes().all(|b| b.is_ascii_digit())
+    {
+        return find_exact(dir, base);
+    }
+    found
+}
+
+fn find_exact(dir: &Path, material: &str) -> NamedTextures {
     let mut out = NamedTextures::default();
-    let name = material.trim().to_ascii_lowercase();
+    let name = material.trim().to_lowercase();
     if name.is_empty() {
         return out;
     }
     // A colour variant only stands in when no real albedo was found anywhere.
     let mut variant: Option<PathBuf> = None;
     for folder in folders(dir) {
-        let mut files: Vec<PathBuf> = list(&folder)
+        // (Lower-case stem, file), alphabetical whatever the case.
+        let mut files: Vec<(String, PathBuf)> = list(&folder)
             .into_iter()
             .filter(|p| crate::assets::is_texture(&p.to_string_lossy()))
+            .filter_map(|p| Some((p.file_stem()?.to_string_lossy().to_lowercase(), p)))
             .collect();
         files.sort();
-        for file in files {
-            let Some(stem) = file
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_ascii_lowercase())
-            else {
-                continue;
-            };
+        for (stem, file) in files {
             let Some(rest) = stem.strip_prefix(&name) else {
                 continue;
             };
@@ -130,6 +158,9 @@ pub fn find(dir: &Path, material: &str) -> NamedTextures {
                 Kind::Roughness => &mut out.roughness,
                 Kind::Translucency => &mut out.translucency,
                 Kind::Other => continue,
+                Kind::Unknown if !matches!(last_kind(suffix), Kind::Albedo | Kind::Unknown) => {
+                    continue;
+                }
                 Kind::Unknown => &mut variant,
             };
             if slot.is_none() {
@@ -166,20 +197,22 @@ pub fn has_cutouts(path: &Path) -> bool {
 
 /// [`has_cutouts`] of image data.
 pub fn bytes_have_cutouts(bytes: &[u8]) -> bool {
+    let extra = crate::render::texture::tiff_extra_alpha(bytes);
     let bytes = crate::render::texture::tiff_alpha(bytes);
     // The header says whether there is an alpha channel at all (no decode).
-    let alpha = image::ImageReader::new(std::io::Cursor::new(&bytes[..]))
-        .with_guessed_format()
-        .ok()
-        .and_then(|r| r.into_decoder().ok())
-        .is_some_and(|d| {
-            use image::ImageDecoder;
-            d.color_type().has_alpha()
-        });
+    let alpha = extra
+        || image::ImageReader::new(std::io::Cursor::new(&bytes[..]))
+            .with_guessed_format()
+            .ok()
+            .and_then(|r| r.into_decoder().ok())
+            .is_some_and(|d| {
+                use image::ImageDecoder;
+                d.color_type().has_alpha()
+            });
     if !alpha {
         return false;
     }
-    let Ok(img) = image::load_from_memory(&bytes) else {
+    let Ok(img) = crate::render::texture::decode(&bytes) else {
         return false;
     };
     let img = img.into_rgba8();
@@ -253,6 +286,71 @@ mod tests {
         assert_eq!(
             find(&model_dir, "Bark").albedo,
             Some(model_dir.join("Bark_Albedo.png"))
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Names that fooled the lookup: another material's maps taken for a colour variant
+    /// (`Leaf_Red_AO` for `Leaf`), upper case sorting first, non-ASCII names, Blender's
+    /// `.001` copies, a name with a path in it, and folders outside the project's `Assets`.
+    #[test]
+    fn named_textures_edge_cases() {
+        let root = std::env::temp_dir().join(format!("misty_named_edge_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("Project");
+        let dir = project.join("Assets/Pack");
+        let textures = dir.join("Textures");
+        std::fs::create_dir_all(&textures).unwrap();
+        let _scope = crate::assets::scoped_root(&project);
+        for name in [
+            "Leaf_Red_AO.png",
+            "Leaf_Red_NM.png",
+            "Leaf_NM.png",
+            "leaf_yellow.png",
+            "Leaf_Zed.png",
+            "Écorce_Alb.png",
+            "Bark_Alb.png",
+            "Secret.png",
+        ] {
+            std::fs::write(textures.join(name), b"x").unwrap();
+        }
+        // Not a colour variant: the ambient occlusion and normal map of a "Leaf_Red".
+        let leaf = find(&dir, "Leaf");
+        assert_eq!(leaf.normal, Some(textures.join("Leaf_NM.png")));
+        assert_eq!(
+            leaf.albedo,
+            Some(textures.join("leaf_yellow.png")),
+            "the first colour variant, whatever its case"
+        );
+        assert_eq!(
+            find(&dir, "écorce").albedo,
+            Some(textures.join("Écorce_Alb.png"))
+        );
+        assert_eq!(
+            find(&dir, "ÉCORCE").albedo,
+            Some(textures.join("Écorce_Alb.png"))
+        );
+        // Blender names copies of a material "Bark.001".
+        assert_eq!(
+            find(&dir, "Bark.001").albedo,
+            Some(textures.join("Bark_Alb.png"))
+        );
+        // A material name is a name, not a path.
+        assert_eq!(find(&dir, "../Textures/Secret"), NamedTextures::default());
+        assert_eq!(find(&dir, "Textures/Secret"), NamedTextures::default());
+        // Folders above the project's Assets are not searched (they are not in the project:
+        // the textures were used from outside it, or copied in from a neighbour project).
+        let outside = root.join("Textures");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("Stone_Alb.png"), b"x").unwrap();
+        std::fs::create_dir_all(project.join("Textures")).unwrap();
+        std::fs::write(project.join("Textures/Moss.png"), b"x").unwrap();
+        let top = project.join("Assets");
+        assert_eq!(find(&top, "Stone"), NamedTextures::default());
+        assert_eq!(find(&top, "Moss"), NamedTextures::default());
+        assert_eq!(
+            find(&dir, "Bark").albedo,
+            Some(textures.join("Bark_Alb.png"))
         );
         std::fs::remove_dir_all(root).ok();
     }

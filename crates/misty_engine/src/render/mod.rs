@@ -4375,6 +4375,8 @@ mod taa_gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
 #[cfg(test)]
+mod tiff_tests;
+#[cfg(test)]
 mod upscale_gpu_tests;
 #[cfg(test)]
 mod wireframe_gpu_tests;
