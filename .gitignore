@@ -2,3 +2,6 @@
 *.pdb
 # Per-user editor state
 SampleProject/Library/
+
+# Side-by-side sheets with reference photos must never be committed (the photos are not ours).
+docs/screenshots/**/*_vs_reference.png
