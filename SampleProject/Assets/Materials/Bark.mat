@@ -25,5 +25,6 @@
   "offset": [
     0.0,
     0.0
-  ]
+  ],
+  "double_sided": true
 }

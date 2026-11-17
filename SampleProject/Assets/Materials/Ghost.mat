@@ -7,7 +7,7 @@
     0.4
   ],
   "metallic": 0.0,
-  "smoothness": 0.3,
+  "smoothness": 0.0,
   "emission_enabled": false,
   "emission": [
     0.0,
@@ -15,7 +15,7 @@
     0.0
   ],
   "emission_intensity": 1.0,
-  "albedo_map": null,
+  "albedo_map": "Assets/Textures/Fence.png",
   "normal_map": null,
   "normal_scale": 1.0,
   "tiling": [
@@ -26,5 +26,6 @@
     0.0,
     0.0
   ],
-  "rendering_mode": "Fade"
+  "rendering_mode": "Cutout",
+  "alpha_cutoff": 0.3
 }

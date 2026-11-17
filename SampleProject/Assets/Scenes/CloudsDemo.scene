@@ -240,6 +240,15 @@
           "tag": "Untagged"
         },
         "Post-process Volume": {
+          "ambient_occlusion": {
+            "active": true,
+            "direct_lighting_strength": 0.0,
+            "full_resolution": false,
+            "intensity": 1.0,
+            "radius": 1.5,
+            "step_count": 6,
+            "temporal": true
+          },
           "bloom": {
             "active": true,
             "intensity": 0.5,
@@ -253,16 +262,16 @@
           },
           "clouds": {
             "active": true,
-            "altitude": 1400.0,
+            "altitude": 5720.0,
             "ambient": 1.0,
             "coverage": 0.45,
-            "density": 0.75,
+            "density": 0.7,
             "enabled": true,
-            "shadow_opacity": 0.8,
+            "shadow_opacity": 0.62,
             "shadows": true,
-            "shape": 0.45,
+            "shape": 0.53,
             "silver_lining": 0.8,
-            "thickness": 2200.0,
+            "thickness": 5430.0,
             "wind_direction": 100.0,
             "wind_speed": 18.0
           },
@@ -285,10 +294,10 @@
               1.0,
               1.0
             ],
-            "ambient_dimmer": 1.0,
+            "ambient_dimmer": 0.32,
             "anisotropy": 0.35,
-            "attenuation_distance": 9000.0,
-            "base_height": 0.0,
+            "attenuation_distance": 1125.0,
+            "base_height": 164.5,
             "denoising": true,
             "enabled": true,
             "max_fog_distance": 3000.0,
@@ -307,9 +316,9 @@
           "priority": 0.0,
           "sun_shafts": {
             "active": true,
-            "intensity": 0.4,
-            "length": 0.8,
-            "radius": 0.5,
+            "intensity": 3.47,
+            "length": 0.72,
+            "radius": 1.17,
             "threshold": 0.6,
             "tint": [
               1.0,

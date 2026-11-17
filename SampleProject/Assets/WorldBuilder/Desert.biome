@@ -1,9 +1,9 @@
 {
   "name": "Desert",
   "tone": [
-    0.85,
-    0.68,
-    0.42
+    1.0,
+    0.39800316,
+    0.2509091
   ],
   "flat": {
     "texture": "Assets/WorldBuilder/Textures/DesertSand.png",
@@ -81,5 +81,10 @@
       ],
       "align_to_normal": true
     }
-  ]
+  ],
+  "asset_guids": {
+    "Assets/WorldBuilder/Textures/DesertSand.png": "6196469f1e389f5a3be3a1006db8ffc0",
+    "Assets/WorldBuilder/Textures/RedRock.png": "7a493221f20c84335d0ddc57b32e30fc",
+    "Assets/WorldBuilder/Textures/Sand.png": "0fbf6900121d80f252bd400914072753"
+  }
 }

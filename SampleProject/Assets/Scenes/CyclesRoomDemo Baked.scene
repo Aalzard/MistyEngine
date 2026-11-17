@@ -757,7 +757,7 @@
           "enabled": true,
           "far_clip": 40.0,
           "importance": 1,
-          "intensity": 1.0,
+          "intensity": 4.0,
           "mode": "Baked",
           "near_clip": 0.05,
           "refresh_interval": 1,
@@ -826,7 +826,7 @@
           "enabled": true,
           "far_clip": 40.0,
           "importance": 2,
-          "intensity": 1.0,
+          "intensity": 4.0,
           "mode": "Baked",
           "near_clip": 0.05,
           "refresh_interval": 1,
@@ -870,6 +870,7 @@
           "active": true,
           "component_order": [
             "Transform",
+            "Post-process Volume",
             "Post-process Volume"
           ],
           "is_static": false,
@@ -881,17 +882,17 @@
           "ambient_occlusion": {
             "active": true,
             "direct_lighting_strength": 0.0,
-            "full_resolution": true,
-            "intensity": 2.0,
-            "radius": 1.2,
-            "step_count": 10,
+            "full_resolution": false,
+            "intensity": 1.0,
+            "radius": 1.5,
+            "step_count": 6,
             "temporal": true
           },
           "bloom": {
-            "active": true,
-            "intensity": 0.15,
+            "active": false,
+            "intensity": 0.6,
             "scatter": 0.7,
-            "threshold": 1.0,
+            "threshold": 0.0,
             "tint": [
               1.0,
               1.0,
@@ -899,43 +900,28 @@
             ]
           },
           "color_adjustments": {
-            "active": true,
+            "active": false,
             "color_filter": [
               1.0,
               1.0,
               1.0
             ],
             "contrast": 0.0,
-            "post_exposure": 1.0,
+            "post_exposure": 0.0,
             "saturation": 0.0
+          },
+          "contact_shadows": {
+            "active": true,
+            "distance_fade": 50.0,
+            "length": 0.15,
+            "opacity": 1.0,
+            "sample_count": 12
           },
           "enabled": true,
           "priority": 0.0,
-          "screen_space_gi": {
-            "active": true,
-            "denoise": true,
-            "full_resolution": false,
-            "intensity": 0.6,
-            "lightmapped_surfaces": false,
-            "quality": "Medium",
-            "radius": 3.0,
-            "temporal": true,
-            "thickness": 0.5
-          },
-          "screen_space_reflections": {
-            "active": true,
-            "edge_fade": 0.1,
-            "full_resolution": true,
-            "intensity": 1.0,
-            "max_distance": 50.0,
-            "max_roughness": 0.6,
-            "quality": "Medium",
-            "temporal": true,
-            "thickness": 0.3
-          },
           "tonemapping": {
             "active": true,
-            "mode": "AgX"
+            "mode": "Aces"
           },
           "vignette": {
             "active": false,
@@ -973,7 +959,133 @@
         }
       },
       "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Reflection Probes",
+          "tag": "Untagged"
+        },
+        "Reflection Probe Group": {
+          "height": 1.5,
+          "merge": true,
+          "resolution": 512,
+          "second_bounce": true,
+          "spacing": 4.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Reflection Probe 1",
+          "tag": "Untagged"
+        },
+        "Reflection Probe": {
+          "background": [
+            0.19,
+            0.3,
+            0.47
+          ],
+          "baked": "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-2.probe",
+          "blend_distance": 1.0,
+          "box_projection": false,
+          "center": [
+            0.0,
+            1.1999998,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "enabled": true,
+          "far_clip": 1000.0,
+          "importance": 1,
+          "intensity": 1.0,
+          "mode": "Baked",
+          "near_clip": 0.3,
+          "refresh_interval": 1,
+          "resolution": 128,
+          "size": [
+            6.0,
+            5.6,
+            6.0
+          ],
+          "time_slicing": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            4.0,
+            1.25
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 15
     }
   ],
-  "version": 1
+  "version": 1,
+  "asset_guids": {
+    "Assets/Materials/CyclesRoom/Box.mat": "939f13076a8e3b65e4c46d56dfde7c57",
+    "Assets/Materials/CyclesRoom/Canvas.mat": "cd030e2ed24e325fa42232985a628005",
+    "Assets/Materials/CyclesRoom/Floor.mat": "2b2b81247aa531235c704664b92d61a4",
+    "Assets/Materials/CyclesRoom/Light Panel.mat": "3598df860555225cd9c99da3bbceae2c",
+    "Assets/Materials/CyclesRoom/Wall.mat": "db1f70cfdd83ea60897b82a31e4c77d9",
+    "Assets/Scenes/CyclesRoomDemo Baked/Lightmap-0.lightmap": "4f77daa2adfcd54285518974f54305be",
+    "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-0.probe": "48196c15fcfd5e4ebba9a4e52a0ccde7",
+    "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-1.probe": "d8a738a01bea980e051284d7c93ba0cc",
+    "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-2.probe": "740967d19323850e956870ac610fa4b1"
+  }
 }

@@ -17,7 +17,7 @@
       }
     },
     "com.misty.modules.scripting": {
-      "version": "0.0.1",
+      "version": "0.3.1",
       "source": "builtin",
       "indirect": true
     }

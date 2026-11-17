@@ -758,9 +758,9 @@
             0.0
           ],
           "position": [
-            0.6,
+            -0.56798804,
             0.55,
-            0.6
+            1.8386399
           ],
           "rotation": [
             0.0,
@@ -855,7 +855,131 @@
         }
       },
       "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Reflection Probes",
+          "tag": "Untagged"
+        },
+        "Reflection Probe Group": {
+          "height": 1.5,
+          "merge": true,
+          "resolution": 128,
+          "second_bounce": true,
+          "spacing": 4.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Reflection Probe 1",
+          "tag": "Untagged"
+        },
+        "Reflection Probe": {
+          "background": [
+            0.19,
+            0.3,
+            0.47
+          ],
+          "baked": "Assets/Scenes/LightmapDemo/ReflectionProbe-0.probe",
+          "blend_distance": 1.0,
+          "box_projection": false,
+          "center": [
+            0.0,
+            0.5,
+            -1.2
+          ],
+          "clear_flags": "Skybox",
+          "enabled": true,
+          "far_clip": 1000.0,
+          "importance": 1,
+          "intensity": 1.0,
+          "mode": "Baked",
+          "near_clip": 0.3,
+          "refresh_interval": 1,
+          "resolution": 128,
+          "size": [
+            6.5,
+            7.0,
+            7.6
+          ],
+          "time_slicing": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.3324556,
+            2.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
     }
   ],
-  "version": 1
+  "version": 1,
+  "asset_guids": {
+    "Assets/Materials/Lightmap Green.mat": "86945910787c9c44e8e66e482e5552ac",
+    "Assets/Materials/Lightmap Orange Glow.mat": "58d665e1a38edf2a1a05b56b10724014",
+    "Assets/Materials/Lightmap Red.mat": "9d095a929ef8ec2b134c3b71db310599",
+    "Assets/Materials/Lightmap Sphere.mat": "eb8710965402a26c47855085d488108d",
+    "Assets/Materials/Lightmap White.mat": "fe19df9b30fa211f1a8fafb61c5fc9e2",
+    "Assets/Scenes/LightmapDemo/Lightmap-0.lightmap": "a8f0c6a3c7550af4606081e0e71b64b0",
+    "Assets/Scenes/LightmapDemo/ReflectionProbe-0.probe": "26a70b212c3281531707ce5139018298"
+  }
 }

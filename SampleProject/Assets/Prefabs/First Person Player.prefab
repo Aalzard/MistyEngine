@@ -181,7 +181,7 @@
           "clear_flags": "Skybox",
           "depth": 0.0,
           "enabled": true,
-          "far": 1000.0,
+          "far": 2000.0,
           "fov": 60.0,
           "near": 0.1,
           "ortho_size": 5.0,
