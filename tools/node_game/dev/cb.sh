@@ -1,9 +1,9 @@
 #!/bin/bash
 # cb.sh <log name> <cargo args...>: wait for a build slot (same slot folders as build-slot.sh), run cargo, release.
-cd "/e/Misty Engine/Misty Engine Dev/MistyWork/r65-node-game" || exit 1
-export TMP='C:\MistyTry\r65tmp' TEMP='C:\MistyTry\r65tmp' CARGO_INCREMENTAL=0 CARGO_TARGET_DIR='E:\MistyTargets\r65-node-game'
-SLOT_DIR=/e/MistyTargets/slots
-log=/c/MistyTry/r65tmp/$1.log; shift
+cd "/h/Misty Engine/Misty Engine Dev/MistyWork/r65-node-game" || exit 1
+export TMP='H:\MistyTargets\tmp\r65' TEMP='H:\MistyTargets\tmp\r65' CARGO_INCREMENTAL=0 CARGO_TARGET_DIR='H:\MistyTargets\r65-node-game'
+SLOT_DIR=/h/MistyTargets/slots
+log=/h/MistyTargets/tmp/r65/$1.log; shift
 MINE=""
 while [ -z "$MINE" ]; do
   for n in 1 2 3; do
