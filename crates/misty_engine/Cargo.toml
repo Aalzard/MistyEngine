@@ -37,6 +37,9 @@ gilrs.workspace = true
 # UI text: font rasteriser + the editor UI library's bundled fonts (no font files in the repo).
 ab_glyph = "0.2.32"
 rayon = "1.11"
+# C# scripts: loads the installed .NET runtime's hostfxr at run time (no build-time .NET
+# dependency; projects without `.cs` scripts never load it). Already in the lock file via wgpu.
+libloading = "0.8"
 epaint_default_fonts = "0.36.2"
 # Reflection probes: half-float cubemaps, zlib-compressed probe files.
 half = { version = "2.7", features = ["bytemuck"] }

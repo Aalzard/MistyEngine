@@ -1135,6 +1135,47 @@ score and colour), `NetCoin.lua` (server pickups, a client RPC) and `NetHud.lua`
 Not done yet: relay servers and NAT punch-through (players on different networks need a reachable host),
 dedicated-server builds without a window, Network Animator / Rigidbody components.
 
+## C# scripts (preview)
+`.cs` files in `Assets/` run on the .NET runtime installed on the computer (install the
+[.NET SDK](https://dot.net), version 10 or later). Attach one by dragging it onto an object, like a
+Lua script; double-click opens it in the code editor. A script is a class with the file's name
+that derives from `MonoBehaviour`; Lua and C# scripts can sit side by side, even on one object.
+
+```csharp
+using Misty;
+
+public class Rotator : MonoBehaviour
+{
+    public float speed = 90f;
+
+    void Start() { Debug.Log("Spinning " + name); }
+
+    void Update()
+    {
+        transform.Rotate(0f, speed * Time.deltaTime, 0f);
+    }
+}
+```
+
+When Play starts, every `.cs` file under `Assets/` is compiled with the SDK's C# compiler into
+`Library/ScriptAssemblies/<hash>/Assembly-CSharp.dll` (about 0.2 s; an unchanged project reuses the
+last build). Compile errors and exceptions show in the Console with the file, line, class and
+method; a script that throws keeps getting its callbacks.
+
+Callbacks: `Awake`, `OnEnable`, `Start`, `FixedUpdate`, `Update`, `LateUpdate`, `OnDisable`,
+`OnDestroy` (any visibility, no parameters). API so far: `MonoBehaviour` (`gameObject`,
+`transform`, `name`), `GameObject` (`name`, `transform`), `Transform` (`position`, `rotation`,
+`eulerAngles`, `localPosition`, `localRotation`, `localScale`, `forward` / `right` / `up`,
+`Rotate`, `Translate`), `Vector3`, `Quaternion` (`Euler`, `eulerAngles`, `*`), `Mathf`, `Time`
+(`deltaTime`, `time`, `fixedDeltaTime`, `frameCount`) and `Debug` (`Log`, `LogWarning`,
+`LogError`).
+
+Not yet: Inspector fields (public fields keep their code defaults), the rest of the engine API
+(physics, input, audio, UI, …), collision callbacks, objects instantiated or switched on and off
+during Play, `transform.position` in world space under a parent (it is the local position for
+now), coroutines, completion in the code editor, and game builds (the player does not run C#
+yet). Each changed build stays loaded until the editor is closed.
+
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or
 `Assets/Tools/Editor/`) are **editor scripts**: they add menu items, tool windows, custom Properties views, Scene

@@ -6289,3 +6289,52 @@ player 12, recorder 19, MCP end-to-end 1, dedicated server 1 (2814; 10 new), 0 f
 second full run was stopped early when the work paused, so it still has to be done. Only TIFF
 decoding changed in render code (PNG and JPEG take the same path as before), so golden shots
 were not rerun.
+
+## Round 87 — C# scripts, proof of concept (branch csharp-proof)
+
+The user chose real C# on .NET (decision 46 picked Lua because "C# isn't available"; the
+.NET SDK is installed now). This round proves the path end to end with a small API before the
+full binding work.
+
+### Done
+- `.cs` files under `Assets/` compile with the SDK's Roslyn compiler (`csc.dll` with the
+  reference pack, through the VBCSCompiler server) into
+  `Library/ScriptAssemblies/<hash>/Assembly-CSharp.dll`, together with the engine's C# API
+  (`crates/misty_engine/dotnet/MistyEngine.cs`). The hash covers the sources and SDK, so an
+  unchanged project reuses its build. `dotnet build` is the fallback when no compiler is found.
+- The runtime is hosted in-process through `hostfxr` (`scripting/csharp.rs`, loaded with
+  `libloading` at run time; no build-time .NET dependency, nothing loads without a `.cs` script).
+  Entry points are `[UnmanagedCallersOnly]` methods of `Misty.Internal.Host`; C# calls back
+  through a table of native functions working on the `World` installed for the call.
+- C# instances run in the same frame phases as Lua: Awake + OnEnable as Play starts (after the
+  Lua ones), Start, FixedUpdate per physics step, Update, LateUpdate, OnDisable + OnDestroy on
+  Stop. FixedUpdate / Update / LateUpdate reach .NET in one batched call per pass.
+- API: MonoBehaviour, GameObject, Transform (position, rotation, scale, euler angles, axes,
+  Rotate, Translate), Vector3, Quaternion, Mathf, Time, Debug. Compile errors (file and line)
+  and exceptions (class, method, stack) go to the Console.
+- Editor: `.cs` files can be dropped on objects, open in the code editor, and are scripts for
+  the MCP tools. Docs: "C# scripts (preview)" in `docs/scripting.md`.
+
+### Numbers (release build, the user's dev PC)
+| | C# | Lua |
+|---|---|---|
+| 1000 objects, `transform.Rotate` in Update | 1.37–1.46 ms/frame | 2.51–2.67 ms/frame |
+| 1000 objects, empty Update | 0.45 ms/frame (mostly the host's per-object checks) | — |
+| Compile, changed scripts | 0.13–0.23 s (`dotnet build`: 30–45 s) | none |
+| Runtime start + load, first Play of an editor session | 0.6–9.1 s, varies run to run | none |
+
+The first load varies widely; each run loaded a newly written DLL, so Windows Defender scanning
+it is the likely cause (not confirmed). Starting the runtime in the background when a project
+with C# scripts opens would take it off the Play button.
+
+### Not done yet
+Inspector fields, the rest of the API (physics, input, audio, UI, scene queries, Instantiate /
+Destroy, GetComponent), collision and trigger callbacks, objects created or switched on/off
+during Play, world-space `transform.position` under a parent, coroutines, hot reload and
+unloading old builds, code completion, the Add Component list, and player builds (the runtime
+would have to ship with the game, about 70 MB, or be required on the player's computer).
+
+### Tests and checks
+New: `scripting::csharp_tests::csharp_rotator_turns_and_moves_the_cube_next_to_a_lua_script`,
+`csharp_compile_errors_and_exceptions_reach_the_console`, and the ignored benchmark
+`csharp_cost`. They skip with a note when no .NET runtime is installed.

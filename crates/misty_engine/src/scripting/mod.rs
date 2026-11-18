@@ -28,6 +28,7 @@ pub mod attributes;
 pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
+pub mod csharp;
 pub mod cursor_api;
 pub mod input_actions_api;
 pub mod input_api;
@@ -433,6 +434,8 @@ pub struct ScriptHost {
     /// While Play starts, the scripts the start pass has not reached yet: they get Awake and
     /// OnEnable in order, not when touched (the ones it went by are looked at as usual).
     start_pending: std::ops::Range<usize>,
+    /// C# scripts (`.cs`), run on the .NET runtime next to the Lua ones.
+    csharp: csharp::CsHost,
 }
 
 impl ScriptHost {
@@ -528,6 +531,7 @@ impl ScriptHost {
             seen_activity: 0,
             syncing: false,
             start_pending: 0..0,
+            csharp: Default::default(),
         };
         // OnEnable / OnDisable look at changes from here on.
         host.seen_activity = host.with_world(|w| w.scene.activity());
@@ -566,6 +570,7 @@ impl ScriptHost {
         }
         host.start_pending = 0..0;
         host.flush_spawned();
+        host.csharp_awake();
         host.localization_frame();
         host.with_world(|w| {
             w.audio.play_on_awake(&w.scene, None);
@@ -672,6 +677,16 @@ impl ScriptHost {
         if crate::visual_script::is_graph_path(&script.path) {
             self.graphs
                 .instantiate(&self.lua, &self.root, e, slot, script);
+            return;
+        }
+        if csharp::is_csharp_path(&script.path) {
+            let root = self.root.clone();
+            let mut w = self
+                .lua
+                .app_data_mut::<World>()
+                .expect("world is installed");
+            self.csharp
+                .instantiate(&mut w, &root, e, slot, &script.path);
             return;
         }
         let Some(class) = self.class(&script.path) else {
@@ -1232,6 +1247,7 @@ impl ScriptHost {
                     self.flush_spawned();
                 }
             }
+            self.csharp_start(time);
         }
 
         {
@@ -1257,6 +1273,7 @@ impl ScriptHost {
             {
                 profile_scope!("Scripts.FixedUpdate", Category::Scripts);
                 self.call_all("FixedUpdate");
+                self.csharp_pass(csharp::Method::FixedUpdate);
                 let fixed = self.with_world(|w| w.physics.fixed_dt);
                 self.graphs.fire_all(
                     &self.lua,
@@ -1297,6 +1314,7 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.Update", Category::Scripts);
             self.call_all("Update");
+            self.csharp_pass(csharp::Method::Update);
         }
         {
             profile_scope!("ScriptGraphs.Update", Category::Scripts);
@@ -1348,6 +1366,7 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.LateUpdate", Category::Scripts);
             self.call_all("LateUpdate");
+            self.csharp_pass(csharp::Method::LateUpdate);
             self.graphs.fire_all(
                 &self.lua,
                 &crate::visual_script::compile::EventKind::LateUpdate,
@@ -2038,6 +2057,8 @@ return {class_name}
 mod assets_tests;
 #[cfg(test)]
 mod behaviour_tree_tests;
+#[cfg(test)]
+mod csharp_tests;
 #[cfg(test)]
 mod input_tests;
 #[cfg(test)]

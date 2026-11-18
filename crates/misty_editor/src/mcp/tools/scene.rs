@@ -339,9 +339,11 @@ fn component_info(name: &str) -> Result<&'static ComponentInfo, String> {
     })
 }
 
-/// A Lua script or a Script Graph by path.
+/// A Lua or C# script or a Script Graph by path.
 fn is_script_ref(name: &str) -> bool {
-    name.ends_with(".lua") || misty_engine::visual_script::is_graph_path(name)
+    name.ends_with(".lua")
+        || misty_engine::scripting::csharp::is_csharp_path(name)
+        || misty_engine::visual_script::is_graph_path(name)
 }
 
 /// The slot of the script `name` (a path or a script name) on `e`.

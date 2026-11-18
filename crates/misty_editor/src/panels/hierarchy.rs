@@ -603,7 +603,10 @@ pub fn drop_asset(state: &mut EditorState, e: Entity, path: &str) {
     } else if misty_engine::assets::is_texture(path) {
         // A texture becomes a material on the object (see `texture_drop` for the rule).
         crate::texture_drop::drop_on_object(state, e, path);
-    } else if path.ends_with(".lua") || misty_engine::visual_script::is_graph_path(path) {
+    } else if path.ends_with(".lua")
+        || misty_engine::scripting::csharp::is_csharp_path(path)
+        || misty_engine::visual_script::is_graph_path(path)
+    {
         state.push(Action::AddScript {
             entity: e,
             path: path.to_owned(),
