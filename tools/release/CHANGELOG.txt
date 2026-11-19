@@ -1,6 +1,54 @@
 Misty Engine changelog
 ======================
 
+0.4.5 - C# scripting, Behaviour Trees, Recorder, themes and autosave (November 2026)
+-----------------------------------------------------------------------------------
+
+C# scripting
+- Write scripts in C# (.cs in Assets) with the familiar API: MonoBehaviour and its messages,
+  GetComponent, Find, Instantiate, Destroy, SetActive, Input, Time, Mathf, Vector3,
+  Quaternion, coroutines (WaitForSeconds and the rest), Invoke, Rigidbody, raycasts,
+  collision and trigger callbacks, SceneManager, AudioSource and Animator.
+- Public and [SerializeField] fields show in Properties, with [Header], [Tooltip], [Space]
+  and [Range] sliders. Assets > Create > C# Script; renaming the file renames the class.
+- Scripts compile in the background when saved: errors show in the Console at once (one line
+  each; double-click opens the script at the line) and disappear when fixed. Play waits until
+  every error is fixed. The Code Editor underlines the error in the script.
+- Built games run their C# scripts and carry the .NET runtime: players don't install .NET.
+  Making C# scripts needs the .NET SDK (dot.net). Lua and Script Graphs work as before and
+  can be mixed with C# in one project.
+
+New tools
+- Behaviour Trees (optional package): a visual AI editor with a blackboard, aborts and live
+  debugging, plus a guard demo.
+- Recorder (optional package): record the game to MP4, WebM, GIF, PNG or JPG at a fixed frame
+  rate, with its sound; a Timeline Recorder track and Lua control.
+- Themes: Light and four more presets, your own colour themes (.mistytheme import and export),
+  system UI and code fonts.
+- Autosave and crash recovery: background backups, Recover Unsaved Work and crash logs.
+
+Assets from other engines
+- TIFF textures (Photoshop alpha included), existing .meta files and their GUIDs kept, FBX
+  materials find their textures by name, LOD groups from node names, trees from model files,
+  Terrain Layer Relief.
+
+Samples
+- Lumo's Leap: a 2D platformer made only with Script Graph nodes.
+- NoonValley: finer sun flecks, clear sky above the far hills, Near Shadow Detail.
+
+Editor
+- Asset Files: Ctrl+click and Shift+click select several assets; Delete and dragging onto a
+  folder act on all of them.
+- Build Profiles scene list: Ctrl+click, Shift+click, Ctrl+A and the Delete key.
+- Faster everyday editing (no rescan loop, faster scene copy, open and save).
+
+Fixes
+- Script lifecycle: Awake, OnEnable, OnDisable and OnDestroy run in the right order in the
+  editor, player and server; Lua self.enabled; collisions reach disabled scripts.
+- Animator Controller and clip edits reach the running game; physics follows objects switched
+  on and off in Play; builds pack everything graphs, behaviour trees and effects use.
+- Three bug-hunting rounds: crashes, hangs, Script Graph, Recorder and autosave fixes.
+
 0.4.0 - weather, night sky, sound, a faster editor and 100+ fixes (November 2026)
 --------------------------------------------------------------------------------
 
