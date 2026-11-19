@@ -436,13 +436,14 @@ impl TextEditor {
         let all_commented = self.line_blocks().iter().all(|&(a, b)| {
             (a..=b).all(|l| {
                 let t = self.buf.line(l).trim_start();
-                t.is_empty() || t.starts_with("--")
+                t.is_empty() || t.starts_with(self.comment)
             })
         });
         self.comment(!all_commented);
     }
 
-    /// Ctrl+K,C / Ctrl+K,U: add `-- ` at the block's smallest indent, or remove `--`.
+    /// Ctrl+K,C / Ctrl+K,U: add `-- ` (the language's comment) at the block's smallest
+    /// indent, or remove it.
     pub fn comment(&mut self, add: bool) {
         let mut edits = Vec::new();
         for (a, b) in self.line_blocks() {
@@ -461,10 +462,11 @@ impl TextEditor {
                     edits.push((
                         Pos::new(l, min_indent),
                         Pos::new(l, min_indent),
-                        "-- ".into(),
+                        format!("{} ", self.comment),
                     ));
-                } else if let Some(after) = rest.strip_prefix("--") {
-                    let n = if after.starts_with(' ') { 3 } else { 2 };
+                } else if let Some(after) = rest.strip_prefix(self.comment) {
+                    let len = self.comment.chars().count();
+                    let n = if after.starts_with(' ') { len + 1 } else { len };
                     edits.push((Pos::new(l, indent), Pos::new(l, indent + n), String::new()));
                 }
             }

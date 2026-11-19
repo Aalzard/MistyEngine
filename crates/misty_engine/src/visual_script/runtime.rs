@@ -567,6 +567,11 @@ impl GraphRuntime {
     }
 
     /// Fire `kind` on every started instance that can run (FixedUpdate, LateUpdate).
+    /// Whether some running graph has an event node of `kind`.
+    pub fn listens(&self, kind: &EventKind) -> bool {
+        self.instances.iter().any(|i| i.prog.has_event(kind))
+    }
+
     pub fn fire_all(&mut self, lua: &Lua, kind: &EventKind, args: &[Value]) {
         for i in 0..self.instances.len() {
             if !self.instances[i].started || !self.instances[i].prog.has_event(kind) {

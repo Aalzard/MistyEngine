@@ -738,3 +738,158 @@ fn csharp_cost() {
         );
     }
 }
+
+#[test]
+fn csharp_object_fields_get_objects_components_and_scripts() {
+    if skip() {
+        return;
+    }
+    let seeker_src = r#"
+using Misty;
+public class Seeker : MonoBehaviour
+{
+    public GameObject thing;
+    public Transform target;
+    public Rigidbody body;
+    public Mover mover;
+    public Transform empty;
+    void Start()
+    {
+        Debug.Log($"thing={thing.name} x={target.position.x} body={body != null} speed={mover.speed} empty={empty == null}");
+    }
+}
+"#;
+    let mover_src = r#"
+using Misty;
+public class Mover : MonoBehaviour { public float speed = 4; }
+"#;
+    let root = project(&[("Seeker.cs", seeker_src), ("Mover.cs", mover_src)]);
+    // Properties: fields typed with engine types or the project's script classes are slots.
+    super::csharp_fields::set_script_classes(vec!["Seeker".into(), "Mover".into()]);
+    let info = super::inspect_script(seeker_src, "Assets/Scripts/Seeker.cs").unwrap();
+    let kinds: Vec<(String, String)> = info
+        .fields
+        .iter()
+        .map(|(n, v)| match v {
+            ScriptValue::Object(o) => (n.clone(), o.kind.clone()),
+            other => (n.clone(), format!("{other:?}")),
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("thing".into(), "GameObject".into()),
+            ("target".into(), "Transform".into()),
+            ("body".into(), "Rigidbody".into()),
+            ("mover".into(), "Mover".into()),
+            ("empty".into(), "Transform".into()),
+        ]
+    );
+
+    let mut scene = Scene::new("t");
+    // The seeker's script is made first: the Mover on the target comes later.
+    let seeker = scene.spawn("Seeker", None);
+    let target = scene.spawn("Target", None);
+    let mut t = scene.transform(target);
+    t.position = Vec3::new(5.0, 0.0, 0.0);
+    scene.set_transform(target, t);
+    scene.add(target, crate::scene::Rigidbody::default());
+    attach(&mut scene, target, "Mover.cs");
+    let obj = |e: Entity, kind: &str| {
+        ScriptValue::Object(crate::scene::ObjectValue {
+            object: Some(e.to_bits().get()),
+            kind: kind.into(),
+        })
+    };
+    let mut script = ScriptRef {
+        path: "Assets/Scripts/Seeker.cs".into(),
+        ..Default::default()
+    };
+    script
+        .fields
+        .insert("thing".into(), obj(target, "GameObject"));
+    script
+        .fields
+        .insert("target".into(), obj(target, "Transform"));
+    script
+        .fields
+        .insert("body".into(), obj(target, "Rigidbody"));
+    script.fields.insert("mover".into(), obj(target, "Mover"));
+    script.fields.insert(
+        "empty".into(),
+        ScriptValue::Object(crate::scene::ObjectValue::none("Transform")),
+    );
+    scene.add(seeker, Scripts { list: vec![script] });
+    let logs = run(&mut scene, &root, 2, |_| Input::default());
+    assert!(
+        texts(&logs).contains(&"thing=Target x=5 body=True speed=4 empty=True"),
+        "{:?}",
+        texts(&logs)
+    );
+}
+
+/// OnCollisionStay and OnTriggerStay run every physics step while two objects touch, in C#
+/// and Lua alike, and stop when they part.
+#[test]
+fn csharp_and_lua_stay_callbacks_run_while_touching() {
+    if skip() {
+        return;
+    }
+    let cs = r#"
+using Misty;
+public class Rest : MonoBehaviour
+{
+    int stays, triggerStays;
+    void OnCollisionStay(Collision c) { stays++; }
+    void OnTriggerStay(Collider other) { triggerStays++; }
+    void OnDestroy() { Debug.Log($"cs stays {(stays > 20)} {(triggerStays > 20)} {c(stays)}"); }
+    static string c(int n) => n < 1000 ? "sane" : "runaway";
+}
+"#;
+    let lua = r#"
+local R = { stays = 0 }
+function R:OnCollisionStay(other) self.stays = self.stays + 1 end
+function R:OnDestroy() Debug.Log("lua stays " .. tostring(self.stays > 20)) end
+return R
+"#;
+    let root = project(&[("Rest.cs", cs), ("Rest.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    let mut t = crate::scene::Transform::from_position(Vec3::new(0.0, -0.5, 0.0));
+    t.scale = Vec3::new(20.0, 1.0, 20.0);
+    scene.set_transform(ground, t);
+    scene.add(ground, crate::scene::BoxCollider::default());
+    // A trigger the box sits inside the whole time.
+    let zone = scene.spawn("Zone", None);
+    let mut z = crate::scene::Transform::from_position(Vec3::new(0.0, 0.5, 0.0));
+    z.scale = Vec3::new(4.0, 4.0, 4.0);
+    scene.set_transform(zone, z);
+    scene.add(
+        zone,
+        crate::scene::BoxCollider {
+            is_trigger: true,
+            ..Default::default()
+        },
+    );
+    let boxy = scene.spawn("Box", None);
+    scene.set_transform(
+        boxy,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 0.55, 0.0)),
+    );
+    scene.add(boxy, crate::scene::BoxCollider::default());
+    scene.add(boxy, crate::scene::Rigidbody::default());
+    attach(&mut scene, boxy, "Rest.cs");
+    attach(&mut scene, boxy, "Rest.lua");
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    for _ in 0..90 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+    }
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let t = texts(&logs);
+    assert!(t.contains(&"cs stays True True sane"), "{t:?}");
+    assert!(t.contains(&"lua stays true"), "{t:?}");
+}

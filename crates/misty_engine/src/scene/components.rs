@@ -897,6 +897,53 @@ pub enum ScriptValue {
     Number(f64),
     Vector3([f32; 3]),
     Text(String),
+    /// A scene object (or one of its components, or a script on it).
+    Object(ObjectValue),
+}
+
+/// An object reference field: `{"object": 3, "kind": "Transform"}` in scene files, where
+/// `object` is the index of the object in the file (entity bits while loaded, like every
+/// object reference; see `scene::file`), `null` for none.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ObjectValue {
+    pub object: Option<u64>,
+    /// What the script asks for: "GameObject", "Transform", a component ("Rigidbody") or a
+    /// script class ("PlayerMover"). The object must have it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+}
+
+impl ObjectValue {
+    /// An empty field asking for `kind`.
+    pub fn none(kind: impl Into<String>) -> Self {
+        Self {
+            object: None,
+            kind: kind.into(),
+        }
+    }
+
+    /// The object, while loaded.
+    pub fn entity(&self) -> Option<hecs::Entity> {
+        self.object.and_then(hecs::Entity::from_bits)
+    }
+}
+
+impl ScriptValue {
+    /// The same kind of value with this field's override applied: an override of another
+    /// kind (the field's type changed in the script) is ignored. An object field keeps the
+    /// kind the script asks for now.
+    pub fn with_override(default: &ScriptValue, set: Option<&ScriptValue>) -> ScriptValue {
+        match (default, set) {
+            (ScriptValue::Object(d), Some(ScriptValue::Object(o))) => {
+                ScriptValue::Object(ObjectValue {
+                    object: o.object,
+                    kind: d.kind.clone(),
+                })
+            }
+            (d, Some(v)) if std::mem::discriminant(d) == std::mem::discriminant(v) => v.clone(),
+            (d, _) => d.clone(),
+        }
+    }
 }
 
 /// One script attached to an object, with the field values set in the Inspector.

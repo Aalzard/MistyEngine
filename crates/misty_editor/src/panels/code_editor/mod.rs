@@ -8,6 +8,7 @@
 pub(crate) mod api;
 mod commands;
 mod completion;
+mod csharp;
 mod diagnostics;
 mod editor;
 mod find;
@@ -75,6 +76,9 @@ impl Document {
     fn new(path: String, text: &str, mtime: Option<SystemTime>, tab_size: usize) -> Self {
         let mut editor = TextEditor::new(text);
         editor.tab_size = tab_size;
+        if wgsl::is_wgsl(&path) || csharp::is_csharp(&path) {
+            editor.comment = "//";
+        }
         Self {
             path,
             saved_version: editor.version,
@@ -106,6 +110,11 @@ impl Document {
             let lines = self.editor.buf.lines();
             let (tokens, structure) = if wgsl::is_wgsl(&self.path) {
                 let tokens = wgsl::tokenize(lines);
+                let structure = wgsl::structure(lines, &tokens);
+                (tokens, structure)
+            } else if csharp::is_csharp(&self.path) {
+                let tokens = csharp::tokenize(lines);
+                // Braces nest the same way as in WGSL.
                 let structure = wgsl::structure(lines, &tokens);
                 (tokens, structure)
             } else {

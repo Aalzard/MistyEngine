@@ -87,6 +87,10 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Behaviour Tree Agent", "overrides", "object"),
 ];
 
+/// The scripts component: its fields named in the scripts (`{"object": …}` values) are
+/// object references too.
+const SCRIPTS: &str = "Scripts";
+
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).
 fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
     OBJECT_REFS
@@ -111,6 +115,8 @@ pub fn object_reference_fields() -> Vec<(&'static str, &'static str, &'static st
 /// Components that can hold object references.
 pub(super) fn ref_components() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();
+    // Script fields of the object kind (see `remap_refs`).
+    names.push(SCRIPTS);
     names.sort_unstable();
     names.dedup();
     names
@@ -133,6 +139,23 @@ pub(super) fn remap_refs(
         serde_json::Value::Array(items) => items.iter_mut().for_each(remap_one),
         _ => remap_one(v),
     };
+    // Script object fields: `list[*].fields.<name>.object`.
+    if let Some(serde_json::Value::Array(list)) =
+        components.get_mut(SCRIPTS).and_then(|c| c.get_mut("list"))
+    {
+        for script in list {
+            let Some(serde_json::Value::Object(fields)) = script.get_mut("fields") else {
+                continue;
+            };
+            for v in fields.values_mut() {
+                if let serde_json::Value::Object(o) = v
+                    && let Some(r) = o.get_mut("object")
+                {
+                    remap_one(r);
+                }
+            }
+        }
+    }
     for (comp, list, field) in all_refs() {
         let Some(c) = components.get_mut(*comp) else {
             continue;
@@ -781,5 +804,54 @@ mod tests {
         assert_eq!(t.position, Vec3::ZERO);
         assert_eq!(t.scale, Vec3::ONE);
         assert!(s.world_matrix(e).is_finite());
+    }
+
+    #[test]
+    fn script_object_fields_follow_save_load_and_duplicate() {
+        let mut s = Scene::new("Level");
+        let rig = s.spawn("Rig", None);
+        let hand = s.spawn("Hand", Some(rig));
+        let far = s.spawn("Far", None);
+        let field = |e: Entity, kind: &str| {
+            ScriptValue::Object(crate::scene::ObjectValue {
+                object: Some(e.to_bits().get()),
+                kind: kind.into(),
+            })
+        };
+        let mut script = ScriptRef {
+            path: "Assets/Scripts/Grab.cs".into(),
+            ..Default::default()
+        };
+        script
+            .fields
+            .insert("hand".into(), field(hand, "Transform"));
+        script.fields.insert("far".into(), field(far, "GameObject"));
+        script.fields.insert(
+            "none".into(),
+            ScriptValue::Object(crate::scene::ObjectValue::none("Rigidbody")),
+        );
+        s.add(rig, Scripts { list: vec![script] });
+        let target = |s: &Scene, e: Entity, name: &str| -> Option<Entity> {
+            let scripts = s.world.get::<&Scripts>(e).unwrap();
+            match &scripts.list[0].fields[name] {
+                ScriptValue::Object(o) => o.entity(),
+                other => panic!("{other:?}"),
+            }
+        };
+        // Saved as object indices, loaded as the loaded objects.
+        let json = s.to_json();
+        assert!(json.contains(r#""kind": "Transform""#), "{json}");
+        let (loaded, report) = Scene::from_json("Level", &json).unwrap();
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let l_rig = loaded.find_by_name("Rig").unwrap();
+        assert_eq!(target(&loaded, l_rig, "hand"), loaded.find_by_name("Hand"));
+        assert_eq!(target(&loaded, l_rig, "far"), loaded.find_by_name("Far"));
+        assert_eq!(target(&loaded, l_rig, "none"), None);
+        // A copy points at its own child, and still at the object outside it.
+        let copy = s.duplicate(rig);
+        let copy_hand = s.children(copy)[0];
+        assert_ne!(copy_hand, hand);
+        assert_eq!(target(&s, copy, "hand"), Some(copy_hand));
+        assert_eq!(target(&s, copy, "far"), Some(far));
     }
 }

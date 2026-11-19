@@ -29,7 +29,7 @@ pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
 pub mod csharp;
-mod csharp_fields;
+pub mod csharp_fields;
 mod csharp_native;
 pub mod cursor_api;
 pub mod input_actions_api;
@@ -416,6 +416,27 @@ struct Instance {
     stamp: u64,
     /// A C# script (its `table` is then an empty stand-in).
     cs: Option<csharp::CsRef>,
+    /// Per-frame callbacks the script lacks (see [`FRAME_CALLBACKS`]): passes skip it.
+    lacks: u8,
+}
+
+/// Callbacks called on every script every frame or physics step: one without them is skipped
+/// (a scene of a thousand scripts with only an Update spent most of FixedUpdate and
+/// LateUpdate looking), and Stay contacts aren't sent at all while no script has them.
+const FRAME_CALLBACKS: [&str; 5] = [
+    "Update",
+    "FixedUpdate",
+    "LateUpdate",
+    "OnCollisionStay",
+    "OnTriggerStay",
+];
+
+/// Bit of `Instance::lacks` for callback `name` (0 for the others: always called).
+fn lacks_bit(name: &str) -> u8 {
+    FRAME_CALLBACKS
+        .iter()
+        .position(|n| *n == name)
+        .map_or(0, |i| 1 << i)
 }
 
 pub struct ScriptHost {
@@ -440,6 +461,9 @@ pub struct ScriptHost {
     start_pending: std::ops::Range<usize>,
     /// C# scripts (`.cs`), run on the .NET runtime next to the Lua ones.
     csharp: csharp::CsHost,
+    /// 3D pairs touching now (a, b, trigger): OnCollisionStay / OnTriggerStay every physics
+    /// step after the one they met in, until they part.
+    touching: Vec<(Entity, Entity, bool)>,
 }
 
 impl ScriptHost {
@@ -536,6 +560,7 @@ impl ScriptHost {
             syncing: false,
             start_pending: 0..0,
             csharp: Default::default(),
+            touching: Vec::new(),
         };
         // OnEnable / OnDisable look at changes from here on.
         host.seen_activity = host.with_world(|w| w.scene.activity());
@@ -717,6 +742,17 @@ impl ScriptHost {
                     enabled: false,
                     stamp: 0,
                     cs: Some(cs),
+                    lacks: FRAME_CALLBACKS
+                        .iter()
+                        .map(|n| {
+                            let m = csharp::method_of(n);
+                            if m.is_some_and(|m| cs.defines(m)) {
+                                0
+                            } else {
+                                lacks_bit(n)
+                            }
+                        })
+                        .fold(0, |a, b| a | b),
                 }),
                 Err(err) => {
                     self.csharp.release(cs);
@@ -765,6 +801,12 @@ impl ScriptHost {
             register_script_instance(&self.lua, e, &script.name(), &t)?;
             Ok(t)
         });
+        // Frame callbacks the class has (inherited ones count: `get` follows `__index`).
+        let lacks = FRAME_CALLBACKS
+            .iter()
+            .filter(|n| !matches!(class.get::<Value>(**n), Ok(Value::Function(_))))
+            .map(|n| lacks_bit(n))
+            .fold(0, |a, b| a | b);
         match tracked.and_then(|t| self.lua.create_registry_value(t)) {
             Ok(table) => self.instances.push(Instance {
                 entity: e,
@@ -776,6 +818,7 @@ impl ScriptHost {
                 enabled: false,
                 stamp: 0,
                 cs: None,
+                lacks,
             }),
             Err(err) => self.log(LogKind::Error, format!("{}: {err}", script.name())),
         }
@@ -835,7 +878,12 @@ impl ScriptHost {
         // Objects switched on or off outside a callback (animation, Timeline) first.
         self.sync_enabled();
         // Objects created during this pass join from the next one (after their Awake).
+        let bit = lacks_bit(name);
         for i in 0..self.instances.len() {
+            // Started scripts without this callback have nothing to do here.
+            if self.instances[i].lacks & bit != 0 && self.instances[i].started {
+                continue;
+            }
             if !self.runnable(&self.instances[i]) {
                 continue;
             }
@@ -872,6 +920,24 @@ impl ScriptHost {
     /// Run what the last callback queued: controller hits, then `Awake` of objects made by
     /// `Instantiate`.
     fn flush_spawned(&mut self) {
+        // Most callbacks leave nothing behind: one look instead of the passes below.
+        if !self.syncing {
+            let seen = self.seen_activity;
+            let quiet = self.with_world(|w| {
+                w.spawned.is_empty()
+                    && w.graph_events.is_empty()
+                    && !w.physics.has_controller_hits()
+                    && w.scene.activity() == seen
+                    && !w.network.settle_due
+                    && w.network.events.is_empty()
+                    && !w.network.shutdown_requested
+                    && w.network.owner_changes.is_empty()
+                    && w.network.despawns.is_empty()
+            });
+            if quiet {
+                return;
+            }
+        }
         self.controller_hits();
         // OnDisable / OnEnable for what the callback switched off or on.
         self.sync_enabled();
@@ -1149,6 +1215,52 @@ impl ScriptHost {
 
     fn dispatch(&mut self, contacts: &[Contact]) {
         use crate::visual_script::compile::EventKind;
+        // Stay first, for the pairs that touched before this step and still do (only looked at
+        // while some script or graph has the callback).
+        let listens = |host: &Self, name: &str, kind: &EventKind| {
+            let bit = lacks_bit(name);
+            host.instances.iter().any(|i| i.lacks & bit == 0) || host.graphs.listens(kind)
+        };
+        let want_collision = listens(self, "OnCollisionStay", &EventKind::CollisionStay);
+        let want_trigger = listens(self, "OnTriggerStay", &EventKind::TriggerStay);
+        let parted = |a: Entity, b: Entity, trigger: bool| {
+            contacts.iter().any(|c| {
+                !c.started && c.trigger == trigger && ((c.a, c.b) == (a, b) || (c.a, c.b) == (b, a))
+            })
+        };
+        let alive = self.with_world(|w| {
+            self.touching
+                .iter()
+                .map(|(a, b, _)| w.scene.contains(*a) && w.scene.contains(*b))
+                .collect::<Vec<_>>()
+        });
+        let mut keep = alive.into_iter();
+        self.touching.retain(|_| keep.next().unwrap_or(false));
+        let staying: Vec<(Entity, Entity, bool)> = self
+            .touching
+            .iter()
+            .copied()
+            .filter(
+                |(a, b, t)| if *t { want_trigger } else { want_collision } && !parted(*a, *b, *t),
+            )
+            .collect();
+        for (a, b, trigger) in staying {
+            let (event, kind) = if trigger {
+                ("OnTriggerStay", EventKind::TriggerStay)
+            } else {
+                ("OnCollisionStay", EventKind::CollisionStay)
+            };
+            self.contact_event(a, b, event, &kind);
+        }
+        for c in contacts {
+            if c.started {
+                self.touching.push((c.a, c.b, c.trigger));
+            } else {
+                self.touching.retain(|(a, b, t)| {
+                    !(*t == c.trigger && ((*a, *b) == (c.a, c.b) || (*a, *b) == (c.b, c.a)))
+                });
+            }
+        }
         for c in contacts {
             let (event, kind) = match (c.trigger, c.started) {
                 (true, true) => ("OnTriggerEnter", EventKind::TriggerEnter),
@@ -1156,19 +1268,30 @@ impl ScriptHost {
                 (false, true) => ("OnCollisionEnter", EventKind::CollisionEnter),
                 (false, false) => ("OnCollisionExit", EventKind::CollisionExit),
             };
-            for (me, other) in [(c.a, c.b), (c.b, c.a)] {
-                self.graphs.contact(&self.lua, me, other, &kind);
-                for (i, inst) in self.instances.iter().enumerate() {
-                    // Disabled scripts hear contacts too (not Update), as in the familiar
-                    // engine; switched-off objects don't.
-                    if inst.entity == me && self.hears_contacts(inst) {
-                        let arg = self
-                            .lua
-                            .create_userdata(LGameObject(other))
-                            .map(Value::UserData)
-                            .ok();
-                        self.call(i, event, arg);
-                    }
+            self.contact_event(c.a, c.b, event, &kind);
+        }
+    }
+
+    /// A 3D contact callback on both objects' scripts and graphs.
+    fn contact_event(
+        &mut self,
+        a: Entity,
+        b: Entity,
+        event: &str,
+        kind: &crate::visual_script::compile::EventKind,
+    ) {
+        for (me, other) in [(a, b), (b, a)] {
+            self.graphs.contact(&self.lua, me, other, kind);
+            for i in 0..self.instances.len() {
+                // Disabled scripts hear contacts too (not Update), as in the familiar
+                // engine; switched-off objects don't.
+                if self.instances[i].entity == me && self.hears_contacts(&self.instances[i]) {
+                    let arg = self
+                        .lua
+                        .create_userdata(LGameObject(other))
+                        .map(Value::UserData)
+                        .ok();
+                    self.call(i, event, arg);
                 }
             }
         }
@@ -2025,6 +2148,15 @@ fn to_lua(lua: &Lua, v: &ScriptValue) -> mlua::Result<Value> {
         ScriptValue::Vector3(a) => {
             Value::UserData(lua.create_userdata(LVec3(glam::Vec3::from(*a)))?)
         }
+        // An object field: its Transform when asked for one, else the object (components and
+        // scripts through GetComponent); nil when empty.
+        ScriptValue::Object(o) => match o.entity() {
+            Some(e) if o.kind == "Transform" => {
+                Value::UserData(lua.create_userdata(LTransform(e))?)
+            }
+            Some(e) => Value::UserData(lua.create_userdata(LGameObject(e))?),
+            None => Value::Nil,
+        },
     })
 }
 
@@ -2075,6 +2207,10 @@ pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
                     .0
                     .to_array(),
             ),
+            Value::Table(t) => match t.raw_get::<Option<String>>(api::OBJECT_FIELD_KEY) {
+                Ok(Some(kind)) => ScriptValue::Object(crate::scene::ObjectValue::none(kind)),
+                _ => continue,
+            },
             _ => continue,
         };
         fields.push((name, value));

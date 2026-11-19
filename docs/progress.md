@@ -6488,3 +6488,66 @@ tests and the 13 C# engine tests pass.
 Linux and macOS players: the runtime copy works only for the building computer's OS, and the
 host strings are UTF-16 (Windows); a Linux build of a C# project would need .NET installed and
 the host code made portable. Trimming the runtime (about 85 MB now) is possible later.
+
+## Round 91 — after 0.4.5: C# polish, object fields, Stay contacts, faster scripts, bug hunt (branch r91-polish)
+
+Feedback from testing 0.4.5's C# scripts, then a pass on what makes scripts useful and fast.
+
+### Done (before the release, already in 0.4.5)
+- A C# script saved from the Code Editor compiles at once (the save's asset refresh absorbed
+  the change, so errors showed only on Play). Errors are one Console line each and replace the
+  last compile's: fixed ones go away (`Console::report_compile`, retracted lines). Double-click
+  opens the script at the line (`Assets/…/A.cs(12,5)` locations). The Code Editor no longer runs
+  the Lua syntax check on `.cs` files (the red line under `using Misty;`) and underlines the
+  compiler's error instead.
+- Asset Files: Ctrl+click / Shift+click multi-select; Delete and dragging onto a folder act on
+  all. Build Profiles scene list: Ctrl/Shift+click, Ctrl+A, Delete, block move up/down.
+
+### Done (this round)
+- **Object fields** for C#, Lua and Script Graphs. `ScriptValue::Object(ObjectValue { object,
+  kind })`, saved as `{"object": <index>, "kind": "Transform"}`; `scene::file::remap_refs` maps
+  script fields like every other object reference, so save/load, Duplicate, copy/paste and
+  prefabs keep them (a copy points at its own child). C#: fields typed `GameObject`,
+  `Transform`, `Rigidbody`, `Collider`, `AudioSource`, `Animator` or one of the project's script
+  classes (the editor tells `csharp_fields` the class names; a new or removed class re-reads
+  every C# script); a script field whose target script isn't made yet is filled before the
+  next callback. Lua: `target = ObjectField("Transform")` (nil until set; `__index` hides the
+  marker). Graphs: GameObject variables are slots. Properties: a list of the objects that fit
+  the kind, plus drop from the Scene Tree (`hierarchy::dragged_objects`, which also sees the
+  drop in panels drawn after the tree).
+- **OnCollisionStay / OnTriggerStay** (3D) for Lua, C# and Script Graphs (new On Collision
+  Stay / On Trigger Stay nodes): the host keeps the touching pairs from enter/exit and sends
+  Stay every physics step after the meeting one; nothing is looked at while no script or graph
+  has the callback.
+- **Faster script passes**: a script without Update / FixedUpdate / LateUpdate is skipped by
+  that pass (it was checked for activity and followed by the post-callback flush anyway), and
+  the flush after a callback returns after one look when the callback left nothing (no
+  spawned objects, events, controller hits, activity change or network work). 1000 objects:
+  C# Rotate 1.80 → 1.15 ms a frame, Lua Rotate 2.90 → 1.94 ms, C# empty Update 0.68 → 0.21 ms
+  (`csharp_cost`). Callbacks are looked up when the script starts: a function added to a Lua
+  instance later is not called by the frame passes.
+- **Bug hunt** (the 12 editor tests failing since before 0.4.5):
+  - Terrain object painting overflowed a `u32` hash on its second try (`placement.rs`):
+    debug builds panicked painting objects. Fixed.
+  - The font fallback and thumbnail budget tests dropped egui frames with unapplied texture
+    changes, which egui 0.36 asserts on; the console speed test had the same hole. Fixed.
+  - The other 9 (8 sample "matches its generator" tests and the Cycles room baked render) fail
+    because the sample project was edited in the editor on Nov 17 (commit 76c3960d: Camera far
+    2000, Ghost material Cutout with the Fence texture, Bark double-sided, Desert biome tone,
+    Oak Broad tree, new reflection probes in CyclesRoom Baked and LightmapDemo). Left for the
+    owner: either the generators take those edits or the files go back to the generators.
+
+### Tests
+New: object fields (scene save/load/duplicate, C# objects/components/late scripts, Lua, the
+Properties slot), Stay callbacks (C# + Lua, graphs), Console compile errors, multi-select (Asset
+Files, scene list). Docs: `scripting.md` (Object fields, Stay), `visual-scripting.md`, API docs
+regenerated.
+- **C# in the Code Editor** (`code_editor/csharp.rs`): C# highlighting (keywords, built-in
+  types, engine classes, `//` and `/* */` comments, verbatim and interpolated strings, `#`
+  directives; `.cs` files used the Lua lexer, so `// comments` showed as code and `i--` as a
+  comment) and autocomplete read from `MistyEngine.cs` at first use: members follow the
+  expression's type (`transform.position.`, `rb.` from a `Rigidbody rb` field or `var rb =
+  GetComponent<Rigidbody>()`, `GetComponent<Rigidbody>().`), statics after a type name
+  (`Vector3.`, `Input.`, enum values), component types inside `GetComponent<`, callback names.
+  Toggle Comment uses `//` in C# and WGSL (it inserted Lua's `--`); the status bar names the
+  language.

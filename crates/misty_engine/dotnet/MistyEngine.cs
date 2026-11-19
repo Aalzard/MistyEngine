@@ -1509,6 +1509,7 @@ namespace Misty.Internal
         {
             "Awake", "OnEnable", "Start", "Update", "FixedUpdate", "LateUpdate", "OnDisable", "OnDestroy",
             "OnCollisionEnter", "OnCollisionExit", "OnTriggerEnter", "OnTriggerExit",
+            "OnCollisionStay", "OnTriggerStay",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -1653,7 +1654,11 @@ namespace Misty.Internal
 
         /// <summary>Call `method`; contact callbacks get `other` (an object id).</summary>
         [UnmanagedCallersOnly]
-        public static void Call(int handle, int method, ulong other) => Invoke(handle, method, other);
+        public static void Call(int handle, int method, ulong other)
+        {
+            if (pendingRefs.Count > 0) ResolvePending();
+            Invoke(handle, method, other);
+        }
 
         /// <summary>Advance every running coroutine (once per frame, after Update).</summary>
         [UnmanagedCallersOnly]
@@ -1667,6 +1672,7 @@ namespace Misty.Internal
             var s = e.script;
             // Its coroutines stop with it.
             s.handle = 0;
+            pendingRefs.RemoveAll(p => p.owner == s);
             if (byObject.TryGetValue(s.entity, out var list))
             {
                 list.Remove(s);
@@ -1708,6 +1714,24 @@ namespace Misty.Internal
             {
                 var f = FindField(e.script.GetType(), fieldName);
                 if (f == null) return 0;
+                if (kind == 4)
+                {
+                    // An object field: the entity's bits in v.x and v.y.
+                    ulong lo = (uint)BitConverter.SingleToInt32Bits(v->x);
+                    ulong hi = (uint)BitConverter.SingleToInt32Bits(v->y);
+                    ulong target = lo | (hi << 32);
+                    if (target == 0 || !Native.Alive(target)) { f.SetValue(e.script, null); return 1; }
+                    var found = ComponentOf(target, f.FieldType);
+                    if (found != null) { f.SetValue(e.script, found); return 1; }
+                    // A script on the target not made yet (objects are set up one by one):
+                    // set before the next callback runs.
+                    if (typeof(MonoBehaviour).IsAssignableFrom(f.FieldType))
+                    {
+                        pendingRefs.Add((e.script, f, target));
+                        return 1;
+                    }
+                    return 0;
+                }
                 object value = kind switch
                 {
                     0 => num != 0,
@@ -1734,6 +1758,34 @@ namespace Misty.Internal
                 Report(e.typeName, $"field {fieldName}", ex);
                 return 0;
             }
+        }
+
+        /// <summary>Object fields waiting for a script on their target.</summary>
+        static readonly List<(MonoBehaviour owner, FieldInfo field, ulong target)> pendingRefs = new List<(MonoBehaviour, FieldInfo, ulong)>();
+
+        static void ResolvePending()
+        {
+            for (int i = pendingRefs.Count - 1; i >= 0; i--)
+            {
+                var (owner, field, target) = pendingRefs[i];
+                if (!Native.Alive(target)) { pendingRefs.RemoveAt(i); continue; }
+                var found = ComponentOf(target, field.FieldType);
+                if (found == null) continue;
+                field.SetValue(owner, found);
+                pendingRefs.RemoveAt(i);
+            }
+        }
+
+        /// <summary>What an object field of type <paramref name="t"/> gets from the object: itself,
+        /// its Transform, an engine component or a script, else null.</summary>
+        static object ComponentOf(ulong entity, Type t)
+        {
+            if (t == typeof(GameObject) || t == typeof(Object)) return new GameObject(entity);
+            if (t == typeof(Transform) || t == typeof(Component)) return new Transform(entity);
+            if (EngineComponent(t, entity) is Component c) return c;
+            if (byObject.TryGetValue(entity, out var list))
+                foreach (var s in list) if (t.IsInstanceOfType(s)) return s;
+            return null;
         }
 
         static FieldInfo FindField(Type type, string name)

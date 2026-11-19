@@ -244,9 +244,12 @@ fn missing_font_falls_back_without_panicking() {
     let _ = fonts::take_fallback_note();
     let loaded = fonts::apply(&ctx, &prefs);
     assert_eq!(loaded.missing.len(), 2);
-    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+    // (egui asserts that a frame's texture changes are applied or cleared.)
+    ctx.run_ui(egui::RawInput::default(), |ui| {
         ui.label("Hello ğ مرحبا");
-    });
+    })
+    .textures_delta
+    .clear();
     assert!(fonts::take_fallback_note().is_some_and(|n| n.contains("font.ttf")));
     assert!(fonts::take_fallback_note().is_none());
     let _ = std::fs::remove_dir_all(dir);

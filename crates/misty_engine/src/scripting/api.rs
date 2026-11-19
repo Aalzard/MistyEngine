@@ -734,9 +734,27 @@ fn log(lua: &Lua, kind: LogKind, args: Variadic<Value>) -> Result<()> {
     Ok(())
 }
 
+/// Key of the marker table `ObjectField(kind)` makes (its value is the kind).
+pub const OBJECT_FIELD_KEY: &str = "__misty_object_field";
+
 /// Register the global API tables in `lua`.
 pub fn register(lua: &Lua) -> Result<()> {
     let g = lua.globals();
+
+    // `target = ObjectField("Transform")` in a script class: an object slot in Properties,
+    // nil until an object is set (kind: GameObject by default, Transform, a component or a
+    // script name).
+    g.set(
+        "ObjectField",
+        lua.create_function(|lua, kind: Option<String>| {
+            let t = lua.create_table()?;
+            t.set(
+                OBJECT_FIELD_KEY,
+                kind.unwrap_or_else(|| "GameObject".into()),
+            )?;
+            Ok(t)
+        })?,
+    )?;
 
     // Vector3
     let v3 = lua.create_table()?;

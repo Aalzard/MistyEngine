@@ -150,6 +150,13 @@ pub(crate) fn field_to_lua(lua: &Lua, v: &ScriptValue) -> Result<Value> {
         ScriptValue::Vector3(a) => {
             Value::UserData(lua.create_userdata(LVec3(glam::Vec3::from(*a)))?)
         }
+        ScriptValue::Object(o) => match o.entity() {
+            Some(e) if o.kind == "Transform" => {
+                Value::UserData(lua.create_userdata(LTransform(e))?)
+            }
+            Some(e) => Value::UserData(lua.create_userdata(LGameObject(e))?),
+            None => Value::Nil,
+        },
     })
 }
 
@@ -160,8 +167,23 @@ pub(crate) fn lua_to_field(v: &Value, like: &ScriptValue) -> Option<ScriptValue>
         (ScriptValue::Number(_), Value::Integer(i)) => ScriptValue::Number(*i as f64),
         (ScriptValue::Number(_), Value::Number(n)) => ScriptValue::Number(*n),
         (ScriptValue::Text(_), Value::String(s)) => ScriptValue::Text(s.to_string_lossy()),
-        (ScriptValue::Vector3(_), Value::UserData(ud)) => {
+        (ScriptValue::Vector3(_), Value::UserData(ud)) if ud.is::<LVec3>() => {
             ScriptValue::Vector3(ud.borrow::<LVec3>().ok()?.0.to_array())
+        }
+        // An object field takes an object (or its Transform), or nil to clear it.
+        (ScriptValue::Object(o), Value::Nil) => {
+            ScriptValue::Object(misty_engine::scene::ObjectValue::none(o.kind.clone()))
+        }
+        (ScriptValue::Object(o), Value::UserData(ud)) => {
+            let e = if let Ok(g) = ud.borrow::<LGameObject>() {
+                g.0
+            } else {
+                ud.borrow::<LTransform>().ok()?.0
+            };
+            ScriptValue::Object(misty_engine::scene::ObjectValue {
+                object: Some(e.to_bits().get()),
+                kind: o.kind.clone(),
+            })
         }
         _ => return None,
     })

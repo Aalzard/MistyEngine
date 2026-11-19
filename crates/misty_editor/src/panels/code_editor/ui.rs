@@ -894,7 +894,14 @@ fn status_bar(ui: &mut Ui, s: &mut EditorState) {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let white = |t: String| RichText::new(t).color(egui::Color32::WHITE);
-                    ui.label(white("Lua".into()));
+                    let language = if super::csharp::is_csharp(&doc.path) {
+                        "C#"
+                    } else if super::wgsl::is_wgsl(&doc.path) {
+                        "WGSL"
+                    } else {
+                        "Lua"
+                    };
+                    ui.label(white(language.into()));
                     ui.label(white("UTF-8".into()));
                     ui.label(white(
                         if doc.editor.buf.crlf { "CRLF" } else { "LF" }.into(),

@@ -238,6 +238,11 @@ impl Physics {
     }
 
     /// Controller hits since the last call (for OnControllerColliderHit).
+    /// Whether moves left controller hits to report.
+    pub fn has_controller_hits(&self) -> bool {
+        !self.controller_hits.is_empty()
+    }
+
     pub fn take_controller_hits(&mut self) -> Vec<ControllerHit> {
         std::mem::take(&mut self.controller_hits)
     }

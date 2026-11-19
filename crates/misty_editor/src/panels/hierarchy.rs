@@ -54,6 +54,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let rows = visible_rows(state);
     let drag_id = drag_id();
     let dragging: Option<Vec<Entity>> = ui.data(|d| d.get_temp(drag_id));
+    // Last frame's drop has been seen by every panel.
+    ui.data_mut(|d| d.remove::<Vec<Entity>>(dropped_id()));
     let mut drop: Option<Drop> = None;
 
     let objects: Vec<(Entity, usize)> = rows
@@ -140,6 +142,21 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 /// Temp-data key of the Hierarchy's own drag (the dragged objects).
 pub fn drag_id() -> Id {
     Id::new("hierarchy_drag")
+}
+
+/// Temp-data key of the objects just let go (kept for the rest of that frame, so panels
+/// drawn after the Scene Tree still see the drop).
+fn dropped_id() -> Id {
+    Id::new("hierarchy_dropped")
+}
+
+/// Objects being dragged from the Scene Tree (or let go this frame), for drop targets in
+/// other panels such as object fields in Properties.
+pub fn dragged_objects(ctx: &egui::Context) -> Option<Vec<Entity>> {
+    ctx.data(|d| {
+        d.get_temp::<Vec<Entity>>(drag_id())
+            .or_else(|| d.get_temp::<Vec<Entity>>(dropped_id()))
+    })
 }
 
 /// The Hierarchy owns keyboard navigation after a click inside it.
@@ -748,7 +765,10 @@ fn drag_and_drop(
     if !ui.input(|i| i.pointer.any_released()) {
         return;
     }
-    ui.data_mut(|d| d.remove::<Vec<Entity>>(drag_id));
+    ui.data_mut(|d| {
+        d.remove::<Vec<Entity>>(drag_id);
+        d.insert_temp(dropped_id(), dragged.clone());
+    });
     // Released over the Project window: save each dragged object as a prefab there.
     if drop.is_none()
         && ui

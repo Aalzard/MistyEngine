@@ -2184,3 +2184,84 @@ fn native_2d_physics_nodes_have_typed_pins_and_work() {
     };
     assert!((v.x - 5.0).abs() < 0.1, "{v}");
 }
+
+/// The 3D On Collision Stay and On Trigger Stay nodes run every physics step while touching.
+#[test]
+fn stay_events_3d_reach_graphs() {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let root = project("stay3d");
+    let mut g = G::new();
+    g.ovar("Stay", PinType::Int, Literal::Int(0));
+    g.ovar("TriggerStay", PinType::Int, Literal::Int(0));
+    let stay = g.n("OnCollisionStay");
+    let inc = g.increment("Stay");
+    g.w(stay, "Out", inc, "In");
+    let tstay = g.n("OnTriggerStay");
+    let tinc = g.increment("TriggerStay");
+    g.w(tstay, "Out", tinc, "In");
+    g.0.save(&root.join(GRAPH)).unwrap();
+
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    let mut t = Transform::from_position(Vec3::new(0.0, -0.5, 0.0));
+    t.scale = Vec3::new(20.0, 1.0, 20.0);
+    scene.set_transform(ground, t);
+    scene.add(ground, BoxCollider::default());
+    let zone = scene.spawn("Zone", None);
+    let mut z = Transform::from_position(Vec3::new(0.0, 0.5, 0.0));
+    z.scale = Vec3::splat(4.0);
+    scene.set_transform(zone, z);
+    scene.add(
+        zone,
+        BoxCollider {
+            is_trigger: true,
+            ..Default::default()
+        },
+    );
+    let boxy = scene.spawn("Box", None);
+    scene.set_transform(boxy, Transform::from_position(Vec3::new(0.0, 0.55, 0.0)));
+    scene.add(boxy, BoxCollider::default());
+    scene.add(boxy, Rigidbody::default());
+    attach(&mut scene, boxy, GRAPH, &[]);
+    let mut p = Play::start(root, scene);
+    p.frames(90);
+    p.no_errors();
+    assert!(
+        p.ovar(boxy, "Stay").as_int() > 20,
+        "{:?}",
+        p.ovar(boxy, "Stay")
+    );
+    assert!(p.ovar(boxy, "TriggerStay").as_int() > 20);
+}
+
+/// Cost of a thousand graphs turning their object every frame, next to the same in Lua:
+/// `cargo test -p misty_engine --lib graph_cost -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn graph_cost() {
+    let root = project("cost");
+    let mut g = G::new();
+    let update = g.n("OnUpdate");
+    let rot = g.api("#Transform", "Rotate", "call");
+    g.v(rot, "Euler Degrees", Literal::Vector3([0.0, 1.5, 0.0]));
+    g.w(update, "Out", rot, "In");
+    g.0.save(&root.join(GRAPH)).unwrap();
+    std::fs::write(
+        root.join("Assets/Spin.lua"),
+        "local S = {}\nfunction S:Update() self.transform:Rotate(Vector3.new(0, 1.5, 0)) end\nreturn S\n",
+    )
+    .unwrap();
+    for (label, path) in [("Graph Rotate", GRAPH), ("Lua Rotate", "Assets/Spin.lua")] {
+        let mut scene = Scene::new("t");
+        for i in 0..1000 {
+            let e = scene.spawn(&format!("Obj{i}"), None);
+            attach(&mut scene, e, path, &[]);
+        }
+        let mut p = Play::start(root.clone(), scene);
+        p.frames(30);
+        let started = std::time::Instant::now();
+        p.frames(300);
+        p.no_errors();
+        eprintln!("{label:>14} x1000: frame {:?}", started.elapsed() / 300);
+    }
+}

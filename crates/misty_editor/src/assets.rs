@@ -270,6 +270,29 @@ impl AssetDatabase {
                             && !self.scripts.contains_key(rel)
                             && !to_inspect.iter().any(|(_, r)| r == rel)
                     }));
+            // Fields typed with another script's class are object fields: the reader needs the
+            // project's script classes (each named like its file).
+            let classes: Vec<String> = self
+                .scripts
+                .keys()
+                .map(String::as_str)
+                .chain(to_inspect.iter().map(|(_, rel)| rel.as_str()))
+                .filter(|rel| is_cs(rel))
+                .filter_map(|rel| {
+                    std::path::Path::new(rel)
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                })
+                .collect();
+            let fields = misty_engine::scripting::csharp_fields::set_script_classes(classes);
+            // A script class came or went: fields typed with it change in every C# script.
+            if fields.changed {
+                let all: Vec<String> = self.scripts.keys().filter(|r| is_cs(r)).cloned().collect();
+                for rel in all {
+                    self.scripts.remove(&rel);
+                    to_inspect.push((self.absolute(&rel), rel));
+                }
+            }
             for (rel, meta) in inspect_all(to_inspect) {
                 self.scripts.insert(rel, meta);
             }

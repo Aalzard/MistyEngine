@@ -1402,15 +1402,17 @@ pub(crate) fn script_fields(
                         ui.label(crate::theme::bold(ui.ctx(), h.clone()));
                         ui.end_row();
                     }
-                    let mut value = overrides
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| default.clone());
+                    let mut value = ScriptValue::with_override(default, overrides.get(name));
                     let label = ui.label(nicify(name));
                     if let Some(tip) = &a.tooltip {
                         label.on_hover_text(tip);
                     }
-                    if script_field_ui(ui, &format!("{slot}_{name}"), &mut value, &a) {
+                    let id = format!("{slot}_{name}");
+                    let changed = match &mut value {
+                        ScriptValue::Object(o) => object_slot(ui, state, &id, e, o),
+                        v => script_field_ui(ui, &id, v, &a),
+                    };
+                    if changed {
                         edits.push((name.clone(), value));
                     }
                     ui.end_row();
@@ -1443,9 +1445,103 @@ pub fn script_field_ui(
     }
 }
 
+/// Whether object `e` can fill an object field asking for `kind` (see `ObjectValue::kind`).
+pub fn object_fits(scene: &misty_engine::scene::Scene, e: Entity, kind: &str) -> bool {
+    match kind {
+        "" | "GameObject" | "Transform" | "Component" | "Object" => true,
+        "Rigidbody" | "Animator" => scene.component_names(e).iter().any(|n| n == kind),
+        "AudioSource" => scene.component_names(e).iter().any(|n| n == "Audio Source"),
+        "Collider" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n.ends_with("Collider") && !n.ends_with("2D")),
+        // A script class: a script of that name on the object (or any script).
+        script => scene.world.get::<&Scripts>(e).is_ok_and(|s| {
+            s.list
+                .iter()
+                .any(|r| script == "MonoBehaviour" || r.name() == script)
+        }),
+    }
+}
+
+/// An object field: the object's name (or "None (Kind)") with a list of the objects that fit,
+/// and objects dragged from the Scene Tree drop onto it. True when changed.
+fn object_slot(
+    ui: &mut Ui,
+    state: &mut EditorState,
+    id: &str,
+    owner: Entity,
+    o: &mut misty_engine::scene::ObjectValue,
+) -> bool {
+    let kind = if o.kind.is_empty() {
+        "GameObject"
+    } else {
+        o.kind.as_str()
+    }
+    .to_owned();
+    let none = format!("None ({kind})");
+    let scene = &state.scene;
+    let current = o.entity().filter(|t| scene.world.contains(*t));
+    let text = current.map_or(none.clone(), |t| format!("{}  ({kind})", scene.name(t)));
+    let mut picked: Option<Option<Entity>> = None;
+    let combo = egui::ComboBox::from_id_salt(("object_slot", id, owner))
+        .selected_text(text)
+        .width(170.0)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(current.is_none(), &none).clicked() {
+                picked = Some(None);
+            }
+            let scene = &state.scene;
+            for (e, depth) in scene.walk() {
+                if !object_fits(scene, e, &kind) {
+                    continue;
+                }
+                let label = format!("{}{}", "  ".repeat(depth), scene.name(e));
+                if ui.selectable_label(current == Some(e), label).clicked() {
+                    picked = Some(Some(e));
+                }
+            }
+        });
+    // Dragged from the Scene Tree: outline while over the slot, take the first object that
+    // fits on release.
+    let rect = combo.response.rect;
+    let hovering = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| rect.contains(p));
+    if hovering && let Some(dragged) = crate::panels::hierarchy::dragged_objects(ui.ctx()) {
+        let fits = dragged
+            .iter()
+            .find(|d| object_fits(&state.scene, **d, &kind))
+            .copied();
+        let color = if fits.is_some() {
+            theme::accent()
+        } else {
+            theme::text_dim()
+        };
+        ui.painter().rect_stroke(
+            rect.expand(1.0),
+            2.0,
+            egui::Stroke::new(2.0, color),
+            egui::StrokeKind::Outside,
+        );
+        if ui.input(|i| i.pointer.any_released()) && fits.is_some() {
+            picked = Some(fits);
+        }
+    }
+    match picked {
+        Some(new) if new != current => {
+            o.object = new.map(|t| t.to_bits().get());
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Widget for one script field value.
 fn script_value_ui(ui: &mut Ui, id: &str, v: &mut ScriptValue) -> bool {
     match v {
+        // Drawn by `object_slot` (it needs the scene).
+        ScriptValue::Object(_) => false,
         ScriptValue::Bool(b) => ui.checkbox(b, "").changed(),
         ScriptValue::Number(n) => ui.add(egui::DragValue::new(n).speed(0.1)).changed(),
         ScriptValue::Text(t) => ui
@@ -1485,4 +1581,78 @@ struct LogLevelColor;
 
 impl LogLevelColor {
     const ERROR: egui::Color32 = egui::Color32::from_rgb(255, 110, 100);
+}
+
+#[cfg(test)]
+mod object_field_tests {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use misty_engine::scene::{ObjectValue, Rigidbody, ScriptRef, ScriptValue, Scripts};
+
+    use crate::project::ProjectBrowser;
+    use crate::state::EditorState;
+
+    /// A C# script's object fields are slots listing the objects that fit; picking one sets
+    /// the field.
+    #[test]
+    fn object_fields_list_fitting_objects_and_take_a_pick() {
+        let root = std::env::temp_dir().join(format!("misty_object_slot_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        std::fs::write(
+            root.join("Assets/Scripts/Seeker.cs"),
+            "using Misty;\npublic class Seeker : MonoBehaviour\n{\n    public Transform target;\n    public Rigidbody body;\n}\n",
+        )
+        .unwrap();
+        let mut s = EditorState::new(ProjectBrowser::open(root.clone()));
+        let seeker = s.scene.spawn("Seeker", None);
+        let goal = s.scene.spawn("Goal", None);
+        let ball = s.scene.spawn("Ball", None);
+        s.scene.add(ball, Rigidbody::default());
+        s.scene.add(
+            seeker,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Scripts/Seeker.cs".into(),
+                    ..Default::default()
+                }],
+            },
+        );
+        s.selection.set(seeker);
+        let mut h = Harness::builder()
+            .with_size([520.0, 1200.0])
+            .build_ui_state(|ui, s: &mut EditorState| super::super::show(ui, s), s);
+        h.run();
+        h.get_by_value("None (Transform)").click();
+        h.run();
+        h.get_by_label("Goal").click();
+        h.run();
+        let field = |s: &EditorState, name: &str| match &s
+            .scene
+            .world
+            .get::<&Scripts>(seeker)
+            .unwrap()
+            .list[0]
+            .fields
+            .get(name)
+        {
+            Some(ScriptValue::Object(o)) => o.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(field(h.state(), "target").entity(), Some(goal));
+        // The Rigidbody slot lists only objects with one.
+        h.get_by_value("None (Rigidbody)").click();
+        h.run();
+        assert!(h.query_by_label("Goal").is_none() || h.query_all_by_label("Goal").count() == 1);
+        h.get_by_label("Ball").click();
+        h.run();
+        assert_eq!(
+            field(h.state(), "body"),
+            ObjectValue {
+                object: Some(ball.to_bits().get()),
+                kind: "Rigidbody".into()
+            }
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

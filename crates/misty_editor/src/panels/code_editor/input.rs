@@ -160,7 +160,13 @@ pub fn refresh_completion(doc: &mut Document, completion: &mut Option<Completion
         .chars()
         .take(head.col)
         .collect();
-    let Some(ctx) = completion::context(&before) else {
+    let csharp = super::csharp::is_csharp(&doc.path);
+    let found = if csharp {
+        super::csharp::context(&before)
+    } else {
+        completion::context(&before)
+    };
+    let Some(ctx) = found else {
         *completion = None;
         return;
     };
@@ -169,7 +175,11 @@ pub fn refresh_completion(doc: &mut Document, completion: &mut Option<Completion
         *completion = None;
         return;
     }
-    let items = completion::complete(&ctx, doc.editor.buf.lines(), head.line);
+    let items = if csharp {
+        super::csharp::complete(&ctx, doc.editor.buf.lines())
+    } else {
+        completion::complete(&ctx, doc.editor.buf.lines(), head.line)
+    };
     if items.is_empty() {
         *completion = None;
         return;

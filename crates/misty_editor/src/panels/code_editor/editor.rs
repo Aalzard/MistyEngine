@@ -23,6 +23,8 @@ pub struct TextEditor {
     pub box_anchor: Option<Pos>,
     /// Positions that move with edits (the view keeps folded blocks here).
     pub markers: Vec<Pos>,
+    /// Line comment of the language (`--` Lua, `//` C# and WGSL) for Toggle Comment.
+    pub comment: &'static str,
 }
 
 impl TextEditor {
@@ -38,6 +40,7 @@ impl TextEditor {
             clock: None,
             box_anchor: None,
             markers: Vec::new(),
+            comment: "--",
         }
     }
 

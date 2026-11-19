@@ -941,3 +941,53 @@ return S
     assert_eq!(g.lines("S:"), ["S:8.0 5 true true"]);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `ObjectField(kind)` declares an object slot: Properties lists it, a set one arrives as the
+/// object (or its Transform), an unset one is nil.
+#[test]
+fn lua_object_fields_arrive_as_objects_or_nil() {
+    let s = r#"
+local S = { target = ObjectField("Transform"), thing = ObjectField(), unset = ObjectField("Rigidbody") }
+function S:Start()
+    Debug.Log("S:" .. self.thing.name .. " " .. self.target.position.x .. " " .. tostring(self.unset == nil))
+end
+return S
+"#;
+    let info = crate::scripting::inspect_script(s, "Assets/Scripts/S.lua").unwrap();
+    let kinds: Vec<String> = info
+        .fields
+        .iter()
+        .map(|(n, v)| match v {
+            crate::scene::ScriptValue::Object(o) => format!("{n}:{}", o.kind),
+            other => format!("{n}:{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        ["target:Transform", "thing:GameObject", "unset:Rigidbody"]
+    );
+    let root = project(&[("S", s)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("S", None);
+    let other = scene.spawn("Other", None);
+    let mut t = scene.transform(other);
+    t.position = Vec3::new(3.0, 0.0, 0.0);
+    scene.set_transform(other, t);
+    let obj = |kind: &str| {
+        crate::scene::ScriptValue::Object(crate::scene::ObjectValue {
+            object: Some(other.to_bits().get()),
+            kind: kind.into(),
+        })
+    };
+    let mut r = ScriptRef {
+        path: "Assets/Scripts/S.lua".into(),
+        ..Default::default()
+    };
+    r.fields.insert("target".into(), obj("Transform"));
+    r.fields.insert("thing".into(), obj("GameObject"));
+    scene.add(e, Scripts { list: vec![r] });
+    let mut g = Game::start(scene, root.clone());
+    g.frames(1);
+    assert_eq!(g.lines("S:"), ["S:Other 3.0 true"]);
+    let _ = std::fs::remove_dir_all(&root);
+}

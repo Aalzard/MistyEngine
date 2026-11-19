@@ -98,14 +98,16 @@ pub struct Special {
 }
 
 /// Event node types (no exec input; the runtime starts flows from them).
-pub const EVENTS: [&str; 20] = [
+pub const EVENTS: [&str; 22] = [
     "OnStart",
     "OnUpdate",
     "OnFixedUpdate",
     "OnLateUpdate",
     "OnTriggerEnter",
+    "OnTriggerStay",
     "OnTriggerExit",
     "OnCollisionEnter",
+    "OnCollisionStay",
     "OnCollisionExit",
     "OnTriggerEnter2D",
     "OnTriggerStay2D",
@@ -149,6 +151,12 @@ pub static SPECIAL: &[Special] = &[
         "overlap begin physics 3d"
     ),
     special!(
+        "OnTriggerStay",
+        "On Trigger Stay",
+        "Events",
+        "overlap inside every step physics 3d"
+    ),
+    special!(
         "OnTriggerExit",
         "On Trigger Exit",
         "Events",
@@ -159,6 +167,12 @@ pub static SPECIAL: &[Special] = &[
         "On Collision Enter",
         "Events",
         "hit physics 3d"
+    ),
+    special!(
+        "OnCollisionStay",
+        "On Collision Stay",
+        "Events",
+        "touching every step physics 3d"
     ),
     special!(
         "OnCollisionExit",
@@ -420,8 +434,9 @@ pub fn ports(node: &Node, g: &ScriptGraph, files: &dyn Resolver) -> Ports {
             exec_out(&mut p, "Out");
             p.outputs.push(Pin::data("Delta Time", Float));
         }
-        "OnTriggerEnter" | "OnTriggerExit" | "OnCollisionEnter" | "OnCollisionExit"
-        | "OnTriggerEnter2D" | "OnTriggerStay2D" | "OnTriggerExit2D" => {
+        "OnTriggerEnter" | "OnTriggerStay" | "OnTriggerExit" | "OnCollisionEnter"
+        | "OnCollisionStay" | "OnCollisionExit" | "OnTriggerEnter2D" | "OnTriggerStay2D"
+        | "OnTriggerExit2D" => {
             exec_out(&mut p, "Out");
             p.outputs.push(Pin::data("Other", GameObject));
         }

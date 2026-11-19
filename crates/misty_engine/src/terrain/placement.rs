@@ -114,7 +114,7 @@ pub fn spots(
         if out.len() >= PER_STEP.min(want - have) {
             break;
         }
-        let n = base.wrapping_add(i * 2_654_435_761);
+        let n = base.wrapping_add(i.wrapping_mul(2_654_435_761));
         let a = noise::hash(n as i32, 5, p.seed) * std::f32::consts::TAU;
         let r = noise::hash(n as i32, 6, p.seed).sqrt() * radius;
         let q = center + Vec2::new(a.cos(), a.sin()) * r;

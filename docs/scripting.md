@@ -31,10 +31,12 @@ sandboxed.
 ## Callbacks
 `Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
 `OnDisable`, `OnDestroy`,
-`OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`
-(`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below),
+`OnCollisionEnter(other)`, `OnCollisionStay(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`,
+`OnTriggerStay(other)`, `OnTriggerExit(other)` (`other` is a GameObject; Stay runs every physics step
+after the one they met in, while they still touch), `OnControllerColliderHit(hit)` (see Character Controller below),
 `OnAnimatorMove()` (root motion, see Driving an Animator below). Fields starting
-with `_` stay private.
+with `_` stay private. Callbacks are looked up when the script starts: a function added to
+the instance later (`self.Update = …`) is not called every frame.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
 Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleChanged(code)` (see Save games
 and Localization below).
@@ -109,6 +111,27 @@ Satellite._attributes = {
 `Header(text)` (bold heading above), `Tooltip(text)` (hover text of the label), `Space([pixels])` (gap
 above, 8 by default), `Range(min, max)` (numbers) and `HideInInspector()`. One attribute can stand on its
 own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing there.
+
+## Object fields
+`ObjectField(kind)` declares a slot for another object in the scene, set in the Properties panel:
+
+```lua
+local Follow = { target = ObjectField("Transform"), door = ObjectField(), speed = 4 }
+function Follow:Update()
+    if self.target then
+        self.transform:LookAt(self.target.position)
+    end
+end
+return Follow
+```
+
+`kind` is `"GameObject"` (the default), `"Transform"`, a component (`"Rigidbody"`, `"Collider"`,
+`"AudioSource"`, `"Animator"`) or a script name (`"PlayerMover"`); the panel lists only objects that
+have it. Pick one from the list or drag it from the Scene Tree onto the slot. In the game the field
+is the object (`"Transform"`: its Transform; use `GetComponent` for the rest), and `nil` while
+the slot is empty or the object was destroyed. References are saved with the scene and follow
+Duplicate, copy and paste and prefabs (a copy's field points at the copy's own child). Script Graph
+variables of type GameObject are object fields too.
 
 ## API
 | | |
@@ -1139,7 +1162,10 @@ dedicated-server builds without a window, Network Animator / Rigidbody component
 `.cs` files in `Assets/` run on the .NET runtime installed on the computer (install the
 [.NET SDK](https://dot.net), version 10 or later). **Assets ▸ Create ▸ C# Script** makes one from
 a template; rename it right away and its class is renamed with it. Attach a script by dragging it
-onto an object, like a Lua script; double-click opens it in the code editor. A script is a class
+onto an object, like a Lua script; double-click opens it in the code editor, which highlights C#,
+completes the engine API as you type (`transform.`, `Vector3.`, `rb.` for a `Rigidbody rb` field,
+the types inside `GetComponent<…>`, callback names), toggles `//` comments with Ctrl+/ and
+underlines compile errors after a save. A script is a class
 with the file's name that derives from `MonoBehaviour`; Lua and C# scripts can sit side by side,
 even on one object, and follow the same lifecycle.
 
@@ -1175,7 +1201,10 @@ callbacks.
 
 **Properties panel.** Public fields, and private ones marked `[SerializeField]`, of type `float`,
 `double`, `int`, `long`, `bool`, `string` and `Vector3` show in the Properties panel and are saved
-with the scene; `static`, `const`, `readonly` and `[System.NonSerialized]` fields don't. The
+with the scene, and so do object fields: `GameObject`, `Transform`, `Rigidbody`, `Collider`,
+`AudioSource`, `Animator` and any script class of the project (`public PlayerMover player;`),
+set by picking an object or dragging it from the Scene Tree (see Object fields above; a script
+field gets that script's instance on the object, even when it is made after this one); `static`, `const`, `readonly` and `[System.NonSerialized]` fields don't. The
 panel reads them from the source, so they appear as soon as the file is saved; the default is the
 initializer when it's a literal (`90f`, `"Player"`, `new Vector3(0, 1, 0)`, `Vector3.up`). Values
 set in the panel replace the initializers when Play starts. `[Header]`, `[Tooltip]`, `[Space]`,
@@ -1185,8 +1214,9 @@ set in the panel replace the initializers when Play starts. `[Header]`, `[Toolti
 `OnDestroy` (any visibility, no parameters), with the same rules as Lua scripts: objects made by
 `Instantiate` get Awake and OnEnable right after the callback that made them, `SetActive` and the
 `enabled` checkbox call OnDisable / OnEnable, `Destroy` calls OnDisable and OnDestroy. Contacts:
-`OnCollisionEnter` / `OnCollisionExit` (with a `Collision`, a `GameObject` or nothing) and
-`OnTriggerEnter` / `OnTriggerExit` (with a `Collider`, a `GameObject` or nothing); like Lua
+`OnCollisionEnter` / `OnCollisionStay` / `OnCollisionExit` (with a `Collision`, a `GameObject` or
+nothing) and `OnTriggerEnter` / `OnTriggerStay` / `OnTriggerExit` (with a `Collider`, a `GameObject`
+or nothing); like Lua
 scripts, a disabled script still hears them. A callback may return `IEnumerator`
 (`IEnumerator Start()`) to run as a coroutine.
 

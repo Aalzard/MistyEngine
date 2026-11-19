@@ -180,14 +180,18 @@ mod tests {
         let ctx = egui::Context::default();
         let mut t = Thumbnails::default();
         // This frame's budget is used up: the preview waits for the next frame.
-        let _ = ctx.run_ui(Default::default(), |ui| {
+        ctx.run_ui(Default::default(), |ui| {
             t.spend_budget(ui.ctx());
             assert!(t.get(ui.ctx(), &p).is_none(), "over the budget: next frame");
-        });
+        })
+        .textures_delta
+        .clear();
         // The next frame decodes it.
-        let _ = ctx.run_ui(Default::default(), |ui| {
+        ctx.run_ui(Default::default(), |ui| {
             assert!(t.get(ui.ctx(), &p).is_some(), "decoded in the next frame");
-        });
+        })
+        .textures_delta
+        .clear();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -179,6 +179,12 @@ impl Literal {
 
     /// As an Inspector field value (Object variables), when the type has one.
     pub fn to_script_value(&self, ty: PinType) -> Option<ScriptValue> {
+        // A GameObject variable is an object slot (set in Properties, empty by default).
+        if ty == PinType::GameObject {
+            return Some(ScriptValue::Object(crate::scene::ObjectValue::none(
+                "GameObject",
+            )));
+        }
         Some(match self.coerce(ty) {
             Self::Bool(b) => ScriptValue::Bool(b),
             Self::Int(i) => ScriptValue::Number(i as f64),
@@ -414,6 +420,7 @@ impl Value {
             ScriptValue::Number(n) => Value::Float(*n as f32),
             ScriptValue::Text(t) => Value::str(t),
             ScriptValue::Vector3(a) => Value::Vec3(Vec3::from(*a)),
+            ScriptValue::Object(o) => o.entity().map_or(Value::Nil, Value::Object),
         };
         raw.convert(ty)
     }

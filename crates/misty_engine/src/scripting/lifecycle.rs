@@ -26,7 +26,10 @@ local get, set, raw = ...
 return function(class, id, slot)
     return function(_, k)
         if k == "enabled" then return get(id, slot) end
-        return class[k]
+        local v = class[k]
+        -- An ObjectField(...) declaration not set in Properties is nil.
+        if type(v) == "table" and rawget(v, "__misty_object_field") then return nil end
+        return v
     end, function(t, k, v)
         if k == "enabled" then set(id, slot, v) else raw(t, k, v) end
     end

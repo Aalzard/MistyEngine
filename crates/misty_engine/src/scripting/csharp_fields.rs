@@ -347,16 +347,70 @@ fn numbers(toks: &[Tok]) -> Option<Vec<f64>> {
     Some(out)
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 enum Kind {
     Number,
     Bool,
     Text,
     Vector3,
+    /// A scene object, one of its components or a script on it (the type's name).
+    Object(String),
+}
+
+/// Engine types an object field can hold.
+const OBJECT_TYPES: &[&str] = &[
+    "GameObject",
+    "Transform",
+    "Component",
+    "MonoBehaviour",
+    "Rigidbody",
+    "Collider",
+    "AudioSource",
+    "Animator",
+];
+
+/// Script classes of the project (a C# script's class is named like its file): fields of
+/// these types are object fields too. Set by the editor when it lists the scripts.
+static SCRIPT_CLASSES: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+/// The project's C# script classes (file names without `.cs`), for object fields that hold
+/// another script.
+pub fn set_script_classes(mut names: Vec<String>) -> ClassesSet {
+    names.sort_unstable();
+    names.dedup();
+    let mut known = SCRIPT_CLASSES.write().unwrap_or_else(|e| e.into_inner());
+    let changed = *known != names;
+    *known = names;
+    ClassesSet { changed }
+}
+
+/// What [`set_script_classes`] did.
+pub struct ClassesSet {
+    /// The list differs from the last one: scripts read before may have other fields now.
+    pub changed: bool,
+}
+
+/// The project's C# script classes as last set (for the Code Editor's completion).
+pub fn script_classes() -> Vec<String> {
+    SCRIPT_CLASSES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn is_script_class(name: &str) -> bool {
+    SCRIPT_CLASSES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .binary_search_by(|n| n.as_str().cmp(name))
+        .is_ok()
 }
 
 fn kind_of(type_name: &str) -> Option<Kind> {
     let t = type_name.rsplit('.').next().unwrap_or(type_name);
+    if OBJECT_TYPES.contains(&t) || is_script_class(t) {
+        return Some(Kind::Object(t.to_owned()));
+    }
     Some(match t {
         "float" | "double" | "int" | "long" | "short" | "byte" | "uint" | "ushort" | "ulong"
         | "sbyte" | "Single" | "Double" | "Int32" | "Int64" | "Int16" | "Byte" | "UInt32" => {
@@ -384,6 +438,8 @@ fn initial(kind: Kind, init: &[Tok]) -> ScriptValue {
             _ => String::new(),
         }),
         Kind::Vector3 => ScriptValue::Vector3(vector(init).unwrap_or([0.0; 3])),
+        // Always empty at first: set in Properties.
+        Kind::Object(t) => ScriptValue::Object(crate::scene::ObjectValue::none(t)),
     }
 }
 
@@ -531,7 +587,7 @@ fn declaration(
             None => &[][..],
             Some(_) => continue,
         };
-        fields.push((name.clone(), initial(kind, init)));
+        fields.push((name.clone(), initial(kind.clone(), init)));
         let mut a = FieldAttributes::default();
         for attr in &found {
             match attr.name.as_str() {
@@ -625,7 +681,7 @@ public class Player : MonoBehaviour
             names,
             [
                 "speed", "lives", "coins", "godMode", "label", "offset", "up", "scale", "computed",
-                "after"
+                "target", "after"
             ]
         );
         let get = |n: &str| f.iter().find(|(k, _)| k == n).unwrap().1.clone();
@@ -640,6 +696,11 @@ public class Player : MonoBehaviour
         // Not a literal: the type's zero (the script's own value applies in Play).
         assert_eq!(get("computed"), ScriptValue::Number(0.0));
         assert_eq!(get("after"), ScriptValue::Number(16.0));
+        // An object field starts empty.
+        assert_eq!(
+            get("target"),
+            ScriptValue::Object(crate::scene::ObjectValue::none("GameObject"))
+        );
     }
 
     #[test]

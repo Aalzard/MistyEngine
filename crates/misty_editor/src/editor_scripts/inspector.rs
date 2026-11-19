@@ -121,6 +121,7 @@ fn kind_name(v: &ScriptValue) -> &'static str {
         ScriptValue::Number(_) => "number",
         ScriptValue::Text(_) => "string",
         ScriptValue::Vector3(_) => "Vector3",
+        ScriptValue::Object(_) => "object",
     }
 }
 

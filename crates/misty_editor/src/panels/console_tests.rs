@@ -108,7 +108,8 @@ fn median_raw_ms(s: &mut EditorState, steps: usize) -> f64 {
     let mut t = Vec::new();
     for i in 0..steps + 3 {
         let t0 = Instant::now();
-        let out = ctx.run_ui(input(), |ui| show(ui, s));
+        let mut out = ctx.run_ui(input(), |ui| show(ui, s));
+        out.textures_delta.clear();
         let _ = ctx.tessellate(out.shapes, out.pixels_per_point);
         if i >= 3 {
             t.push(t0.elapsed().as_secs_f64() * 1e3);

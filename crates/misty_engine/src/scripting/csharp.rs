@@ -37,7 +37,7 @@ use super::{LogKind, World};
 use crate::scene::ScriptValue;
 
 /// The engine's C# API, compiled into every script assembly.
-const API_SOURCE: &str = include_str!("../../dotnet/MistyEngine.cs");
+pub const API_SOURCE: &str = include_str!("../../dotnet/MistyEngine.cs");
 
 /// Method ids, in the order of `Host.Methods` in MistyEngine.cs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,9 +55,11 @@ pub(crate) enum Method {
     OnCollisionExit = 9,
     OnTriggerEnter = 10,
     OnTriggerExit = 11,
+    OnCollisionStay = 12,
+    OnTriggerStay = 13,
 }
 
-const METHOD_COUNT: usize = 12;
+const METHOD_COUNT: usize = 14;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -980,6 +982,8 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnCollisionExit" => Method::OnCollisionExit,
         "OnTriggerEnter" => Method::OnTriggerEnter,
         "OnTriggerExit" => Method::OnTriggerExit,
+        "OnCollisionStay" => Method::OnCollisionStay,
+        "OnTriggerStay" => Method::OnTriggerStay,
         _ => return None,
     })
 }
@@ -1070,6 +1074,17 @@ impl CsHost {
                     ScriptValue::Number(n) => (1, *n, [0.0; 3], Vec::new()),
                     ScriptValue::Vector3(a) => (2, 0.0, *a, Vec::new()),
                     ScriptValue::Text(s) => (3, 0.0, [0.0; 3], s.encode_utf16().collect()),
+                    // The entity's bits in x and y (none: 0), the asked-for kind as text.
+                    ScriptValue::Object(o) => {
+                        // (C# checks that it is alive.)
+                        let bits = o.entity().map_or(0, |t| t.to_bits().get());
+                        let v = [
+                            f32::from_bits(bits as u32),
+                            f32::from_bits((bits >> 32) as u32),
+                            0.0,
+                        ];
+                        (4, 0.0, v, o.kind.encode_utf16().collect())
+                    }
                 };
                 // A field the class no longer has keeps its saved value for later; nothing
                 // to report.
