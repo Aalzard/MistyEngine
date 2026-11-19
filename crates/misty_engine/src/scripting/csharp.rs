@@ -17,9 +17,13 @@
 //! The Properties panel reads a script's public fields from its source
 //! (`csharp_fields.rs`), so it needs neither .NET nor a compile.
 //!
+//! Built games: the build compiles the scripts into `<Product>_Data/Managed` ([`build_assembly`])
+//! and copies the runtime next to the executable ([`bundle_runtime`]); the player loads both
+//! instead of compiling or looking for an installed .NET.
+//!
 //! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource and
-//! Animator, contact points, hot reload, unloading old assemblies (each changed build stays
-//! loaded until the editor exits), and builds of the player.
+//! Animator, contact points, hot reload, and unloading old assemblies (each changed build stays
+//! loaded until the editor exits).
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
@@ -65,6 +69,27 @@ pub fn is_csharp_path(path: &str) -> bool {
 // ---- the .NET runtime ----------------------------------------------------------------------
 
 type HostfxrInit = unsafe extern "C" fn(*const u16, *const c_void, *mut *mut c_void) -> i32;
+
+/// `hostfxr_initialize_parameters` (hostfxr.h).
+#[repr(C)]
+struct InitParameters {
+    size: usize,
+    host_path: *const u16,
+    dotnet_root: *const u16,
+}
+
+/// The folder a built game keeps its .NET runtime in, next to the executable.
+pub const BUNDLED_RUNTIME_DIR: &str = "dotnet";
+
+/// The data folder's subfolder holding the compiled scripts of a built game.
+pub const MANAGED_DIR: &str = "Managed";
+
+/// The runtime a built game ships with: `dotnet/` next to the executable, with a hostfxr.
+fn bundled_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let root = exe.parent()?.join(BUNDLED_RUNTIME_DIR);
+    find_hostfxr(&root).map(|_| root)
+}
 type HostfxrGetDelegate = unsafe extern "C" fn(*mut c_void, i32, *mut *mut c_void) -> i32;
 type LoadAssemblyAndGetFunctionPointer = unsafe extern "C" fn(
     *const u16,
@@ -95,6 +120,10 @@ fn wide_path(p: &Path) -> Vec<u16> {
 
 /// Where `dotnet` lives: `DOTNET_ROOT`, else the default install folder, else `PATH`.
 fn dotnet_root() -> Option<PathBuf> {
+    // A built game carries its own runtime next to the executable (see [`bundle_runtime`]).
+    if let Some(bundled) = bundled_root() {
+        return Some(bundled);
+    }
     if let Some(root) = std::env::var_os("DOTNET_ROOT").map(PathBuf::from)
         && root.join(dotnet_exe_name()).is_file()
     {
@@ -190,9 +219,26 @@ unsafe fn start_runtime(runtime_config: &Path) -> Result<Runtime, String> {
         (*init, *get)
     };
     let config = wide_path(runtime_config);
+    // Name the dotnet folder, so a built game uses the runtime it ships with even where
+    // another .NET is installed (or none is).
+    let host_path = std::env::current_exe()
+        .map(|p| wide_path(&p))
+        .unwrap_or_else(|_| wide(""));
+    let root_w = wide_path(&root);
+    let params = InitParameters {
+        size: std::mem::size_of::<InitParameters>(),
+        host_path: host_path.as_ptr(),
+        dotnet_root: root_w.as_ptr(),
+    };
     let mut handle: *mut c_void = std::ptr::null_mut();
-    // SAFETY: valid NUL-terminated path, no init parameters, out pointer on the stack.
-    let rc = unsafe { init(config.as_ptr(), std::ptr::null(), &mut handle) };
+    // SAFETY: valid NUL-terminated strings that outlive the call, out pointer on the stack.
+    let rc = unsafe {
+        init(
+            config.as_ptr(),
+            (&params as *const InitParameters).cast(),
+            &mut handle,
+        )
+    };
     if rc < 0 || handle.is_null() {
         return Err(format!(
             "the .NET runtime did not start (hostfxr error {:#010x})",
@@ -717,6 +763,84 @@ pub fn rename_class(source: &str, old: &str, new: &str) -> Option<String> {
     found_class.then_some(out)
 }
 
+/// For a game build: compile the project's C# scripts and copy the assembly (with its runtime
+/// config) into `<data_dir>/Managed`, where the player looks first. Ok(None) for a project
+/// without C# scripts; Err with the compiler's errors.
+pub fn build_assembly(project: &Path, data_dir: &Path) -> Result<Option<PathBuf>, String> {
+    if !project_has_scripts(project) {
+        return Ok(None);
+    }
+    let dll = compile(project, &mut CsTimings::default())?;
+    let out = data_dir.join(MANAGED_DIR);
+    std::fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+    for name in ["Assembly-CSharp.dll", "Assembly-CSharp.runtimeconfig.json"] {
+        let from = dll.with_file_name(name);
+        let to = out.join(name);
+        std::fs::copy(&from, &to).map_err(|e| format!("{}: {e}", to.display()))?;
+    }
+    Ok(Some(out.join("Assembly-CSharp.dll")))
+}
+
+/// For a game build: copy this computer's .NET runtime (the host resolver and the newest
+/// shared framework, about 70 MB) into `dest` (`<build>/dotnet`), so the game runs where .NET
+/// isn't installed. Only the files the game needs: no SDK, no compiler. Returns the bytes
+/// copied and the runtime version.
+pub fn bundle_runtime(dest: &Path) -> Result<(u64, String), String> {
+    let root = dotnet_root().ok_or("the .NET runtime was not found (install the .NET SDK)")?;
+    let fxr = find_hostfxr(&root)
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .ok_or_else(|| format!("hostfxr was not found under {}", root.display()))?;
+    let (version, framework) = newest(
+        &root.join("shared").join("Microsoft.NETCore.App"),
+        |p, _| {
+            p.join("System.Private.CoreLib.dll")
+                .is_file()
+                .then(|| p.to_path_buf())
+        },
+    )
+    .ok_or("no .NET runtime (Microsoft.NETCore.App) is installed")?;
+    if dest.exists() {
+        std::fs::remove_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    }
+    let fxr_name = fxr.file_name().unwrap_or_default();
+    let mut bytes = copy_tree(&fxr, &dest.join("host").join("fxr").join(fxr_name))?;
+    bytes += copy_tree(
+        &framework,
+        &dest
+            .join("shared")
+            .join("Microsoft.NETCore.App")
+            .join(&version),
+    )?;
+    // The runtime's licence travels with it (MIT; the notices are required).
+    for notice in ["LICENSE.txt", "ThirdPartyNotices.txt"] {
+        let from = root.join(notice);
+        if from.is_file() {
+            let to = dest.join(notice);
+            bytes += std::fs::copy(&from, &to).map_err(|e| format!("{}: {e}", to.display()))?;
+        }
+    }
+    Ok((bytes, version))
+}
+
+fn copy_tree(from: &Path, to: &Path) -> Result<u64, String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    let mut bytes = 0;
+    for entry in std::fs::read_dir(from)
+        .map_err(|e| format!("{}: {e}", from.display()))?
+        .flatten()
+    {
+        let path = entry.path();
+        let target = to.join(entry.file_name());
+        if path.is_dir() {
+            bytes += copy_tree(&path, &target)?;
+        } else {
+            bytes +=
+                std::fs::copy(&path, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+        }
+    }
+    Ok(bytes)
+}
+
 /// Whether the project has C# scripts under `Assets/`.
 pub fn project_has_scripts(project: &Path) -> bool {
     let mut sources = Vec::new();
@@ -847,7 +971,15 @@ impl CsHost {
             return false;
         }
         let mut timings = CsTimings::default();
-        let result = compile(project, &mut timings).and_then(|dll| {
+        // A built game has its scripts compiled already (`<Product>_Data/Managed`).
+        let prebuilt = project.join(MANAGED_DIR).join("Assembly-CSharp.dll");
+        let assembly = if prebuilt.is_file() {
+            timings.cached = true;
+            Ok(prebuilt)
+        } else {
+            compile(project, &mut timings)
+        };
+        let result = assembly.and_then(|dll| {
             let started = Instant::now();
             let config = dll.with_extension("runtimeconfig.json");
             let entry = runtime(&config)?.load_assembly(&dll);
@@ -978,8 +1110,8 @@ impl CsHost {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn dotnet_available() -> bool {
+/// Whether a .NET runtime (installed or shipped with the game) can be found.
+pub fn dotnet_available() -> bool {
     dotnet_root().is_some_and(|r| find_hostfxr(&r).is_some())
 }
 

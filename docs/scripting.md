@@ -1162,6 +1162,9 @@ public class Rotator : MonoBehaviour
 }
 ```
 
+**Built games** run C# too: the build ships the scripts compiled and the .NET runtime with the
+game, so players install nothing (see "What ends up in the build folder" in `building.md`).
+
 **Compiling.** Every `.cs` file under `Assets/` is compiled with the SDK's C# compiler into
 `Library/ScriptAssemblies/<hash>/Assembly-CSharp.dll` (about 0.2 s; an unchanged project reuses the
 last build): in the background when the project opens (which also starts .NET, so the first Play
@@ -1251,8 +1254,8 @@ when a script also has `using System;`; write `Misty.Random` / `Misty.Object` th
 Not yet: the other engine components (UI, cameras, lights, particles, navigation, Character
 Controller, …), contact points and `OnCollisionStay`, 2D physics callbacks, `Instantiate` of a
 script (instantiate its `gameObject`), adding or removing scripts during Play, object-reference
-fields in the Properties panel, completion in the code editor, and game builds (the player does
-not run C# yet). Each changed build stays loaded until the editor is closed.
+fields in the Properties panel and completion in the code editor. Each changed build stays
+loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

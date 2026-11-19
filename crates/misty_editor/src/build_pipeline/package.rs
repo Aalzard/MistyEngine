@@ -213,6 +213,14 @@ pub fn package(
             "{missing} is missing (used by {from})"
         )));
     }
+    // C# scripts ship compiled (`Managed/Assembly-CSharp.dll`), not as source.
+    let csharp_sources = deps
+        .files
+        .iter()
+        .filter(|r| misty_engine::scripting::csharp::is_csharp_path(r))
+        .count();
+    deps.files
+        .retain(|r| !misty_engine::scripting::csharp::is_csharp_path(r));
     send(Msg::Log(format!(
         "{} asset files from {} scenes",
         deps.files.len(),
@@ -387,6 +395,8 @@ pub fn package(
         pak_bytes as f64 / 1e6,
         if req.build.compression { " (LZ4)" } else { "" }
     )));
+
+    csharp(req, &exe, &data_dir, csharp_sources, &mut report, send)?;
 
     // Asset bundles: build the addressable groups and ship the local bundles + catalog.
     bundles(req, &data_dir, send)?;
@@ -638,6 +648,58 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
 /// JSON text of a settings value (no BOM, trailing newline).
 /// Build the project's asset bundles for the target (when it has addressables) and copy the
 /// catalog and local bundles into `<data>/Bundles`.
+/// C# scripts: compiled into `<data_dir>/Managed`, and the .NET runtime copied next to the
+/// executable (`dotnet/`), so the game runs on computers without .NET. A project without C#
+/// scripts gets neither. `used` is how many C# scripts the build's scenes reference.
+fn csharp(
+    req: &PackageRequest,
+    exe: &Path,
+    data_dir: &Path,
+    used: usize,
+    report: &mut BuildReport,
+    send: &mut dyn FnMut(Msg),
+) -> Result<(), String> {
+    use misty_engine::scripting::csharp;
+    let runtime_dir = exe
+        .parent()
+        .unwrap_or(&req.out)
+        .join(csharp::BUNDLED_RUNTIME_DIR);
+    if !csharp::project_has_scripts(&req.project) {
+        // A rebuild into an old folder must not keep a runtime the game no longer needs.
+        if runtime_dir.exists() {
+            let _ = std::fs::remove_dir_all(&runtime_dir);
+        }
+        return Ok(());
+    }
+    send(Msg::Progress(0.905, "Compiling C# scripts".into()));
+    let dll = csharp::build_assembly(&req.project, data_dir)?
+        .ok_or("the project's C# scripts disappeared during the build")?;
+    let dll_bytes = std::fs::metadata(&dll).map_or(0, |m| m.len());
+    report.add("Managed/Assembly-CSharp.dll", dll_bytes, dll_bytes);
+    send(Msg::Log(format!(
+        "C# scripts: Assembly-CSharp.dll ({:.1} KB; {used} used by the build's scenes)",
+        dll_bytes as f64 / 1e3
+    )));
+    let host = BuildTarget::host();
+    if host.is_some_and(|h| h.os() == req.build.target.os()) {
+        send(Msg::Progress(0.91, "Copying the .NET runtime".into()));
+        let (bytes, version) = csharp::bundle_runtime(&runtime_dir)?;
+        report.add("dotnet/ (.NET runtime)", bytes, bytes);
+        send(Msg::Log(format!(
+            ".NET runtime {version}: {:.1} MB in {}",
+            bytes as f64 / 1e6,
+            runtime_dir.display()
+        )));
+    } else {
+        send(Msg::Warning(format!(
+            "C# scripts: the .NET runtime for {} can't be copied from this computer; the game \
+             needs .NET installed (dot.net) to run them",
+            req.build.target.label()
+        )));
+    }
+    Ok(())
+}
+
 fn bundles(req: &PackageRequest, data_dir: &Path, send: &mut dyn FnMut(Msg)) -> Result<(), String> {
     use misty_engine::asset_groups::{AssetGroupSettings, build, catalog};
     let settings = AssetGroupSettings::load(&req.project)?;
@@ -805,6 +867,78 @@ mod tests {
             settings: ProjectSettings::default(),
             profile: None,
         }
+    }
+
+    /// A project with C# scripts: the build ships them compiled (no source in the pak) and
+    /// carries the .NET runtime next to the executable.
+    #[test]
+    fn csharp_scripts_ship_compiled_with_the_runtime() {
+        if !misty_engine::scripting::csharp::dotnet_available() {
+            eprintln!("no .NET installed: C# build test skipped");
+            return;
+        }
+        let root = project("csharp");
+        std::fs::write(
+            root.join("Assets/Scenes/A.scene"),
+            r#"{ "m": "Assets/Red.mat", "s": "Assets/Mover.cs" }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("Assets/Mover.cs"),
+            "using Misty;\npublic class Mover : MonoBehaviour { void Update() { } }\n",
+        )
+        .unwrap();
+        let mut req = request(
+            &root,
+            BuildTarget::host().unwrap_or(BuildTarget::WindowsX64),
+        );
+        req.build.create_zip = false;
+        req.build.steam_app_id.clear();
+        let _ = std::fs::remove_dir_all(&req.out);
+        let player = root.join("player.bin");
+        std::fs::write(&player, "exe").unwrap();
+        let mut log = Vec::new();
+        let built = package(&req, &player, &mut |m| log.push(m)).unwrap();
+        let data = req.out.join("My_ Game_Data");
+        assert!(
+            data.join("Managed/Assembly-CSharp.dll").is_file(),
+            "{log:#?}"
+        );
+        assert!(
+            data.join("Managed/Assembly-CSharp.runtimeconfig.json")
+                .is_file()
+        );
+        let pak = Pak::open(&data.join("data.pak")).unwrap();
+        assert!(!pak.paths().any(|p| p.ends_with(".cs")), "source shipped");
+        let dotnet = built.exe.parent().unwrap().join("dotnet");
+        let has = |dir: &str, file: &str| {
+            std::fs::read_dir(dotnet.join(dir))
+                .unwrap()
+                .flatten()
+                .any(|v| v.path().join(file).is_file())
+        };
+        assert!(has(
+            "host/fxr",
+            if cfg!(windows) {
+                "hostfxr.dll"
+            } else {
+                "libhostfxr.so"
+            }
+        ));
+        assert!(has(
+            "shared/Microsoft.NETCore.App",
+            "System.Private.CoreLib.dll"
+        ));
+        // No SDK or compiler in the game.
+        assert!(!dotnet.join("sdk").exists());
+
+        // The scripts gone: a rebuild drops the runtime too.
+        std::fs::remove_file(root.join("Assets/Mover.cs")).unwrap();
+        package(&req, &player, &mut |_| {}).unwrap();
+        assert!(!dotnet.exists());
+        assert!(!data.join("Managed").exists());
+        let _ = std::fs::remove_dir_all(&req.out);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

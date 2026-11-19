@@ -6452,3 +6452,39 @@ The other components (UI, Camera, Light, ParticleSystem, NavMeshAgent, Character
 contact points and OnCollisionStay, 2D physics callbacks, object-reference fields in the
 Properties panel, completion in the code editor, and player builds (ship the .NET runtime with
 the game or require it on the player's computer).
+
+## Round 90 — C# in built games (branch csharp-proof)
+
+C# scripts ran only in the editor; a built game skipped them. Now a build ships them.
+
+### Done
+- **Build** (`build_pipeline::package::csharp`): a project with C# scripts gets its scripts
+  compiled into `<Product>_Data/Managed/Assembly-CSharp.dll` (+ runtime config), and the .NET
+  runtime of the building computer copied into `<build>/dotnet/` (`csharp::bundle_runtime`: the
+  host resolver and the newest `Microsoft.NETCore.App`, with the licence notices; no SDK). The
+  `.cs` sources stay out of `data.pak`. Compile errors fail the build. A build for another OS
+  can't copy that OS's runtime: it warns that players need .NET installed. Rebuilding a project
+  that no longer has C# scripts removes the old runtime folder.
+- **Player**: `CsHost` loads `Managed/Assembly-CSharp.dll` when it's there (no compile), and
+  `dotnet_root()` prefers `dotnet/` next to the executable. hostfxr gets that folder as its
+  `dotnet_root` (init parameters), so the game uses its own runtime even where another .NET is
+  installed, or none is.
+- Docs: "What ends up in the build folder" in `building.md`; `scripting.md`.
+
+### Checked end to end
+A copy of SampleProject with a C# `BuildProbe` (an Inspector string, an `IEnumerator Start`
+coroutine, `Application.Quit`) on the sample scene, set up with `misty --mcp` and built with
+`misty --build` (release player). Build: Assembly-CSharp.dll 58 KB, .NET 11.0.0 runtime 87 MB.
+Run with `DOTNET_ROOT` unset, `ProgramFiles` pointing nowhere and no dotnet on `PATH` (so only
+the bundled runtime could be found), headless and windowed: "C# in the build: set in the
+Inspector on Probe", "C# coroutine done at 0.5s", then the game quit.
+
+### Tests
+New: `build_pipeline::package::tests::csharp_scripts_ship_compiled_with_the_runtime` (layout,
+no source in the pak, no SDK, rebuild without scripts drops the runtime). The build pipeline
+tests and the 13 C# engine tests pass.
+
+### Not done
+Linux and macOS players: the runtime copy works only for the building computer's OS, and the
+host strings are UTF-16 (Windows); a Linux build of a C# project would need .NET installed and
+the host code made portable. Trimming the runtime (about 85 MB now) is possible later.

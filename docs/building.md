@@ -123,6 +123,8 @@ MyGame.exe              the game (named after Product Name, with your icon)
 MyGame_Data/
     data.pak            your scenes and every asset they use, plus the settings
     icon.png / .ico     the icon
+    Managed/            your C# scripts, compiled (only when the project has C# scripts)
+dotnet/                 the .NET runtime the C# scripts run on (only with C# scripts)
 Player.log              only for Development Builds (see below)
 BuildReport.txt         sizes by asset type and the largest assets
 ```
@@ -133,6 +135,13 @@ inside a folder called **Resources** (for files a script finds by name). Unused 
 so the download stays small. The build log lists references to files that no longer exist.
 
 Ship the **whole folder**: the `.exe` alone won't run.
+
+**C# scripts** are compiled into `MyGame_Data/Managed/Assembly-CSharp.dll` (the source files
+stay out of the build), and the .NET runtime of this computer is copied into `dotnet/` (about
+85 MB: the runtime only, no SDK). Players don't need to install anything. A build with compile
+errors stops with the errors. Building for another platform (Linux from Windows) can't copy
+that platform's runtime: the build log warns, and players need .NET installed. Projects
+without C# scripts get neither folder.
 
 ## Build options
 
