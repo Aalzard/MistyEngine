@@ -1137,44 +1137,122 @@ dedicated-server builds without a window, Network Animator / Rigidbody component
 
 ## C# scripts (preview)
 `.cs` files in `Assets/` run on the .NET runtime installed on the computer (install the
-[.NET SDK](https://dot.net), version 10 or later). Attach one by dragging it onto an object, like a
-Lua script; double-click opens it in the code editor. A script is a class with the file's name
-that derives from `MonoBehaviour`; Lua and C# scripts can sit side by side, even on one object.
+[.NET SDK](https://dot.net), version 10 or later). **Assets ▸ Create ▸ C# Script** makes one from
+a template; rename it right away and its class is renamed with it. Attach a script by dragging it
+onto an object, like a Lua script; double-click opens it in the code editor. A script is a class
+with the file's name that derives from `MonoBehaviour`; Lua and C# scripts can sit side by side,
+even on one object, and follow the same lifecycle.
 
 ```csharp
 using Misty;
 
 public class Rotator : MonoBehaviour
 {
-    public float speed = 90f;
+    [Header("Spin")]
+    [Range(0, 360)] public float speed = 90f;
+    [SerializeField] bool bob = true;
 
     void Start() { Debug.Log("Spinning " + name); }
 
     void Update()
     {
         transform.Rotate(0f, speed * Time.deltaTime, 0f);
+        if (Input.GetKeyDown(KeyCode.Space)) Destroy(gameObject);
     }
 }
 ```
 
-When Play starts, every `.cs` file under `Assets/` is compiled with the SDK's C# compiler into
+**Compiling.** Every `.cs` file under `Assets/` is compiled with the SDK's C# compiler into
 `Library/ScriptAssemblies/<hash>/Assembly-CSharp.dll` (about 0.2 s; an unchanged project reuses the
-last build). Compile errors and exceptions show in the Console with the file, line, class and
-method; a script that throws keeps getting its callbacks.
+last build): in the background when the project opens (which also starts .NET, so the first Play
+doesn't wait), each time a script is saved (errors go to the Console, a fix says "C# scripts
+compiled."), and before Play. Play doesn't start while there are compile errors. Exceptions show in
+the Console with the class, method and stack trace; a script that throws keeps getting its
+callbacks.
 
-Callbacks: `Awake`, `OnEnable`, `Start`, `FixedUpdate`, `Update`, `LateUpdate`, `OnDisable`,
-`OnDestroy` (any visibility, no parameters). API so far: `MonoBehaviour` (`gameObject`,
-`transform`, `name`), `GameObject` (`name`, `transform`), `Transform` (`position`, `rotation`,
-`eulerAngles`, `localPosition`, `localRotation`, `localScale`, `forward` / `right` / `up`,
-`Rotate`, `Translate`), `Vector3`, `Quaternion` (`Euler`, `eulerAngles`, `*`), `Mathf`, `Time`
-(`deltaTime`, `time`, `fixedDeltaTime`, `frameCount`) and `Debug` (`Log`, `LogWarning`,
-`LogError`).
+**Properties panel.** Public fields, and private ones marked `[SerializeField]`, of type `float`,
+`double`, `int`, `long`, `bool`, `string` and `Vector3` show in the Properties panel and are saved
+with the scene; `static`, `const`, `readonly` and `[System.NonSerialized]` fields don't. The
+panel reads them from the source, so they appear as soon as the file is saved; the default is the
+initializer when it's a literal (`90f`, `"Player"`, `new Vector3(0, 1, 0)`, `Vector3.up`). Values
+set in the panel replace the initializers when Play starts. `[Header]`, `[Tooltip]`, `[Space]`,
+`[Range]` and `[HideInInspector]` work as in Lua.
 
-Not yet: Inspector fields (public fields keep their code defaults), the rest of the engine API
-(physics, input, audio, UI, …), collision callbacks, objects instantiated or switched on and off
-during Play, `transform.position` in world space under a parent (it is the local position for
-now), coroutines, completion in the code editor, and game builds (the player does not run C#
-yet). Each changed build stays loaded until the editor is closed.
+**Callbacks:** `Awake`, `OnEnable`, `Start`, `FixedUpdate`, `Update`, `LateUpdate`, `OnDisable`,
+`OnDestroy` (any visibility, no parameters), with the same rules as Lua scripts: objects made by
+`Instantiate` get Awake and OnEnable right after the callback that made them, `SetActive` and the
+`enabled` checkbox call OnDisable / OnEnable, `Destroy` calls OnDisable and OnDestroy. Contacts:
+`OnCollisionEnter` / `OnCollisionExit` (with a `Collision`, a `GameObject` or nothing) and
+`OnTriggerEnter` / `OnTriggerExit` (with a `Collider`, a `GameObject` or nothing); like Lua
+scripts, a disabled script still hears them. A callback may return `IEnumerator`
+(`IEnumerator Start()`) to run as a coroutine.
+
+**Coroutines:** `StartCoroutine(routine)` runs it up to its first `yield`, then once per frame
+after Update. Yield `null` (next frame), `new WaitForSeconds(t)` (game time),
+`new WaitForSecondsRealtime(t)`, `new WaitUntil(() => …)`, `new WaitWhile(…)`, another
+`Coroutine` or `IEnumerator` (waits for it), a `CustomYieldInstruction`; `WaitForEndOfFrame` and
+`WaitForFixedUpdate` resume next frame. `StopCoroutine`, `StopAllCoroutines`; switching the object
+off or destroying it stops its coroutines (disabling only the script doesn't). `Invoke(name, t)`,
+`InvokeRepeating(name, t, rate)` and `CancelInvoke()` too.
+
+```csharp
+IEnumerator Start()
+{
+    while (true)
+    {
+        GetComponent<AudioSource>().Play();
+        yield return new WaitForSeconds(2f);
+    }
+}
+```
+
+**API so far:**
+- `Object`: `Instantiate(original[, position, rotation][, parent])`, `Destroy(obj[, seconds])`,
+  `FindObjectOfType<T>()`, `FindObjectsOfType<T>()`, `name`; a destroyed object `== null`.
+- `GameObject`: `Find`, `FindWithTag`, `FindGameObjectsWithTag`, `name`, `tag`, `CompareTag`,
+  `activeSelf`, `activeInHierarchy`, `SetActive`, `transform`, `GetComponent<T>()`,
+  `GetComponents<T>()`, `GetComponentInChildren<T>()`, `GetComponentInParent<T>()`,
+  `TryGetComponent`, `GetComponent("Name")`. Components are your C# scripts, `Transform`,
+  `Rigidbody`, `Collider`, `AudioSource` and `Animator`.
+- `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
+  `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
+  `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
+  `collider`, `rigidbody`).
+- `Physics`: `Raycast` (with or without `out RaycastHit`, from a `Ray` or origin + direction,
+  max distance, layer mask), `RaycastAll`, `SphereCast`, `OverlapSphere`, `gravity`;
+  `RaycastHit` (`point`, `normal`, `distance`, `collider`, `transform`, `rigidbody`); `LayerMask`
+  (`GetMask`, `NameToLayer`, `LayerToName`).
+- `AudioSource`: `Play`, `Stop`, `Pause`, `UnPause`, `isPlaying`, `volume`, `pitch`, `loop`,
+  `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
+  `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
+- `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
+  `UnloadSceneAsync`; `Application.Quit`.
+- `MonoBehaviour` / `Component`: `gameObject`, `transform`, `name`, `tag`, `enabled`,
+  `isActiveAndEnabled`, the `GetComponent` family, `print`.
+- `Transform`: world `position` / `rotation` / `eulerAngles` / `lossyScale`, `localPosition` /
+  `localRotation` / `localEulerAngles` / `localScale`, `forward` / `right` / `up`, `parent`,
+  `root`, `SetParent(parent, worldPositionStays)`, `childCount`, `GetChild`, `Find("A/B")`,
+  `IsChildOf`, `Rotate`, `RotateAround`, `Translate`, `LookAt`, `TransformPoint` /
+  `InverseTransformPoint`, `TransformDirection` / `InverseTransformDirection`.
+- `Input`: `GetKey` / `GetKeyDown` / `GetKeyUp` (`KeyCode` or an Input Manager key name such as
+  `"left shift"`), `GetMouseButton` / `Down` / `Up`, `GetAxis` / `GetAxisRaw` and `GetButton` /
+  `Down` / `Up` (the Input Manager's axes and buttons), `mousePosition`, `mouseScrollDelta`,
+  `mouseDelta`, `anyKey`, `anyKeyDown`.
+- Math: `Vector2`, `Vector3`, `Quaternion` (`Euler`, `AngleAxis`, `LookRotation`, `Slerp`,
+  `Lerp`, `RotateTowards`, `FromToRotation`, `Inverse`, `Angle`), `Mathf` (with `SmoothDamp`,
+  `MoveTowards`, `Repeat`, `PingPong`, `DeltaAngle`, …), `Random` (`Range`, `value`,
+  `insideUnitSphere`, …).
+- `Time` (`deltaTime`, `unscaledDeltaTime`, `time`, `fixedDeltaTime`, `timeScale`,
+  `frameCount`) and `Debug` (`Log`, `LogWarning`, `LogError`, `LogFormat`).
+
+Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
+when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
+
+Not yet: the other engine components (UI, cameras, lights, particles, navigation, Character
+Controller, …), contact points and `OnCollisionStay`, 2D physics callbacks, `Instantiate` of a
+script (instantiate its `gameObject`), adding or removing scripts during Play, object-reference
+fields in the Properties panel, completion in the code editor, and game builds (the player does
+not run C# yet). Each changed build stays loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

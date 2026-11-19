@@ -184,6 +184,8 @@ impl EditorApp {
         self.state
             .console
             .info(format!("Project opened in {} ms.", took.as_millis()));
+        // Compile C# scripts and start .NET in the background, so the first Play doesn't wait.
+        misty_engine::scripting::csharp::prestart(&self.state.project.root);
     }
 
     /// Take the renderer once its worker made it; keep drawing meanwhile. Also reports what
@@ -716,6 +718,16 @@ impl EditorApp {
                 misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollScripts", None);
             for err in s.assets.poll_scripts() {
                 s.console.log(LogLevel::Error, err);
+            }
+            // A saved C# script was compiled in the background.
+            match misty_engine::scripting::csharp::take_background_check() {
+                Some(Err(e)) => s.console.log(LogLevel::Error, e),
+                Some(Ok(())) => s.console.info("C# scripts compiled."),
+                None => {}
+            }
+            // Look again soon while it compiles, even if nothing else wakes the editor.
+            if misty_engine::scripting::csharp::background_check_running() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(200));
             }
             drop(scripts_scope);
             // Assets added, copied or moved outside the editor get meta files and show up.

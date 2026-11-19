@@ -170,6 +170,515 @@ fn csharp_compile_errors_and_exceptions_reach_the_console() {
     assert_eq!(thrown, 3, "{logs:#?}");
 }
 
+#[test]
+fn csharp_rename_class_follows_the_file_and_leaves_other_words_alone() {
+    let src = "using Misty;\n// Old helper, not OldThing\npublic class Old : MonoBehaviour\n{\n    public Old() { }\n    string s = \"Old\";\n    OldThing t;\n}\n";
+    let out = csharp::rename_class(src, "Old", "Player").unwrap();
+    assert!(out.contains("public class Player : MonoBehaviour"), "{out}");
+    assert!(out.contains("public Player() { }"), "{out}");
+    assert!(out.contains("// Old helper, not OldThing"), "{out}");
+    assert!(out.contains("OldThing t;"), "{out}");
+    // No such class, or not a valid name: nothing to rewrite.
+    assert!(csharp::rename_class(src, "Missing", "Player").is_none());
+    assert!(csharp::rename_class(src, "Old", "Not Valid").is_none());
+    // The template's fields are what the Properties panel shows.
+    let t = csharp::template("Hero");
+    let info = super::inspect_script(&t, "Assets/Hero.cs").unwrap();
+    assert_eq!(
+        info.fields,
+        [("speed".to_owned(), ScriptValue::Number(1.0))]
+    );
+}
+
+/// Run `frames` frames of `scene` with a host on `root`, feeding `input(frame)`; returns the
+/// logs (errors fail the test unless `allow_errors`).
+fn run(
+    scene: &mut Scene,
+    root: &std::path::Path,
+    frames: usize,
+    input: impl Fn(usize) -> Input,
+) -> Vec<(LogKind, String)> {
+    let physics = Physics::build(scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(scene, physics, root.to_path_buf());
+    let mut time = Time::default();
+    for f in 0..frames {
+        time.advance(1.0 / 60.0);
+        host.update(scene, &time, input(f));
+    }
+    host.shutdown(scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    logs
+}
+
+fn texts(logs: &[(LogKind, String)]) -> Vec<&str> {
+    logs.iter().map(|(_, t)| t.as_str()).collect()
+}
+
+#[test]
+fn csharp_inspector_values_override_the_field_initializers() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Tuned : MonoBehaviour
+{
+    public float speed = 1;
+    public int count = 1;
+    public bool on;
+    [SerializeField] string label = "default";
+    public Vector3 offset;
+    public float untouched = 7.5f;
+    void Start() { Debug.Log($"{speed} {count} {on} {label} {offset.x},{offset.y},{offset.z} {untouched}"); }
+}
+"#;
+    let root = project(&[("Tuned.cs", src)]);
+    // The Properties panel reads the same fields from the source.
+    let info = super::inspect_script(src, "Assets/Scripts/Tuned.cs").unwrap();
+    let names: Vec<&str> = info.fields.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        ["speed", "count", "on", "label", "offset", "untouched"]
+    );
+
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Thing", None);
+    let mut script = ScriptRef {
+        path: "Assets/Scripts/Tuned.cs".into(),
+        ..Default::default()
+    };
+    script
+        .fields
+        .insert("speed".into(), ScriptValue::Number(42.5));
+    script
+        .fields
+        .insert("count".into(), ScriptValue::Number(3.0));
+    script.fields.insert("on".into(), ScriptValue::Bool(true));
+    script
+        .fields
+        .insert("label".into(), ScriptValue::Text("Hero".into()));
+    script
+        .fields
+        .insert("offset".into(), ScriptValue::Vector3([1.0, 2.0, 3.0]));
+    // A field the class no longer has is ignored.
+    script
+        .fields
+        .insert("gone".into(), ScriptValue::Number(1.0));
+    scene.add(e, Scripts { list: vec![script] });
+    let logs = run(&mut scene, &root, 2, |_| Input::default());
+    assert!(
+        texts(&logs).contains(&"42.5 3 True Hero 1,2,3 7.5"),
+        "{:?}",
+        texts(&logs)
+    );
+}
+
+#[test]
+fn csharp_scripts_follow_the_lifecycle_through_instantiate_setactive_and_destroy() {
+    if skip() {
+        return;
+    }
+    let counter = r#"
+using Misty;
+public class Counter : MonoBehaviour
+{
+    public int updates;
+    void Awake() { Debug.Log("Awake " + name); }
+    void OnEnable() { Debug.Log("OnEnable " + name); }
+    void Start() { Debug.Log("Start " + name); }
+    void Update() { updates++; }
+    void OnDisable() { Debug.Log("OnDisable " + name); }
+    void OnDestroy() { Debug.Log("OnDestroy " + name); }
+    public string Report() => name + " " + updates;
+}
+"#;
+    let director = r#"
+using Misty;
+public class Director : MonoBehaviour
+{
+    GameObject copy;
+    int frame;
+    void Update()
+    {
+        frame++;
+        var template = GameObject.Find("Template");
+        switch (frame)
+        {
+            case 1:
+                copy = Instantiate(template, new Vector3(5, 0, 0), Quaternion.identity);
+                Debug.Log("copy " + copy.name + " at " + copy.transform.position.x);
+                break;
+            case 3:
+                Debug.Log("found " + template.GetComponent<Counter>().Report());
+                Debug.Log("copy has Counter " + (copy.GetComponent<Counter>() != null));
+                copy.SetActive(false);
+                break;
+            case 4: copy.SetActive(true); break;
+            case 5:
+                template.GetComponent<Counter>().enabled = false;
+                Destroy(copy);
+                break;
+            case 6:
+                Debug.Log("copy alive " + (copy != null));
+                Debug.Log("FindObjectsOfType " + FindObjectsOfType<Counter>().Length);
+                break;
+            case 9:
+                Debug.Log("after disable " + template.GetComponent<Counter>().Report());
+                break;
+        }
+    }
+}
+"#;
+    let root = project(&[("Counter.cs", counter), ("Director.cs", director)]);
+    let mut scene = Scene::new("t");
+    let template = scene.spawn("Template", None);
+    attach(&mut scene, template, "Counter.cs");
+    let d = scene.spawn("Director", None);
+    attach(&mut scene, d, "Director.cs");
+    let logs = run(&mut scene, &root, 10, |_| Input::default());
+    let t = texts(&logs);
+    let order = |items: &[&str]| {
+        let mut at = 0;
+        for item in items {
+            match t[at..].iter().position(|x| x == item) {
+                Some(i) => at += i + 1,
+                None => panic!("{item:?} missing (or out of order) in {t:#?}"),
+            }
+        }
+    };
+    order(&[
+        "Awake Template",
+        "OnEnable Template",
+        "Start Template",
+        "copy Template(Clone) at 5",
+        "Awake Template(Clone)",
+        "OnEnable Template(Clone)",
+        "Start Template(Clone)",
+        "found Template 3",
+        "copy has Counter True",
+        "OnDisable Template(Clone)",
+        "OnEnable Template(Clone)",
+        // Frame 5: the checkbox switches off after the callback, the copy goes at frame end.
+        "OnDisable Template",
+        "OnDisable Template(Clone)",
+        "OnDestroy Template(Clone)",
+        "copy alive False",
+        "FindObjectsOfType 1",
+        // Its 5th Update ran before the Director switched it off; none since.
+        "after disable Template 5",
+        "OnDestroy Template",
+    ]);
+}
+
+#[test]
+fn csharp_input_and_the_hierarchy() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Mover : MonoBehaviour
+{
+    void Start()
+    {
+        var child = transform.Find("Arm/Hand");
+        Debug.Log("hand " + (child != null) + " children " + transform.childCount);
+        child.SetParent(null, true);
+        Debug.Log("hand world x " + child.position.x + " parent null " + (child.parent == null));
+        transform.position = new Vector3(10, 0, 0);
+        Debug.Log("arm world x " + transform.GetChild(0).position.x);
+    }
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Space)) Debug.Log("jump at frame " + Time.frameCount);
+        if (Input.GetKey("left shift")) Debug.Log("shift held");
+        if (Input.GetAxisRaw("Horizontal") > 0.5f) Debug.Log("right");
+    }
+}
+"#;
+    let root = project(&[("Mover.cs", src)]);
+    let mut scene = Scene::new("t");
+    let body = scene.spawn("Body", None);
+    let arm = scene.spawn("Arm", Some(body));
+    let hand = scene.spawn("Hand", Some(arm));
+    let mut t = scene.transform(arm);
+    t.position = Vec3::new(1.0, 0.0, 0.0);
+    scene.set_transform(arm, t);
+    let mut t = scene.transform(hand);
+    t.position = Vec3::new(2.0, 0.0, 0.0);
+    scene.set_transform(hand, t);
+    attach(&mut scene, body, "Mover.cs");
+    let logs = run(&mut scene, &root, 3, |f| {
+        let mut i = Input::default();
+        if f == 1 {
+            i.pressed.insert("space".into());
+            i.held.insert("space".into());
+            i.held.insert("left shift".into());
+            i.held.insert("right".into());
+        }
+        i
+    });
+    let t = texts(&logs);
+    for want in [
+        "hand True children 1",
+        "hand world x 3 parent null True",
+        "arm world x 11",
+        "jump at frame 2",
+        "shift held",
+        "right",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    assert_eq!(scene.parent(hand), None);
+}
+
+#[test]
+fn csharp_coroutines_waits_and_invoke() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+using System.Collections;
+public class Timer : MonoBehaviour
+{
+    int frames, ticks, started;
+    IEnumerator Start()
+    {
+        started = Time.frameCount;
+        yield return null;
+        Debug.Log("next frame " + (Time.frameCount == started + 1));
+        yield return new WaitForSeconds(0.25f);
+        Debug.Log("waited " + (Time.time >= 0.25f) + " " + (Time.time < 0.3f));
+        yield return StartCoroutine(Inner());
+        Debug.Log("inner done");
+        yield return new WaitUntil(() => frames >= 40);
+        Debug.Log("until " + frames);
+        Invoke("Ping", 0.1f);
+        InvokeRepeating("Count", 0f, 0.05f);
+        var forever = StartCoroutine(Forever());
+        yield return new WaitForSeconds(0.2f);
+        StopCoroutine(forever);
+        CancelInvoke();
+        int seen = ticks;
+        yield return new WaitForSeconds(0.2f);
+        Debug.Log("ticks " + (seen >= 3) + " stopped " + (ticks == seen));
+    }
+    IEnumerator Inner() { yield return null; Debug.Log("inner"); }
+    IEnumerator Forever() { while (true) yield return null; }
+    void Count() { ticks++; }
+    void Ping() { Debug.Log("ping"); }
+    void Update() { frames++; }
+}
+"#;
+    let blink = r#"
+using Misty;
+using System.Collections;
+public class Blink : MonoBehaviour
+{
+    public int beats;
+    void Start() { StartCoroutine(Beat()); }
+    IEnumerator Beat() { while (true) { beats++; yield return null; } }
+    void OnDisable() { Debug.Log("beats when switched off " + beats); }
+}
+"#;
+    let switcher = r#"
+using Misty;
+public class Switcher : MonoBehaviour
+{
+    int frame;
+    void Update()
+    {
+        frame++;
+        var b = GameObject.Find("Blinker");
+        if (frame == 5) b.SetActive(false);
+        if (frame == 7) b.SetActive(true);
+        if (frame == 10) Debug.Log("beats later " + b.GetComponent<Blink>().beats);
+    }
+}
+"#;
+    let root = project(&[
+        ("Timer.cs", src),
+        ("Blink.cs", blink),
+        ("Switcher.cs", switcher),
+    ]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Clock", None);
+    attach(&mut scene, e, "Timer.cs");
+    let b = scene.spawn("Blinker", None);
+    attach(&mut scene, b, "Blink.cs");
+    let s = scene.spawn("Switcher", None);
+    attach(&mut scene, s, "Switcher.cs");
+    let logs = run(&mut scene, &root, 90, |_| Input::default());
+    let t = texts(&logs);
+    for want in [
+        "next frame True",
+        "waited True True",
+        "inner",
+        "inner done",
+        "until 40",
+        "ping",
+        "ticks True stopped True",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    // Switching the object off stops its coroutines (switching it on again doesn't restart
+    // them): the beat count froze at frame 5.
+    let off = t
+        .iter()
+        .find_map(|l| l.strip_prefix("beats when switched off "))
+        .unwrap();
+    assert!(t.contains(&format!("beats later {off}").as_str()), "{t:#?}");
+}
+
+#[test]
+fn csharp_rigidbody_collisions_triggers_and_raycasts() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Faller : MonoBehaviour
+{
+    Rigidbody rb;
+    bool bounced;
+    void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        Debug.Log("rb " + (rb != null) + " collider " + (GetComponent<Collider>() != null)
+            + " no audio " + (GetComponent<AudioSource>() == null) + " gravity " + Physics.gravity.y.ToString("F2"));
+        rb.mass = 2.5f;
+        Debug.Log("mass " + rb.mass);
+        bool hit = Physics.Raycast(new Vector3(5, 3, 0), Vector3.down, out RaycastHit h, 100f);
+        Debug.Log("ray " + hit + " " + h.collider.name + " " + h.distance.ToString("F2") + " " + h.normal.y.ToString("F0"));
+        Debug.Log("miss " + Physics.Raycast(new Vector3(5, 3, 0), Vector3.up, 100f));
+        Debug.Log("all " + Physics.RaycastAll(new Vector3(0, 10, 0), Vector3.down, 100f).Length);
+        Debug.Log("overlap " + Physics.OverlapSphere(new Vector3(5, -0.5f, 5), 0.2f).Length);
+        Debug.Log("layer " + LayerMask.NameToLayer("Default") + " " + LayerMask.LayerToName(0));
+    }
+    void OnTriggerEnter(Collider other) { Debug.Log("trigger " + other.name); }
+    void OnCollisionEnter(Collision c)
+    {
+        Debug.Log("hit " + c.gameObject.name + " falling " + (rb.velocity.y < -1f));
+        rb.AddForce(Vector3.up * 6f, ForceMode.VelocityChange);
+    }
+    void FixedUpdate()
+    {
+        if (!bounced && rb.velocity.y > 2f) { bounced = true; Debug.Log("bounced"); }
+    }
+}
+"#;
+    let root = project(&[("Faller.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    let mut t = crate::scene::Transform::from_position(Vec3::new(0.0, -0.5, 0.0));
+    t.scale = Vec3::new(20.0, 1.0, 20.0);
+    scene.set_transform(ground, t);
+    scene.add(ground, crate::scene::BoxCollider::default());
+    let zone = scene.spawn("Zone", None);
+    scene.set_transform(
+        zone,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 1.5, 0.0)),
+    );
+    scene.add(
+        zone,
+        crate::scene::BoxCollider {
+            is_trigger: true,
+            ..Default::default()
+        },
+    );
+    let ball = scene.spawn("Ball", None);
+    scene.set_transform(
+        ball,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 3.0, 0.0)),
+    );
+    scene.add(ball, crate::scene::BoxCollider::default());
+    scene.add(ball, crate::scene::Rigidbody::default());
+    attach(&mut scene, ball, "Faller.cs");
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    for _ in 0..120 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+    }
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "rb True collider True no audio True gravity -9.81",
+        "mass 2.5",
+        "ray True Ground 3.00 1",
+        "miss False",
+        "all 3",
+        "overlap 1",
+        "layer 0 Default",
+        "trigger Zone",
+        "hit Ground falling True",
+        "bounced",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+}
+
+#[test]
+fn csharp_scene_requests_and_missing_components() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Loader : MonoBehaviour
+{
+    void Start()
+    {
+        Debug.Log("animator " + (GetComponent<Animator>() == null));
+        try { new GameObject_Probe().Check(gameObject); } catch (System.Exception e) { Debug.Log(e.Message); }
+        SceneManager.LoadScene("Level2");
+        SceneManager.LoadScene(3, LoadSceneMode.Additive);
+    }
+}
+public class GameObject_Probe
+{
+    public void Check(GameObject g)
+    {
+        // A destroyed object compares equal to null and throws on use.
+        Debug.Log("alive " + (g != null));
+    }
+}
+"#;
+    let root = project(&[("Loader.cs", src)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Thing", None);
+    attach(&mut scene, e, "Loader.cs");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    let requests = host.take_requests();
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let t = texts(&logs);
+    assert!(t.contains(&"animator True"), "{t:#?}");
+    assert!(t.contains(&"alive True"), "{t:#?}");
+    let names: Vec<String> = requests.iter().map(|r| format!("{r:?}")).collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(
+        names[0].contains("LoadScene(Name(\"Level2\"))"),
+        "{names:?}"
+    );
+    assert!(
+        names[1].contains("LoadSceneAdditive(Index(3))"),
+        "{names:?}"
+    );
+}
+
 /// The proof's numbers: compile time (cold and cached), first load, and the per-frame cost of
 /// many C# Update calls next to the same Lua script. `cargo test --release -p misty_engine
 /// --lib csharp_cost -- --ignored --nocapture`

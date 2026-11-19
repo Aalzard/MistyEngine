@@ -198,7 +198,10 @@ impl AssetDatabase {
                         }
                         _ => to_inspect.push((path, rel)),
                     }
-                } else if path.extension().is_some_and(|e| e == "lua") {
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e == "lua" || e.eq_ignore_ascii_case("cs"))
+                {
                     let rel = self.relative(&path);
                     // Editor scripts are not components (see `editor_scripts`).
                     if misty_engine::asset_deps::is_editor_only(&rel) {
@@ -328,6 +331,7 @@ impl AssetDatabase {
         }
         self.last_poll = Some(now);
         let mut errors = Vec::new();
+        let mut csharp_changed = false;
         let paths: Vec<String> = self.scripts.keys().cloned().collect();
         for rel in paths {
             let abs = self.absolute(&rel);
@@ -341,8 +345,13 @@ impl AssetDatabase {
                 if let Err(e) = &meta.fields {
                     errors.push(e.clone());
                 }
-                self.scripts.insert(rel, meta);
+                self.scripts.insert(rel.clone(), meta);
+                csharp_changed |= misty_engine::scripting::csharp::is_csharp_path(&rel);
             }
+        }
+        // A saved C# script compiles in the background; its errors show without pressing Play.
+        if csharp_changed {
+            misty_engine::scripting::csharp::check_in_background(&self.root);
         }
         errors
     }
@@ -385,6 +394,20 @@ impl AssetDatabase {
 
     /// Create a new script from the template in `folder`; returns its relative path.
     pub fn create_script(&mut self, folder: &Path) -> Result<String, String> {
+        self.create_script_file(folder, "lua", misty_engine::scripting::template)
+    }
+
+    /// Create a new C# script (a MonoBehaviour named after the file) in `folder`.
+    pub fn create_csharp_script(&mut self, folder: &Path) -> Result<String, String> {
+        self.create_script_file(folder, "cs", misty_engine::scripting::csharp::template)
+    }
+
+    fn create_script_file(
+        &mut self,
+        folder: &Path,
+        ext: &str,
+        template: fn(&str) -> String,
+    ) -> Result<String, String> {
         let (name, path) = (0..)
             .map(|n| {
                 let name = if n == 0 {
@@ -392,13 +415,12 @@ impl AssetDatabase {
                 } else {
                     format!("NewBehaviourScript{n}")
                 };
-                let path = folder.join(format!("{name}.lua"));
+                let path = folder.join(format!("{name}.{ext}"));
                 (name, path)
             })
             .find(|(_, p)| !p.exists())
             .expect("some name is free");
-        misty_engine::asset_db::write_asset(&path, misty_engine::scripting::template(&name))
-            .map_err(|e| e.to_string())?;
+        misty_engine::asset_db::write_asset(&path, template(&name)).map_err(|e| e.to_string())?;
         let rel = self.relative(&path);
         self.scripts.insert(rel.clone(), inspect(&path, &rel));
         Ok(rel)
@@ -742,6 +764,37 @@ return M
         db.last_poll = None;
         db.poll_scripts();
         assert_eq!(field_names(&db, rel), ["speed", "jump"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// C# scripts are listed like Lua ones (Properties panel fields from the source), a new one
+    /// starts from the MonoBehaviour template, and renaming the file renames its class.
+    #[test]
+    fn csharp_scripts_are_listed_created_and_renamed_with_their_class() {
+        let root = std::env::temp_dir().join(format!("misty_assets_cs_{}", std::process::id()));
+        let folder = root.join("Assets").join("Scripts");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("Mover.cs"),
+            "using Misty;\npublic class Mover : MonoBehaviour { public float speed = 2; [SerializeField] bool fly; }\n",
+        )
+        .unwrap();
+        let mut db = AssetDatabase::open(&root);
+        assert_eq!(
+            field_names(&db, "Assets/Scripts/Mover.cs"),
+            ["speed", "fly"]
+        );
+
+        let rel = db.create_csharp_script(&folder).unwrap();
+        assert_eq!(rel, "Assets/Scripts/NewBehaviourScript.cs");
+        assert_eq!(field_names(&db, &rel), ["speed"]);
+        let renamed = crate::asset_ops::rename(&db.absolute(&rel), "Player").unwrap();
+        let text = std::fs::read_to_string(&renamed).unwrap();
+        assert!(
+            text.contains("public class Player : MonoBehaviour"),
+            "{text}"
+        );
+        assert!(!text.contains("NewBehaviourScript :"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

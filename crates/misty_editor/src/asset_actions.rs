@@ -94,6 +94,10 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             s.assets.absolute(&r)
         }),
         AssetKind::Script => s.assets.create_script(&dir).map(|r| s.assets.absolute(&r)),
+        AssetKind::CSharpScript => s
+            .assets
+            .create_csharp_script(&dir)
+            .map(|r| s.assets.absolute(&r)),
         AssetKind::Scene => {
             crate::scene_files::create_scene_asset(s, &dir).map(|r| s.assets.absolute(&r))
         }
@@ -220,6 +224,7 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             if matches!(
                 kind,
                 AssetKind::Script
+                    | AssetKind::CSharpScript
                     | AssetKind::SurfaceShader
                     | AssetKind::UnlitShader
                     | AssetKind::Test(_)

@@ -1,32 +1,36 @@
-//! C# scripts (proof of concept): `.cs` files in `Assets/` run on the installed .NET runtime.
+//! C# scripts (preview): `.cs` files in `Assets/` run on the installed .NET runtime.
 //!
 //! How it works:
-//! 1. **Compile.** When Play starts and the scene uses a `.cs` script, every `.cs` file under
-//!    `Assets/` is compiled with `dotnet build`, together with the engine's C# API
+//! 1. **Compile.** When Play starts and the scene uses a `.cs` script (or in the background
+//!    when the editor opens a project with C# scripts, [`prestart`]), every `.cs` file under
+//!    `Assets/` is compiled with the SDK's `csc`, together with the engine's C# API
 //!    (`dotnet/MistyEngine.cs`), into `Library/ScriptAssemblies/<hash>/Assembly-CSharp.dll`. The
 //!    hash covers the sources, so an unchanged project reuses the last build.
 //! 2. **Host.** The .NET runtime is loaded into the process once through `hostfxr` (found next
 //!    to `dotnet`), and the assembly's `[UnmanagedCallersOnly]` entry points
 //!    (`Misty.Internal.Host`) are fetched as function pointers.
-//! 3. **Run.** Each `.cs` script on an object becomes an instance (a handle on the C# side);
-//!    the script host calls Awake / OnEnable / Start / FixedUpdate / Update / LateUpdate /
-//!    OnDisable / OnDestroy next to the Lua scripts. C# reaches the scene through the native
-//!    function table in [`NativeApi`], which works on the [`World`] installed for the call.
+//! 3. **Run.** Each `.cs` script on an object becomes an instance (a handle on the C# side)
+//!    in the script host's instance list, next to the Lua scripts, with the same lifecycle.
+//!    C# reaches the scene through the native function table (`csharp_native.rs`), which works
+//!    on the [`World`] installed for the call.
 //!
-//! Not in the proof: Inspector fields, objects created or switched on/off during Play,
-//! collision callbacks, hot reload, unloading old assemblies (each changed build stays loaded
-//! until the editor exits), and builds of the player.
+//! The Properties panel reads a script's public fields from its source
+//! (`csharp_fields.rs`), so it needs neither .NET nor a compile.
+//!
+//! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource and
+//! Animator, contact points, hot reload, unloading old assemblies (each changed build stays
+//! loaded until the editor exits), and builds of the player.
 
-use std::cell::Cell;
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use glam::{Quat, Vec3};
 use hecs::Entity;
 
+use super::csharp_native::{Enter, NATIVE_API, NativeApi};
 use super::{LogKind, World};
+use crate::scene::ScriptValue;
 
 /// The engine's C# API, compiled into every script assembly.
 const API_SOURCE: &str = include_str!("../../dotnet/MistyEngine.cs");
@@ -43,182 +47,19 @@ pub(crate) enum Method {
     LateUpdate = 5,
     OnDisable = 6,
     OnDestroy = 7,
+    OnCollisionEnter = 8,
+    OnCollisionExit = 9,
+    OnTriggerEnter = 10,
+    OnTriggerExit = 11,
 }
 
-const METHOD_COUNT: usize = 8;
+const METHOD_COUNT: usize = 12;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
     path.rsplit('.')
         .next()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("cs"))
-}
-
-// ---- the scene, for callbacks from C# ------------------------------------------------------
-
-thread_local! {
-    /// The game world while C# code runs on this thread (null otherwise).
-    static WORLD: Cell<*mut World> = const { Cell::new(std::ptr::null_mut()) };
-}
-
-/// Installs `w` for C# callbacks until dropped.
-struct Enter {
-    previous: *mut World,
-}
-
-impl Enter {
-    fn new(w: &mut World) -> Self {
-        let previous = WORLD.with(|c| c.replace(w as *mut World));
-        Self { previous }
-    }
-}
-
-impl Drop for Enter {
-    fn drop(&mut self) {
-        WORLD.with(|c| c.set(self.previous));
-    }
-}
-
-/// Run `f` on the world installed by [`Enter`] (None outside a C# call).
-fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
-    let p = WORLD.with(|c| c.get());
-    if p.is_null() {
-        return None;
-    }
-    // SAFETY: `p` was set by `Enter::new` from a `&mut World` that outlives the guard, on this
-    // thread, and the code holding that borrow is blocked inside the C# call that led here; the
-    // C# side runs one callback at a time, so there is no other live reference.
-    Some(f(unsafe { &mut *p }))
-}
-
-fn entity(id: u64) -> Option<Entity> {
-    Entity::from_bits(id)
-}
-
-// ---- native functions C# calls ---------------------------------------------------------------
-
-/// Same layout as `Misty.Internal.TransformData`.
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct TransformData {
-    position: [f32; 3],
-    rotation: [f32; 4],
-    scale: [f32; 3],
-}
-
-/// Same field order as `Misty.Internal.NativeApi`.
-#[repr(C)]
-struct NativeApi {
-    log: extern "C" fn(i32, *const u16, i32),
-    get_transform: extern "C" fn(u64, *mut TransformData) -> i32,
-    set_transform: extern "C" fn(u64, *const TransformData) -> i32,
-    euler_to_quat: extern "C" fn(*const [f32; 3], *mut [f32; 4]),
-    quat_to_euler: extern "C" fn(*const [f32; 4], *mut [f32; 3]),
-    get_name: extern "C" fn(u64, *mut u16, i32) -> i32,
-}
-
-static NATIVE_API: NativeApi = NativeApi {
-    log: native_log,
-    get_transform: native_get_transform,
-    set_transform: native_set_transform,
-    euler_to_quat: native_euler_to_quat,
-    quat_to_euler: native_quat_to_euler,
-    get_name: native_get_name,
-};
-
-extern "C" fn native_log(kind: i32, text: *const u16, len: i32) {
-    if text.is_null() || len < 0 {
-        return;
-    }
-    // SAFETY: C# passes a pinned UTF-16 string of `len` chars.
-    let units = unsafe { std::slice::from_raw_parts(text, len as usize) };
-    let text = String::from_utf16_lossy(units);
-    let kind = match kind {
-        1 => LogKind::Warning,
-        2 => LogKind::Error,
-        _ => LogKind::Info,
-    };
-    if with_world(|w| w.logs.push((kind, text.clone()))).is_none() {
-        eprintln!("[C#] {text}");
-    }
-}
-
-extern "C" fn native_get_transform(id: u64, out: *mut TransformData) -> i32 {
-    let Some(e) = entity(id) else { return 0 };
-    with_world(|w| {
-        if !w.scene.contains(e) || out.is_null() {
-            return 0;
-        }
-        let t = w.scene.transform(e);
-        let data = TransformData {
-            position: t.position.to_array(),
-            rotation: t.rotation.to_array(),
-            scale: t.scale.to_array(),
-        };
-        // SAFETY: `out` points at a TransformData on the C# stack.
-        unsafe { out.write(data) };
-        1
-    })
-    .unwrap_or(0)
-}
-
-extern "C" fn native_set_transform(id: u64, data: *const TransformData) -> i32 {
-    let Some(e) = entity(id) else { return 0 };
-    if data.is_null() {
-        return 0;
-    }
-    // SAFETY: `data` points at a TransformData on the C# stack.
-    let d = unsafe { data.read() };
-    with_world(|w| {
-        if !w.scene.contains(e) {
-            return 0;
-        }
-        let mut t = w.scene.transform(e);
-        t.position = Vec3::from_array(d.position);
-        t.set_rotation(Quat::from_array(d.rotation).normalize());
-        t.scale = Vec3::from_array(d.scale);
-        w.scene.set_transform(e, t);
-        super::api::sync_body(w, e);
-        1
-    })
-    .unwrap_or(0)
-}
-
-extern "C" fn native_euler_to_quat(e: *const [f32; 3], out: *mut [f32; 4]) {
-    if e.is_null() || out.is_null() {
-        return;
-    }
-    // SAFETY: both point at structs on the C# stack.
-    unsafe {
-        let q = crate::camera::euler_to_quat(Vec3::from_array(*e));
-        out.write(q.to_array());
-    }
-}
-
-extern "C" fn native_quat_to_euler(q: *const [f32; 4], out: *mut [f32; 3]) {
-    if q.is_null() || out.is_null() {
-        return;
-    }
-    // SAFETY: both point at structs on the C# stack.
-    unsafe {
-        let e = crate::camera::quat_to_euler(Quat::from_array(*q).normalize());
-        out.write(e.to_array());
-    }
-}
-
-extern "C" fn native_get_name(id: u64, buf: *mut u16, cap: i32) -> i32 {
-    let Some(e) = entity(id) else { return -1 };
-    with_world(|w| {
-        if !w.scene.contains(e) || buf.is_null() || cap <= 0 {
-            return -1;
-        }
-        let name: Vec<u16> = w.scene.name(e).encode_utf16().collect();
-        let n = name.len().min(cap as usize);
-        // SAFETY: `buf` holds `cap` chars on the C# stack.
-        unsafe { std::ptr::copy_nonoverlapping(name.as_ptr(), buf, n) };
-        n as i32
-    })
-    .unwrap_or(-1)
 }
 
 // ---- the .NET runtime ----------------------------------------------------------------------
@@ -383,12 +224,14 @@ unsafe fn start_runtime(runtime_config: &Path) -> Result<Runtime, String> {
 }
 
 type InitFn = unsafe extern "C" fn(*const NativeApi) -> i32;
-type CreateFn = unsafe extern "C" fn(*const u16, i32, u64) -> i32;
+type CreateFn = unsafe extern "C" fn(*const u16, i32, u64, i32) -> i32;
 type HasFn = unsafe extern "C" fn(i32, i32) -> i32;
-type CallFn = unsafe extern "C" fn(i32, i32);
-type CallManyFn = unsafe extern "C" fn(*const i32, i32, i32);
+type CallFn = unsafe extern "C" fn(i32, i32, u64);
+type TickFn = unsafe extern "C" fn();
 type ReleaseFn = unsafe extern "C" fn(i32);
-type SetTimeFn = unsafe extern "C" fn(f32, f32, f32, i64);
+type SetTimeFn = unsafe extern "C" fn(f32, f32, f32, f32, f32, i32);
+type SetFieldFn =
+    unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const [f32; 3], *const u16, i32) -> i32;
 
 /// The entry points of one script assembly.
 #[derive(Clone, Copy)]
@@ -396,9 +239,10 @@ struct Entry {
     create: CreateFn,
     has: HasFn,
     call: CallFn,
-    call_many: CallManyFn,
     release: ReleaseFn,
     set_time: SetTimeFn,
+    set_field: SetFieldFn,
+    tick: TickFn,
 }
 
 impl Runtime {
@@ -439,9 +283,10 @@ impl Runtime {
                 create: transmute::<P, CreateFn>(get("Create")?),
                 has: transmute::<P, HasFn>(get("Has")?),
                 call: transmute::<P, CallFn>(get("Call")?),
-                call_many: transmute::<P, CallManyFn>(get("CallMany")?),
                 release: transmute::<P, ReleaseFn>(get("Release")?),
                 set_time: transmute::<P, SetTimeFn>(get("SetTime")?),
+                set_field: transmute::<P, SetFieldFn>(get("SetField")?),
+                tick: transmute::<P, TickFn>(get("Tick")?),
             };
             let count = init(&NATIVE_API);
             if count as usize != METHOD_COUNT {
@@ -694,6 +539,10 @@ fn error_lines(text: &str, project: &Path) -> Vec<String> {
 
 /// Compile every `.cs` under `<project>/Assets` (with the API) and return the assembly path.
 fn compile(project: &Path, timings: &mut CsTimings) -> Result<PathBuf, String> {
+    // One compile at a time (the background one started with the project and Play's share the
+    // output folder).
+    static COMPILING: Mutex<()> = Mutex::new(());
+    let _one = COMPILING.lock().unwrap_or_else(|e| e.into_inner());
     let root = dotnet_root().ok_or("the .NET SDK was not found (install it from dot.net)")?;
     let library = project.join("Library").join("ScriptAssemblies");
     std::fs::create_dir_all(&library).map_err(|e| format!("{}: {e}", library.display()))?;
@@ -803,37 +652,189 @@ fn compile(project: &Path, timings: &mut CsTimings) -> Result<PathBuf, String> {
     Ok(dll)
 }
 
-// ---- instances -------------------------------------------------------------------------------
+/// Starter script for Assets ▸ Create ▸ C# Script.
+pub fn template(class_name: &str) -> String {
+    format!(
+        r#"using Misty;
 
-pub(crate) struct CsInstance {
-    pub entity: Entity,
-    /// Index into the object's `Scripts` list.
-    pub slot: usize,
-    pub name: String,
-    handle: i32,
-    /// Which callbacks the class defines (bit per [`Method`]).
-    defined: u8,
-    pub awoken: bool,
-    pub started: bool,
-    pub enabled: bool,
+// {class_name}: attach to a GameObject. Public fields show in the Properties panel.
+public class {class_name} : MonoBehaviour
+{{
+    public float speed = 1.0f;
+
+    // Called once before the first frame.
+    void Start()
+    {{
+    }}
+
+    // Called every frame.
+    void Update()
+    {{
+    }}
+}}
+"#
+    )
 }
 
-impl CsInstance {
-    fn defines(&self, m: Method) -> bool {
+/// `source` with `class old` (and the constructors `old(`) renamed to `new`, for a script file
+/// renamed from `old.cs` to `new.cs`; None when it has no class `old` or `new` isn't a valid
+/// class name.
+pub fn rename_class(source: &str, old: &str, new: &str) -> Option<String> {
+    let valid = new
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_')
+        && new.chars().all(|c| c.is_alphanumeric() || c == '_');
+    if !valid || old == new {
+        return None;
+    }
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    // Whole-word occurrences of `old` that follow `class ` or come before `(` (constructors).
+    let mut out = String::with_capacity(source.len());
+    let mut found_class = false;
+    let mut rest = source;
+    while let Some(at) = rest.find(old) {
+        let before = &rest[..at];
+        let after = &rest[at + old.len()..];
+        let whole = !before.chars().next_back().is_some_and(ident)
+            && !after.chars().next().is_some_and(ident);
+        let is_class = before.trim_end().ends_with("class")
+            && before
+                .trim_end()
+                .strip_suffix("class")
+                .is_some_and(|b| !b.chars().next_back().is_some_and(ident));
+        let is_ctor = after.trim_start().starts_with('(') && found_class;
+        out.push_str(before);
+        if whole && (is_class || is_ctor) {
+            found_class |= is_class;
+            out.push_str(new);
+        } else {
+            out.push_str(old);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    found_class.then_some(out)
+}
+
+/// Whether the project has C# scripts under `Assets/`.
+pub fn project_has_scripts(project: &Path) -> bool {
+    let mut sources = Vec::new();
+    collect_sources(&project.join("Assets"), &mut sources);
+    !sources.is_empty()
+}
+
+/// Compile the project's C# scripts (reusing an unchanged build): Ok when there are none or
+/// they compile, else the compiler's errors. The editor checks this before entering Play.
+pub fn check_project(project: &Path) -> Result<(), String> {
+    if !project_has_scripts(project) {
+        return Ok(());
+    }
+    compile(project, &mut CsTimings::default()).map(|_| ())
+}
+
+/// What the last [`check_in_background`] found: `Some(Err(errors))` or `Some(Ok(()))` once,
+/// until [`take_background_check`] takes it.
+static BACKGROUND_CHECK: Mutex<Option<Result<(), String>>> = Mutex::new(None);
+
+/// Background compiles still running (the editor keeps drawing frames until they report).
+static CHECKS_RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Compile the project's C# scripts on a background thread (after a script was saved); the
+/// result waits in [`take_background_check`].
+pub fn check_in_background(project: &Path) {
+    use std::sync::atomic::Ordering;
+    let project = project.to_path_buf();
+    CHECKS_RUNNING.fetch_add(1, Ordering::SeqCst);
+    let spawned = std::thread::Builder::new()
+        .name("csharp-check".into())
+        .spawn(move || {
+            if dotnet_root().is_some() {
+                let result = check_project(&project);
+                *BACKGROUND_CHECK.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
+            }
+            CHECKS_RUNNING.fetch_sub(1, Ordering::SeqCst);
+        });
+    if spawned.is_err() {
+        CHECKS_RUNNING.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Whether a background compile is still running.
+pub fn background_check_running() -> bool {
+    CHECKS_RUNNING.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
+/// The result of the last background compile, once.
+pub fn take_background_check() -> Option<Result<(), String>> {
+    BACKGROUND_CHECK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+}
+
+/// On a background thread: compile the project's C# scripts and start the .NET runtime, so the
+/// first Play doesn't wait for either. Does nothing for a project without C# scripts; errors
+/// are left for Play to report.
+pub fn prestart(project: &Path) {
+    let project = project.to_path_buf();
+    let _ = std::thread::Builder::new()
+        .name("csharp-prestart".into())
+        .spawn(move || {
+            if !project_has_scripts(&project) || dotnet_root().is_none() {
+                return;
+            }
+            if let Ok(dll) = compile(&project, &mut CsTimings::default()) {
+                let _ = runtime(&dll.with_extension("runtimeconfig.json"));
+            }
+        });
+}
+
+// ---- instances -------------------------------------------------------------------------------
+
+/// A C# script instance: its handle on the .NET side and the callbacks its class defines. The
+/// script host keeps it in the same instance list as the Lua scripts, so C# scripts follow the
+/// same lifecycle (Awake, OnEnable / OnDisable on SetActive and the checkbox, Start before the
+/// first update, OnDestroy on Destroy and Stop, objects made by Instantiate).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CsRef {
+    handle: i32,
+    /// Bit per [`Method`].
+    defined: u16,
+}
+
+impl CsRef {
+    pub fn defines(&self, m: Method) -> bool {
         self.defined & (1 << m as i32) != 0
     }
 }
 
-/// The C# scripts of one Play session.
+/// The callback a lifecycle name stands for (None for the ones C# can't receive yet).
+pub(crate) fn method_of(name: &str) -> Option<Method> {
+    Some(match name {
+        "Awake" => Method::Awake,
+        "OnEnable" => Method::OnEnable,
+        "Start" => Method::Start,
+        "Update" => Method::Update,
+        "FixedUpdate" => Method::FixedUpdate,
+        "LateUpdate" => Method::LateUpdate,
+        "OnDisable" => Method::OnDisable,
+        "OnDestroy" => Method::OnDestroy,
+        "OnCollisionEnter" => Method::OnCollisionEnter,
+        "OnCollisionExit" => Method::OnCollisionExit,
+        "OnTriggerEnter" => Method::OnTriggerEnter,
+        "OnTriggerExit" => Method::OnTriggerExit,
+        _ => return None,
+    })
+}
+
+/// The loaded script assembly of one Play session.
 #[derive(Default)]
 pub(crate) struct CsHost {
     entry: Option<Entry>,
-    /// Why C# is unavailable (reported once).
+    /// Compiling or loading failed (reported once).
     failed: bool,
-    pub instances: Vec<CsInstance>,
     pub timings: CsTimings,
-    /// Handles scratch for batched calls.
-    batch: Vec<i32>,
 }
 
 impl CsHost {
@@ -867,213 +868,124 @@ impl CsHost {
         }
     }
 
-    /// A C# instance of the script at `path` (slot `slot` of `e`); errors go to the Console.
-    pub fn instantiate(
+    /// A C# instance of `script` (slot `slot` of `e`) with its Inspector values applied;
+    /// errors go to the Console.
+    pub fn create(
         &mut self,
         w: &mut World,
         project: &Path,
         e: Entity,
         slot: usize,
-        path: &str,
-    ) {
+        script: &crate::scene::ScriptRef,
+    ) -> Option<CsRef> {
         if !self.ensure_loaded(project, &mut w.logs) {
-            return;
+            return None;
         }
-        let Some(entry) = self.entry else { return };
-        let name = Path::new(path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let entry = self.entry?;
+        let name = script.name();
         let name_w: Vec<u16> = name.encode_utf16().collect();
         let _enter = Enter::new(w);
-        // SAFETY: entry points of the loaded assembly; the name buffer outlives the call.
-        let handle =
-            unsafe { (entry.create)(name_w.as_ptr(), name_w.len() as i32, e.to_bits().get()) };
-        if handle <= 0 {
-            return;
-        }
-        let mut defined = 0u8;
-        for m in 0..METHOD_COUNT as i32 {
-            // SAFETY: as above.
-            if unsafe { (entry.has)(handle, m) } != 0 {
-                defined |= 1 << m;
+        // SAFETY: entry points of the loaded assembly; the buffers outlive each call.
+        unsafe {
+            let handle = (entry.create)(
+                name_w.as_ptr(),
+                name_w.len() as i32,
+                e.to_bits().get(),
+                slot as i32,
+            );
+            if handle <= 0 {
+                return None;
             }
+            for (field, value) in &script.fields {
+                if field == "enabled" {
+                    continue;
+                }
+                let field_w: Vec<u16> = field.encode_utf16().collect();
+                let (kind, num, v, text) = match value {
+                    ScriptValue::Bool(b) => (0, f64::from(u8::from(*b)), [0.0; 3], Vec::new()),
+                    ScriptValue::Number(n) => (1, *n, [0.0; 3], Vec::new()),
+                    ScriptValue::Vector3(a) => (2, 0.0, *a, Vec::new()),
+                    ScriptValue::Text(s) => (3, 0.0, [0.0; 3], s.encode_utf16().collect()),
+                };
+                // A field the class no longer has keeps its saved value for later; nothing
+                // to report.
+                (entry.set_field)(
+                    handle,
+                    field_w.as_ptr(),
+                    field_w.len() as i32,
+                    kind,
+                    num,
+                    &v,
+                    text.as_ptr(),
+                    text.len() as i32,
+                );
+            }
+            let mut defined = 0u16;
+            for m in 0..METHOD_COUNT as i32 {
+                if (entry.has)(handle, m) != 0 {
+                    defined |= 1 << m;
+                }
+            }
+            Some(CsRef { handle, defined })
         }
-        self.instances.push(CsInstance {
-            entity: e,
-            slot,
-            name,
-            handle,
-            defined,
-            awoken: false,
-            started: false,
-            enabled: false,
-        });
     }
 
-    /// Hand the game clock to C#.
-    pub fn set_time(&self, time: &crate::runtime::Time, fixed_dt: f32) {
-        if let Some(entry) = self.entry {
-            // SAFETY: entry point of the loaded assembly.
-            unsafe { (entry.set_time)(time.delta, time.time as f32, fixed_dt, time.frame as i64) };
-        }
-    }
-
-    /// Call `m` on instance `i`.
-    pub fn call(&self, w: &mut World, i: usize, m: Method) {
-        let (Some(entry), Some(inst)) = (self.entry, self.instances.get(i)) else {
-            return;
+    /// Hand this frame's clock to C# (and destroy what `Destroy(obj, t)` timed).
+    pub fn set_time(&self, w: &mut World) {
+        let Some(entry) = self.entry else { return };
+        let t = w.time;
+        let fixed = w.physics.fixed_dt;
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly.
+        unsafe {
+            (entry.set_time)(
+                t.delta,
+                t.unscaled_delta,
+                t.time as f32,
+                fixed,
+                t.time_scale,
+                t.frame as i32,
+            )
         };
-        if !inst.defines(m) {
+    }
+
+    /// Call `m` on instance `r` (nothing when its class doesn't define it).
+    pub fn call(&self, w: &mut World, r: CsRef, m: Method, other: Option<Entity>) {
+        let Some(entry) = self.entry else { return };
+        if !r.defines(m) {
             return;
         }
-        crate::profile_scope!(format!("{}.{m:?}()", inst.name));
         let _enter = Enter::new(w);
         // SAFETY: entry point of the loaded assembly, valid handle.
-        unsafe { (entry.call)(inst.handle, m as i32) };
+        let other = other.map_or(0, |e| e.to_bits().get());
+        unsafe { (entry.call)(r.handle, m as i32, other) };
     }
 
-    /// Call `m` on the instances in `which` that define it, in one transition into .NET.
-    pub fn call_many(&mut self, w: &mut World, which: &[usize], m: Method) {
+    /// Advance the coroutines (after the Update pass, like the familiar engine).
+    pub fn tick(&self, w: &mut World) {
         let Some(entry) = self.entry else { return };
-        self.batch.clear();
-        self.batch.extend(
-            which
-                .iter()
-                .filter_map(|&i| self.instances.get(i))
-                .filter(|inst| inst.defines(m))
-                .map(|inst| inst.handle),
-        );
-        if self.batch.is_empty() {
-            return;
-        }
         let _enter = Enter::new(w);
-        // SAFETY: entry point of the loaded assembly; the handle buffer outlives the call.
-        unsafe { (entry.call_many)(self.batch.as_ptr(), self.batch.len() as i32, m as i32) };
+        // SAFETY: entry point of the loaded assembly.
+        unsafe { (entry.tick)() };
     }
 
-    /// Forget every instance (after OnDestroy).
-    pub fn release_all(&mut self) {
+    /// Forget instance `r` (after its OnDestroy, or when its object is gone).
+    pub fn release(&self, r: CsRef) {
         if let Some(entry) = self.entry {
-            for inst in &self.instances {
-                // SAFETY: entry point of the loaded assembly.
-                unsafe { (entry.release)(inst.handle) };
-            }
+            // SAFETY: entry point of the loaded assembly.
+            unsafe { (entry.release)(r.handle) };
         }
-        self.instances.clear();
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.instances.is_empty()
-    }
-}
-
-// ---- the script host's C# passes ------------------------------------------------------------
-
-impl super::ScriptHost {
-    /// Whether C# instance `i` should get callbacks (object alive and active, script enabled).
-    fn csharp_runnable(&self, i: usize) -> bool {
-        let Some(inst) = self.csharp.instances.get(i) else {
-            return false;
-        };
-        let (e, slot) = (inst.entity, inst.slot);
-        self.with_world(|w| {
-            w.scene.contains(e)
-                && w.scene.active_in_hierarchy(e)
-                && w.scene
-                    .world
-                    .get::<&crate::scene::Scripts>(e)
-                    .ok()
-                    .and_then(|s| s.list.get(slot).map(|r| r.enabled))
-                    .unwrap_or(false)
-        })
-    }
-
-    fn csharp_call(&mut self, i: usize, m: Method) {
-        let mut w = self
-            .lua
-            .app_data_mut::<World>()
-            .expect("world is installed");
-        self.csharp.call(&mut w, i, m);
-    }
-
-    /// As Play starts, after the Lua scripts' Awake: Awake then OnEnable, script by script.
-    pub(super) fn csharp_awake(&mut self) {
-        if self.csharp.is_empty() {
-            return;
-        }
-        crate::profile_scope!("Scripts.Start.CSharp");
-        for i in 0..self.csharp.instances.len() {
-            if !self.csharp_runnable(i) {
-                continue;
-            }
-            self.csharp.instances[i].awoken = true;
-            self.csharp_call(i, Method::Awake);
-            if self.csharp_runnable(i) {
-                self.csharp.instances[i].enabled = true;
-                self.csharp_call(i, Method::OnEnable);
-            }
-            self.flush_spawned();
-        }
-    }
-
-    /// Each frame, after the Lua scripts' Start: the clock, then Start for new instances.
-    pub(super) fn csharp_start(&mut self, time: &crate::runtime::Time) {
-        if self.csharp.is_empty() {
-            return;
-        }
-        let fixed = self.with_world(|w| w.physics.fixed_dt);
-        self.csharp.set_time(time, fixed);
-        for i in 0..self.csharp.instances.len() {
-            let inst = &self.csharp.instances[i];
-            if inst.started || !inst.enabled || !self.csharp_runnable(i) {
-                continue;
-            }
-            self.csharp.instances[i].started = true;
-            self.csharp_call(i, Method::Start);
-            self.flush_spawned();
-        }
-    }
-
-    /// FixedUpdate, Update or LateUpdate on every started C# instance, in one call into .NET.
-    pub(super) fn csharp_pass(&mut self, m: Method) {
-        if self.csharp.is_empty() {
-            return;
-        }
-        let which: Vec<usize> = (0..self.csharp.instances.len())
-            .filter(|&i| self.csharp.instances[i].started && self.csharp_runnable(i))
-            .collect();
-        {
-            let mut w = self
-                .lua
-                .app_data_mut::<World>()
-                .expect("world is installed");
-            self.csharp.call_many(&mut w, &which, m);
-        }
-        self.flush_spawned();
-    }
-
-    /// The game stops: OnDisable and OnDestroy, then the instances are released.
-    pub(super) fn csharp_shutdown(&mut self) {
-        for i in 0..self.csharp.instances.len() {
-            if self.csharp.instances[i].enabled {
-                self.csharp.instances[i].enabled = false;
-                self.csharp_call(i, Method::OnDisable);
-            }
-            if self.csharp.instances[i].awoken {
-                self.csharp_call(i, Method::OnDestroy);
-            }
-        }
-        self.csharp.release_all();
-    }
-
-    /// Compile and load times of this session's C# scripts.
-    pub fn csharp_timings(&self) -> CsTimings {
-        self.csharp.timings
     }
 }
 
 #[cfg(test)]
 pub(crate) fn dotnet_available() -> bool {
     dotnet_root().is_some_and(|r| find_hostfxr(&r).is_some())
+}
+
+impl super::ScriptHost {
+    /// Compile and load times of this session's C# scripts.
+    pub fn csharp_timings(&self) -> CsTimings {
+        self.csharp.timings
+    }
 }

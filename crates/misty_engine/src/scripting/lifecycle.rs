@@ -238,7 +238,11 @@ impl ScriptHost {
         self.with_world(|w| w.scene = scene_in);
         let all: Vec<usize> = (0..self.instances.len()).collect();
         self.goodbye(&all);
-        self.csharp_shutdown();
+        for i in &self.instances {
+            if let Some(cs) = i.cs {
+                self.csharp.release(cs);
+            }
+        }
         self.graphs.shutdown(&self.lua);
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
         super::arm_deadline(&self.lua, false);

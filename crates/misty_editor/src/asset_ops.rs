@@ -92,6 +92,16 @@ pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
         return Err(format!("'{}' already exists.", file_name(&to)));
     }
     move_with_meta(from, &to)?;
+    // A C# script's class is found by its file name: the class follows the rename.
+    if to
+        .to_str()
+        .is_some_and(misty_engine::scripting::csharp::is_csharp_path)
+        && let (Some(old), Ok(text)) = (from.file_stem(), std::fs::read_to_string(&to))
+        && let Some(renamed) =
+            misty_engine::scripting::csharp::rename_class(&text, &old.to_string_lossy(), new_stem)
+    {
+        misty_engine::asset_db::write_asset(&to, renamed).map_err(|e| e.to_string())?;
+    }
     Ok(to)
 }
 

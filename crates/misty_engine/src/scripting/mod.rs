@@ -29,6 +29,8 @@ pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
 pub mod csharp;
+mod csharp_fields;
+mod csharp_native;
 pub mod cursor_api;
 pub mod input_actions_api;
 pub mod input_api;
@@ -412,6 +414,8 @@ struct Instance {
     enabled: bool,
     /// `Scene::activity` when `enabled` last changed: a switch off and on after it counts.
     stamp: u64,
+    /// A C# script (its `table` is then an empty stand-in).
+    cs: Option<csharp::CsRef>,
 }
 
 pub struct ScriptHost {
@@ -556,6 +560,14 @@ impl ScriptHost {
             }
         }
         drop(instantiate_scope);
+        // C# sees the fixed step and frame 0 in Awake.
+        {
+            let mut w = host
+                .lua
+                .app_data_mut::<World>()
+                .expect("world is installed");
+            host.csharp.set_time(&mut w);
+        }
         // Behaviour Tree Agents get their blackboards (and Script Graphs) before Awake, so
         // scripts can set blackboard values there.
         host.sync_behaviour_trees();
@@ -570,7 +582,6 @@ impl ScriptHost {
         }
         host.start_pending = 0..0;
         host.flush_spawned();
-        host.csharp_awake();
         host.localization_frame();
         host.with_world(|w| {
             w.audio.play_on_awake(&w.scene, None);
@@ -681,12 +692,37 @@ impl ScriptHost {
         }
         if csharp::is_csharp_path(&script.path) {
             let root = self.root.clone();
-            let mut w = self
+            let cs = {
+                let mut w = self
+                    .lua
+                    .app_data_mut::<World>()
+                    .expect("world is installed");
+                self.csharp.create(&mut w, &root, e, slot, script)
+            };
+            let Some(cs) = cs else { return };
+            // Lua code looking at instances (UI events, input listeners) finds no functions in
+            // the stand-in table; C# callbacks go through `cs`.
+            match self
                 .lua
-                .app_data_mut::<World>()
-                .expect("world is installed");
-            self.csharp
-                .instantiate(&mut w, &root, e, slot, &script.path);
+                .create_table()
+                .and_then(|t| self.lua.create_registry_value(t))
+            {
+                Ok(table) => self.instances.push(Instance {
+                    entity: e,
+                    slot,
+                    name: script.name(),
+                    table,
+                    started: false,
+                    awoken: false,
+                    enabled: false,
+                    stamp: 0,
+                    cs: Some(cs),
+                }),
+                Err(err) => {
+                    self.csharp.release(cs);
+                    self.log(LogKind::Error, format!("{}: {err}", script.name()));
+                }
+            }
             return;
         }
         let Some(class) = self.class(&script.path) else {
@@ -739,6 +775,7 @@ impl ScriptHost {
                 awoken: false,
                 enabled: false,
                 stamp: 0,
+                cs: None,
             }),
             Err(err) => self.log(LogKind::Error, format!("{}: {err}", script.name())),
         }
@@ -760,6 +797,22 @@ impl ScriptHost {
 
     fn call(&self, index: usize, name: &str, arg: Option<Value>) {
         let inst = &self.instances[index];
+        if let Some(cs) = inst.cs {
+            if let Some(m) = csharp::method_of(name).filter(|m| cs.defines(*m)) {
+                profile_scope!(format!("{}.{name}()", inst.name));
+                // Contact callbacks get the other object.
+                let other = match &arg {
+                    Some(Value::UserData(ud)) => ud.borrow::<LGameObject>().ok().map(|g| g.0),
+                    _ => None,
+                };
+                let mut w = self
+                    .lua
+                    .app_data_mut::<World>()
+                    .expect("world is installed");
+                self.csharp.call(&mut w, cs, m, other);
+            }
+            return;
+        }
         let Ok(t) = self.lua.registry_value::<Table>(&inst.table) else {
             return;
         };
@@ -888,12 +941,14 @@ impl ScriptHost {
     fn entities_with(&self, function: &str) -> HashSet<Entity> {
         self.instances
             .iter()
-            .filter(|i| {
-                self.lua
+            .filter(|i| match i.cs {
+                Some(cs) => csharp::method_of(function).is_some_and(|m| cs.defines(m)),
+                None => self
+                    .lua
                     .registry_value::<Table>(&i.table)
                     .ok()
                     .and_then(|t| t.get::<Option<Function>>(function).ok().flatten())
-                    .is_some()
+                    .is_some(),
             })
             .filter(|i| self.runnable(i))
             .map(|i| i.entity)
@@ -1217,6 +1272,13 @@ impl ScriptHost {
             drop(w);
             self.log(LogKind::Error, format!("Time: {e}"));
         }
+        {
+            let mut w = self
+                .lua
+                .app_data_mut::<World>()
+                .expect("world is installed");
+            self.csharp.set_time(&mut w);
+        }
 
         {
             // Before Start: objects the server spawned this frame get Start like any other.
@@ -1247,7 +1309,6 @@ impl ScriptHost {
                     self.flush_spawned();
                 }
             }
-            self.csharp_start(time);
         }
 
         {
@@ -1273,7 +1334,6 @@ impl ScriptHost {
             {
                 profile_scope!("Scripts.FixedUpdate", Category::Scripts);
                 self.call_all("FixedUpdate");
-                self.csharp_pass(csharp::Method::FixedUpdate);
                 let fixed = self.with_world(|w| w.physics.fixed_dt);
                 self.graphs.fire_all(
                     &self.lua,
@@ -1314,7 +1374,15 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.Update", Category::Scripts);
             self.call_all("Update");
-            self.csharp_pass(csharp::Method::Update);
+            // C# coroutines resume after Update.
+            {
+                let mut w = self
+                    .lua
+                    .app_data_mut::<World>()
+                    .expect("world is installed");
+                self.csharp.tick(&mut w);
+            }
+            self.flush_spawned();
         }
         {
             profile_scope!("ScriptGraphs.Update", Category::Scripts);
@@ -1366,7 +1434,6 @@ impl ScriptHost {
         {
             profile_scope!("Scripts.LateUpdate", Category::Scripts);
             self.call_all("LateUpdate");
-            self.csharp_pass(csharp::Method::LateUpdate);
             self.graphs.fire_all(
                 &self.lua,
                 &crate::visual_script::compile::EventKind::LateUpdate,
@@ -1648,6 +1715,11 @@ impl ScriptHost {
                 w.behaviour.forget(&all);
                 all
             });
+            for i in &self.instances {
+                if let Some(cs) = i.cs.filter(|_| doomed.contains(&i.entity)) {
+                    self.csharp.release(cs);
+                }
+            }
             self.instances.retain(|i| !doomed.contains(&i.entity));
             save_api::untrack(&self.lua, &doomed);
             unregister_script_instances(&self.lua, &doomed);
@@ -1972,6 +2044,9 @@ pub struct ScriptInfo {
 
 /// Public fields of a script with their Inspector attributes.
 pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
+    if csharp::is_csharp_path(path) {
+        return Ok(csharp_fields::inspect(source, path));
+    }
     let lua = game_lua();
     api::register(&lua).map_err(|e| e.to_string())?;
     // The top level runs here: an endless loop or a runaway table must not hang the editor.

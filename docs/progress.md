@@ -6338,3 +6338,117 @@ would have to ship with the game, about 70 MB, or be required on the player's co
 New: `scripting::csharp_tests::csharp_rotator_turns_and_moves_the_cube_next_to_a_lua_script`,
 `csharp_compile_errors_and_exceptions_reach_the_console`, and the ignored benchmark
 `csharp_cost`. They skip with a note when no .NET runtime is installed.
+
+## Round 88 — C# scripts, step 1: Inspector fields, the shared lifecycle, objects and input (branch csharp-proof)
+
+The user's pick after round 87: make C# good enough to write a small game, starting with what
+every script needs. Tried by hand in the editor (through the MCP bridge) as well as by tests.
+
+### Done
+- **One lifecycle for Lua and C#.** C# instances now live in the script host's instance list
+  (`Instance::cs`, with an empty stand-in Lua table), so every rule the Lua scripts follow applies
+  unchanged: Awake / OnEnable right after `Instantiate`, OnDisable / OnEnable on `SetActive` and
+  the script checkbox, Start before the first update, OnDisable + OnDestroy on `Destroy` and Stop.
+  The separate C# passes of round 87 are gone.
+- **Properties panel fields.** `scripting/csharp_fields.rs` reads a script's serialized fields
+  from the source (Unity's rules: `public` or `[SerializeField]`, not `static` / `const` /
+  `readonly` / `[NonSerialized]`; `float`, `double`, the integer types, `bool`, `string`,
+  `Vector3`; literal initializers as defaults; `[Header]`, `[Tooltip]`, `[Space]`, `[Range]`,
+  `[HideInInspector]`). No .NET needed, works while the code doesn't compile. The editor's asset
+  scan now lists `.cs` files as scripts (it only took `.lua` before, so round 87's C# scripts
+  never showed fields). Saved values are set on the instance (`Host.SetField`) before Awake.
+- **API.** `scripting/csharp_native.rs` holds the 27 native functions C# calls (split from
+  `csharp.rs`). New in `MistyEngine.cs`: `Object` (Instantiate, Destroy with a delay,
+  FindObjectOfType(s), destroyed objects `== null`), `Component`, `GameObject` (Find,
+  FindWithTag, FindGameObjectsWithTag, tag, CompareTag, activeSelf / activeInHierarchy,
+  SetActive, the GetComponent family for C# scripts and Transform), `MonoBehaviour.enabled`,
+  `Transform` in world space (position / rotation under parents were local in round 87), parent,
+  SetParent, children, Find, LookAt, RotateAround, Transform/InverseTransform point and
+  direction, `Input` (keys by KeyCode or Input Manager name, mouse, axes, buttons, mouse position
+  / scroll / delta, anyKey), `Vector2`, many more `Vector3` / `Quaternion` / `Mathf` functions,
+  `Random`, Inspector attributes.
+- **Editor.** Assets ▸ Create ▸ C# Script (MonoBehaviour template); renaming a `.cs` file renames
+  its class. Play refuses to start while C# has compile errors ("All compiler errors have to be
+  fixed before you can enter Play mode."). Saving a `.cs` file compiles in the background and
+  reports errors (or "C# scripts compiled.") without Play; the editor keeps drawing frames until
+  that compile reports. Opening a project with C# scripts compiles them and starts .NET in the
+  background, so the first Play doesn't wait.
+
+### Numbers (release, 1000 objects, 3 runs)
+| | round 87 | now |
+|---|---|---|
+| C# `transform.Rotate` in Update | 1.37–1.46 ms/frame | 1.67–1.73 ms/frame |
+| Lua, same script | 2.51–2.67 ms/frame | 2.56–2.64 ms/frame |
+| C# empty Update | 0.45 ms/frame | 0.60 ms/frame |
+
+C# now gets one call into .NET per instance (round 87 batched a whole pass into one call) plus
+the same per-instance checks as Lua: about 0.15 µs more per script per frame, the price of the
+shared lifecycle. Still about a third faster than Lua.
+
+### Checked in the editor
+A spawner script with `[Range]`, `[Header]`, `[Tooltip]` and `[SerializeField]` fields: values
+set through `scene.set_field` reached C# (5 copies named from the Inspector label, at the default
+spacing), the copies rendered and went away on Stop; a broken save reported its error without
+Play, Play was refused until the fix. Found on the way, not C#: `editor.screenshot` without a
+size returns the last drawn frame, which is stale while the editor window is in the background.
+
+### Not done yet
+Engine components other than Transform from C# (Rigidbody, AudioSource, Animator, …), physics
+and collision callbacks, coroutines, `Instantiate` of a script, adding / removing scripts during
+Play, object-reference fields, completion, player builds.
+
+### Tests and checks
+New engine tests: `csharp_inspector_values_override_the_field_initializers`,
+`csharp_scripts_follow_the_lifecycle_through_instantiate_setactive_and_destroy`,
+`csharp_input_and_the_hierarchy`, `csharp_rename_class_follows_the_file_and_leaves_other_words_alone`,
+and four `csharp_fields::tests`; editor test
+`assets::tests::csharp_scripts_are_listed_created_and_renamed_with_their_class`. All 132 engine
+scripting tests pass, fmt and clippy clean (6 warnings from the newer toolchain in untouched
+files remain). The full editor suite has 12 failures in code this round doesn't touch (sample
+generators vs. the committed sample files, terrain painting, font textures, the baked Cycles
+room render); the first full run on the H: drive, so they are the baseline to look at next.
+
+## Round 89 — C# scripts, step 2: coroutines, physics, audio, animation, scenes (branch csharp-proof)
+
+What makes a game, on top of round 88's basics.
+
+### Done
+- **Coroutines** (all on the C# side, `Misty.Internal.Coroutines`): `StartCoroutine` runs to the
+  first `yield`, then the engine calls `Host.Tick` once per frame after the Update pass. Waits:
+  `null`, `WaitForSeconds`, `WaitForSecondsRealtime`, `WaitUntil`, `WaitWhile`, a nested
+  `IEnumerator` or `Coroutine`, `CustomYieldInstruction`, `WaitForEndOfFrame` /
+  `WaitForFixedUpdate` (next frame). `StopCoroutine`, `StopAllCoroutines`, `Invoke`,
+  `InvokeRepeating`, `CancelInvoke`. Coroutines stop when their object is switched off or
+  destroyed, not when only the script is disabled (as in the familiar engine). Callbacks may
+  return `IEnumerator` (`IEnumerator Start()`).
+- **Contact callbacks**: `OnCollisionEnter` / `Exit` and `OnTriggerEnter` / `Exit` reach C#
+  through the same dispatch as Lua (the host passes the other object; `Host.Call` takes it as a
+  third argument). Parameter `Collision`, `Collider`, `GameObject` or none.
+- **Components**: `GetComponent<Rigidbody / Collider / AudioSource / Animator>()`. `Rigidbody`
+  (velocity, angular velocity, mass, kinematic, gravity, position, AddForce / AddRelativeForce /
+  AddTorque with ForceMode, MovePosition, MoveRotation), `AudioSource` (Play, Stop, Pause,
+  UnPause, isPlaying, volume, pitch, loop, mute, time), `Animator` (parameters, triggers, Play,
+  CrossFade, CrossFadeInFixedTime).
+- **Queries and scenes**: `Physics.Raycast` (all the usual overloads, `out RaycastHit`),
+  `RaycastAll`, `SphereCast`, `OverlapSphere`, `gravity`; `LayerMask`; `SceneManager.LoadScene`
+  / `UnloadSceneAsync`; `Application.Quit`.
+- 14 more native functions (`csharp_native.rs`, 41 in all); each reuses what the Lua binding
+  calls (`api::delta_velocity`, the physics queries, `AnimatorPlayer::set_param` / `play` /
+  `cross_fade`, the audio voices, `Request`).
+
+### Checked in the editor
+A cube with a Rigidbody and a C# `Bouncer` (an `IEnumerator Start` coroutine logging every
+0.5 s, `OnCollisionEnter` kicking it back up with `AddForce(…, ForceMode.VelocityChange)`):
+the coroutine ticked on time, the collision with a sample sphere reached C# and the kick
+applied.
+
+### Tests
+New: `csharp_coroutines_waits_and_invoke`, `csharp_rigidbody_collisions_triggers_and_raycasts`,
+`csharp_scene_requests_and_missing_components`. 136 engine scripting tests pass; fmt and clippy
+clean apart from the 6 known warnings.
+
+### Next for C#
+The other components (UI, Camera, Light, ParticleSystem, NavMeshAgent, CharacterController),
+contact points and OnCollisionStay, 2D physics callbacks, object-reference fields in the
+Properties panel, completion in the code editor, and player builds (ship the .NET runtime with
+the game or require it on the player's computer).

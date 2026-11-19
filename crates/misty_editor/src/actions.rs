@@ -68,6 +68,8 @@ pub enum AssetKind {
     Folder,
     Material,
     Script,
+    /// A C# script (`.cs`, a MonoBehaviour class named after the file).
+    CSharpScript,
     Scene,
     Animation,
     AnimatorController,
@@ -110,10 +112,11 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 13] = [
+    pub const ALL: [AssetKind; 14] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
+        AssetKind::CSharpScript,
         AssetKind::ScriptGraph,
         AssetKind::Scene,
         AssetKind::Animation,
@@ -132,6 +135,7 @@ impl AssetKind {
             AssetKind::Folder => "Folder",
             AssetKind::Material => "Material",
             AssetKind::Script => "Lua Script",
+            AssetKind::CSharpScript => "C# Script",
             AssetKind::ScriptGraph => "Visual Script Graph",
             AssetKind::BehaviourTree => "Behaviour Tree",
             AssetKind::Scene => "Scene",

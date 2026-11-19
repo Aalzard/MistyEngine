@@ -16,7 +16,7 @@ use crate::scene::Camera as CameraComponent;
 pub struct LCamera(pub Entity);
 
 /// Game image size (falls back to 16:9 before the first frame).
-fn screen(w: &World) -> Vec2 {
+pub(super) fn screen(w: &World) -> Vec2 {
     let s = w.input.screen_size;
     if s.x > 0.0 && s.y > 0.0 {
         s

@@ -69,6 +69,19 @@ pub fn start(s: &mut EditorState) {
     if s.console.clear_on_play {
         s.console.clear();
     }
+    // C# scripts must compile first, like the familiar engine (an unchanged project reuses the
+    // build made in the background when it opened).
+    {
+        misty_engine::profile_scope!("Play.Start.CompileCSharp");
+        if let Err(e) = misty_engine::scripting::csharp::check_project(&s.project.root) {
+            s.console.log(LogLevel::Error, e);
+            s.console.log(
+                LogLevel::Error,
+                "All compiler errors have to be fixed before you can enter Play mode.",
+            );
+            return;
+        }
+    }
     let scene = {
         misty_engine::profile_scope!("Play.Start.CopyScene");
         s.scene.clone()

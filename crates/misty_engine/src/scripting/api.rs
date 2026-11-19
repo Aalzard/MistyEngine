@@ -974,7 +974,7 @@ pub(super) fn instantiate_prefab_path(
     instantiate(w, Source::Prefab(path.to_owned()), position)
 }
 
-enum Source {
+pub(super) enum Source {
     /// Project-relative `.prefab` path.
     Prefab(String),
     Object(Entity),
@@ -982,7 +982,7 @@ enum Source {
 
 /// Copy a prefab or object to a new root object named "Name(Clone)", with physics bodies.
 /// Script instances are created by the host after the current callback.
-fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
+pub(super) fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
     let e = match source {
         Source::Prefab(path) => {
             let file = crate::vfs::project_file(&w.root, &path).map_err(mlua::Error::runtime)?;

@@ -78,6 +78,9 @@ impl Headless {
         for err in s.assets.poll_scripts() {
             s.console.log(crate::console::LogLevel::Error, err);
         }
+        if let Some(Err(e)) = misty_engine::scripting::csharp::take_background_check() {
+            s.console.log(crate::console::LogLevel::Error, e);
+        }
         crate::editor_scripts::frame(s);
         crate::scene_files::refresh_dirty(s);
     }
