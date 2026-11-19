@@ -208,3 +208,68 @@ fn a_profile_with_its_own_scene_list_builds_those_scenes() {
             .is_file()
     );
 }
+
+#[test]
+fn scene_rows_select_with_ctrl_and_shift_and_move_together() {
+    let mut sel = SceneSelection::default();
+    sel.click(2, false, false);
+    sel.click(5, false, true);
+    assert_eq!(sel.rows, [2, 3, 4, 5]);
+    sel.click(3, true, false);
+    assert_eq!(sel.rows, [2, 4, 5]);
+    sel.click(8, true, false);
+    assert_eq!(sel.rows, [2, 4, 5, 8]);
+    // Shift from the last Ctrl click (8) back to 6, keeping the rest with Ctrl.
+    sel.click(6, true, true);
+    assert_eq!(sel.rows, [2, 4, 5, 6, 7, 8]);
+    sel.click(1, false, false);
+    assert_eq!(sel.rows, [1]);
+
+    let mut list: Vec<u32> = (0..6).collect();
+    let mut sel = SceneSelection::default();
+    sel.click(1, false, false);
+    sel.click(3, true, false);
+    assert!(sel.shift(&mut list, -1));
+    assert_eq!(list, [1, 0, 3, 2, 4, 5]);
+    assert_eq!(sel.rows, [0, 2]);
+    assert!(!sel.shift(&mut list, -1), "the first row is at the top");
+    assert!(sel.shift(&mut list, 1));
+    assert_eq!(list, [0, 1, 2, 3, 4, 5]);
+    assert!(sel.remove_from(&mut list));
+    assert_eq!(list, [0, 2, 4, 5]);
+    assert!(sel.is_empty());
+}
+
+#[test]
+fn shift_click_and_delete_key_remove_many_scenes() {
+    let mut s = state("misty_build_window_multi");
+    s.build_window.open = true;
+    s.build_window.page = Page::SceneList;
+    s.build_settings.scenes = (0..6)
+        .map(|i| misty_engine::build::BuildScene {
+            path: format!("Assets/Scenes/S{i}.scene"),
+            enabled: true,
+        })
+        .collect();
+    let mut h = harness(s);
+    h.run();
+    h.get_by_label("Assets/Scenes/S1.scene").click();
+    h.run();
+    h.get_by_label("Assets/Scenes/S3.scene")
+        .click_modifiers(egui::Modifiers::SHIFT);
+    h.run();
+    h.get_by_label("Assets/Scenes/S5.scene")
+        .click_modifiers(egui::Modifiers::COMMAND);
+    h.run();
+    assert_eq!(h.state().build_window.selected.rows, [1, 2, 3, 5]);
+    h.key_press(egui::Key::Delete);
+    h.run();
+    let left: Vec<String> = h
+        .state()
+        .build_settings
+        .scenes
+        .iter()
+        .map(|b| b.path.clone())
+        .collect();
+    assert_eq!(left, ["Assets/Scenes/S0.scene", "Assets/Scenes/S4.scene"]);
+}

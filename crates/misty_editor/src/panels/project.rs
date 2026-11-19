@@ -54,7 +54,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::toolbar_bg()))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                if let Some(sel) = &browser.selected {
+                let count = browser.selection().len();
+                if count > 1 {
+                    ui.label(tr!("{count} assets selected", count = count));
+                } else if let Some(sel) = &browser.selected {
                     ui.label(browser.display_path(sel));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -154,8 +157,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     grid_view(ui, &entries, browser, vcs, &mut open, &mut req);
                 }
             });
+        // Ctrl / Shift clicks need the listed order (Shift selects the rows in between).
+        if let Some((path, ctrl, shift)) = req.click.take() {
+            let order: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
+            browser.click_select(&path, ctrl, shift, &order);
+        }
         if background.clicked() {
             browser.selected = None;
+            browser.multi.clear();
         }
         let current = browser.current.clone();
         background.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
@@ -178,7 +187,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .as_ref()
         .map(|p| state.assets.relative(p))
         .unwrap_or_default();
-    if let Some(action) = project_menus::delete_dialog(ui.ctx(), &mut state.project, &rel) {
+    for action in project_menus::delete_dialog(ui.ctx(), &mut state.project, &rel) {
         state.push(action);
     }
 
@@ -291,8 +300,30 @@ fn apply_requests(ui: &Ui, state: &mut EditorState, req: Requests) {
         state.project.search.clear();
         state.project.open_folder(dir);
     }
+    // Dragging one of several selected assets onto a folder moves them all.
+    let selection = state.project.selection();
     for a in req.actions {
-        state.push(a);
+        match a {
+            Action::MoveAsset { path, folder }
+                if selection.len() > 1 && selection.contains(&path) =>
+            {
+                for p in &selection {
+                    // Not into itself or below, not where it already is, and not what goes
+                    // along inside a selected folder.
+                    if folder.starts_with(p)
+                        || p.parent() == Some(folder.as_path())
+                        || selection.iter().any(|q| q != p && p.starts_with(q))
+                    {
+                        continue;
+                    }
+                    state.push(Action::MoveAsset {
+                        path: p.clone(),
+                        folder: folder.clone(),
+                    });
+                }
+            }
+            a => state.push(a),
+        }
     }
     if let Some(p) = req.rename {
         state.project.selected = Some(p.clone());
@@ -370,7 +401,7 @@ fn list_view(
                 continue;
             }
         }
-        let is_sel = browser.selected.as_ref() == Some(&e.path);
+        let is_sel = browser.is_selected(&e.path);
         let folder = e.is_dir.then_some(Icon::Folder);
         let label = match (renaming, folder) {
             (true, Some(_)) => String::new(),
@@ -436,7 +467,7 @@ fn grid_view(
             // Tiles scrolled out of view keep their place and interaction but draw nothing
             // (big folders otherwise paint every icon and name each frame).
             let visible = ui.is_rect_visible(rect);
-            let is_sel = browser.selected.as_ref() == Some(&e.path);
+            let is_sel = browser.is_selected(&e.path);
             if visible && is_sel {
                 ui.painter().rect_filled(rect, 3.0, theme::selection());
             } else if visible && resp.hovered() {
@@ -585,8 +616,12 @@ fn item_interaction(
     open: &mut Option<PathBuf>,
     req: &mut Requests,
 ) {
-    if resp.clicked() || resp.secondary_clicked() {
-        browser.selected = Some(e.path.clone());
+    if resp.clicked() {
+        let m = ui.input(|i| i.modifiers);
+        req.click = Some((e.path.clone(), m.command, m.shift));
+    } else if resp.secondary_clicked() && !browser.is_selected(&e.path) {
+        // Right-click on a selected item keeps the selection (its menu acts on it).
+        browser.click_select(&e.path, false, false, &[]);
     }
     if resp.double_clicked() {
         *open = Some(e.path.clone());

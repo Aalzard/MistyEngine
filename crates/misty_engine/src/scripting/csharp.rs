@@ -573,18 +573,50 @@ fn error_lines(text: &str, project: &Path) -> Vec<String> {
         .map(|l| {
             // Without msbuild's "[...csproj]" suffix.
             let l = l.split(" [").next().unwrap_or(l);
-            l.replace(&format!("{}\\", project.display()), "")
+            let l = l
+                .replace(&format!("{}\\", project.display()), "")
                 .replace(&format!("{}/", project.display()), "")
                 .trim()
-                .to_owned()
+                .to_owned();
+            // `Assets/Scripts/A.cs(12,5): error …` with forward slashes, like every other
+            // project path the editor shows (the Console opens the script at that line).
+            match l.find(".cs(") {
+                Some(at) => format!("{}{}", l[..at].replace('\\', "/"), &l[at..]),
+                None => l,
+            }
         })
         // msbuild repeats each error in its closing summary.
         .filter(|l| seen.insert(l.clone()))
         .collect()
 }
 
-/// Compile every `.cs` under `<project>/Assets` (with the API) and return the assembly path.
+/// The compiler's error lines from the last compile (empty once it compiled); the Code Editor
+/// marks them in open scripts.
+static LAST_ERRORS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The error lines of the last compile (`Assets/…/A.cs(line,col): error CS…: …`); empty when
+/// it compiled or nothing compiled yet.
+pub fn last_errors() -> Vec<String> {
+    LAST_ERRORS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// Compile every `.cs` under `<project>/Assets` (with the API) and return the assembly path;
+/// remembers the errors for [`last_errors`].
 fn compile(project: &Path, timings: &mut CsTimings) -> Result<PathBuf, String> {
+    let result = compile_sources(project, timings);
+    let errors = match &result {
+        Ok(_) => Vec::new(),
+        Err(e) => e.lines().skip(1).map(str::to_owned).collect(),
+    };
+    *LAST_ERRORS.lock().unwrap_or_else(|e| e.into_inner()) = errors;
+    result
+}
+
+/// [`compile`] without remembering the errors.
+fn compile_sources(project: &Path, timings: &mut CsTimings) -> Result<PathBuf, String> {
     // One compile at a time (the background one started with the project and Play's share the
     // output folder).
     static COMPILING: Mutex<()> = Mutex::new(());

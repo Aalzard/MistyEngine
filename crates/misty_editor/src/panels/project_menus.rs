@@ -21,6 +21,9 @@ pub struct Requests {
     pub rename_in_tree: bool,
     /// Create ▸ was chosen in this folder's menu: it opens first, so the asset is made there.
     pub create_in: Option<PathBuf>,
+    /// An item was clicked: its path and whether Ctrl / Shift were held (applied once the
+    /// listed order is known, for Shift ranges).
+    pub click: Option<(PathBuf, bool, bool)>,
 }
 
 /// Create ▸ entries (Project "+" button, Assets ▸ Create and the context menus).
@@ -275,17 +278,35 @@ pub(crate) fn select_all(ctx: &egui::Context, id: egui::Id, text: &str) {
 }
 
 /// "Delete selected asset?" dialog; Delete moves the asset to the OS trash.
-pub fn delete_dialog(
-    ctx: &egui::Context,
-    browser: &mut ProjectBrowser,
-    rel: &str,
-) -> Option<Action> {
-    let path = browser.confirm_delete.clone()?;
+pub fn delete_dialog(ctx: &egui::Context, browser: &mut ProjectBrowser, rel: &str) -> Vec<Action> {
+    let Some(path) = browser.confirm_delete.clone() else {
+        return Vec::new();
+    };
+    // Part of a Ctrl/Shift selection: all of it (not what lies inside a selected folder, which
+    // goes with the folder).
+    let mut targets = browser.selection();
+    if !targets.contains(&path) {
+        targets = vec![path.clone()];
+    }
+    let all = targets.clone();
+    targets.retain(|p| !all.iter().any(|q| q != p && p.starts_with(q)));
     let mut answer = None;
     let modal = egui::Modal::new(egui::Id::new("project_delete_confirm")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.heading(tr!("Delete selected asset?"));
-        ui.label(rel);
+        if targets.len() > 1 {
+            ui.heading(tr!("Delete {n} selected assets?", n = targets.len()));
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    for p in &targets {
+                        let shown = p.strip_prefix(&browser.root).unwrap_or(p);
+                        ui.label(shown.to_string_lossy().replace('\\', "/"));
+                    }
+                });
+        } else {
+            ui.heading(tr!("Delete selected asset?"));
+            ui.label(rel);
+        }
         ui.add_space(4.0);
         ui.weak(tr!("It will be moved to the Recycle Bin / Trash."));
         ui.add_space(8.0);
@@ -304,8 +325,13 @@ pub fn delete_dialog(
     match answer {
         Some(yes) => {
             browser.confirm_delete = None;
-            yes.then_some(Action::DeleteAsset(path))
+            if yes {
+                browser.multi.clear();
+                targets.into_iter().map(Action::DeleteAsset).collect()
+            } else {
+                Vec::new()
+            }
         }
-        None => None,
+        None => Vec::new(),
     }
 }

@@ -259,8 +259,22 @@ impl AssetDatabase {
         drop(walk);
         {
             misty_engine::profile_scope!("Assets.Refresh.Scripts");
+            let is_cs = |rel: &str| misty_engine::scripting::csharp::is_csharp_path(rel);
+            // A C# script saved, added or removed from inside the editor (the Code Editor
+            // saves, then refreshes): compile now so its errors show without pressing Play.
+            // Not when the project opens (`prestart` compiles then).
+            let csharp_changed = !old_scripts.is_empty()
+                && (to_inspect.iter().any(|(_, rel)| is_cs(rel))
+                    || old_scripts.keys().any(|rel| {
+                        is_cs(rel)
+                            && !self.scripts.contains_key(rel)
+                            && !to_inspect.iter().any(|(_, r)| r == rel)
+                    }));
             for (rel, meta) in inspect_all(to_inspect) {
                 self.scripts.insert(rel, meta);
+            }
+            if csharp_changed {
+                misty_engine::scripting::csharp::check_in_background(&self.root);
             }
         }
         misty_engine::profile_scope!("Assets.Refresh.Models");

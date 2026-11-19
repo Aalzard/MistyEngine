@@ -24,8 +24,52 @@ fn location_re() -> &'static Regex {
     })
 }
 
-/// Compile the buffer (without running it); `None` when it parses.
+/// `Assets/….cs(line,col): error CS…: message`, as the C# compiler reports.
+fn csharp_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"(Assets/[^"\]\n(]*?\.cs)\((\d+),(\d+)\):\s*(?:error\s+)?(.*)"#)
+            .expect("valid regex")
+    })
+}
+
+/// The first of the C# compiler's `errors` in the script at `path`, placed from its line and
+/// column to the end of the word there.
+pub fn csharp(path: &str, lines: &[String], errors: &[String]) -> Option<Diagnostic> {
+    errors.iter().find_map(|e| {
+        let c = csharp_re().captures(e)?;
+        if c[1] != *path {
+            return None;
+        }
+        let line = c[2].parse::<usize>().ok()?.saturating_sub(1);
+        let src = lines.get(line)?;
+        let n = src.chars().count();
+        let col = c[3].parse::<usize>().ok()?.saturating_sub(1).min(n);
+        let word = src
+            .chars()
+            .skip(col)
+            .take_while(|ch| ch.is_alphanumeric() || *ch == '_' || *ch == '"')
+            .count();
+        let (start, end) = if word == 0 {
+            whole_line(src)
+        } else {
+            (col, col + word)
+        };
+        Some(Diagnostic {
+            line,
+            start,
+            end,
+            message: c[4].trim().to_owned(),
+        })
+    })
+}
+
+/// Compile the buffer (without running it); `None` when it parses. Only Lua scripts: other
+/// files are not Lua (C# errors come from the compiler, see [`csharp`]).
 pub fn check(source: &str, path: &str, lines: &[String]) -> Option<Diagnostic> {
+    if !path.to_ascii_lowercase().ends_with(".lua") {
+        return None;
+    }
     let err = misty_engine::scripting::syntax::check(source, path).err()?;
     Some(parse(&err, lines).unwrap_or(Diagnostic {
         line: 0,
@@ -80,7 +124,10 @@ fn whole_line(src: &str) -> (usize, usize) {
 
 /// Script and 1-based line named in a Console message (`Assets/Scripts/A.lua"]:12: …`).
 pub fn error_location(message: &str) -> Option<(String, usize)> {
-    let c = location_re().captures(message)?;
+    // Lua: `A.lua:12:`; C#: `A.cs(12,5):`.
+    let c = location_re()
+        .captures(message)
+        .or_else(|| csharp_re().captures(message))?;
     Some((c[1].to_owned(), c[2].parse().ok()?))
 }
 
@@ -124,5 +171,27 @@ mod tests {
             Some(("Assets/Scripts/Sub Dir/Foo.lua".into(), 3))
         );
         assert_eq!(error_location("Renderer: Vulkan"), None);
+        let cs = "Assets/Scripts/CSharp/PlayerMover.cs(14,27): error CS0029: Cannot implicitly convert type 'string' to 'float'";
+        assert_eq!(
+            error_location(cs),
+            Some(("Assets/Scripts/CSharp/PlayerMover.cs".into(), 14))
+        );
+    }
+
+    #[test]
+    fn csharp_files_get_no_lua_check_but_show_compiler_errors() {
+        let src = "using Misty;\n\npublic class A : MonoBehaviour\n{\n    public float speed = \"fast\";\n}";
+        let l = lines(src);
+        assert_eq!(check(src, "Assets/A.cs", &l), None);
+        let errors = vec![
+            "Assets/B.cs(1,1): error CS1002: ; expected".to_owned(),
+            "Assets/A.cs(5,26): error CS0029: Cannot implicitly convert type 'string' to 'float'"
+                .to_owned(),
+        ];
+        let d = csharp("Assets/A.cs", &l, &errors).unwrap();
+        assert_eq!(d.line, 4);
+        assert_eq!((d.start, d.end), (25, 31));
+        assert!(d.message.starts_with("CS0029"), "{}", d.message);
+        assert_eq!(csharp("Assets/C.cs", &l, &errors), None);
     }
 }

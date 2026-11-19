@@ -71,6 +71,11 @@ pub struct ProjectBrowser {
     pub root: PathBuf,
     pub current: PathBuf,
     pub selected: Option<PathBuf>,
+    /// Ctrl- and Shift-click selection: every selected asset, `selected` among them. Only in
+    /// force while it holds `selected` (code that sets `selected` alone selects just that).
+    pub multi: Vec<PathBuf>,
+    /// Where Shift-click ranges start (the last plain or Ctrl click).
+    pub anchor: Option<PathBuf>,
     pub search: String,
     /// Icon size slider; at the minimum the grid becomes a list.
     pub icon_size: f32,
@@ -140,6 +145,70 @@ pub const DISK_POLL: std::time::Duration = std::time::Duration::from_millis(250)
 pub const SEARCH_CACHE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl ProjectBrowser {
+    /// Every selected asset (the Ctrl/Shift-clicked ones, else just `selected`).
+    pub fn selection(&self) -> Vec<PathBuf> {
+        match &self.selected {
+            Some(p) if self.multi.contains(p) => self.multi.clone(),
+            Some(p) => vec![p.clone()],
+            None => Vec::new(),
+        }
+    }
+
+    pub fn is_selected(&self, path: &Path) -> bool {
+        match &self.selected {
+            Some(p) if p == path => true,
+            Some(p) => self.multi.iter().any(|m| m == path) && self.multi.contains(p),
+            None => false,
+        }
+    }
+
+    /// A click on `path` in the listed `order`: plain selects just it, Ctrl adds or removes
+    /// it, Shift selects everything from the anchor to it.
+    pub fn click_select(&mut self, path: &Path, ctrl: bool, shift: bool, order: &[PathBuf]) {
+        if shift {
+            let anchor = self
+                .anchor
+                .clone()
+                .or_else(|| self.selected.clone())
+                .unwrap_or_else(|| path.to_path_buf());
+            let a = order.iter().position(|p| *p == anchor);
+            let b = order.iter().position(|p| p == path);
+            if let (Some(a), Some(b)) = (a, b) {
+                let (lo, hi) = (a.min(b), a.max(b));
+                let range = order[lo..=hi].iter().cloned();
+                // Ctrl+Shift adds the range to what was selected.
+                self.multi = if ctrl { self.selection() } else { Vec::new() };
+                for p in range {
+                    if !self.multi.contains(&p) {
+                        self.multi.push(p);
+                    }
+                }
+                self.anchor = Some(anchor);
+                self.selected = Some(path.to_path_buf());
+                return;
+            }
+        }
+        if ctrl {
+            let mut set = self.selection();
+            match set.iter().position(|p| p == path) {
+                Some(i) => {
+                    set.remove(i);
+                    self.selected = set.last().cloned();
+                }
+                None => {
+                    set.push(path.to_path_buf());
+                    self.selected = Some(path.to_path_buf());
+                }
+            }
+            self.multi = set;
+            self.anchor = Some(path.to_path_buf());
+            return;
+        }
+        self.selected = Some(path.to_path_buf());
+        self.multi.clear();
+        self.anchor = Some(path.to_path_buf());
+    }
+
     pub fn open(root: PathBuf) -> Self {
         let assets = root.join("Assets");
         let _ = std::fs::create_dir_all(&assets);
@@ -147,6 +216,8 @@ impl ProjectBrowser {
             root,
             current: assets.clone(),
             selected: None,
+            multi: Vec::new(),
+            anchor: None,
             search: String::new(),
             icon_size: 0.5,
             tree: FolderNode {

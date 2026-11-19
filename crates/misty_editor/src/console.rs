@@ -60,6 +60,8 @@ pub struct LogEntry {
     pub message: String,
     /// `HH:MM:SS` wall-clock time (UTC).
     pub time: String,
+    /// Taken back (a C# compile error that has since been fixed): no longer listed or counted.
+    pub retracted: bool,
 }
 
 /// One row of the Console list: the line it shows and how many lines it stands for (more than
@@ -83,7 +85,8 @@ struct Filter {
 
 impl Filter {
     fn passes(&self, e: &LogEntry) -> bool {
-        self.show[e.level.slot()]
+        !e.retracted
+            && self.show[e.level.slot()]
             && (self.needle.is_empty() || e.message.to_lowercase().contains(&self.needle))
     }
 }
@@ -126,6 +129,8 @@ pub struct Console {
     pub search: String,
     /// Index of the selected line.
     pub selected: Option<u64>,
+    /// The lines of the last failed C# compile (see [`Console::set_compile_errors`]).
+    compile_errors: Vec<u64>,
 }
 
 impl Default for Console {
@@ -144,6 +149,7 @@ impl Default for Console {
             show_errors: true,
             search: String::new(),
             selected: None,
+            compile_errors: Vec::new(),
         }
     }
 }
@@ -170,6 +176,7 @@ impl Console {
             level,
             message,
             time: clock_time(),
+            retracted: false,
         });
         self.row_added(index);
     }
@@ -182,12 +189,82 @@ impl Console {
         self.log(LogLevel::Warning, message);
     }
 
+    /// Take a line back: it stays in the store (indices don't move) but is no longer listed,
+    /// counted or returned by [`Console::since`] / [`Console::last`].
+    pub fn retract(&mut self, index: u64) {
+        let Some(at) = index.checked_sub(self.first_index) else {
+            return;
+        };
+        let Some(e) = usize::try_from(at)
+            .ok()
+            .and_then(|at| self.entries.get_mut(at))
+        else {
+            return;
+        };
+        if e.retracted {
+            return;
+        }
+        e.retracted = true;
+        let slot = e.level.slot();
+        self.counts[slot] = self.counts[slot].saturating_sub(1);
+        if self.selected == Some(index) {
+            self.selected = None;
+        }
+        self.rows.valid = false;
+    }
+
+    /// Show the errors of the latest C# compile in place of the previous compile's: one line
+    /// per error (each opens its script on double-click). An empty list takes the old ones
+    /// back, like the familiar engine once the scripts compile again.
+    pub fn set_compile_errors<S: Into<String>>(&mut self, errors: impl IntoIterator<Item = S>) {
+        for index in std::mem::take(&mut self.compile_errors) {
+            self.retract(index);
+        }
+        for e in errors {
+            let index = self.next_index();
+            self.log(LogLevel::Error, e);
+            self.compile_errors.push(index);
+        }
+    }
+
+    /// Report a C# compile (see `csharp::check_project`): its errors one per line, replacing
+    /// the last compile's; none once it compiles. True when it failed.
+    pub fn report_compile(&mut self, result: &Result<(), String>) -> bool {
+        match result {
+            Ok(()) => {
+                self.set_compile_errors(Vec::<String>::new());
+                false
+            }
+            Err(message) => {
+                let mut lines = message.lines().map(str::trim).filter(|l| !l.is_empty());
+                let first = lines.next().unwrap_or("C# scripts did not compile.");
+                let errors: Vec<&str> = lines.collect();
+                // "C# scripts did not compile:" heads the compiler's lines; without them the
+                // message itself is the error (no SDK, a crashed compiler).
+                if errors.is_empty() {
+                    self.set_compile_errors([first]);
+                } else {
+                    self.set_compile_errors(errors);
+                }
+                true
+            }
+        }
+    }
+
+    /// Log a line that goes away with the compile errors (Play refused because of them).
+    pub fn log_with_compile_errors(&mut self, message: impl Into<String>) {
+        let index = self.next_index();
+        self.log(LogLevel::Error, message);
+        self.compile_errors.push(index);
+    }
+
     /// Empty the Console and zero the counters. Indices go on from where they were.
     pub fn clear(&mut self) {
         self.first_index = self.next_index();
         self.entries = VecDeque::new();
         self.counts = [0; 3];
         self.selected = None;
+        self.compile_errors.clear();
         self.rows.valid = false;
         self.rows.rows = VecDeque::new();
         self.rows.seen = HashMap::new();
@@ -210,7 +287,7 @@ impl Console {
     }
 
     pub fn last(&self) -> Option<&LogEntry> {
-        self.entries.back()
+        self.entries.iter().rev().find(|e| !e.retracted)
     }
 
     /// Index of the oldest line still kept (= `next_index` when there is none).
@@ -239,6 +316,7 @@ impl Console {
             .iter()
             .enumerate()
             .skip(skip)
+            .filter(|(_, e)| !e.retracted)
             .map(move |(i, e)| (first + i as u64, e))
     }
 

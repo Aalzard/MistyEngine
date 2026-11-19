@@ -489,3 +489,29 @@ fn right_click_on_empty_hierarchy_space_opens_the_create_menu() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn ctrl_and_shift_clicks_select_many_assets() {
+    let root = temp_project("multi select");
+    let mut b = ProjectBrowser::open(root.clone());
+    let order: Vec<PathBuf> = (0..6)
+        .map(|i| root.join(format!("Assets/f{i}.txt")))
+        .collect();
+    b.click_select(&order[1], false, false, &order);
+    b.click_select(&order[4], false, true, &order);
+    assert_eq!(b.selection(), order[1..=4].to_vec());
+    assert_eq!(b.selected.as_ref(), Some(&order[4]));
+    b.click_select(&order[2], true, false, &order);
+    assert!(!b.is_selected(&order[2]));
+    assert!(b.is_selected(&order[3]));
+    b.click_select(&order[0], true, false, &order);
+    assert_eq!(b.selection().len(), 4);
+    assert!(b.is_selected(&order[0]));
+    // Code that selects one asset the old way drops the rest.
+    b.selected = Some(order[5].clone());
+    assert_eq!(b.selection(), [order[5].clone()]);
+    assert!(!b.is_selected(&order[0]));
+    b.click_select(&order[2], false, false, &order);
+    assert_eq!(b.selection(), [order[2].clone()]);
+    let _ = std::fs::remove_dir_all(&root);
+}

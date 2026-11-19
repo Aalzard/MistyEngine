@@ -408,6 +408,13 @@ impl EditorApp {
             if matches!(key, Key::Delete | Key::D) && self.state.light_probes.wants_keys() {
                 continue;
             }
+            // The Build Profiles scene list removes its selected rows (and selects all) itself.
+            if matches!(key, Key::Delete | Key::Backspace | Key::A)
+                && self.state.build_window.open
+                && self.state.build_window.list_focused
+            {
+                continue;
+            }
             if key == Key::Delete
                 && (self.state.animation.wants_delete()
                     || self.state.animator.wants_delete()
@@ -720,10 +727,12 @@ impl EditorApp {
                 s.console.log(LogLevel::Error, err);
             }
             // A saved C# script was compiled in the background.
-            match misty_engine::scripting::csharp::take_background_check() {
-                Some(Err(e)) => s.console.log(LogLevel::Error, e),
-                Some(Ok(())) => s.console.info("C# scripts compiled."),
-                None => {}
+            // Its errors replace the last compile's (fixed ones disappear).
+            if let Some(result) = misty_engine::scripting::csharp::take_background_check() {
+                s.code_editor.csharp_compiled();
+                if !s.console.report_compile(&result) {
+                    s.console.info("C# scripts compiled.");
+                }
             }
             // Look again soon while it compiles, even if nothing else wakes the editor.
             if misty_engine::scripting::csharp::background_check_running() {

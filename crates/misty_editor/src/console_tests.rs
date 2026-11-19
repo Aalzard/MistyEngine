@@ -304,3 +304,42 @@ fn huge_lines_are_cut() {
     c.log(LogLevel::Info, "short");
     assert_eq!(c.last().unwrap().message, "short");
 }
+
+#[test]
+fn fixed_compile_errors_leave_the_console() {
+    let mut c = Console::default();
+    c.info("before");
+    let failed: Result<(), String> = Err(
+        "C# scripts did not compile:\nAssets/A.cs(3,1): error CS1002: ; expected\nAssets/B.cs(9,5): error CS0103: nope"
+            .into(),
+    );
+    assert!(c.report_compile(&failed));
+    c.log_with_compile_errors(
+        "All compiler errors have to be fixed before you can enter Play mode.",
+    );
+    assert_eq!(c.count(LogLevel::Error), 3);
+    assert_eq!(c.rows().len(), 4);
+    // One line per error, so each opens its own script.
+    let first = c.rows()[1].index;
+    assert!(
+        c.get(first)
+            .unwrap()
+            .message
+            .starts_with("Assets/A.cs(3,1)")
+    );
+    // Compiled again with one error left: it replaces the old three.
+    let one: Result<(), String> =
+        Err("C# scripts did not compile:\nAssets/B.cs(9,5): error CS0103: nope".into());
+    c.report_compile(&one);
+    assert_eq!(c.count(LogLevel::Error), 1);
+    assert_eq!(c.rows().len(), 2);
+    // Fixed: no errors left, the earlier line stays.
+    assert!(!c.report_compile(&Ok(())));
+    assert_eq!(c.count(LogLevel::Error), 0);
+    let texts: Vec<String> = c.since(0).map(|(_, e)| e.message.clone()).collect();
+    assert_eq!(texts, ["before"]);
+    assert_eq!(c.last().unwrap().message, "before");
+    // A message without the compiler's lines is the error itself.
+    c.report_compile(&Err("the .NET SDK was not found".into()));
+    assert_eq!(c.last().unwrap().message, "the .NET SDK was not found");
+}

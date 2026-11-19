@@ -199,8 +199,26 @@ impl Document {
             }
             return false;
         }
+        if misty_engine::scripting::csharp::is_csharp_path(&self.path) {
+            // The compiler's error for this script, while the text is what was compiled.
+            self.diagnostic = (!self.dirty())
+                .then(|| {
+                    diagnostics::csharp(
+                        &self.path,
+                        self.editor.buf.lines(),
+                        &misty_engine::scripting::csharp::last_errors(),
+                    )
+                })
+                .flatten();
+            return false;
+        }
         self.diagnostic = diagnostics::check(&source, &self.path, self.editor.buf.lines());
         false
+    }
+
+    /// Check again on the next frame (a C# compile finished).
+    pub fn recheck(&mut self) {
+        self.checked_version = None;
     }
 }
 
@@ -215,6 +233,15 @@ pub struct CodeEditor {
 }
 
 impl CodeEditor {
+    /// A C# compile finished: open C# scripts mark its errors (or drop the fixed ones).
+    pub fn csharp_compiled(&mut self) {
+        for d in &mut self.docs {
+            if misty_engine::scripting::csharp::is_csharp_path(&d.path) {
+                d.recheck();
+            }
+        }
+    }
+
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),

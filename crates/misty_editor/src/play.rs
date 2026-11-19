@@ -73,10 +73,10 @@ pub fn start(s: &mut EditorState) {
     // build made in the background when it opened).
     {
         misty_engine::profile_scope!("Play.Start.CompileCSharp");
-        if let Err(e) = misty_engine::scripting::csharp::check_project(&s.project.root) {
-            s.console.log(LogLevel::Error, e);
-            s.console.log(
-                LogLevel::Error,
+        let result = misty_engine::scripting::csharp::check_project(&s.project.root);
+        s.code_editor.csharp_compiled();
+        if s.console.report_compile(&result) {
+            s.console.log_with_compile_errors(
                 "All compiler errors have to be fixed before you can enter Play mode.",
             );
             return;

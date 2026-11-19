@@ -33,13 +33,110 @@ pub enum Page {
     Profile(usize),
 }
 
+/// Selected rows of a scene list: click, Ctrl+click (add or remove) and Shift+click (range).
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct SceneSelection {
+    /// Selected row indices, ascending.
+    pub rows: Vec<usize>,
+    /// Where Shift ranges start (the last plain or Ctrl click).
+    pub anchor: Option<usize>,
+}
+
+impl SceneSelection {
+    pub fn clear(&mut self) {
+        self.rows.clear();
+        self.anchor = None;
+    }
+
+    pub fn contains(&self, i: usize) -> bool {
+        self.rows.binary_search(&i).is_ok()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Select just row `i`.
+    pub fn only(i: usize) -> Self {
+        Self {
+            rows: vec![i],
+            anchor: Some(i),
+        }
+    }
+
+    /// A click on row `i` with Ctrl and/or Shift held.
+    pub fn click(&mut self, i: usize, ctrl: bool, shift: bool) {
+        if shift {
+            let a = self.anchor.unwrap_or(i);
+            if !ctrl {
+                self.rows.clear();
+            }
+            self.rows.extend(a.min(i)..=a.max(i));
+            self.anchor = Some(a);
+        } else if ctrl {
+            match self.rows.binary_search(&i) {
+                Ok(at) => {
+                    self.rows.remove(at);
+                }
+                Err(_) => self.rows.push(i),
+            }
+            self.anchor = Some(i);
+        } else {
+            *self = Self::only(i);
+        }
+        self.rows.sort_unstable();
+        self.rows.dedup();
+    }
+
+    /// Remove the selected rows from `list`; true when some were.
+    pub fn remove_from<T>(&mut self, list: &mut Vec<T>) -> bool {
+        let mut removed = false;
+        for &i in self.rows.iter().rev() {
+            if i < list.len() {
+                list.remove(i);
+                removed = true;
+            }
+        }
+        self.clear();
+        removed
+    }
+
+    /// Move the selected rows one place up (`dir` -1) or down (1), keeping them selected;
+    /// false when one of them is already at that end.
+    pub fn shift<T>(&mut self, list: &mut [T], dir: isize) -> bool {
+        self.rows.retain(|&i| i < list.len());
+        let (Some(&first), Some(&last)) = (self.rows.first(), self.rows.last()) else {
+            return false;
+        };
+        if (dir < 0 && first == 0) || (dir > 0 && last + 1 >= list.len()) {
+            return false;
+        }
+        let order: Vec<usize> = if dir < 0 {
+            self.rows.clone()
+        } else {
+            self.rows.iter().rev().copied().collect()
+        };
+        for i in order {
+            let j = (i as isize + dir) as usize;
+            list.swap(i, j);
+        }
+        for i in &mut self.rows {
+            *i = (*i as isize + dir) as usize;
+        }
+        self.anchor = self.anchor.map(|a| (a as isize + dir).max(0) as usize);
+        true
+    }
+}
+
 /// Window state.
 #[derive(Default)]
 pub struct BuildSettingsWindow {
     pub open: bool,
     pub page: Page,
-    /// Selected row of the scene list shown.
-    pub selected: Option<usize>,
+    /// Selected rows of the scene list shown.
+    pub selected: SceneSelection,
+    /// The last click landed in the scene list: Delete removes its selected rows.
+    pub list_focused: bool,
     /// The running or last build.
     pub job: Option<BuildJob>,
     /// Custom profile being renamed and the name typed so far.
@@ -223,7 +320,7 @@ fn sidebar(ui: &mut Ui, s: &mut EditorState) {
         .clicked()
     {
         s.build_window.page = Page::SceneList;
-        s.build_window.selected = None;
+        s.build_window.selected.clear();
     }
     ui.add_space(6.0);
     ui.weak("Platforms");
@@ -335,7 +432,7 @@ fn profile_row_text(p: &BuildProfile, active: bool) -> String {
 
 fn select(s: &mut EditorState, i: usize) {
     s.build_window.page = Page::Profile(i);
-    s.build_window.selected = None;
+    s.build_window.selected.clear();
     s.build_window.report = None;
 }
 
@@ -413,34 +510,33 @@ fn scene_editor_buttons_clicked(ui: &mut Ui, s: &mut EditorState, profile: Optio
             Some(i) => &mut s.build_profiles.profiles[i].scenes,
             None => &mut s.build_settings.scenes,
         };
-        edited |= scene_list(ui, list, selected);
+        let focused = &mut s.build_window.list_focused;
+        edited |= scene_list(ui, list, selected, focused);
         ui.horizontal(|ui| {
-            let sel = *selected;
+            selected.rows.retain(|&i| i < list.len());
             let len = list.len();
-            let can_up = sel.is_some_and(|i| i > 0 && i < len);
-            let can_down = sel.is_some_and(|i| i + 1 < len);
+            let can_up = selected.rows.first().is_some_and(|&i| i > 0);
+            let can_down = selected.rows.last().is_some_and(|&i| i + 1 < len);
             if ui
                 .add_enabled(can_up, egui::Button::new("⏶"))
                 .on_hover_text("Move Up")
                 .clicked()
             {
-                edited |= move_selected(list, selected, -1);
+                edited |= selected.shift(list, -1);
             }
             if ui
                 .add_enabled(can_down, egui::Button::new("⏷"))
                 .on_hover_text("Move Down")
                 .clicked()
             {
-                edited |= move_selected(list, selected, 1);
+                edited |= selected.shift(list, 1);
             }
             if ui
-                .add_enabled(sel.is_some(), egui::Button::new("Remove Selected"))
+                .add_enabled(!selected.is_empty(), egui::Button::new("Remove Selected"))
+                .on_hover_text("Remove the selected scenes from the list (Delete)")
                 .clicked()
-                && let Some(i) = sel.filter(|i| *i < len)
             {
-                list.remove(i);
-                *selected = None;
-                edited = true;
+                edited |= selected.remove_from(list);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Add Open Scenes").clicked() {
@@ -517,7 +613,7 @@ fn profile_page(ui: &mut Ui, s: &mut EditorState, i: usize) {
                 if prof.override_scenes && prof.scenes.is_empty() {
                     prof.scenes = s.build_settings.scenes.clone();
                 }
-                s.build_window.selected = None;
+                s.build_window.selected.clear();
                 edited = true;
             }
         });
@@ -1037,10 +1133,17 @@ fn open_path(path: &Path) -> std::io::Result<()> {
         .map(|_| ())
 }
 
-/// Rows: enabled checkbox, path, build index on the right. Returns true if edited.
-fn scene_list(ui: &mut Ui, scenes: &mut [BuildScene], selected: &mut Option<usize>) -> bool {
+/// Rows: enabled checkbox, path, build index on the right; click, Ctrl+click and Shift+click
+/// select, Delete removes the selected rows (after a click in the list), Ctrl+A selects all.
+/// Returns true if edited.
+fn scene_list(
+    ui: &mut Ui,
+    scenes: &mut Vec<BuildScene>,
+    selected: &mut SceneSelection,
+    focused: &mut bool,
+) -> bool {
     let mut edited = false;
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    let frame = egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.set_min_height(80.0);
         ui.set_width(ui.available_width());
         egui::ScrollArea::vertical()
@@ -1055,10 +1158,11 @@ fn scene_list(ui: &mut Ui, scenes: &mut [BuildScene], selected: &mut Option<usiz
                     ui.horizontal(|ui| {
                         edited |= ui.checkbox(&mut row.enabled, "").changed();
                         if ui
-                            .selectable_label(*selected == Some(i), &row.path)
+                            .selectable_label(selected.contains(i), &row.path)
                             .clicked()
                         {
-                            *selected = Some(i);
+                            let m = ui.input(|i| i.modifiers);
+                            selected.click(i, m.command, m.shift);
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if row.enabled {
@@ -1072,20 +1176,27 @@ fn scene_list(ui: &mut Ui, scenes: &mut [BuildScene], selected: &mut Option<usiz
                 }
             });
     });
-    edited
-}
-
-fn move_selected(list: &mut [BuildScene], selected: &mut Option<usize>, dir: isize) -> bool {
-    let Some(i) = *selected else {
-        return false;
-    };
-    let j = i as isize + dir;
-    if j < 0 || j as usize >= list.len() || i >= list.len() {
-        return false;
+    // Keys go to the list after a click in it (until a click elsewhere).
+    let rect = frame.response.rect;
+    if let Some(pos) = ui.input(|i| i.pointer.press_origin().filter(|_| i.pointer.any_pressed())) {
+        *focused = rect.contains(pos);
     }
-    list.swap(i, j as usize);
-    *selected = Some(j as usize);
-    true
+    if *focused && !ui.ctx().egui_wants_keyboard_input() {
+        let (delete, all) = ui.input_mut(|i| {
+            (
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
+                    | i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace),
+                i.consume_key(egui::Modifiers::COMMAND, egui::Key::A),
+            )
+        });
+        if delete {
+            edited |= selected.remove_from(scenes);
+        }
+        if all {
+            selected.rows = (0..scenes.len()).collect();
+        }
+    }
+    edited
 }
 
 /// Build the active profile (and optionally run). `pick` = ask for the folder even if the
