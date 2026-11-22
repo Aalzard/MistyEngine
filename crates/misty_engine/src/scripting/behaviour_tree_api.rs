@@ -45,7 +45,7 @@ fn to_lua(lua: &Lua, w: &World, v: &BbValue) -> Result<Value> {
         BbValue::Bool(b) => Value::Boolean(*b),
         BbValue::Int(i) => Value::Integer(*i),
         BbValue::Float(f) => Value::Number(f64::from(*f)),
-        BbValue::Vector(v) => Value::UserData(lua.create_userdata(LVec3(*v))?),
+        BbValue::Vector(v) => mlua::IntoLua::into_lua(LVec3(*v), lua)?,
         BbValue::Object(ObjRef(Some(e))) if w.scene.contains(*e) => {
             Value::UserData(lua.create_userdata(LGameObject(*e))?)
         }
@@ -62,10 +62,11 @@ fn from_lua(v: &Value) -> Result<BbValue> {
         Value::Integer(i) => BbValue::Int(*i),
         Value::Number(n) => BbValue::Float(*n as f32),
         Value::String(s) => BbValue::String((*s.to_str()?).to_owned()),
+        Value::Table(_) if super::api::vec3_in(v).is_some() => {
+            BbValue::Vector(super::api::vec3_in(v).unwrap_or_default())
+        }
         Value::UserData(ud) => {
-            if let Ok(v) = ud.borrow::<LVec3>() {
-                BbValue::Vector(v.0)
-            } else if let Ok(g) = ud.borrow::<LGameObject>() {
+            if let Ok(g) = ud.borrow::<LGameObject>() {
                 BbValue::Object(ObjRef(Some(g.0)))
             } else {
                 return Err(mlua::Error::runtime(

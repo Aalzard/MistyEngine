@@ -317,10 +317,10 @@ fn json_of(v: &Value, depth: usize, walk: &mut Walk) -> serde_json::Value {
         Value::Integer(i) => J::from(*i),
         Value::Number(n) => serde_json::Number::from_f64(*n).map_or(J::Null, J::Number),
         Value::String(s) => J::String(s.to_string_lossy()),
-        Value::UserData(ud) if ud.is::<LVec3>() => match ud.borrow::<LVec3>() {
-            Ok(p) => serde_json::json!({ "$type": "Vector3", "x": p.0.x, "y": p.0.y, "z": p.0.z }),
-            Err(_) => J::Null,
-        },
+        Value::Table(_) if super::api::vec3_in(v).is_some() => {
+            let p = super::api::vec3_in(v).unwrap_or_default();
+            serde_json::json!({ "$type": "Vector3", "x": p.x, "y": p.y, "z": p.z })
+        }
         Value::Table(t) => {
             let id = t.to_pointer();
             if walk.path.contains(&id) {
@@ -385,7 +385,7 @@ pub fn to_lua(lua: &Lua, v: &serde_json::Value, depth: usize) -> Result<Value> {
         }
         J::Object(map) if map.get("$type").and_then(J::as_str) == Some("Vector3") => {
             let f = |k: &str| map.get(k).and_then(J::as_f64).unwrap_or(0.0) as f32;
-            Value::UserData(lua.create_userdata(LVec3(glam::Vec3::new(f("x"), f("y"), f("z"))))?)
+            mlua::IntoLua::into_lua(LVec3(glam::Vec3::new(f("x"), f("y"), f("z"))), lua)?
         }
         J::Object(map) => {
             let t = lua.create_table()?;

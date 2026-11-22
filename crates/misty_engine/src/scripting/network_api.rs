@@ -246,8 +246,8 @@ pub fn to_net(w: &World, v: &Value, depth: usize) -> std::result::Result<NetValu
         Value::Integer(i) => NetValue::Int(*i),
         Value::Number(n) => NetValue::Number(*n),
         Value::String(s) => NetValue::Text(s.to_string_lossy()),
-        Value::UserData(ud) if ud.is::<LVec3>() => {
-            NetValue::Vector3(ud.borrow::<LVec3>().map_err(|e| e.to_string())?.0)
+        Value::Table(_) if super::api::vec3_in(v).is_some() => {
+            NetValue::Vector3(super::api::vec3_in(v).unwrap_or_default())
         }
         Value::UserData(ud) if ud.is::<LGameObject>() || ud.is::<LNetworkObject>() => {
             let e = if ud.is::<LGameObject>() {
@@ -292,7 +292,7 @@ pub fn from_net(lua: &Lua, w: &World, v: &NetValue) -> Result<Value> {
         NetValue::Int(i) => Value::Integer(*i),
         NetValue::Number(n) => Value::Number(*n),
         NetValue::Text(s) => Value::String(lua.create_string(s)?),
-        NetValue::Vector3(v) => Value::UserData(lua.create_userdata(LVec3(*v))?),
+        NetValue::Vector3(v) => mlua::IntoLua::into_lua(LVec3(*v), lua)?,
         NetValue::Object(id) => match w.network.objects.get(id) {
             Some(o) if w.scene.contains(o.entity) => {
                 Value::UserData(lua.create_userdata(LGameObject(o.entity))?)

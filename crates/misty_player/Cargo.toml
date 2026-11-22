@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 misty_engine = { path = "../misty_engine" }
+mimalloc.workspace = true
 winit = "0.30"
 pollster = "0.4"
 png = "0.18"

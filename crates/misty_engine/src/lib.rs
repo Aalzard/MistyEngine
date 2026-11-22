@@ -2,6 +2,10 @@
 //!
 //! Coordinate system matches the editor conventions users expect: left-handed, +Y up, +Z forward,
 //! +X right. Euler angles are degrees applied in Z, X, Y order.
+// Tests use the editor's and player's allocator, so timings match theirs.
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 pub mod accessibility;
 pub mod achievements;

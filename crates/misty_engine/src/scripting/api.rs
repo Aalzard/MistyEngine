@@ -37,10 +37,102 @@ pub(super) fn missing() -> mlua::Error {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LVec3(pub Vec3);
 
+/// A script's Vector3 is a plain Lua table `{x, y, z}` with a shared metatable (arithmetic,
+/// `magnitude`, `normalized`, `tostring`), not a userdata: reading `v.x` is a table read
+/// instead of a call into Rust (~100 ns), and making one is a table instead of a userdata
+/// with a finalizer (~400 ns, and twice the garbage collector's work).
+const VECTOR3_LUA: &str = r#"
+local setmetatable, sqrt, type, fmt, huge = setmetatable, math.sqrt, type, string.format, math.huge
+local V = { __name = "Vector3" }
+local function new(x, y, z) return setmetatable({ x = x, y = y, z = z }, V) end
+local function vec(o)
+    if type(o) ~= "table" then error("expected Vector3, got " .. type(o), 3) end
+    return o
+end
+V.__index = function(v, k)
+    if k == "magnitude" then
+        return sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+    elseif k == "sqrMagnitude" then
+        return v.x * v.x + v.y * v.y + v.z * v.z
+    elseif k == "normalized" then
+        local m = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+        if m > 0 and m < huge then return new(v.x / m, v.y / m, v.z / m) end
+        return new(0.0, 0.0, 0.0)
+    end
+end
+V.__add = function(a, b) a, b = vec(a), vec(b) return new(a.x + b.x, a.y + b.y, a.z + b.z) end
+V.__sub = function(a, b) a, b = vec(a), vec(b) return new(a.x - b.x, a.y - b.y, a.z - b.z) end
+V.__unm = function(a) return new(-a.x, -a.y, -a.z) end
+V.__mul = function(a, b)
+    if type(a) == "number" then b = vec(b) return new(b.x * a, b.y * a, b.z * a) end
+    if type(b) == "number" then a = vec(a) return new(a.x * b, a.y * b, a.z * b) end
+    a, b = vec(a), vec(b)
+    return new(a.x * b.x, a.y * b.y, a.z * b.z)
+end
+V.__div = function(a, k)
+    a = vec(a)
+    if type(k) ~= "number" then error("expected a number, got " .. type(k), 2) end
+    return new(a.x / k, a.y / k, a.z / k)
+end
+V.__eq = function(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end
+V.__tostring = function(v) return fmt("(%.2f, %.2f, %.2f)", v.x, v.y, v.z) end
+local function make(x, y, z) return new((x or 0) + 0.0, (y or 0) + 0.0, (z or 0) + 0.0) end
+return V, make
+"#;
+
+/// The Vector3 metatable of a Lua state (set by [`register`]).
+struct Vec3Meta(Table);
+
+/// `t` is a Vector3 (has the Vector3 metatable).
+fn is_vec3_table(lua: &Lua, t: &Table) -> bool {
+    match (t.metatable(), lua.app_data_ref::<Vec3Meta>()) {
+        (Some(m), Some(v)) => m == v.0,
+        _ => false,
+    }
+}
+
+/// The vector held by `v` when it is a script Vector3 (a table whose metatable is named
+/// "Vector3"; for code without the `Lua` at hand: saving, networking, the Inspector).
+pub fn vec3_in(v: &Value) -> Option<Vec3> {
+    let Value::Table(t) = v else {
+        return None;
+    };
+    let named = t
+        .metatable()
+        .and_then(|m| m.raw_get::<Option<mlua::String>>("__name").ok().flatten())
+        .is_some_and(|n| n.as_bytes() == b"Vector3".as_slice());
+    if !named {
+        return None;
+    }
+    Some(Vec3::new(
+        t.raw_get("x").ok()?,
+        t.raw_get("y").ok()?,
+        t.raw_get("z").ok()?,
+    ))
+}
+
+impl mlua::IntoLua for LVec3 {
+    fn into_lua(self, lua: &Lua) -> Result<Value> {
+        let t = lua.create_table_with_capacity(0, 3)?;
+        t.raw_set("x", self.0.x)?;
+        t.raw_set("y", self.0.y)?;
+        t.raw_set("z", self.0.z)?;
+        if let Some(m) = lua.app_data_ref::<Vec3Meta>() {
+            t.set_metatable(Some(m.0.clone()))?;
+        }
+        Ok(Value::Table(t))
+    }
+}
+
 impl FromLua for LVec3 {
-    fn from_lua(value: Value, _: &Lua) -> Result<Self> {
+    fn from_lua(value: Value, lua: &Lua) -> Result<Self> {
         match value {
-            Value::UserData(ud) => Ok(*ud.borrow::<LVec3>()?),
+            // A Vector3: plain fields (no metamethods to go through).
+            Value::Table(t) if is_vec3_table(lua, &t) => Ok(LVec3(Vec3::new(
+                t.raw_get("x")?,
+                t.raw_get("y")?,
+                t.raw_get("z")?,
+            ))),
             Value::Table(t) => Ok(LVec3(Vec3::new(t.get("x")?, t.get("y")?, t.get("z")?))),
             other => Err(mlua::Error::runtime(format!(
                 "expected Vector3, got {}",
@@ -68,55 +160,6 @@ pub fn vec_args(lua: &Lua, args: &[Value]) -> Result<Vec3> {
         )),
         [v, ..] => Ok(LVec3::from_lua(v.clone(), lua)?.0),
         [] => Err(mlua::Error::runtime("expected a Vector3 or x, y, z")),
-    }
-}
-
-impl UserData for LVec3 {
-    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
-        f.add_field_method_get("x", |_, v| Ok(v.0.x));
-        f.add_field_method_get("y", |_, v| Ok(v.0.y));
-        f.add_field_method_get("z", |_, v| Ok(v.0.z));
-        f.add_field_method_set("x", |_, v, x: f32| {
-            v.0.x = x;
-            Ok(())
-        });
-        f.add_field_method_set("y", |_, v, y: f32| {
-            v.0.y = y;
-            Ok(())
-        });
-        f.add_field_method_set("z", |_, v, z: f32| {
-            v.0.z = z;
-            Ok(())
-        });
-        f.add_field_method_get("magnitude", |_, v| Ok(v.0.length()));
-        f.add_field_method_get("sqrMagnitude", |_, v| Ok(v.0.length_squared()));
-        f.add_field_method_get("normalized", |_, v| Ok(LVec3(v.0.normalize_or_zero())));
-    }
-
-    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
-        m.add_meta_function(MetaMethod::Add, |_, (a, b): (LVec3, LVec3)| {
-            Ok(LVec3(a.0 + b.0))
-        });
-        m.add_meta_function(MetaMethod::Sub, |_, (a, b): (LVec3, LVec3)| {
-            Ok(LVec3(a.0 - b.0))
-        });
-        m.add_meta_function(MetaMethod::Unm, |_, a: LVec3| Ok(LVec3(-a.0)));
-        m.add_meta_function(MetaMethod::Mul, |lua, (a, b): (Value, Value)| {
-            match (number(&a), number(&b)) {
-                (Some(k), None) => Ok(LVec3(LVec3::from_lua(b, lua)?.0 * k)),
-                (None, Some(k)) => Ok(LVec3(LVec3::from_lua(a, lua)?.0 * k)),
-                _ => Ok(LVec3(
-                    LVec3::from_lua(a, lua)?.0 * LVec3::from_lua(b, lua)?.0,
-                )),
-            }
-        });
-        m.add_meta_function(MetaMethod::Div, |_, (a, k): (LVec3, f32)| {
-            Ok(LVec3(a.0 / k))
-        });
-        m.add_meta_function(MetaMethod::Eq, |_, (a, b): (LVec3, LVec3)| Ok(a.0 == b.0));
-        m.add_meta_method(MetaMethod::ToString, |_, v, ()| {
-            Ok(format!("({:.2}, {:.2}, {:.2})", v.0.x, v.0.y, v.0.z))
-        });
     }
 }
 
@@ -813,18 +856,12 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
 
-    // Vector3
+    // Vector3 (tables with a shared metatable, see VECTOR3_LUA)
+    let (meta, make): (Table, mlua::Function) =
+        lua.load(VECTOR3_LUA).set_name("=Vector3").call(())?;
+    lua.set_app_data(Vec3Meta(meta));
     let v3 = lua.create_table()?;
-    v3.set(
-        "new",
-        lua.create_function(|_, (x, y, z): (Option<f32>, Option<f32>, Option<f32>)| {
-            Ok(LVec3(Vec3::new(
-                x.unwrap_or(0.0),
-                y.unwrap_or(0.0),
-                z.unwrap_or(0.0),
-            )))
-        })?,
-    )?;
+    v3.set("new", make)?;
     for (name, v) in [
         ("zero", Vec3::ZERO),
         ("one", Vec3::ONE),

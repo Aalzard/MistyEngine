@@ -58,3 +58,5 @@ rustybuzz = "0.20.1"
 pollster = "0.4"
 # Test Runner: checks the JUnit results are well-formed XML.
 quick-xml = "0.41"
+# Tests run on the allocator the editor and player use.
+mimalloc.workspace = true
