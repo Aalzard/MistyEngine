@@ -1450,6 +1450,19 @@ pub fn object_fits(scene: &misty_engine::scene::Scene, e: Entity, kind: &str) ->
     match kind {
         "" | "GameObject" | "Transform" | "Component" | "Object" => true,
         "InputField" => scene.component_names(e).iter().any(|n| n == "Input Field"),
+        "Rigidbody2D" => scene.component_names(e).iter().any(|n| n == "Rigidbody 2D"),
+        "Collider2D" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n.ends_with("Collider 2D")),
+        "NavMeshAgent" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n == "Nav Mesh Agent"),
+        "ParticleSystem" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n == "Particle System"),
         "Rigidbody" | "Animator" | "Camera" | "Light" | "Text" | "Image" | "Button" | "Toggle"
         | "Slider" => scene.component_names(e).iter().any(|n| n == kind),
         "Renderer" | "MeshRenderer" => scene

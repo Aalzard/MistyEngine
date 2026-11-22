@@ -1340,6 +1340,130 @@ namespace Misty
         public static bool visible { get => Get(3) != 0; set => Set(3, value ? 1 : 0); }
     }
 
+    // ---- 2D physics ----------------------------------------------------------------------------
+
+    public enum ForceMode2D { Force, Impulse }
+
+    /// <summary>A 2D physics body (the object's Rigidbody 2D).</summary>
+    public sealed unsafe class Rigidbody2D : Component
+    {
+        internal readonly ulong id;
+        internal Rigidbody2D(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        Vector3 Op(int op, Vector3 v = default, int mode = 0)
+        {
+            if (Internal.Native.api.rigidbody2d(id, op, &v, mode) == 0) throw Internal.Native.Missing("Rigidbody2D");
+            return v;
+        }
+
+        public Vector2 velocity { get => Op(0); set => Op(1, value); }
+        public Vector2 position => Op(2);
+        /// <summary>Degrees per second, counter-clockwise positive.</summary>
+        public float angularVelocity { get => Op(5).x; set => Op(6, new Vector3(value, 0, 0)); }
+        public float gravityScale { get => Op(7).x; set => Op(8, new Vector3(value, 0, 0)); }
+        public float mass => Op(9).x;
+        /// <summary>Degrees.</summary>
+        public float rotation => Op(10).x;
+        public void AddForce(Vector2 force, ForceMode2D mode = ForceMode2D.Force) => Op(3, force, (int)mode);
+        public void AddTorque(float torque, ForceMode2D mode = ForceMode2D.Force) => Op(12, new Vector3(torque, 0, 0), (int)mode);
+        public void MovePosition(Vector2 position) => Op(4, position);
+        public void MoveRotation(float angle) => Op(11, new Vector3(angle, 0, 0));
+    }
+
+    /// <summary>The 2D colliders of an object (Box, Circle, Capsule, Polygon or Edge Collider 2D).</summary>
+    public sealed class Collider2D : Component
+    {
+        internal readonly ulong id;
+        internal Collider2D(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        /// <summary>The Rigidbody 2D this collider moves with (its own or a parent's), or null.</summary>
+        public Rigidbody2D attachedRigidbody => GetComponentInParent<Rigidbody2D>();
+    }
+
+    /// <summary>What an OnCollisionEnter2D / Stay2D / Exit2D callback hit.</summary>
+    public sealed class Collision2D
+    {
+        readonly ulong id;
+        internal Collision2D(ulong id) { this.id = id; }
+        public GameObject gameObject => new GameObject(id);
+        public Transform transform => new Transform(id);
+        public Collider2D collider => new Collider2D(id);
+        public Rigidbody2D rigidbody => gameObject.GetComponentInParent<Rigidbody2D>();
+    }
+
+    // ---- navigation and particles -----------------------------------------------------------
+
+    public enum NavMeshPathStatus { PathComplete, PathPartial, PathInvalid }
+
+    /// <summary>The object's Nav Mesh Agent: walks the baked nav mesh to a destination.</summary>
+    public sealed unsafe class NavMeshAgent : Component
+    {
+        internal readonly ulong id;
+        internal NavMeshAgent(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        int Call(int op, ref Vector3 v)
+        {
+            Vector3 x = v;
+            int r = Internal.Native.api.navAgent(id, op, &x);
+            if (r == 0) throw Internal.Native.Missing("NavMeshAgent");
+            v = x;
+            return r;
+        }
+
+        Vector3 Get(int op) { var v = Vector3.zero; Call(op, ref v); return v; }
+        void Set(int op, float value) { var v = new Vector3(value, 0, 0); Call(op, ref v); }
+        void Set(int op, Vector3 value) => Call(op, ref value);
+
+        /// <summary>Plan a path to `target`; false when the agent isn't on the nav mesh.</summary>
+        public bool SetDestination(Vector3 target) => Call(0, ref target) == 2;
+        public Vector3 destination { get => Get(1); set => SetDestination(value); }
+        public float remainingDistance => Get(2).x;
+        public bool hasPath => Get(3).x != 0;
+        public bool pathPending => Get(4).x != 0;
+        public bool isOnNavMesh => Get(5).x != 0;
+        public bool isStopped { get => Get(6).x != 0; set => Set(7, value ? 1 : 0); }
+        public Vector3 velocity => Get(8);
+        public Vector3 desiredVelocity => Get(9);
+        public Vector3 nextPosition => Get(20);
+        public NavMeshPathStatus pathStatus => (NavMeshPathStatus)(int)Get(21).x;
+        /// <summary>Jump to the nav mesh point nearest `position` (clears the path).</summary>
+        public bool Warp(Vector3 position) => Call(10, ref position) == 2;
+        public void ResetPath() => Set(11, 0);
+        public float speed { get => Get(12).x; set => Set(13, value); }
+        public float stoppingDistance { get => Get(14).x; set => Set(15, value); }
+        public float angularSpeed { get => Get(16).x; set => Set(17, value); }
+        public float acceleration { get => Get(18).x; set => Set(19, value); }
+        public bool enabled { get => Get(22).x != 0; set => Set(23, value ? 1 : 0); }
+    }
+
+    /// <summary>The object's Particle System (its live emitter).</summary>
+    public sealed unsafe class ParticleSystem : Component
+    {
+        internal readonly ulong id;
+        internal ParticleSystem(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        float Op(int op, float v = 0)
+        {
+            if (Internal.Native.api.particles(id, op, &v) == 0) throw Internal.Native.Missing("ParticleSystem");
+            return v;
+        }
+
+        public void Play() => Op(0);
+        public void Stop() => Op(1);
+        public void Pause() => Op(2);
+        public void Clear() => Op(3);
+        /// <summary>Emit `count` particles now.</summary>
+        public void Emit(int count) => Op(4, count);
+        public bool isPlaying => Op(5) != 0;
+        public bool isPaused => Op(6) != 0;
+        public bool isStopped => Op(7) != 0;
+        public int particleCount => (int)Op(8);
+        public float time => Op(9);
+    }
+
     // ---- UI ----------------------------------------------------------------------------------
 
     /// <summary>An event scripts listen to with AddListener (a Button's onClick).</summary>
@@ -1721,6 +1845,9 @@ namespace Misty.Internal
         public delegate* unmanaged<int, int, Color*, ulong> global;
         public delegate* unmanaged<ulong, int, int, char*, int, int> componentText;
         public delegate* unmanaged<int, char*, int, double*, char*, int, int> prefs;
+        public delegate* unmanaged<ulong, int, Vector3*, int, int> rigidbody2d;
+        public delegate* unmanaged<ulong, int, Vector3*, int> navAgent;
+        public delegate* unmanaged<ulong, int, float*, int> particles;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2038,6 +2165,8 @@ namespace Misty.Internal
             "Awake", "OnEnable", "Start", "Update", "FixedUpdate", "LateUpdate", "OnDisable", "OnDestroy",
             "OnCollisionEnter", "OnCollisionExit", "OnTriggerEnter", "OnTriggerExit",
             "OnCollisionStay", "OnTriggerStay",
+            "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
+            "OnCollisionStay2D", "OnTriggerStay2D",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -2162,6 +2291,16 @@ namespace Misty.Internal
                     {
                         var a = (Action<Collider>)Delegate.CreateDelegate(typeof(Action<Collider>), script, m);
                         return other => a(new Collider(other));
+                    }
+                    if (p == typeof(Collision2D))
+                    {
+                        var a = (Action<Collision2D>)Delegate.CreateDelegate(typeof(Action<Collision2D>), script, m);
+                        return other => a(new Collision2D(other));
+                    }
+                    if (p == typeof(Collider2D))
+                    {
+                        var a = (Action<Collider2D>)Delegate.CreateDelegate(typeof(Action<Collider2D>), script, m);
+                        return other => a(new Collider2D(other));
                     }
                     if (p == typeof(GameObject))
                     {
@@ -2462,7 +2601,9 @@ namespace Misty.Internal
                 : t == typeof(Camera) ? 4 : t == typeof(Light) ? 5
                 : t == typeof(Renderer) || t == typeof(MeshRenderer) ? 6
                 : t == typeof(Text) ? 10 : t == typeof(Image) ? 11 : t == typeof(Button) ? 12
-                : t == typeof(Toggle) ? 13 : t == typeof(Slider) ? 14 : t == typeof(InputField) ? 15 : -1;
+                : t == typeof(Toggle) ? 13 : t == typeof(Slider) ? 14 : t == typeof(InputField) ? 15
+                : t == typeof(Rigidbody2D) ? 20 : t == typeof(Collider2D) ? 21
+                : t == typeof(NavMeshAgent) ? 22 : t == typeof(ParticleSystem) ? 23 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
@@ -2478,7 +2619,11 @@ namespace Misty.Internal
                 12 => new Button(entity),
                 13 => new Toggle(entity),
                 14 => new Slider(entity),
-                _ => new InputField(entity),
+                15 => new InputField(entity),
+                20 => new Rigidbody2D(entity),
+                21 => new Collider2D(entity),
+                22 => new NavMeshAgent(entity),
+                _ => new ParticleSystem(entity),
             };
         }
 

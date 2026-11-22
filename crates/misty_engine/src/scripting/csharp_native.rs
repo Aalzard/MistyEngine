@@ -138,6 +138,9 @@ pub(super) struct NativeApi {
     global: extern "C" fn(i32, i32, *mut V4) -> u64,
     component_text: extern "C" fn(u64, i32, i32, *mut u16, i32) -> i32,
     prefs: extern "C" fn(i32, *const u16, i32, *mut f64, *mut u16, i32) -> i32,
+    rigidbody2d: extern "C" fn(u64, i32, *mut V3, i32) -> i32,
+    nav_agent: extern "C" fn(u64, i32, *mut V3) -> i32,
+    particles: extern "C" fn(u64, i32, *mut f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -188,6 +191,9 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     global,
     component_text,
     prefs,
+    rigidbody2d,
+    nav_agent,
+    particles,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -731,6 +737,20 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             13 => world.get::<&crate::scene::UiToggle>(e).is_ok(),
             14 => world.get::<&crate::scene::UiSlider>(e).is_ok(),
             15 => world.get::<&crate::scene::UiInputField>(e).is_ok(),
+            20 => world.get::<&crate::scene::Rigidbody2D>(e).is_ok(),
+            21 => {
+                use crate::scene::{
+                    BoxCollider2D, CapsuleCollider2D, CircleCollider2D, EdgeCollider2D,
+                    PolygonCollider2D,
+                };
+                world.get::<&BoxCollider2D>(e).is_ok()
+                    || world.get::<&CircleCollider2D>(e).is_ok()
+                    || world.get::<&CapsuleCollider2D>(e).is_ok()
+                    || world.get::<&PolygonCollider2D>(e).is_ok()
+                    || world.get::<&EdgeCollider2D>(e).is_ok()
+            }
+            22 => world.get::<&crate::navigation::NavMeshAgent>(e).is_ok(),
+            23 => world.get::<&crate::particles::ParticleSystem>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -1656,4 +1676,190 @@ extern "C" fn prefs(
         }
         _ => i32::from(prefs::save().is_ok()),
     }
+}
+
+// ---- 2D physics, navigation, particles -----------------------------------------------------
+
+/// A Rigidbody 2D (`v` holds x, y; angles and scalars travel in `v.x`).
+/// op: 0 get velocity, 1 set velocity, 2 get position, 3 AddForce (`mode` 0 Force,
+/// 1 Impulse), 4 MovePosition, 5 get angularVelocity, 6 set angularVelocity, 7 get
+/// gravityScale, 8 set gravityScale, 9 get mass, 10 get rotation, 11 MoveRotation,
+/// 12 AddTorque (`mode` as AddForce). Returns 1, or 0 when the object has no Rigidbody 2D.
+extern "C" fn rigidbody2d(id: u64, op: i32, v: *mut V3, mode: i32) -> i32 {
+    use glam::Vec2;
+    let Some(v) = (unsafe { v.as_mut() }) else {
+        return 0;
+    };
+    with_object(id, |w, e| {
+        if w.scene.world.get::<&crate::scene::Rigidbody2D>(e).is_err() {
+            return 0;
+        }
+        let xy = Vec2::new(v[0], v[1]);
+        let out = |v: &mut V3, p: Vec2| *v = [p.x, p.y, 0.0];
+        match op {
+            0 => out(v, w.physics2d.velocity(e).unwrap_or_default()),
+            1 => w.physics2d.set_velocity(e, xy),
+            2 => {
+                let p = match w.physics2d.body_pose(e) {
+                    Some((p, _)) => p,
+                    None => w.scene.world_position(e).truncate(),
+                };
+                out(v, p);
+            }
+            3 => {
+                let mode = if mode == 1 { "Impulse" } else { "Force" };
+                let dv = super::physics2d_api::delta_velocity(w, e, xy, mode);
+                let now = w.physics2d.velocity(e).unwrap_or_default();
+                w.physics2d.set_velocity(e, now + dv);
+            }
+            4 => w.physics2d.move_body(e, Some(xy), None),
+            5 => *v = [w.physics2d.angular_velocity(e).unwrap_or(0.0), 0.0, 0.0],
+            6 => w.physics2d.set_angular_velocity(e, v[0]),
+            7 => *v = [w.physics2d.gravity_scale(e).unwrap_or(1.0), 0.0, 0.0],
+            8 => {
+                if let Ok(mut b) = w.scene.world.get::<&mut crate::scene::Rigidbody2D>(e) {
+                    b.gravity_scale = v[0];
+                }
+                w.physics2d.set_gravity_scale(e, v[0]);
+            }
+            9 => {
+                let mass = w
+                    .scene
+                    .world
+                    .get::<&crate::scene::Rigidbody2D>(e)
+                    .map_or(1.0, |b| b.mass);
+                *v = [mass, 0.0, 0.0];
+            }
+            10 => *v = [w.physics2d.body_pose(e).map_or(0.0, |p| p.1), 0.0, 0.0],
+            11 => w.physics2d.move_body(e, None, Some(v[0])),
+            12 => {
+                let impulse = if mode == 1 {
+                    v[0]
+                } else {
+                    v[0] * w.physics2d.fixed_dt
+                };
+                w.physics2d.apply_torque_impulse(e, impulse);
+            }
+            _ => return 0,
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+/// A Nav Mesh Agent. op: 0 SetDestination (returns 2 when a path was planned, 1 when not),
+/// 1 get destination, 2 remainingDistance, 3 hasPath, 4 pathPending, 5 isOnNavMesh,
+/// 6 get isStopped, 7 set isStopped, 8 velocity, 9 desiredVelocity, 10 Warp (2 when placed),
+/// 11 ResetPath, 12 get speed, 13 set speed, 14 get stoppingDistance, 15 set,
+/// 16 get angularSpeed, 17 set, 18 get acceleration, 19 set, 20 nextPosition,
+/// 21 pathStatus (0 complete, 1 partial, 2 invalid), 22 get enabled, 23 set enabled.
+/// Values travel in `v` (scalars in `v.x`). Returns 0 when the object has no agent.
+extern "C" fn nav_agent(id: u64, op: i32, v: *mut V3) -> i32 {
+    use crate::navigation::NavMeshAgent;
+    let Some(v) = (unsafe { v.as_mut() }) else {
+        return 0;
+    };
+    let p = Vec3::from_array(*v);
+    with_object(id, |w, e| {
+        if w.scene.world.get::<&NavMeshAgent>(e).is_err() {
+            return 0;
+        }
+        // Settings on the component.
+        if (12..=19).contains(&op) || op == 22 || op == 23 {
+            let Ok(mut a) = w.scene.world.get::<&mut NavMeshAgent>(e) else {
+                return 0;
+            };
+            let field = match op {
+                12 | 13 => &mut a.speed,
+                14 | 15 => &mut a.stopping_distance,
+                16 | 17 => &mut a.angular_speed,
+                18 | 19 => &mut a.acceleration,
+                _ => {
+                    if op == 23 {
+                        a.enabled = v[0] != 0.0;
+                    } else {
+                        *v = [flag(a.enabled), 0.0, 0.0];
+                    }
+                    return 1;
+                }
+            };
+            if op % 2 == 1 {
+                *field = v[0].max(0.0);
+            } else {
+                *v = [*field, 0.0, 0.0];
+            }
+            return 1;
+        }
+        let World {
+            scene, navigation, ..
+        } = w;
+        match op {
+            0 => {
+                return if navigation.set_destination(scene, e, p) {
+                    2
+                } else {
+                    1
+                };
+            }
+            10 => return if navigation.warp(scene, e, p) { 2 } else { 1 },
+            11 => navigation.reset_path(scene, e),
+            _ => {
+                let Some(st) = navigation.agent(scene, e) else {
+                    *v = [0.0; 3];
+                    return 1;
+                };
+                match op {
+                    1 => *v = st.destination.to_array(),
+                    2 => *v = [st.remaining_distance(), 0.0, 0.0],
+                    3 => *v = [flag(st.has_path()), 0.0, 0.0],
+                    4 => *v = [flag(st.path_pending), 0.0, 0.0],
+                    5 => *v = [flag(st.on_mesh), 0.0, 0.0],
+                    6 => *v = [flag(st.is_stopped), 0.0, 0.0],
+                    7 => st.is_stopped = v[0] != 0.0,
+                    8 => *v = st.velocity.to_array(),
+                    9 => *v = st.desired_velocity.to_array(),
+                    20 => *v = st.position.to_array(),
+                    21 => {
+                        let status = match st.status.name() {
+                            "PathComplete" => 0.0,
+                            "PathPartial" => 1.0,
+                            _ => 2.0,
+                        };
+                        *v = [status, 0.0, 0.0];
+                    }
+                    _ => return 0,
+                }
+            }
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+/// A Particle System (its live emitter). op: 0 Play, 1 Stop, 2 Pause, 3 Clear, 4 Emit(`v` as
+/// a count), 5 isPlaying, 6 isPaused, 7 isStopped, 8 particleCount, 9 time. Values travel in
+/// `v`. Returns 0 when the object has no Particle System.
+extern "C" fn particles(id: u64, op: i32, v: *mut f32) -> i32 {
+    use crate::particles::{self, PlayState};
+    let Some(v) = (unsafe { v.as_mut() }) else {
+        return 0;
+    };
+    with_object(id, |w, e| {
+        let gravity = w.physics.gravity();
+        let n = *v;
+        let done = particles::with_emitter(&mut w.scene, e, gravity, |em, sys, m| match op {
+            0 => em.play(sys, m, gravity),
+            1 => em.stop(),
+            2 => em.pause(),
+            3 => em.clear(),
+            4 => em.emit(sys, m, n.max(0.0) as u32),
+            5 => *v = flag(em.is_playing()),
+            6 => *v = flag(em.is_paused()),
+            7 => *v = flag(em.state == PlayState::Stopped && em.count() == 0),
+            8 => *v = em.count() as f32,
+            _ => *v = em.time,
+        });
+        i32::from(done.is_some())
+    })
+    .unwrap_or(0)
 }

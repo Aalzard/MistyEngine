@@ -1185,3 +1185,192 @@ public class Menu : MonoBehaviour
         8.0
     );
 }
+
+#[test]
+fn csharp_rigidbody2d_and_2d_callbacks() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Hopper : MonoBehaviour
+{
+    Rigidbody2D rb;
+    bool landed;
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        Debug.Log("rb " + (rb != null) + " col " + (GetComponent<Collider2D>() != null)
+            + " attached " + (GetComponent<Collider2D>().attachedRigidbody != null)
+            + " mass " + rb.mass + " scale " + rb.gravityScale + " no 3D " + (GetComponent<Rigidbody>() == null));
+    }
+    void FixedUpdate() { rb.velocity = new Vector2(1, rb.velocity.y); }
+    void OnCollisionEnter2D(Collision2D c)
+    {
+        if (landed) return;
+        landed = true;
+        Debug.Log("landed on " + c.gameObject.name + " rb " + (c.rigidbody == null));
+        rb.AddForce(Vector2.up * 4f, ForceMode2D.Impulse);
+    }
+    void OnTriggerEnter2D(Collider2D other) { Debug.Log("coin " + other.name); Destroy(other.gameObject); }
+}
+"#;
+    let root = project(&[("Hopper.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(
+        ground,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -3.0, 0.0)),
+    );
+    scene.add(
+        ground,
+        crate::scene::BoxCollider2D {
+            size: glam::Vec2::new(40.0, 1.0),
+            ..Default::default()
+        },
+    );
+    let coin = scene.spawn("Coin", None);
+    scene.set_transform(
+        coin,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -1.5, 0.0)),
+    );
+    scene.add(
+        coin,
+        crate::scene::CircleCollider2D {
+            common: crate::scene::Collider2DCommon {
+                is_trigger: true,
+                ..Default::default()
+            },
+            radius: 0.3,
+        },
+    );
+    let player = scene.spawn("Player", None);
+    scene.add(player, crate::scene::Rigidbody2D::default());
+    scene.add(player, crate::scene::BoxCollider2D::default());
+    attach(&mut scene, player, "Hopper.cs");
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut peak_after_landing = f32::MIN;
+    let mut landed_at = None;
+    for frame in 0..120 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        for (_, l) in &logs {
+            eprintln!("{l}");
+            if l.starts_with("landed") {
+                landed_at = Some(frame);
+            }
+        }
+        if landed_at.is_some() {
+            peak_after_landing = peak_after_landing.max(scene.world_position(player).y);
+        }
+        if frame == 0 {
+            assert_eq!(
+                texts(&logs),
+                ["rb True col True attached True mass 1 scale 1 no 3D True"]
+            );
+        }
+    }
+    host.shutdown(&mut scene);
+    assert!(landed_at.is_some(), "never landed");
+    assert!(
+        !scene.contains(coin),
+        "the trigger callback destroyed the coin"
+    );
+    assert!(
+        peak_after_landing > -1.5,
+        "the impulse in OnCollisionEnter2D threw it up: {peak_after_landing}"
+    );
+    assert!(
+        scene.world_position(player).x > 1.0,
+        "velocity moved it right"
+    );
+}
+
+#[test]
+fn csharp_nav_mesh_agent_walks_and_particles_play() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Walker : MonoBehaviour
+{
+    NavMeshAgent agent;
+    int frames;
+    void Start()
+    {
+        agent = GetComponent<NavMeshAgent>();
+        agent.speed = 4f;
+        bool ok = agent.SetDestination(new Vector3(3, 0, 2));
+        Debug.Log("go " + ok + " " + agent.hasPath + " " + agent.pathStatus + " " + (agent.remainingDistance > 5) + " " + agent.speed);
+        var ps = GameObject.Find("Sparks").GetComponent<ParticleSystem>();
+        ps.Emit(5);
+        Debug.Log("particles " + ps.particleCount);
+        ps.Stop();
+        ps.Clear();
+        Debug.Log("cleared " + ps.particleCount + " " + ps.isPlaying);
+    }
+    void Update()
+    {
+        if (++frames != 240) return;
+        Debug.Log("arrived " + agent.hasPath + " " + Mathf.Round(transform.position.x) + " " + Mathf.Round(transform.position.z));
+        agent.Warp(new Vector3(-2, 0, -2));
+        agent.isStopped = true;
+        Debug.Log("warped " + Mathf.Round(agent.nextPosition.x) + " " + agent.isStopped);
+    }
+}
+"#;
+    let root = project(&[("Walker.cs", src)]);
+    let mut scene = Scene::new("T");
+    crate::navigation::tests::floor(&mut scene, 0.0, 0.0, 10.0, 10.0);
+    let rel = "Assets/Scenes/T/NavMesh.navmesh";
+    crate::navigation::bake::bake_scene(&scene)
+        .save(&root.join(rel))
+        .unwrap();
+    scene.navigation.nav_mesh = Some(rel.into());
+    let e = scene.spawn("Agent", None);
+    scene.set_transform(
+        e,
+        crate::scene::Transform::from_position(Vec3::new(-3.0, 1.0, -3.0)),
+    );
+    scene.add(
+        e,
+        crate::navigation::NavMeshAgent {
+            base_offset: 1.0,
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, e, "Walker.cs");
+    let sparks = scene.spawn("Sparks", None);
+    scene.add(sparks, crate::particles::ParticleSystem::default());
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..240 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        all.extend(logs.into_iter().map(|(_, t)| t));
+    }
+    host.shutdown(&mut scene);
+    for want in [
+        "go True True PathComplete True 4",
+        "particles 5",
+        "cleared 0 False",
+        "arrived False 3 2",
+        "warped -2 True",
+    ] {
+        assert!(
+            all.iter().any(|l| l == want),
+            "{want:?} missing in {all:#?}"
+        );
+    }
+}

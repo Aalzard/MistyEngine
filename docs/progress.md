@@ -6579,12 +6579,16 @@ thread). Not numbered as a round: round 92 lives on another computer.
   Properties panel, `SendMessage`, `OnCancel` / `OnLinkClicked`. Before, a C# script could not be
   the target of a button wired in the Inspector at all.
 - `PlayerPrefs` (the same store as Lua's).
+- **2D physics, navigation and particles from C#**: `Rigidbody2D`, `Collider2D`, the six 2D
+  contact callbacks (method ids 14–19; the defined-callbacks mask is now 32 bits),
+  `NavMeshAgent` and `ParticleSystem`.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
-`csharp_ui_components_listeners_messages_and_player_prefs`. The 17 C# tests and the 141
-scripting tests pass on Linux.
+`csharp_ui_components_listeners_messages_and_player_prefs`, `csharp_rigidbody2d_and_2d_callbacks`,
+`csharp_nav_mesh_agent_walks_and_particles_play`. The 19 C# tests and the 143 scripting tests
+pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done
-`AddComponent`, `SendMessage` from C#, navigation, particles and 2D physics from C#; a Linux game build of a C# project (the runtime
+`AddComponent`, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).

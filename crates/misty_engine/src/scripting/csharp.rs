@@ -57,9 +57,15 @@ pub(crate) enum Method {
     OnTriggerExit = 11,
     OnCollisionStay = 12,
     OnTriggerStay = 13,
+    OnCollisionEnter2D = 14,
+    OnCollisionExit2D = 15,
+    OnTriggerEnter2D = 16,
+    OnTriggerExit2D = 17,
+    OnCollisionStay2D = 18,
+    OnTriggerStay2D = 19,
 }
 
-const METHOD_COUNT: usize = 14;
+const METHOD_COUNT: usize = 20;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -978,7 +984,7 @@ pub fn prestart(project: &Path) {
 pub(crate) struct CsRef {
     handle: i32,
     /// Bit per [`Method`].
-    defined: u16,
+    defined: u32,
 }
 
 impl CsRef {
@@ -1004,6 +1010,12 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnTriggerExit" => Method::OnTriggerExit,
         "OnCollisionStay" => Method::OnCollisionStay,
         "OnTriggerStay" => Method::OnTriggerStay,
+        "OnCollisionEnter2D" => Method::OnCollisionEnter2D,
+        "OnCollisionExit2D" => Method::OnCollisionExit2D,
+        "OnTriggerEnter2D" => Method::OnTriggerEnter2D,
+        "OnTriggerExit2D" => Method::OnTriggerExit2D,
+        "OnCollisionStay2D" => Method::OnCollisionStay2D,
+        "OnTriggerStay2D" => Method::OnTriggerStay2D,
         _ => return None,
     })
 }
@@ -1119,7 +1131,7 @@ impl CsHost {
                     text.len() as i32,
                 );
             }
-            let mut defined = 0u16;
+            let mut defined = 0u32;
             for m in 0..METHOD_COUNT as i32 {
                 if (entry.has)(handle, m) != 0 {
                     defined |= 1 << m;

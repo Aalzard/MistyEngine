@@ -1347,7 +1347,8 @@ impl ScriptHost {
                     if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
-                    let arg = if c.trigger {
+                    // C# scripts get the other object (`Collision2D` / `Collider2D`).
+                    let arg = if c.trigger || self.instances[i].cs.is_some() {
                         self.lua
                             .create_userdata(LGameObject(other))
                             .map(Value::UserData)

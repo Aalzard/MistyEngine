@@ -1275,6 +1275,17 @@ IEnumerator Start()
   Graphs, and the other events that call a method by name (`OnCancel`, `OnLinkClicked`) reach C#
   methods too: public or private, with no parameter or one `bool`, `int`, `float`, `string`
   (the value is converted). A method returning `IEnumerator` starts as a coroutine.
+- 2D physics: `Rigidbody2D` (`velocity`, `angularVelocity`, `position`, `rotation`,
+  `gravityScale`, `mass`, `AddForce` / `AddTorque` with `ForceMode2D`, `MovePosition`,
+  `MoveRotation`), `Collider2D.attachedRigidbody`, and the callbacks `OnCollisionEnter2D` /
+  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`) and
+  `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+- `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
+  `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
+  `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
+  `stoppingDistance`, `enabled`.
+- `ParticleSystem`: `Play`, `Stop`, `Pause`, `Clear`, `Emit(count)`, `isPlaying`, `isPaused`,
+  `isStopped`, `particleCount`, `time`.
 - `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
   `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
@@ -1311,8 +1322,8 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (particles, navigation, Character Controller, 2D
-physics, the other UI widgets, …), `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
+Not yet: the other engine components (Character Controller, Sprite Renderer, Timeline, the
+other UI widgets, …), contact points of 2D collisions, `Physics2D` queries, `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
 or removing scripts or components during Play, materials after a renderer's first, and
 textures on materials. Each changed build stays loaded until the editor is closed.
 
