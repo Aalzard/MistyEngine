@@ -1264,6 +1264,19 @@ IEnumerator Start()
   Changes last until Play mode ends.
 - `Color` (`r`, `g`, `b`, `a`, the named colours, `Lerp`, `HSVToRGB`), `Screen.width` /
   `height`, `Cursor.lockState` (`CursorLockMode`) and `Cursor.visible`.
+- UI: `Text` (`text`, `fontSize`, `color`, `enabled`), `Image` (`color`, `fillAmount`,
+  `raycastTarget`, `enabled`), `Button` (`interactable`, `onClick`), `Toggle` (`isOn`,
+  `onValueChanged`), `Slider` (`value`, `minValue`, `maxValue`, `wholeNumbers`,
+  `normalizedValue`, `onValueChanged`) and `InputField` (`text`, `readOnly`, `onValueChanged`,
+  `onEndEdit`). Events take listeners: `button.onClick.AddListener(() => …)`,
+  `slider.onValueChanged.AddListener(v => …)`, `RemoveListener`, `RemoveAllListeners`. Setting a
+  value from a script doesn't send its event.
+- A Button's **On Click** calls set in the Properties panel, `SendMessage` from Lua and Script
+  Graphs, and the other events that call a method by name (`OnCancel`, `OnLinkClicked`) reach C#
+  methods too: public or private, with no parameter or one `bool`, `int`, `float`, `string`
+  (the value is converted). A method returning `IEnumerator` starts as a coroutine.
+- `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
+  `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
   `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
@@ -1298,8 +1311,8 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (UI, particles, navigation, Character Controller, 2D
-physics, …), contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
+Not yet: the other engine components (particles, navigation, Character Controller, 2D
+physics, the other UI widgets, …), `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
 or removing scripts or components during Play, materials after a renderer's first, and
 textures on materials. Each changed build stays loaded until the editor is closed.
 

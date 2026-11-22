@@ -1449,9 +1449,9 @@ pub fn script_field_ui(
 pub fn object_fits(scene: &misty_engine::scene::Scene, e: Entity, kind: &str) -> bool {
     match kind {
         "" | "GameObject" | "Transform" | "Component" | "Object" => true,
-        "Rigidbody" | "Animator" | "Camera" | "Light" => {
-            scene.component_names(e).iter().any(|n| n == kind)
-        }
+        "InputField" => scene.component_names(e).iter().any(|n| n == "Input Field"),
+        "Rigidbody" | "Animator" | "Camera" | "Light" | "Text" | "Image" | "Button" | "Toggle"
+        | "Slider" => scene.component_names(e).iter().any(|n| n == kind),
         "Renderer" | "MeshRenderer" => scene
             .component_names(e)
             .iter()

@@ -6572,10 +6572,19 @@ thread). Not numbered as a round: round 92 lives on another computer.
   (`HostChar`). The C# tests now run on Linux (with the distro's .NET 8 SDK); before, a Linux
   editor or player could not start C# scripts at all.
 
+- **UI from C#**: `Text`, `Image`, `Button`, `Toggle`, `Slider`, `InputField`, with
+  `UnityEvent` / `UnityEvent<T>` listeners on `onClick`, `onValueChanged` and `onEndEdit` (kept on
+  the C# side, run by a new `Host.UiEvent` entry after the Lua listeners).
+- **Calls by name reach C#** (new `Host.Message` entry): a Button's On Click calls set in the
+  Properties panel, `SendMessage`, `OnCancel` / `OnLinkClicked`. Before, a C# script could not be
+  the target of a button wired in the Inspector at all.
+- `PlayerPrefs` (the same store as Lua's).
+
 ### Tests
-New: `csharp_camera_light_renderer_material_screen_and_cursor`. The 16 C# tests pass on Linux.
+New: `csharp_camera_light_renderer_material_screen_and_cursor`,
+`csharp_ui_components_listeners_messages_and_player_prefs`. The 17 C# tests and the 141
+scripting tests pass on Linux.
 
 ### Not done
-UI components, `AddComponent`, `PlayerPrefs`, SendMessage / Inspector button calls into C#,
-navigation, particles and 2D physics from C#; a Linux game build of a C# project (the runtime
+`AddComponent`, `SendMessage` from C#, navigation, particles and 2D physics from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).

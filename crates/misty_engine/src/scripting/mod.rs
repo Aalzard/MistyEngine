@@ -1738,6 +1738,13 @@ impl ScriptHost {
             if inst.entity != target || !self.runnable(inst) {
                 continue;
             }
+            if let Some(cs) = inst.cs {
+                if self.cs_message(cs, method, arg.as_ref()) {
+                    found = true;
+                    self.flush_spawned();
+                }
+                continue;
+            }
             let defined = self
                 .lua
                 .registry_value::<Table>(&inst.table)
@@ -1762,6 +1769,17 @@ impl ScriptHost {
                 format!("{what}: no script on '{name}' has a method '{method}'"),
             );
         }
+    }
+
+    /// Call C# method `method` of instance `cs` by name, with a Lua argument (one C# can't take
+    /// is left out). Whether the class has it.
+    pub(crate) fn cs_message(&self, cs: csharp::CsRef, method: &str, arg: Option<&Value>) -> bool {
+        let arg = arg.and_then(csharp::CsArg::from_lua);
+        let mut w = self
+            .lua
+            .app_data_mut::<World>()
+            .expect("world is installed");
+        self.csharp.message(&mut w, cs, method, arg.as_ref())
     }
 
     /// Button hover/press state (the Game view and player tint buttons with it).

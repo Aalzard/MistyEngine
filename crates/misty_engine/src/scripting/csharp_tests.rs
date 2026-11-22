@@ -1023,3 +1023,165 @@ public class Look : MonoBehaviour
     assert_eq!(r.instance(0).unwrap().metallic, 0.75);
     assert_eq!(cursor.lock, CursorLockMode::Locked);
 }
+
+#[test]
+fn csharp_ui_components_listeners_messages_and_player_prefs() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+using System.Collections;
+public class Menu : MonoBehaviour
+{
+    public Text label;
+    public Slider volume;
+    void Start()
+    {
+        label.text = "Score: " + 3;
+        label.color = Color.yellow;
+        label.fontSize = 30;
+        Debug.Log("label " + label.text + " " + label.fontSize + " " + (label.color == Color.yellow));
+        var button = GameObject.Find("Play").GetComponent<Button>();
+        button.onClick.AddListener(() => Debug.Log("clicked by listener"));
+        button.onClick.AddListener(Clicked);
+        button.onClick.RemoveListener(Clicked);
+        volume.minValue = 0; volume.maxValue = 10; volume.wholeNumbers = true;
+        volume.value = 7.6f;
+        Debug.Log("slider " + volume.value + " " + volume.normalizedValue);
+        volume.onValueChanged.AddListener(v => Debug.Log("volume now " + v));
+        var toggle = GameObject.Find("Mute").GetComponent<Toggle>();
+        toggle.isOn = true;
+        toggle.onValueChanged.AddListener(on => Debug.Log("mute " + on));
+        var field = GameObject.Find("Name").GetComponent<InputField>();
+        field.text = "Rayan";
+        field.onEndEdit.AddListener(t => Debug.Log("name " + t));
+        Debug.Log("field " + field.text + " toggle " + toggle.isOn);
+        var image = GameObject.Find("Bar").GetComponent<Image>();
+        image.fillAmount = 1.5f;
+        Debug.Log("fill " + image.fillAmount + " no button " + (image.GetComponent<Button>() == null));
+
+        PlayerPrefs.SetInt("csharp_test.score", 42);
+        PlayerPrefs.SetFloat("csharp_test.volume", 0.5f);
+        PlayerPrefs.SetString("csharp_test.name", new string('x', 300));
+        Debug.Log("prefs " + PlayerPrefs.GetInt("csharp_test.score") + " " + PlayerPrefs.GetFloat("csharp_test.volume")
+            + " " + PlayerPrefs.GetString("csharp_test.name").Length + " " + PlayerPrefs.GetString("csharp_test.none", "dflt")
+            + " " + PlayerPrefs.HasKey("csharp_test.score") + " " + PlayerPrefs.GetInt("csharp_test.none", 9));
+        PlayerPrefs.DeleteKey("csharp_test.score");
+        Debug.Log("deleted " + PlayerPrefs.HasKey("csharp_test.score"));
+    }
+    void Clicked() { Debug.Log("removed listener ran"); }
+    // Called by the Button's On Click (Inspector) and by SendMessage.
+    public void StartGame() { Debug.Log("StartGame called"); }
+    void Shout(string what) { Debug.Log("shout " + what); }
+    IEnumerator Later() { yield return null; Debug.Log("later ran"); }
+}
+"#;
+    let root = project(&[("Menu.cs", src)]);
+    let mut scene = Scene::new("t");
+    let menu = scene.spawn("Menu", None);
+    let label = scene.spawn("Label", None);
+    scene.add(label, crate::scene::UiText::default());
+    let play = scene.spawn("Play", None);
+    let slider = scene.spawn("Volume", None);
+    scene.add(slider, crate::scene::UiSlider::default());
+    let mute = scene.spawn("Mute", None);
+    scene.add(mute, crate::scene::UiToggle::default());
+    let name = scene.spawn("Name", None);
+    scene.add(name, crate::scene::UiInputField::default());
+    let bar = scene.spawn("Bar", None);
+    scene.add(bar, crate::scene::UiImage::default());
+    scene.add(
+        play,
+        crate::scene::UiButton {
+            on_click: vec![crate::scene::ButtonCall {
+                target: Some(menu),
+                method: "StartGame".into(),
+            }],
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, menu, "Menu.cs");
+    {
+        let mut s = scene.world.get::<&mut Scripts>(menu).unwrap();
+        let fields = &mut s.list[0].fields;
+        fields.insert(
+            "label".into(),
+            ScriptValue::Object(crate::scene::ObjectValue {
+                object: Some(label.to_bits().get()),
+                kind: "Text".into(),
+            }),
+        );
+        fields.insert(
+            "volume".into(),
+            ScriptValue::Object(crate::scene::ObjectValue {
+                object: Some(slider.to_bits().get()),
+                kind: "Slider".into(),
+            }),
+        );
+    }
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    use crate::ui::{UiEvent, UiValue};
+    // Between frames, as the frame's UI pass and SendMessage callers see it: the scene is in
+    // the host.
+    let scene_in = std::mem::take(&mut scene);
+    host.with_world(|w| w.scene = scene_in);
+    host.ui_event(UiEvent::Click(play));
+    host.ui_event(UiEvent::ValueChanged(slider, UiValue::Number(3.0)));
+    host.ui_event(UiEvent::ValueChanged(mute, UiValue::Bool(false)));
+    host.ui_event(UiEvent::EndEdit(name, "Bo".into()));
+    host.send_message(menu, "StartGame");
+    host.send_message_with(menu, "Shout", Some(mlua::Value::Integer(5)), "SendMessage");
+    host.send_message(menu, "Later");
+    host.send_message(menu, "Missing");
+    scene = host.with_world(|w| std::mem::take(&mut w.scene));
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "label Score: 3 30 True",
+        "slider 8 0.8",
+        "field Rayan toggle True",
+        "fill 1 no button True",
+        "prefs 42 0.5 300 dflt True 9",
+        "deleted False",
+        "clicked by listener",
+        "StartGame called",
+        "volume now 3",
+        "mute False",
+        "name Bo",
+        "shout 5",
+        "later ran",
+        "SendMessage: no script on 'Menu' has a method 'Missing'",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    assert!(!t.contains(&"removed listener ran"), "{t:#?}");
+    // Inspector call and SendMessage: twice.
+    assert_eq!(t.iter().filter(|l| **l == "StartGame called").count(), 2);
+    assert_eq!(
+        scene
+            .world
+            .get::<&crate::scene::UiText>(label)
+            .unwrap()
+            .text,
+        "Score: 3"
+    );
+    assert_eq!(
+        scene
+            .world
+            .get::<&crate::scene::UiSlider>(slider)
+            .unwrap()
+            .value,
+        8.0
+    );
+}

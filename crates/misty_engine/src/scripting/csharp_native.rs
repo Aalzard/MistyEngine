@@ -136,6 +136,8 @@ pub(super) struct NativeApi {
     camera_point: extern "C" fn(u64, i32, *const V3, *mut V3, *mut V3) -> i32,
     material: extern "C" fn(u64, i32, i32, *const u16, i32, *mut V4) -> i32,
     global: extern "C" fn(i32, i32, *mut V4) -> u64,
+    component_text: extern "C" fn(u64, i32, i32, *mut u16, i32) -> i32,
+    prefs: extern "C" fn(i32, *const u16, i32, *mut f64, *mut u16, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -184,6 +186,8 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     camera_point,
     material,
     global,
+    component_text,
+    prefs,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -721,6 +725,12 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             4 => world.get::<&crate::scene::Camera>(e).is_ok(),
             5 => world.get::<&crate::scene::Light>(e).is_ok(),
             6 => world.get::<&crate::scene::MeshRenderer>(e).is_ok(),
+            10 => world.get::<&crate::scene::UiText>(e).is_ok(),
+            11 => world.get::<&crate::scene::UiImage>(e).is_ok(),
+            12 => world.get::<&crate::scene::UiButton>(e).is_ok(),
+            13 => world.get::<&crate::scene::UiToggle>(e).is_ok(),
+            14 => world.get::<&crate::scene::UiSlider>(e).is_ok(),
+            15 => world.get::<&crate::scene::UiInputField>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -1132,6 +1142,7 @@ extern "C" fn component_value(id: u64, kind: i32, which: i32, set: i32, v: *mut 
             4 => camera_value(w, e, which, set != 0, v),
             5 => light_value(w, e, which, set != 0, v),
             6 => renderer_value(w, e, which, set != 0, v),
+            10..=15 => ui_value(w, e, kind, which, set != 0, v),
             _ => None,
         };
         i32::from(done.is_some())
@@ -1434,4 +1445,215 @@ extern "C" fn global(which: i32, set: i32, v: *mut V4) -> u64 {
         1
     })
     .unwrap_or(0)
+}
+
+// ---- UI components and PlayerPrefs -------------------------------------------------------
+
+/// UI values. kind 10 Text (0 enabled, 1 fontSize, 2 color), 11 Image (0 enabled, 1 color,
+/// 2 fillAmount, 3 raycastTarget), 12 Button (0 interactable), 13 Toggle (0 interactable,
+/// 1 isOn), 14 Slider (0 interactable, 1 value, 2 minValue, 3 maxValue, 4 wholeNumbers,
+/// 5 normalizedValue), 15 Input Field (0 interactable, 1 readOnly). Setting a value from a
+/// script doesn't send On Value Changed (as in Lua).
+fn ui_value(w: &mut World, e: Entity, kind: i32, which: i32, set: bool, v: &mut V4) -> Option<()> {
+    use crate::scene::{UiButton, UiImage, UiInputField, UiSlider, UiText, UiToggle};
+    use crate::ui::driven::{clamp_slider, slider_normalized, slider_value_at};
+    let world = &mut w.scene.world;
+    let x = v[0];
+    let on = x != 0.0;
+    // A bool or a number field, read into `v` or set from it.
+    fn num(field: &mut f32, set: bool, x: f32, v: &mut V4) {
+        if set {
+            *field = x;
+        } else {
+            *v = [*field, 0.0, 0.0, 0.0];
+        }
+    }
+    fn boolean(field: &mut bool, set: bool, on: bool, v: &mut V4) {
+        if set {
+            *field = on;
+        } else {
+            *v = [flag(*field), 0.0, 0.0, 0.0];
+        }
+    }
+    fn color(field: &mut [f32; 4], set: bool, v: &mut V4) {
+        if set {
+            *field = *v;
+        } else {
+            *v = *field;
+        }
+    }
+    match (kind, which) {
+        (10, _) => {
+            let mut t = world.get::<&mut UiText>(e).ok()?;
+            match which {
+                0 => boolean(&mut t.enabled, set, on, v),
+                1 => num(&mut t.font_size, set, x.max(1.0), v),
+                2 => color(&mut t.color, set, v),
+                _ => return None,
+            }
+        }
+        (11, _) => {
+            let mut i = world.get::<&mut UiImage>(e).ok()?;
+            match which {
+                0 => boolean(&mut i.enabled, set, on, v),
+                1 => color(&mut i.color, set, v),
+                2 => num(&mut i.fill.amount, set, x.clamp(0.0, 1.0), v),
+                3 => boolean(&mut i.raycast_target, set, on, v),
+                _ => return None,
+            }
+        }
+        (12, 0) => {
+            let mut b = world.get::<&mut UiButton>(e).ok()?;
+            boolean(&mut b.interactable, set, on, v);
+        }
+        (13, _) => {
+            let mut t = world.get::<&mut UiToggle>(e).ok()?;
+            match which {
+                0 => boolean(&mut t.selectable.interactable, set, on, v),
+                1 => boolean(&mut t.is_on, set, on, v),
+                _ => return None,
+            }
+        }
+        (14, _) => {
+            let mut s = world.get::<&mut UiSlider>(e).ok()?;
+            match which {
+                0 => boolean(&mut s.selectable.interactable, set, on, v),
+                1 if set => s.value = clamp_slider(&s, x),
+                1 => *v = [s.value, 0.0, 0.0, 0.0],
+                2 | 3 if set => {
+                    if which == 2 {
+                        s.min_value = x;
+                    } else {
+                        s.max_value = x;
+                    }
+                    s.value = clamp_slider(&s, s.value);
+                }
+                2 => *v = [s.min_value, 0.0, 0.0, 0.0],
+                3 => *v = [s.max_value, 0.0, 0.0, 0.0],
+                4 if set => {
+                    s.whole_numbers = on;
+                    s.value = clamp_slider(&s, s.value);
+                }
+                4 => *v = [flag(s.whole_numbers), 0.0, 0.0, 0.0],
+                5 if set => s.value = slider_value_at(&s, x),
+                5 => *v = [slider_normalized(&s), 0.0, 0.0, 0.0],
+                _ => return None,
+            }
+        }
+        (15, _) => {
+            let mut f = world.get::<&mut UiInputField>(e).ok()?;
+            match which {
+                0 => boolean(&mut f.selectable.interactable, set, on, v),
+                1 => boolean(&mut f.read_only, set, on, v),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    }
+    Some(())
+}
+
+/// Copy `s` into `buf` (capacity `cap` UTF-16 units) and return its length; a longer string
+/// is not copied, so the caller asks again with a bigger buffer.
+fn write_text(s: &str, buf: *mut u16, cap: i32) -> i32 {
+    let units: Vec<u16> = s.encode_utf16().collect();
+    if !buf.is_null() && units.len() <= cap.max(0) as usize {
+        // SAFETY: C# passes a buffer of `cap` chars.
+        unsafe { std::ptr::copy_nonoverlapping(units.as_ptr(), buf, units.len()) };
+    }
+    units.len() as i32
+}
+
+/// The text of a Text (`kind` 10) or Input Field (15). Getting writes it to `buf` and returns
+/// its length; setting reads `len` chars from `buf` and returns 0. -1 when the object has no
+/// such component.
+extern "C" fn component_text(id: u64, kind: i32, set: i32, buf: *mut u16, len: i32) -> i32 {
+    use crate::scene::{UiInputField, UiText};
+    let new = (set != 0).then(|| text(buf, len));
+    with_object(id, |w, e| match kind {
+        10 => {
+            let Ok(mut t) = w.scene.world.get::<&mut UiText>(e) else {
+                return -1;
+            };
+            match new {
+                Some(s) => {
+                    t.text = s;
+                    0
+                }
+                None => write_text(&t.text, buf, len),
+            }
+        }
+        15 => {
+            let Ok(mut f) = w.scene.world.get::<&mut UiInputField>(e) else {
+                return -1;
+            };
+            match new {
+                Some(s) => {
+                    f.text = crate::ui::input_field::sanitize(&f, &s);
+                    0
+                }
+                None => write_text(&f.text, buf, len),
+            }
+        }
+        _ => -1,
+    })
+    .unwrap_or(-1)
+}
+
+/// `PlayerPrefs`. op: 0 GetInt / 1 SetInt / 2 GetFloat / 3 SetFloat (`num` holds the default
+/// or the value, and gets the result), 4 GetString (`buf` holds the default, `len` chars of
+/// it, and `cap`… the same buffer; returns the length as `write_text`), 5 SetString, 6 HasKey,
+/// 7 DeleteKey, 8 DeleteAll, 9 Save (1 saved, 0 failed).
+extern "C" fn prefs(
+    op: i32,
+    key: *const u16,
+    key_len: i32,
+    num: *mut f64,
+    buf: *mut u16,
+    len: i32,
+) -> i32 {
+    use crate::prefs::{self, PrefValue};
+    let key = text(key, key_len);
+    // SAFETY: `num` is null or points at a double on the C# stack.
+    let num = unsafe { num.as_mut() };
+    match op {
+        0 | 2 => {
+            if let Some(n) = num {
+                *n = if op == 0 {
+                    prefs::get_int(&key, *n as i64) as f64
+                } else {
+                    prefs::get_float(&key, *n)
+                };
+            }
+            1
+        }
+        1 => {
+            prefs::set(&key, PrefValue::Int(num.map_or(0, |n| *n as i64)));
+            1
+        }
+        3 => {
+            prefs::set(&key, PrefValue::Float(num.map_or(0.0, |n| *n)));
+            1
+        }
+        4 => {
+            // `len` is the default's length on the way in; the buffer holds at least 256.
+            let default = text(buf, len);
+            let value = prefs::get_string(&key, &default);
+            write_text(&value, buf, len.max(256))
+        }
+        5 => {
+            prefs::set(&key, PrefValue::String(text(buf, len)));
+            1
+        }
+        6 => i32::from(prefs::has_key(&key)),
+        7 => {
+            prefs::delete_key(&key);
+            1
+        }
+        8 => {
+            prefs::delete_all();
+            1
+        }
+        _ => i32::from(prefs::save().is_ok()),
+    }
 }

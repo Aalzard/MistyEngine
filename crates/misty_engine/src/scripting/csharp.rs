@@ -294,6 +294,8 @@ type ReleaseFn = unsafe extern "C" fn(i32);
 type SetTimeFn = unsafe extern "C" fn(f32, f32, f32, f32, f32, i32);
 type SetFieldFn =
     unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const [f32; 3], *const u16, i32) -> i32;
+type MessageFn = unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const u16, i32) -> i32;
+type UiEventFn = unsafe extern "C" fn(u64, i32, i32, f64, *const u16, i32) -> i32;
 
 /// The entry points of one script assembly.
 #[derive(Clone, Copy)]
@@ -305,6 +307,8 @@ struct Entry {
     set_time: SetTimeFn,
     set_field: SetFieldFn,
     tick: TickFn,
+    message: MessageFn,
+    ui_event: UiEventFn,
 }
 
 impl Runtime {
@@ -349,6 +353,8 @@ impl Runtime {
                 set_time: transmute::<P, SetTimeFn>(get("SetTime")?),
                 set_field: transmute::<P, SetFieldFn>(get("SetField")?),
                 tick: transmute::<P, TickFn>(get("Tick")?),
+                message: transmute::<P, MessageFn>(get("Message")?),
+                ui_event: transmute::<P, UiEventFn>(get("UiEvent")?),
             };
             let count = init(&NATIVE_API);
             if count as usize != METHOD_COUNT {
@@ -1154,6 +1160,59 @@ impl CsHost {
         unsafe { (entry.call)(r.handle, m as i32, other) };
     }
 
+    /// Call the method `name` of instance `r` by name (SendMessage, Inspector event calls):
+    /// with no argument, or one bool, number, whole number or text. Whether the class has a
+    /// method of that name that takes it.
+    pub fn message(&self, w: &mut World, r: CsRef, name: &str, arg: Option<&CsArg>) -> bool {
+        let Some(entry) = self.entry else {
+            return false;
+        };
+        let name_w: Vec<u16> = name.encode_utf16().collect();
+        let (kind, num, text) = arg_parts(arg);
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly; the strings outlive the call.
+        let found = unsafe {
+            (entry.message)(
+                r.handle,
+                name_w.as_ptr(),
+                name_w.len() as i32,
+                kind,
+                num,
+                text.as_ptr(),
+                text.len() as i32,
+            )
+        };
+        found == 1
+    }
+
+    /// Run the C# listeners of UI event `event` on `e` (`AddListener` on `onClick`,
+    /// `onValueChanged`, `onEndEdit`). Whether any ran.
+    pub fn ui_event(
+        &self,
+        w: &mut World,
+        e: Entity,
+        event: UiEventKind,
+        arg: Option<&CsArg>,
+    ) -> bool {
+        let Some(entry) = self.entry else {
+            return false;
+        };
+        let (kind, num, text) = arg_parts(arg);
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly; the string outlives the call.
+        let ran = unsafe {
+            (entry.ui_event)(
+                e.to_bits().get(),
+                event as i32,
+                kind,
+                num,
+                text.as_ptr(),
+                text.len() as i32,
+            )
+        };
+        ran == 1
+    }
+
     /// Advance the coroutines (after the Update pass, like the familiar engine).
     pub fn tick(&self, w: &mut World) {
         let Some(entry) = self.entry else { return };
@@ -1168,6 +1227,68 @@ impl CsHost {
             // SAFETY: entry point of the loaded assembly.
             unsafe { (entry.release)(r.handle) };
         }
+    }
+}
+
+/// The argument of a call by name or a UI event.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CsArg {
+    Bool(bool),
+    Number(f64),
+    Int(i64),
+    Text(String),
+}
+
+impl CsArg {
+    /// From a Lua value (None for values C# methods can't take).
+    pub fn from_lua(v: &mlua::Value) -> Option<Self> {
+        Some(match v {
+            mlua::Value::Boolean(b) => Self::Bool(*b),
+            mlua::Value::Integer(i) => Self::Int(*i),
+            mlua::Value::Number(n) => Self::Number(*n),
+            mlua::Value::String(s) => Self::Text(s.to_string_lossy()),
+            _ => return None,
+        })
+    }
+
+    pub fn from_ui(v: &crate::ui::UiValue) -> Self {
+        use crate::ui::UiValue;
+        match v {
+            UiValue::Bool(b) => Self::Bool(*b),
+            UiValue::Number(n) => Self::Number(f64::from(*n)),
+            UiValue::Int(i) => Self::Int(i64::from(*i)),
+            UiValue::Text(t) => Self::Text(t.clone()),
+        }
+    }
+}
+
+/// Kind (-1 none, 0 bool, 1 number, 2 whole number, 3 text), number and text of an argument.
+fn arg_parts(arg: Option<&CsArg>) -> (i32, f64, Vec<u16>) {
+    match arg {
+        None => (-1, 0.0, Vec::new()),
+        Some(CsArg::Bool(b)) => (0, f64::from(u8::from(*b)), Vec::new()),
+        Some(CsArg::Number(n)) => (1, *n, Vec::new()),
+        Some(CsArg::Int(i)) => (2, *i as f64, Vec::new()),
+        Some(CsArg::Text(t)) => (3, 0.0, t.encode_utf16().collect()),
+    }
+}
+
+/// UI events C# listeners can hear, in the order of `Misty.UiEvents` in MistyEngine.cs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiEventKind {
+    Click = 0,
+    ValueChanged = 1,
+    EndEdit = 2,
+}
+
+impl UiEventKind {
+    pub fn from_name(event: &str) -> Option<Self> {
+        Some(match event {
+            "onClick" => Self::Click,
+            "onValueChanged" => Self::ValueChanged,
+            "onEndEdit" => Self::EndEdit,
+            _ => return None,
+        })
     }
 }
 

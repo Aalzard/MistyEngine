@@ -1340,6 +1340,186 @@ namespace Misty
         public static bool visible { get => Get(3) != 0; set => Set(3, value ? 1 : 0); }
     }
 
+    // ---- UI ----------------------------------------------------------------------------------
+
+    /// <summary>An event scripts listen to with AddListener (a Button's onClick).</summary>
+    public sealed class UnityEvent
+    {
+        readonly ulong entity;
+        readonly int kind;
+        internal UnityEvent(ulong entity, int kind) { this.entity = entity; this.kind = kind; }
+        public void AddListener(Action call) => Internal.UiEvents.Add(entity, kind, call);
+        public void RemoveListener(Action call) => Internal.UiEvents.Remove(entity, kind, call);
+        public void RemoveAllListeners() => Internal.UiEvents.Clear(entity, kind);
+        /// <summary>Run the C# listeners now.</summary>
+        public void Invoke() => Internal.UiEvents.Run(entity, kind, null);
+    }
+
+    /// <summary>An event with a value (a Slider's onValueChanged, an Input Field's onEndEdit).</summary>
+    public sealed class UnityEvent<T>
+    {
+        readonly ulong entity;
+        readonly int kind;
+        internal UnityEvent(ulong entity, int kind) { this.entity = entity; this.kind = kind; }
+        public void AddListener(Action<T> call) => Internal.UiEvents.Add(entity, kind, call);
+        public void RemoveListener(Action<T> call) => Internal.UiEvents.Remove(entity, kind, call);
+        public void RemoveAllListeners() => Internal.UiEvents.Clear(entity, kind);
+        public void Invoke(T value) => Internal.UiEvents.Run(entity, kind, value);
+    }
+
+    /// <summary>A UI component (read and set through the engine).</summary>
+    public abstract unsafe class UIBehaviour : Behaviour
+    {
+        internal UIBehaviour(ulong id) : base(id) { }
+
+        internal string GetText()
+        {
+            char* buf = stackalloc char[256];
+            int n = Internal.Native.api.componentText(id, Kind, 0, buf, 256);
+            if (n < 0) throw Internal.Native.Missing(TypeName);
+            if (n <= 256) return new string(buf, 0, n);
+            var big = new char[n];
+            fixed (char* p = big)
+            {
+                n = Internal.Native.api.componentText(id, Kind, 0, p, big.Length);
+                return new string(p, 0, Math.Min(Math.Max(n, 0), big.Length));
+            }
+        }
+
+        internal void SetText(string value)
+        {
+            value ??= "";
+            int r;
+            fixed (char* p = value) r = Internal.Native.api.componentText(id, Kind, 1, p, value.Length);
+            if (r < 0) throw Internal.Native.Missing(TypeName);
+        }
+    }
+
+    /// <summary>A UI Text.</summary>
+    public sealed class Text : UIBehaviour
+    {
+        internal Text(ulong id) : base(id) { }
+        internal override int Kind => 10;
+        internal override string TypeName => "Text";
+        public string text { get => GetText(); set => SetText(value); }
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public float fontSize { get => GetFloat(1); set => SetFloat(1, value); }
+        public Color color { get => Get(2); set => Set(2, value); }
+    }
+
+    /// <summary>A UI Image.</summary>
+    public sealed class Image : UIBehaviour
+    {
+        internal Image(ulong id) : base(id) { }
+        internal override int Kind => 11;
+        internal override string TypeName => "Image";
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public Color color { get => Get(1); set => Set(1, value); }
+        /// <summary>0..1, for Filled images (health bars, cooldowns).</summary>
+        public float fillAmount { get => GetFloat(2); set => SetFloat(2, value); }
+        public bool raycastTarget { get => GetBool(3); set => SetBool(3, value); }
+    }
+
+    /// <summary>A UI Button.</summary>
+    public sealed class Button : UIBehaviour
+    {
+        internal Button(ulong id) : base(id) { }
+        internal override int Kind => 12;
+        internal override string TypeName => "Button";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public UnityEvent onClick => new UnityEvent(id, 0);
+    }
+
+    /// <summary>A UI Toggle (a check box).</summary>
+    public sealed class Toggle : UIBehaviour
+    {
+        internal Toggle(ulong id) : base(id) { }
+        internal override int Kind => 13;
+        internal override string TypeName => "Toggle";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public bool isOn { get => GetBool(1); set => SetBool(1, value); }
+        public UnityEvent<bool> onValueChanged => new UnityEvent<bool>(id, 1);
+    }
+
+    /// <summary>A UI Slider.</summary>
+    public sealed class Slider : UIBehaviour
+    {
+        internal Slider(ulong id) : base(id) { }
+        internal override int Kind => 14;
+        internal override string TypeName => "Slider";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public float value { get => GetFloat(1); set => SetFloat(1, value); }
+        public float minValue { get => GetFloat(2); set => SetFloat(2, value); }
+        public float maxValue { get => GetFloat(3); set => SetFloat(3, value); }
+        public bool wholeNumbers { get => GetBool(4); set => SetBool(4, value); }
+        /// <summary>The value as 0..1 between minValue and maxValue.</summary>
+        public float normalizedValue { get => GetFloat(5); set => SetFloat(5, value); }
+        public UnityEvent<float> onValueChanged => new UnityEvent<float>(id, 1);
+    }
+
+    /// <summary>A UI Input Field.</summary>
+    public sealed class InputField : UIBehaviour
+    {
+        internal InputField(ulong id) : base(id) { }
+        internal override int Kind => 15;
+        internal override string TypeName => "InputField";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public bool readOnly { get => GetBool(1); set => SetBool(1, value); }
+        /// <summary>The text (the field's character limit and content type apply).</summary>
+        public string text { get => GetText(); set => SetText(value); }
+        public UnityEvent<string> onValueChanged => new UnityEvent<string>(id, 1);
+        public UnityEvent<string> onEndEdit => new UnityEvent<string>(id, 2);
+    }
+
+    // ---- PlayerPrefs ---------------------------------------------------------------------------
+
+    /// <summary>Small values kept between runs of the game (settings, high scores).</summary>
+    public static unsafe class PlayerPrefs
+    {
+        static int Op(int op, string key, double* num, char* buf, int len)
+        {
+            key ??= "";
+            fixed (char* k = key) return Internal.Native.api.prefs(op, k, key.Length, num, buf, len);
+        }
+
+        static double Num(int op, string key, double value)
+        {
+            Op(op, key, &value, null, 0);
+            return value;
+        }
+
+        public static int GetInt(string key, int defaultValue = 0) => (int)Num(0, key, defaultValue);
+        public static void SetInt(string key, int value) => Num(1, key, value);
+        public static float GetFloat(string key, float defaultValue = 0f) => (float)Num(2, key, defaultValue);
+        public static void SetFloat(string key, float value) => Num(3, key, value);
+
+        public static string GetString(string key, string defaultValue = "")
+        {
+            defaultValue ??= "";
+            var buf = new char[Math.Max(256, defaultValue.Length)];
+            defaultValue.CopyTo(0, buf, 0, defaultValue.Length);
+            int n;
+            fixed (char* p = buf) n = Op(4, key, null, p, defaultValue.Length);
+            if (n <= buf.Length) return new string(buf, 0, n);
+            // Longer than the buffer: the key exists, so ask again with room for it.
+            buf = new char[n];
+            fixed (char* p = buf) n = Op(4, key, null, p, buf.Length);
+            return new string(buf, 0, Math.Min(n, buf.Length));
+        }
+
+        public static void SetString(string key, string value)
+        {
+            value ??= "";
+            fixed (char* p = value) Op(5, key, null, p, value.Length);
+        }
+
+        public static bool HasKey(string key) => Op(6, key, null, null, 0) == 1;
+        public static void DeleteKey(string key) => Op(7, key, null, null, 0);
+        public static void DeleteAll() => Op(8, "", null, null, 0);
+        /// <summary>Write the values to disk now (they are also saved when the game quits).</summary>
+        public static void Save() => Op(9, "", null, null, 0);
+    }
+
     // ---- scenes and the application ----------------------------------------------------------
 
     public enum LoadSceneMode { Single, Additive }
@@ -1539,6 +1719,8 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, Vector3*, Vector3*, Vector3*, int> cameraPoint;
         public delegate* unmanaged<ulong, int, int, char*, int, Color*, int> material;
         public delegate* unmanaged<int, int, Color*, ulong> global;
+        public delegate* unmanaged<ulong, int, int, char*, int, int> componentText;
+        public delegate* unmanaged<int, char*, int, double*, char*, int, int> prefs;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -1550,6 +1732,55 @@ namespace Misty.Internal
         public float distance;
         public ulong entity;
         public ulong body;
+    }
+
+    /// <summary>C# listeners of UI events, by object and event (0 onClick, 1 onValueChanged,
+    /// 2 onEndEdit; `UiEventKind` in csharp.rs).</summary>
+    internal static class UiEvents
+    {
+        static readonly Dictionary<(ulong, int), List<Delegate>> listeners = new Dictionary<(ulong, int), List<Delegate>>();
+
+        internal static void Reset() => listeners.Clear();
+
+        internal static void Add(ulong entity, int kind, Delegate call)
+        {
+            if (call == null) return;
+            if (!listeners.TryGetValue((entity, kind), out var list)) listeners[(entity, kind)] = list = new List<Delegate>();
+            list.Add(call);
+        }
+
+        internal static void Remove(ulong entity, int kind, Delegate call)
+        {
+            if (listeners.TryGetValue((entity, kind), out var list)) list.Remove(call);
+        }
+
+        internal static void Clear(ulong entity, int kind) => listeners.Remove((entity, kind));
+
+        /// <summary>Run the listeners; whether there were any.</summary>
+        internal static bool Run(ulong entity, int kind, object value)
+        {
+            if (!listeners.TryGetValue((entity, kind), out var list) || list.Count == 0) return false;
+            foreach (var call in list.ToArray())
+            {
+                try
+                {
+                    switch (call)
+                    {
+                        case Action a: a(); break;
+                        case Action<bool> b: b(value is bool v ? v : Convert.ToDouble(value ?? 0) != 0); break;
+                        case Action<float> f: f(Convert.ToSingle(value ?? 0f)); break;
+                        case Action<int> i: i(Convert.ToInt32(value ?? 0)); break;
+                        case Action<string> t: t(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? ""); break;
+                        default: call.DynamicInvoke(value); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Host.Report(call.Method.DeclaringType?.Name ?? "UI", "listener", ex);
+                }
+            }
+            return true;
+        }
     }
 
     internal static unsafe class Native
@@ -1833,6 +2064,7 @@ namespace Misty.Internal
         {
             Native.api = *(NativeApi*)table;
             Coroutines.Clear();
+            UiEvents.Reset();
             types.Clear();
             byObject.Clear();
             timed.Clear();
@@ -1955,6 +2187,90 @@ namespace Misty.Internal
         {
             if (pendingRefs.Count > 0) ResolvePending();
             Invoke(handle, method, other);
+        }
+
+        /// <summary>A call argument from the engine: kind -1 none, 0 bool, 1 number, 2 whole
+        /// number, 3 text.</summary>
+        static object Arg(int kind, double num, char* text, int len) => kind switch
+        {
+            0 => num != 0,
+            1 => num,
+            2 => (long)num,
+            3 => new string(text, 0, len),
+            _ => null,
+        };
+
+        /// <summary>Call method `name` of script `handle` by name (SendMessage, the Inspector's
+        /// On Click calls): one with no parameters, or one parameter the argument converts to.
+        /// Returns 1 when the class has such a method.</summary>
+        [UnmanagedCallersOnly]
+        public static int Message(int handle, char* name, int len, int kind, double num, char* text, int textLen)
+        {
+            var e = Lookup(handle);
+            if (e == null) return 0;
+            if (pendingRefs.Count > 0) ResolvePending();
+            string method = new string(name, 0, len);
+            object arg = Arg(kind, num, text, textLen);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            MethodInfo best = null;
+            object[] args = null;
+            for (var t = e.script.GetType(); t != null && t != typeof(MonoBehaviour) && best == null; t = t.BaseType)
+            {
+                foreach (var m in t.GetMethods(flags | BindingFlags.DeclaredOnly))
+                {
+                    if (m.Name != method || m.IsGenericMethodDefinition) continue;
+                    var ps = m.GetParameters();
+                    if (ps.Length == 1 && arg != null && TryConvert(arg, ps[0].ParameterType, out var converted))
+                    {
+                        best = m;
+                        args = new[] { converted };
+                        break;
+                    }
+                    if (ps.Length == 0 && best == null)
+                    {
+                        best = m;
+                        args = Array.Empty<object>();
+                    }
+                }
+            }
+            if (best == null) return 0;
+            try
+            {
+                var result = best.Invoke(e.script, args);
+                if (result is System.Collections.IEnumerator routine) e.script.StartCoroutine(routine);
+            }
+            catch (Exception ex)
+            {
+                Report(e.typeName, method, ex);
+            }
+            return 1;
+        }
+
+        static bool TryConvert(object value, Type t, out object converted)
+        {
+            converted = null;
+            try
+            {
+                if (t == typeof(string)) converted = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+                else if (value is string) return false;
+                else if (t == typeof(bool)) converted = value is bool b ? b : Convert.ToDouble(value) != 0;
+                else if (t == typeof(float)) converted = Convert.ToSingle(value);
+                else if (t == typeof(double)) converted = Convert.ToDouble(value);
+                else if (t == typeof(int)) converted = (int)Math.Round(Convert.ToDouble(value));
+                else if (t == typeof(long)) converted = (long)Math.Round(Convert.ToDouble(value));
+                else if (t == typeof(object)) converted = value;
+                else return false;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>Run the C# listeners of UI event `kind` on `entity`; 1 when there were any.</summary>
+        [UnmanagedCallersOnly]
+        public static int UiEvent(ulong entity, int kind, int argKind, double num, char* text, int len)
+        {
+            if (pendingRefs.Count > 0) ResolvePending();
+            return UiEvents.Run(entity, kind, Arg(argKind, num, text, len)) ? 1 : 0;
         }
 
         /// <summary>Advance every running coroutine (once per frame, after Update).</summary>
@@ -2144,7 +2460,9 @@ namespace Misty.Internal
             int kind = t == typeof(Rigidbody) ? 0 : t == typeof(Collider) ? 1
                 : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3
                 : t == typeof(Camera) ? 4 : t == typeof(Light) ? 5
-                : t == typeof(Renderer) || t == typeof(MeshRenderer) ? 6 : -1;
+                : t == typeof(Renderer) || t == typeof(MeshRenderer) ? 6
+                : t == typeof(Text) ? 10 : t == typeof(Image) ? 11 : t == typeof(Button) ? 12
+                : t == typeof(Toggle) ? 13 : t == typeof(Slider) ? 14 : t == typeof(InputField) ? 15 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
@@ -2154,7 +2472,13 @@ namespace Misty.Internal
                 3 => new Animator(entity),
                 4 => new Camera(entity),
                 5 => new Light(entity),
-                _ => new MeshRenderer(entity),
+                6 => new MeshRenderer(entity),
+                10 => new Text(entity),
+                11 => new Image(entity),
+                12 => new Button(entity),
+                13 => new Toggle(entity),
+                14 => new Slider(entity),
+                _ => new InputField(entity),
             };
         }
 
