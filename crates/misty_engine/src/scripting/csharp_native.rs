@@ -141,6 +141,7 @@ pub(super) struct NativeApi {
     rigidbody2d: extern "C" fn(u64, i32, *mut V3, i32) -> i32,
     nav_agent: extern "C" fn(u64, i32, *mut V3) -> i32,
     particles: extern "C" fn(u64, i32, *mut f32) -> i32,
+    component_op: extern "C" fn(u64, i32, *const u16, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -194,6 +195,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     rigidbody2d,
     nav_agent,
     particles,
+    component_op,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -751,6 +753,12 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             }
             22 => world.get::<&crate::navigation::NavMeshAgent>(e).is_ok(),
             23 => world.get::<&crate::particles::ParticleSystem>(e).is_ok(),
+            30 => world.get::<&BoxCollider>(e).is_ok(),
+            31 => world.get::<&SphereCollider>(e).is_ok(),
+            32 => world.get::<&CapsuleCollider>(e).is_ok(),
+            33 => world.get::<&MeshCollider>(e).is_ok(),
+            34 => world.get::<&crate::scene::BoxCollider2D>(e).is_ok(),
+            35 => world.get::<&crate::scene::CircleCollider2D>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -1860,6 +1868,27 @@ extern "C" fn particles(id: u64, op: i32, v: *mut f32) -> i32 {
             _ => *v = em.time,
         });
         i32::from(done.is_some())
+    })
+    .unwrap_or(0)
+}
+
+/// `AddComponent` (op 0) and `Destroy(component)` (op 1) for engine components by name.
+/// Returns 1 when added / removed, 0 when nothing changed, -1 for an unknown name (logged).
+extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
+    let name = text(ptr, len);
+    with_object(id, |w, e| {
+        let r = if op == 0 {
+            super::component_ops::add(w, e, &name)
+        } else {
+            super::component_ops::remove(w, e, &name)
+        };
+        match r {
+            Ok(done) => i32::from(done),
+            Err(msg) => {
+                w.logs.push((LogKind::Error, msg));
+                -1
+            }
+        }
     })
     .unwrap_or(0)
 }

@@ -599,6 +599,11 @@ namespace Misty
         }
         /// <summary>A script by class name, or null.</summary>
         public MonoBehaviour GetComponent(string type) => Internal.Host.GetComponentByName(id, type);
+        /// <summary>Add an engine component (Rigidbody, BoxCollider, Light, AudioSource, …) with
+        /// its defaults and return it; the existing one when the object has it. Scripts can't be
+        /// added during Play yet.</summary>
+        public T AddComponent<T>() where T : Component => (T)AddComponent(typeof(T));
+        public Component AddComponent(Type type) => Internal.Native.AddComponent(id, type);
 
         /// <summary>An object by name anywhere in the open scenes, or null.</summary>
         public static GameObject Find(string name) => Internal.Native.Wrap(Internal.Native.Find(0, name));
@@ -831,7 +836,7 @@ namespace Misty
     }
 
     /// <summary>The colliders of an object (Box, Sphere, Capsule or Mesh Collider).</summary>
-    public sealed class Collider : Component
+    public class Collider : Component
     {
         internal readonly ulong id;
         internal Collider(ulong id) { this.id = id; }
@@ -839,6 +844,11 @@ namespace Misty
         /// <summary>The Rigidbody this collider moves with (its own or a parent's), or null.</summary>
         public Rigidbody attachedRigidbody => GetComponentInParent<Rigidbody>();
     }
+
+    public sealed class BoxCollider : Collider { internal BoxCollider(ulong id) : base(id) { } }
+    public sealed class SphereCollider : Collider { internal SphereCollider(ulong id) : base(id) { } }
+    public sealed class CapsuleCollider : Collider { internal CapsuleCollider(ulong id) : base(id) { } }
+    public sealed class MeshCollider : Collider { internal MeshCollider(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter / OnCollisionExit callback hit.</summary>
     public sealed class Collision
@@ -1372,7 +1382,7 @@ namespace Misty
     }
 
     /// <summary>The 2D colliders of an object (Box, Circle, Capsule, Polygon or Edge Collider 2D).</summary>
-    public sealed class Collider2D : Component
+    public class Collider2D : Component
     {
         internal readonly ulong id;
         internal Collider2D(ulong id) { this.id = id; }
@@ -1380,6 +1390,9 @@ namespace Misty
         /// <summary>The Rigidbody 2D this collider moves with (its own or a parent's), or null.</summary>
         public Rigidbody2D attachedRigidbody => GetComponentInParent<Rigidbody2D>();
     }
+
+    public sealed class BoxCollider2D : Collider2D { internal BoxCollider2D(ulong id) : base(id) { } }
+    public sealed class CircleCollider2D : Collider2D { internal CircleCollider2D(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter2D / Stay2D / Exit2D callback hit.</summary>
     public sealed class Collision2D
@@ -1848,6 +1861,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, Vector3*, int, int> rigidbody2d;
         public delegate* unmanaged<ulong, int, Vector3*, int> navAgent;
         public delegate* unmanaged<ulong, int, float*, int> particles;
+        public delegate* unmanaged<ulong, int, char*, int, int> componentOp;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2071,6 +2085,26 @@ namespace Misty.Internal
         }
 
         internal static void Destroy(ulong id) => api.destroy(id);
+
+        /// <summary>which: 0 add, 1 remove. 1 when it changed, 0 when not, -1 for an unknown name.</summary>
+        internal static int ComponentOp(ulong id, int op, string name)
+        {
+            fixed (char* p = name) return api.componentOp(id, op, p, name.Length);
+        }
+
+        internal static Component AddComponent(ulong id, Type type)
+        {
+            if (!Alive(id)) throw Destroyed();
+            if (type == typeof(Transform)) return new Transform(id);
+            if (typeof(MonoBehaviour).IsAssignableFrom(type))
+                throw new NotSupportedException($"AddComponent<{type.Name}>: adding scripts during Play is not supported yet; put the script on a prefab and Instantiate it.");
+            if (type == typeof(Collider) || type == typeof(Collider2D) || type == typeof(Behaviour) || type == typeof(UIBehaviour) || type == typeof(Component))
+                throw new ArgumentException($"AddComponent<{type.Name}>: name a concrete type, e.g. BoxCollider.");
+            string name = type == typeof(MeshRenderer) || type == typeof(Renderer) ? "MeshRenderer" : type.Name;
+            if (ComponentOp(id, 0, name) < 0) throw new ArgumentException($"AddComponent<{type.Name}>: not an engine component.");
+            var found = Host.EngineComponentOf(type, id);
+            return found ?? new GameObject(id).GetComponent<Component>();
+        }
 
         internal static bool ScriptEnabled(ulong id, int slot, int set)
         {
@@ -2588,12 +2622,26 @@ namespace Misty.Internal
                 Native.Log(1, $"Destroy({mb.GetType().Name}): removing a script during Play is not supported yet; it was disabled instead");
                 return;
             }
+            // An engine component: remove it (not the object), now.
+            if (obj is Component c && !(obj is Transform))
+            {
+                string name = c is MeshRenderer ? "MeshRenderer" : c.GetType().Name;
+                if (c is Collider || c is Collider2D)
+                {
+                    Native.Log(1, $"Destroy({name}): name the collider type to remove it (GetComponent<BoxCollider>()); nothing was removed");
+                    return;
+                }
+                Native.ComponentOp(obj.ObjectId, 1, name);
+                return;
+            }
             if (t > 0f) timed.Add((obj.ObjectId, Time.time + t));
             else Native.Destroy(obj.ObjectId);
         }
 
         /// <summary>The engine component of type `t` on `entity` (Rigidbody, Collider,
         /// AudioSource, Animator, Camera, Light, Renderer), or null.</summary>
+        internal static Component EngineComponentOf(Type t, ulong entity) => EngineComponent(t, entity);
+
         static Component EngineComponent(Type t, ulong entity)
         {
             int kind = t == typeof(Rigidbody) ? 0 : t == typeof(Collider) ? 1
@@ -2603,7 +2651,10 @@ namespace Misty.Internal
                 : t == typeof(Text) ? 10 : t == typeof(Image) ? 11 : t == typeof(Button) ? 12
                 : t == typeof(Toggle) ? 13 : t == typeof(Slider) ? 14 : t == typeof(InputField) ? 15
                 : t == typeof(Rigidbody2D) ? 20 : t == typeof(Collider2D) ? 21
-                : t == typeof(NavMeshAgent) ? 22 : t == typeof(ParticleSystem) ? 23 : -1;
+                : t == typeof(NavMeshAgent) ? 22 : t == typeof(ParticleSystem) ? 23
+                : t == typeof(BoxCollider) ? 30 : t == typeof(SphereCollider) ? 31
+                : t == typeof(CapsuleCollider) ? 32 : t == typeof(MeshCollider) ? 33
+                : t == typeof(BoxCollider2D) ? 34 : t == typeof(CircleCollider2D) ? 35 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
@@ -2623,7 +2674,13 @@ namespace Misty.Internal
                 20 => new Rigidbody2D(entity),
                 21 => new Collider2D(entity),
                 22 => new NavMeshAgent(entity),
-                _ => new ParticleSystem(entity),
+                23 => new ParticleSystem(entity),
+                30 => new BoxCollider(entity),
+                31 => new SphereCollider(entity),
+                32 => new CapsuleCollider(entity),
+                33 => new MeshCollider(entity),
+                34 => new BoxCollider2D(entity),
+                _ => new CircleCollider2D(entity),
             };
         }
 

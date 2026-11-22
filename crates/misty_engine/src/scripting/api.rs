@@ -448,6 +448,17 @@ impl UserData for LGameObject {
                 None => other_component(lua, e, &name),
             }
         });
+        // `AddComponent("Rigidbody")`: adds a default engine component (and what it requires)
+        // and returns it like GetComponent; the existing one when the object has it.
+        m.add_method("AddComponent", |lua, g, name: String| {
+            let e = g.0;
+            with_world(lua, |w| {
+                alive(w, e)?;
+                super::component_ops::add(w, e, &name).map_err(mlua::Error::runtime)
+            })??;
+            let ud = lua.create_userdata(LGameObject(e))?;
+            mlua::ObjectLike::call_method::<Value>(&ud, "GetComponent", name)
+        });
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
         m.add_meta_method(MetaMethod::ToString, |lua, g, ()| {
             with_world(lua, |w| {

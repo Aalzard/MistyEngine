@@ -6583,12 +6583,20 @@ thread). Not numbered as a round: round 92 lives on another computer.
   contact callbacks (method ids 14–19; the defined-callbacks mask is now 32 bits),
   `NavMeshAgent` and `ParticleSystem`.
 
+- **AddComponent while playing** (Lua `AddComponent("Rigidbody")`, C# `AddComponent<T>()`;
+  `component_ops.rs`): neither language had it. Physics components rebuild the object's
+  bodies and colliders (and its children's) at once. C# `BoxCollider`, `SphereCollider`,
+  `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D` types.
+- **Bug: C# `Destroy(component)` destroyed the whole object** (`Destroy(GetComponent<Rigidbody>())`
+  deleted the GameObject). It now removes only that component.
+
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `csharp_ui_components_listeners_messages_and_player_prefs`, `csharp_rigidbody2d_and_2d_callbacks`,
-`csharp_nav_mesh_agent_walks_and_particles_play`. The 19 C# tests and the 143 scripting tests
+`csharp_nav_mesh_agent_walks_and_particles_play`,
+`csharp_and_lua_add_and_remove_components_while_playing`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done
-`AddComponent`, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
+Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).

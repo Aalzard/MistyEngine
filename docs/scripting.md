@@ -136,7 +136,7 @@ variables of type GameObject are object fields too.
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it (scripts can't be added during Play yet) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
@@ -1286,6 +1286,11 @@ IEnumerator Start()
   `stoppingDistance`, `enabled`.
 - `ParticleSystem`: `Play`, `Stop`, `Pause`, `Clear`, `Emit(count)`, `isPlaying`, `isPaused`,
   `isStopped`, `particleCount`, `time`.
+- `gameObject.AddComponent<T>()` adds an engine component (`Rigidbody`, `BoxCollider`,
+  `SphereCollider`, `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D`,
+  `Rigidbody2D`, `Light`, `AudioSource`, `ParticleSystem`, …) with its defaults and returns it
+  (the existing one when the object has it); physics picks it up at once. `Destroy(component)`
+  removes that component (not the object). Scripts can't be added during Play yet.
 - `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
   `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,

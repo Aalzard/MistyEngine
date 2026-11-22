@@ -28,6 +28,7 @@ pub mod attributes;
 pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
+mod component_ops;
 pub mod csharp;
 pub mod csharp_fields;
 mod csharp_native;

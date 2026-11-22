@@ -1374,3 +1374,97 @@ public class Walker : MonoBehaviour
         );
     }
 }
+
+#[test]
+fn csharp_and_lua_add_and_remove_components_while_playing() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Builder : MonoBehaviour
+{
+    int frames;
+    void Start()
+    {
+        var rb = gameObject.AddComponent<Rigidbody>();
+        var box = gameObject.AddComponent<BoxCollider>();
+        var light = gameObject.AddComponent<Light>();
+        light.intensity = 2f;
+        Debug.Log("added " + (rb != null) + " " + (box != null) + " " + (GetComponent<Collider>() != null)
+            + " " + (gameObject.AddComponent<Rigidbody>() != null) + " " + light.intensity);
+        try { gameObject.AddComponent<Builder>(); }
+        catch (System.NotSupportedException) { Debug.Log("no scripts"); }
+    }
+    void Update()
+    {
+        frames++;
+        if (frames == 30)
+        {
+            Debug.Log("falling " + (transform.position.y < 4f));
+            Destroy(GetComponent<Rigidbody>());
+            Destroy(GetComponent<Light>());
+        }
+        if (frames == 31)
+            Debug.Log("removed " + (GetComponent<Rigidbody>() == null) + " " + (GetComponent<Light>() == null)
+                + " alive " + (gameObject != null) + " box " + (GetComponent<BoxCollider>() != null));
+    }
+}
+"#;
+    let lua = r#"
+local T = {}
+function T:Start()
+    local rb = self.gameObject:AddComponent("Rigidbody")
+    Debug.Log("lua rb", rb ~= nil, rb.mass)
+    local ok, err = pcall(function() self.gameObject:AddComponent("Nope") end)
+    Debug.Log("lua unknown", ok)
+end
+return T
+"#;
+    let root = project(&[("Builder.cs", src), ("LuaAdder.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let cube = scene.spawn("Cube", None);
+    scene.set_transform(
+        cube,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 5.0, 0.0)),
+    );
+    attach(&mut scene, cube, "Builder.cs");
+    let ball = scene.spawn("Ball", None);
+    attach(&mut scene, ball, "LuaAdder.lua");
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    let mut y_at_31 = 0.0;
+    for frame in 0..60 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        all.extend(logs.into_iter().map(|(_, t)| t));
+        if frame == 31 {
+            y_at_31 = scene.world_position(cube).y;
+        }
+    }
+    host.shutdown(&mut scene);
+    for want in [
+        "added True True True True 2",
+        "no scripts",
+        "falling True",
+        "removed True True alive True box True",
+        "lua rb true 1",
+        "lua unknown false",
+    ] {
+        assert!(
+            all.iter().any(|l| l == want),
+            "{want:?} missing in {all:#?}"
+        );
+    }
+    let y = scene.world_position(cube).y;
+    assert!(
+        (y - y_at_31).abs() < 1e-3,
+        "without its Rigidbody the cube stops falling: {y_at_31} → {y}"
+    );
+    assert!(scene.world.get::<&crate::scene::Rigidbody>(ball).is_ok());
+}
