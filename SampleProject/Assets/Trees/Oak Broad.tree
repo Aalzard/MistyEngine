@@ -1,18 +1,18 @@
 {
-  "seed": 1,
-  "height": 14.0,
+  "seed": 7,
+  "height": 17.0,
   "crown_shape": "Spreading",
-  "crown_width": 0.95,
-  "crown_base": 0.25,
-  "trunk_radius": 0.38,
+  "crown_width": 1.15,
+  "crown_base": 0.2,
+  "trunk_radius": 0.5,
   "leader": 0.15,
   "trunk_bend": 0.35,
-  "branches": 9,
-  "branch_angle": 60.0,
+  "branches": 11,
+  "branch_angle": 62.0,
   "branch_curve": 0.35,
-  "twigs": 12,
+  "twigs": 13,
   "leaf_density": 1.6,
-  "leaf_size": 1.4,
+  "leaf_size": 1.5,
   "leaf_color": [
     0.9,
     0.9,
@@ -38,16 +38,5 @@
     "trunk_bend": 0.7,
     "branch_sway": 0.9,
     "leaf_flutter": 1.0
-  },
-  "asset_guids": {
-    "Assets/Trees/Textures/OakBark.png": "b22b21f13ca451b5ba45777373d6490b",
-    "Assets/Trees/Textures/OakBarkAO.png": "233c6767350244b6b27a183ac7a95843",
-    "Assets/Trees/Textures/OakBarkHeight.png": "2b2c514c16f140c2ba7b791dad0b33e7",
-    "Assets/Trees/Textures/OakBarkNormal.png": "7bccde67271514d7d4019a3468fb2909",
-    "Assets/Trees/Textures/OakBarkRoughness.png": "90574efe6aff418a93cb1dc632a2979a",
-    "Assets/Trees/Textures/OakLeaves.png": "08298b6ec32c4f9c0e0f0bbd93f19c9c",
-    "Assets/Trees/Textures/OakLeavesNormal.png": "33aa854eac5269b52f957ae6f836980c",
-    "Assets/Trees/Textures/OakLeavesRoughness.png": "006b2a8e54e0416088b09fa8a4062658",
-    "Assets/Trees/Textures/OakLeavesTranslucency.png": "d5b2763a695244dead69d7b05fc9fbd6"
   }
 }

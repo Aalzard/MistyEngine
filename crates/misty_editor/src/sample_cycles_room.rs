@@ -453,9 +453,6 @@ fn scene(variant: Variant) -> Scene {
 /// the reference: its path-traced lightmap already holds the room's occlusion, so it keeps
 /// the lighter AO and the exposure the room was first tuned with.
 fn volume(variant: Variant) -> PostProcessVolume {
-    if variant == Variant::Baked {
-        return baked_volume();
-    }
     let mut v = PostProcessVolume::default();
     v.tonemapping.active = true;
     v.tonemapping.mode = TonemapMode::Agx;
@@ -474,6 +471,12 @@ fn volume(variant: Variant) -> PostProcessVolume {
     ao.intensity = 3.5;
     ao.radius = 1.6;
     ao.direct_lighting_strength = 0.6;
+    if variant == Variant::Baked {
+        v.color_adjustments.post_exposure = 1.0;
+        ao.intensity = 2.0;
+        ao.radius = 1.2;
+        ao.direct_lighting_strength = 0.0;
+    }
     ao.step_count = 10;
     ao.full_resolution = true;
     ao.temporal = true;
@@ -484,28 +487,6 @@ fn volume(variant: Variant) -> PostProcessVolume {
     v.screen_space_gi.active = true;
     v.screen_space_gi.intensity = 0.6;
     v.screen_space_reflections.active = true;
-    v
-}
-
-/// The baked room's volume as saved from the editor on Nov 17: ACES, no bloom or colour
-/// adjustments, light AO and contact shadows (it replaced the tuned AgX look; the realtime
-/// room keeps [`volume`]).
-fn baked_volume() -> PostProcessVolume {
-    let mut v = PostProcessVolume::default();
-    v.tonemapping.active = true;
-    v.tonemapping.mode = TonemapMode::Aces;
-    v.bloom.intensity = 0.6;
-    v.bloom.threshold = 0.0;
-    v.bloom.scatter = 0.7;
-    let ao = &mut v.ambient_occlusion;
-    ao.active = true;
-    ao.intensity = 1.0;
-    ao.radius = 1.5;
-    ao.direct_lighting_strength = 0.0;
-    ao.step_count = 6;
-    ao.full_resolution = false;
-    ao.temporal = true;
-    v.contact_shadows.active = true;
     v
 }
 

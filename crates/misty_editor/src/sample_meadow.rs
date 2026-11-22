@@ -315,8 +315,21 @@ fn thatch() -> [RgbaImage; 3] {
 fn tree_assets() -> Vec<(&'static str, TreeAsset)> {
     vec![
         ("Assets/Trees/Oak.tree", TreeAsset::oak()),
-        // Saved from the editor on Nov 17 as a copy of the plain Oak recipe.
-        ("Assets/Trees/Oak Broad.tree", TreeAsset::oak()),
+        (
+            "Assets/Trees/Oak Broad.tree",
+            TreeAsset {
+                seed: 7,
+                height: 17.0,
+                crown_width: 1.15,
+                crown_base: 0.2,
+                trunk_radius: 0.5,
+                branches: 11,
+                branch_angle: 62.0,
+                twigs: 13,
+                leaf_size: 1.5,
+                ..TreeAsset::oak()
+            },
+        ),
         ("Assets/Trees/Linden.tree", TreeAsset::linden()),
         ("Assets/Trees/Birch.tree", TreeAsset::birch()),
         (

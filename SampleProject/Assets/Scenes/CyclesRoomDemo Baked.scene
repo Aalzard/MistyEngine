@@ -881,17 +881,17 @@
           "ambient_occlusion": {
             "active": true,
             "direct_lighting_strength": 0.0,
-            "full_resolution": false,
-            "intensity": 1.0,
-            "radius": 1.5,
-            "step_count": 6,
+            "full_resolution": true,
+            "intensity": 2.0,
+            "radius": 1.2,
+            "step_count": 10,
             "temporal": true
           },
           "bloom": {
-            "active": false,
-            "intensity": 0.6,
+            "active": true,
+            "intensity": 0.15,
             "scatter": 0.7,
-            "threshold": 0.0,
+            "threshold": 1.0,
             "tint": [
               1.0,
               1.0,
@@ -899,28 +899,43 @@
             ]
           },
           "color_adjustments": {
-            "active": false,
+            "active": true,
             "color_filter": [
               1.0,
               1.0,
               1.0
             ],
             "contrast": 0.0,
-            "post_exposure": 0.0,
+            "post_exposure": 1.0,
             "saturation": 0.0
-          },
-          "contact_shadows": {
-            "active": true,
-            "distance_fade": 50.0,
-            "length": 0.15,
-            "opacity": 1.0,
-            "sample_count": 12
           },
           "enabled": true,
           "priority": 0.0,
+          "screen_space_gi": {
+            "active": true,
+            "denoise": true,
+            "full_resolution": false,
+            "intensity": 0.6,
+            "lightmapped_surfaces": false,
+            "quality": "Medium",
+            "radius": 3.0,
+            "temporal": true,
+            "thickness": 0.5
+          },
+          "screen_space_reflections": {
+            "active": true,
+            "edge_fade": 0.1,
+            "full_resolution": true,
+            "intensity": 1.0,
+            "max_distance": 50.0,
+            "max_roughness": 0.6,
+            "quality": "Medium",
+            "temporal": true,
+            "thickness": 0.3
+          },
           "tonemapping": {
             "active": true,
-            "mode": "Aces"
+            "mode": "AgX"
           },
           "vignette": {
             "active": false,
