@@ -750,26 +750,46 @@ impl Scene {
 
     /// Active itself and all parents active.
     pub fn active_in_hierarchy(&self, e: Entity) -> bool {
+        // One entity lookup per level (scripts ask this for every instance, every frame).
         let mut cur = Some(e);
         while let Some(c) = cur {
-            if !self.game_object(c).active {
+            let r = self.world.entity(c).expect("scene object has GameObject");
+            if !r
+                .get::<&GameObject>()
+                .expect("scene object has GameObject")
+                .active
+            {
                 return false;
             }
-            cur = self.parent(c);
+            cur = r.get::<&Node>().and_then(|n| n.parent);
         }
         true
     }
 
+    /// Local Transform and parent of `e`, from one entity lookup.
+    fn local_and_parent(&self, e: Entity) -> (Transform, Option<Entity>) {
+        let r = self.world.entity(e).expect("scene object has Transform");
+        let t = *r.get::<&Transform>().expect("scene object has Transform");
+        (t, r.get::<&Node>().and_then(|n| n.parent))
+    }
+
     pub fn world_matrix(&self, e: Entity) -> Mat4 {
-        let local = self.transform(e).local_matrix();
-        match self.parent(e) {
+        let (t, parent) = self.local_and_parent(e);
+        let local = t.local_matrix();
+        match parent {
             Some(p) => self.world_matrix(p) * local,
             None => local,
         }
     }
 
     pub fn world_position(&self, e: Entity) -> Vec3 {
-        self.world_matrix(e).w_axis.truncate()
+        // The translation column of the world matrix, without building this object's own
+        // matrix (a root's world position is its position).
+        let (t, parent) = self.local_and_parent(e);
+        match parent {
+            Some(p) => self.world_matrix(p).transform_point3(t.position),
+            None => t.position,
+        }
     }
 
     /// Place `e` at a world-space position (keeps its local rotation/scale).
@@ -939,7 +959,14 @@ mod tests {
         let mut s = Scene::new("t");
         let parent = s.spawn("Parent", None);
         for under in [None, Some(parent)] {
-            for n in ["Cube", "Cube (1)", "Cube (01)", "Cube (3)", "Cube (x)", "Cubes (2)"] {
+            for n in [
+                "Cube",
+                "Cube (1)",
+                "Cube (01)",
+                "Cube (3)",
+                "Cube (x)",
+                "Cubes (2)",
+            ] {
                 let e = s.spawn("tmp", under);
                 s.world.get::<&mut GameObject>(e).unwrap().name = n.to_owned();
             }

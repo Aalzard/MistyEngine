@@ -827,14 +827,15 @@ impl ScriptHost {
     /// Whether an instance should receive callbacks (object alive + active, script enabled).
     fn runnable(&self, i: &Instance) -> bool {
         self.with_world(|w| {
-            w.scene.contains(i.entity)
-                && w.scene.active_in_hierarchy(i.entity)
-                && w.scene
-                    .world
-                    .get::<&Scripts>(i.entity)
-                    .ok()
-                    .and_then(|s| s.list.get(i.slot).map(|r| r.enabled))
-                    .unwrap_or(false)
+            // The script's checkbox first (one lookup, and it answers for missing objects).
+            let enabled = w
+                .scene
+                .world
+                .get::<&Scripts>(i.entity)
+                .ok()
+                .and_then(|s| s.list.get(i.slot).map(|r| r.enabled))
+                .unwrap_or(false);
+            enabled && w.scene.active_in_hierarchy(i.entity)
         })
     }
 
