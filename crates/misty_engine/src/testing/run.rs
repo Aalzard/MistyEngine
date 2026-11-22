@@ -590,6 +590,14 @@ impl OpenFile {
         let Some(t) = self.test.as_mut() else { return };
         let Some(s) = t.session.as_mut() else { return };
         let outcome = match &r {
+            // Objects marked DontDestroyOnLoad: the game keeps running and swaps scenes.
+            Request::LoadScene(which) if s.runtime.has_persistent_objects(&s.scene) => {
+                cx.build.resolve(which).and_then(|(rel, _)| {
+                    let text = crate::vfs::read_to_string(cx.root.join(&rel))
+                        .map_err(|e| format!("{rel}: {e}"))?;
+                    s.runtime.load_scene_single(&mut s.scene, &rel, &text)
+                })
+            }
             Request::LoadScene(which) => cx
                 .build
                 .resolve(which)

@@ -340,6 +340,22 @@ fn load_scene(s: &mut EditorState, which: &SceneRef) {
 
 /// Swap in the project scene `rel` while playing; a network session carries over.
 fn load_scene_path(s: &mut EditorState, rel: &str) {
+    // Objects marked DontDestroyOnLoad: keep the runtime and swap scenes inside it.
+    if let Some(rt) = s.runtime.as_mut()
+        && rt.has_persistent_objects(&s.scene)
+    {
+        let result = std::fs::read_to_string(s.project.root.join(rel))
+            .map_err(|e| format!("{rel}: {e}"))
+            .and_then(|text| rt.load_scene_single(&mut s.scene, rel, &text));
+        if let Err(e) = result {
+            s.console.log(LogLevel::Error, e);
+        }
+        s.selection.clear();
+        s.inspector_targets.clear();
+        s.undo.clear();
+        flush_logs(s);
+        return;
+    }
     let loaded = misty_engine::scene::Scene::load(&s.project.root.join(rel));
     match loaded {
         Ok((mut scene, report)) => {

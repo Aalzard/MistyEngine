@@ -1387,6 +1387,7 @@ public class Builder : MonoBehaviour
     int frames;
     void Start()
     {
+        DontDestroyOnLoad(gameObject);
         var rb = gameObject.AddComponent<Rigidbody>();
         var box = gameObject.AddComponent<BoxCollider>();
         var light = gameObject.AddComponent<Light>();
@@ -1447,6 +1448,7 @@ return T
             y_at_31 = scene.world_position(cube).y;
         }
     }
+    assert_eq!(host.dont_destroy_roots(&scene), vec![cube]);
     host.shutdown(&mut scene);
     for want in [
         "added True True True True 2",

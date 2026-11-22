@@ -131,7 +131,7 @@ pub(super) struct NativeApi {
     audio_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
     animator_param: extern "C" fn(u64, i32, *const u16, i32, i32, f32, *mut f32) -> i32,
     animator_play: extern "C" fn(u64, i32, *const u16, i32, i32, f32, f32) -> i32,
-    request: extern "C" fn(i32, i64, *const u16, i32),
+    request: extern "C" fn(i32, i64, *const u16, i32, i32) -> i64,
     component_value: extern "C" fn(u64, i32, i32, i32, *mut V4) -> i32,
     camera_point: extern "C" fn(u64, i32, *const V3, *mut V3, *mut V3) -> i32,
     material: extern "C" fn(u64, i32, i32, *const u16, i32, *mut V4) -> i32,
@@ -142,6 +142,7 @@ pub(super) struct NativeApi {
     nav_agent: extern "C" fn(u64, i32, *mut V3) -> i32,
     particles: extern "C" fn(u64, i32, *mut f32) -> i32,
     component_op: extern "C" fn(u64, i32, *const u16, i32) -> i32,
+    scene_op: extern "C" fn(i64, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -196,6 +197,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     nav_agent,
     particles,
     component_op,
+    scene_op,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -1134,7 +1136,9 @@ extern "C" fn animator_play(
 
 /// `op`: 0 LoadScene, 1 LoadScene additive, 2 UnloadScene (by `index` when >= 0, else by
 /// name), 3 Application.Quit. Carried out after the frame.
-extern "C" fn request(op: i32, index: i64, ptr: *const u16, len: i32) {
+/// Scene loads and quit, after the frame. With `track` not 0 a load / unload is an operation
+/// (`LoadSceneAsync`; `track` 2 waits for `allowSceneActivation`) and its id is returned.
+extern "C" fn request(op: i32, index: i64, ptr: *const u16, len: i32, track: i32) -> i64 {
     use super::Request;
     use crate::build::SceneRef;
     let scene = if index >= 0 {
@@ -1148,7 +1152,27 @@ extern "C" fn request(op: i32, index: i64, ptr: *const u16, len: i32) {
         3 => Request::Quit,
         _ => Request::LoadScene(scene),
     };
-    with_world(|w| w.requests.push(r));
+    with_world(|w| {
+        if track != 0 && op != 3 {
+            w.scene_op_start(r, track == 1)
+        } else {
+            w.requests.push(r);
+            0
+        }
+    })
+    .unwrap_or(0)
+}
+
+/// A scene operation's state (`scene_ops.rs`: 0 waiting, 1 loading, 2 done, -1 none);
+/// `allow` 0 / 1 sets `allowSceneActivation` (-1 only reads).
+extern "C" fn scene_op(id: i64, allow: i32) -> i32 {
+    with_world(|w| {
+        if allow >= 0 {
+            w.scene_op_allow(id, allow == 1);
+        }
+        w.scene_op_state(id)
+    })
+    .unwrap_or(-1)
 }
 
 // ---- Camera, Light, Renderer, Material, Screen, Cursor ------------------------------------
@@ -1872,11 +1896,16 @@ extern "C" fn particles(id: u64, op: i32, v: *mut f32) -> i32 {
     .unwrap_or(0)
 }
 
-/// `AddComponent` (op 0) and `Destroy(component)` (op 1) for engine components by name.
+/// `AddComponent` (op 0) and `Destroy(component)` (op 1) for engine components by name, and
+/// `DontDestroyOnLoad` (op 2, no name) for the object.
 /// Returns 1 when added / removed, 0 when nothing changed, -1 for an unknown name (logged).
 extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
     let name = text(ptr, len);
     with_object(id, |w, e| {
+        if op == 2 {
+            w.dont_destroy.push(e);
+            return 1;
+        }
         let r = if op == 0 {
             super::component_ops::add(w, e, &name)
         } else {

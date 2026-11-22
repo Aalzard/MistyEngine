@@ -562,6 +562,12 @@ namespace Misty
         /// `t` seconds.</summary>
         public static void Destroy(Object obj, float t = 0f) => Internal.Host.Destroy(obj, t);
 
+        /// <summary>Keep the object (its root) and its scripts through single scene loads.</summary>
+        public static void DontDestroyOnLoad(Object obj)
+        {
+            if (obj != null) Internal.Native.ComponentOp(obj.ObjectId, 2, "");
+        }
+
         /// <summary>The first script of type T in the scene (active objects first), or null.</summary>
         public static T FindObjectOfType<T>() where T : MonoBehaviour => Internal.Host.FindOfType<T>();
         public static T[] FindObjectsOfType<T>() where T : MonoBehaviour => Internal.Host.FindAllOfType<T>();
@@ -1664,24 +1670,85 @@ namespace Misty
     /// <summary>Scene loading (carried out after the frame), like Unity's SceneManager.</summary>
     public static unsafe class SceneManager
     {
-        static void Request(int op, int index, string name)
+        static long Request(int op, int index, string name, int track = 0)
         {
             name ??= "";
-            fixed (char* p = name) Internal.Native.api.request(op, index, p, name.Length);
+            fixed (char* p = name) return Internal.Native.api.request(op, index, p, name.Length, track);
         }
 
         public static void LoadScene(string sceneName, LoadSceneMode mode = LoadSceneMode.Single) =>
             Request(mode == LoadSceneMode.Additive ? 1 : 0, -1, sceneName);
         public static void LoadScene(int sceneBuildIndex, LoadSceneMode mode = LoadSceneMode.Single) =>
             Request(mode == LoadSceneMode.Additive ? 1 : 0, sceneBuildIndex, null);
-        public static void UnloadSceneAsync(string sceneName) => Request(2, -1, sceneName);
-        public static void UnloadSceneAsync(int sceneBuildIndex) => Request(2, sceneBuildIndex, null);
+        public static AsyncOperation LoadSceneAsync(string sceneName, LoadSceneMode mode = LoadSceneMode.Single) =>
+            new AsyncOperation(Request(mode == LoadSceneMode.Additive ? 1 : 0, -1, sceneName, 1));
+        public static AsyncOperation LoadSceneAsync(int sceneBuildIndex, LoadSceneMode mode = LoadSceneMode.Single) =>
+            new AsyncOperation(Request(mode == LoadSceneMode.Additive ? 1 : 0, sceneBuildIndex, null, 1));
+        public static AsyncOperation UnloadSceneAsync(string sceneName) => new AsyncOperation(Request(2, -1, sceneName, 1));
+        public static AsyncOperation UnloadSceneAsync(int sceneBuildIndex) => new AsyncOperation(Request(2, sceneBuildIndex, null, 1));
+    }
+
+    /// <summary>A scene load or unload in progress (`LoadSceneAsync`); `yield return` it in a
+    /// coroutine to wait for it. Loads happen between frames: `progress` is 0.9 until done
+    /// (and while `allowSceneActivation` is false), then 1.</summary>
+    public sealed unsafe class AsyncOperation : CustomYieldInstruction
+    {
+        static readonly List<AsyncOperation> pending = new List<AsyncOperation>();
+        readonly long id;
+        Action<AsyncOperation> completedHandlers;
+        bool fired;
+
+        internal AsyncOperation(long id)
+        {
+            this.id = id;
+            if (id > 0) pending.Add(this);
+        }
+
+        int State => id > 0 ? Internal.Native.api.sceneOp(id, -1) : 2;
+        public bool isDone => State == 2;
+        public float progress => isDone ? 1f : 0.9f;
+        public int priority { get; set; }
+        public bool allowSceneActivation
+        {
+            get => State != 0;
+            set { if (id > 0) Internal.Native.api.sceneOp(id, value ? 1 : 0); }
+        }
+        public override bool keepWaiting => !isDone;
+
+        /// <summary>Runs once the operation is done (at once when it already is).</summary>
+        public event Action<AsyncOperation> completed
+        {
+            add
+            {
+                if (fired || isDone) { fired = true; value?.Invoke(this); }
+                else completedHandlers += value;
+            }
+            remove => completedHandlers -= value;
+        }
+
+        /// <summary>Start of a frame: fire `completed` for the operations that finished.</summary>
+        internal static void Tick()
+        {
+            for (int i = 0; i < pending.Count; i++)
+            {
+                var op = pending[i];
+                if (!op.isDone) continue;
+                pending.RemoveAt(i--);
+                op.fired = true;
+                var handlers = op.completedHandlers;
+                op.completedHandlers = null;
+                try { handlers?.Invoke(op); }
+                catch (Exception e) { Internal.Native.Log(2, "AsyncOperation.completed: " + e); }
+            }
+        }
+
+        internal static void Reset() => pending.Clear();
     }
 
     public static unsafe class Application
     {
         /// <summary>Quit the game (stops Play mode in the editor).</summary>
-        public static void Quit() => Internal.Native.api.request(3, -1, null, 0);
+        public static void Quit() => Internal.Native.api.request(3, -1, null, 0, 0);
         public static bool isPlaying => true;
     }
 
@@ -1851,7 +1918,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, int, float, float*, int> audioScalar;
         public delegate* unmanaged<ulong, int, char*, int, int, float, float*, int> animatorParam;
         public delegate* unmanaged<ulong, int, char*, int, int, float, float, int> animatorPlay;
-        public delegate* unmanaged<int, long, char*, int, void> request;
+        public delegate* unmanaged<int, long, char*, int, int, long> request;
         public delegate* unmanaged<ulong, int, int, int, Color*, int> componentValue;
         public delegate* unmanaged<ulong, int, Vector3*, Vector3*, Vector3*, int> cameraPoint;
         public delegate* unmanaged<ulong, int, int, char*, int, Color*, int> material;
@@ -1862,6 +1929,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, Vector3*, int> navAgent;
         public delegate* unmanaged<ulong, int, float*, int> particles;
         public delegate* unmanaged<ulong, int, char*, int, int> componentOp;
+        public delegate* unmanaged<long, int, int> sceneOp;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2228,6 +2296,7 @@ namespace Misty.Internal
             Native.api = *(NativeApi*)table;
             Coroutines.Clear();
             UiEvents.Reset();
+            AsyncOperation.Reset();
             types.Clear();
             byObject.Clear();
             timed.Clear();
@@ -2486,6 +2555,7 @@ namespace Misty.Internal
                     timed.RemoveAt(i);
                 }
             }
+            AsyncOperation.Tick();
         }
 
         /// <summary>Set the Inspector value of field `name`: kind 0 bool (num != 0), 1 number,

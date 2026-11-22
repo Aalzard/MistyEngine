@@ -6589,12 +6589,26 @@ thread). Not numbered as a round: round 92 lives on another computer.
   `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D` types.
 - **Bug: C# `Destroy(component)` destroyed the whole object** (`Destroy(GetComponent<Rigidbody>())`
   deleted the GameObject). It now removes only that component.
+- **DontDestroyOnLoad** (Lua global, C# `Object.DontDestroyOnLoad`): neither language had it.
+  When marked objects exist, `SceneManager.LoadScene` (single) no longer restarts the runtime:
+  `Runtime::load_scene_single` moves the kept roots to an unsaved "DontDestroyOnLoad" scene,
+  unloads every other scene (OnDisable / OnDestroy), loads the new one additively, makes it the
+  active scene (lighting, navigation) and wakes its objects. Without marked objects the old
+  restart path runs unchanged. Wired into the editor's Play mode and the player.
+- **LoadSceneAsync** (Lua and C#; `scene_ops.rs`): returns an operation (`AsyncOperation` in
+  C#, a `CustomYieldInstruction`, so `yield return op` works). It is sent at the end of the
+  frame when `allowSceneActivation` is true and done at the start of the next frame, when
+  `completed` runs. Loads are still instant between frames (no background streaming): `progress`
+  is 0.9 until done. `UnloadSceneAsync` returns one too.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `csharp_ui_components_listeners_messages_and_player_prefs`, `csharp_rigidbody2d_and_2d_callbacks`,
 `csharp_nav_mesh_agent_walks_and_particles_play`,
-`csharp_and_lua_add_and_remove_components_while_playing`. The 20 C# tests and the 144 scripting tests
+`csharp_and_lua_add_and_remove_components_while_playing`,
+`dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load`,
+`lua_load_scene_async_waits_for_activation_and_completes`,
+`csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done

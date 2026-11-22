@@ -176,11 +176,11 @@ variables of type GameObject are object fields too.
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
-| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
+| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name`. `LoadSceneAsync(scene[, mode])` / `UnloadSceneAsync(scene)` return an operation: `isDone`, `progress` (0.9 while loading or waiting, 1 when done), `allowSceneActivation` (set it to false right after the call to hold the load, true to let it go), `op:OnCompleted(fn)` or `op.completed = fn`. The load itself happens between frames; with `DontDestroyOnLoad` objects a single load keeps them, so a loading screen can watch its operation finish |
 | `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor); `HasDefine(name)` — the Build Profile's scripting defines; `isDedicatedServer`, `isEditor` |
 | `Achievements` | `Unlock(id)` (true the first time), `IsUnlocked(id)`, `Clear(id)`, `GetUnlocked()` — stored locally (see docs/building.md) |
 | Tags | `gameObject.tag`, `gameObject:CompareTag("Enemy")`, `GameObject.FindWithTag(tag)` (first active object or nil), `GameObject.FindGameObjectsWithTag(tag)` (list); tags come from Project Settings ▸ Tags and Layers (an undefined tag is an error) |
-| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
+| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `DontDestroyOnLoad(gameObject)` (the object's root and its scripts, with their state, survive `SceneManager.LoadScene`; they move to a scene named "DontDestroyOnLoad"), `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
 `"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…, mouse buttons `"mouse 0"`–`"mouse 2"` and joystick
@@ -1291,6 +1291,8 @@ IEnumerator Start()
   `Rigidbody2D`, `Light`, `AudioSource`, `ParticleSystem`, …) with its defaults and returns it
   (the existing one when the object has it); physics picks it up at once. `Destroy(component)`
   removes that component (not the object). Scripts can't be added during Play yet.
+- `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
+  single scene loads, like Lua's.
 - `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
   `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
@@ -1305,7 +1307,9 @@ IEnumerator Start()
   `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
   `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
 - `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
-  `UnloadSceneAsync`; `Application.Quit`.
+  `LoadSceneAsync` / `UnloadSceneAsync` returning an `AsyncOperation` (`isDone`, `progress`,
+  `allowSceneActivation`, the `completed` event; `yield return op` waits for it);
+  `Application.Quit`.
 - `MonoBehaviour` / `Component`: `gameObject`, `transform`, `name`, `tag`, `enabled`,
   `isActiveAndEnabled`, the `GetComponent` family, `print`.
 - `Transform`: world `position` / `rotation` / `eulerAngles` / `lossyScale`, `localPosition` /

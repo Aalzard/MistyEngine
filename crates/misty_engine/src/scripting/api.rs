@@ -970,6 +970,22 @@ pub fn register(lua: &Lua) -> Result<()> {
             with_world(lua, |w| w.destroy.push(e))
         })?,
     )?;
+    // Keep an object (its root) and its scripts' state through single scene loads.
+    g.set(
+        "DontDestroyOnLoad",
+        lua.create_function(|lua, target: Value| {
+            let e = match &target {
+                Value::UserData(ud) if ud.is::<LGameObject>() => ud.borrow::<LGameObject>()?.0,
+                Value::UserData(ud) if ud.is::<LTransform>() => ud.borrow::<LTransform>()?.0,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "DontDestroyOnLoad expects a GameObject",
+                    ));
+                }
+            };
+            with_world(lua, |w| w.dont_destroy.push(e))
+        })?,
+    )?;
 
     // SceneManager / Application: loads are requests handled after the frame.
     super::scene_api::register(lua, &g)?;

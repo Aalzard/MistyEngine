@@ -53,6 +53,7 @@ pub mod rigging_api;
 pub mod save_api;
 mod save_host;
 pub mod scene_api;
+mod scene_ops;
 pub mod skinning_api;
 pub mod spline_api;
 pub mod syntax;
@@ -245,6 +246,10 @@ pub struct World {
     pub input: Input,
     pub logs: Vec<(LogKind, String)>,
     pub destroy: Vec<Entity>,
+    /// Objects scripts marked with `DontDestroyOnLoad`: a single scene load keeps them.
+    pub dont_destroy: Vec<Entity>,
+    /// `LoadSceneAsync` / `UnloadSceneAsync` operations (scene_ops.rs).
+    pub scene_ops: Vec<scene_ops::SceneOp>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -333,6 +338,8 @@ impl World {
                 .map(|w| (LogKind::Warning, w))
                 .collect(),
             destroy: Vec::new(),
+            dont_destroy: Vec::new(),
+            scene_ops: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -1387,6 +1394,8 @@ impl ScriptHost {
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;
         });
+        // Scene operations carried out between frames finish (their `completed` callbacks).
+        self.scene_ops_tick();
         let input_events = {
             profile_scope!("Input.Update", Category::Scripts);
             self.input_update(time.unscaled_delta)
@@ -1816,6 +1825,33 @@ impl ScriptHost {
         });
         self.flush_spawned();
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// Root objects marked with `DontDestroyOnLoad` that still exist in `scene`.
+    pub fn dont_destroy_roots(&self, scene: &Scene) -> Vec<Entity> {
+        let marked = self.with_world(|w| {
+            w.dont_destroy.retain(|e| scene.contains(*e));
+            w.dont_destroy.clone()
+        });
+        let mut roots: Vec<Entity> = marked
+            .into_iter()
+            .map(|mut e| {
+                while let Some(p) = scene.parent(e) {
+                    e = p;
+                }
+                e
+            })
+            .collect();
+        roots.sort_unstable_by_key(|e| e.to_bits());
+        roots.dedup();
+        roots
+    }
+
+    /// Load the nav meshes of `scene` again (its active scene changed while playing).
+    pub fn reload_navigation(&mut self, scene: &Scene) {
+        let root = self.root.clone();
+        let nav = crate::navigation::NavRuntime::load(scene, &root);
+        self.with_world(|w| w.navigation = nav);
     }
 
     /// Remove objects between frames (an unloaded scene) with their bodies and scripts.
@@ -2296,6 +2332,8 @@ mod input_tests;
 mod material_tests;
 #[cfg(test)]
 mod network_tests;
+#[cfg(test)]
+mod scene_async_tests;
 #[cfg(test)]
 mod set_active_tests;
 #[cfg(test)]

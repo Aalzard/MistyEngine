@@ -393,6 +393,16 @@ impl Scene {
         Ok(())
     }
 
+    /// A new, empty loaded scene that is never saved (the `DontDestroyOnLoad` scene of a game).
+    pub fn add_empty_scene(&mut self, name: &str) -> SceneId {
+        let id = self.next_scene_id;
+        self.next_scene_id += 1;
+        let mut entry = SceneEntry::new(id, name, None);
+        entry.set_stash(RenderSettings::default(), NavigationSettings::default());
+        self.scenes.push(entry);
+        id
+    }
+
     /// Unloaded entry for a scene file that isn't open (restoring a saved open set).
     pub fn add_unloaded(&mut self, path: &str) -> SceneId {
         if let Some(id) = self.find_by_path(path) {
