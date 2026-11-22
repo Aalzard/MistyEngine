@@ -1714,15 +1714,19 @@ mod project_resolver_tests {
 
     #[test]
     fn graphs_by_absolute_path_resolve_files_in_their_own_project() {
+        // An absolute path on the host: `C:/...` is only absolute on Windows.
+        let root = if cfg!(windows) { "C:/" } else { "/" };
         assert_eq!(
-            project_of("C:/Games/Rock/Assets/Shaders/Rock.shadergraph"),
-            Some(std::path::PathBuf::from("C:/Games/Rock"))
+            project_of(&format!("{root}Games/Rock/Assets/Shaders/Rock.shadergraph")),
+            Some(std::path::PathBuf::from(format!("{root}Games/Rock")))
         );
         assert_eq!(project_of("Assets/Shaders/Rock.shadergraph"), None);
-        let r = ProjectResolver::for_path("C:/Games/Rock/Assets/Shaders/Rock.shadergraph");
+        let r =
+            ProjectResolver::for_path(&format!("{root}Games/Rock/Assets/Shaders/Rock.shadergraph"));
         assert_eq!(
             r.file("Assets/Sub/Edge.shadersubgraph"),
-            std::path::PathBuf::from("C:/Games/Rock").join("Assets/Sub/Edge.shadersubgraph")
+            std::path::PathBuf::from(format!("{root}Games/Rock"))
+                .join("Assets/Sub/Edge.shadersubgraph")
         );
     }
 }

@@ -1022,7 +1022,10 @@ fn stay_lasts_while_any_collider_pair_still_touches() {
     };
     assert_eq!(super::advance_touching(&mut touching, &[trig]).len(), 1);
     // Met and parted within one step: never stays.
-    let stay = super::advance_touching(&mut touching, &[contact(true, false), contact(false, false)]);
+    let stay = super::advance_touching(
+        &mut touching,
+        &[contact(true, false), contact(false, false)],
+    );
     assert_eq!(stay.len(), 1);
     assert_eq!(touching.len(), 1);
     // The last parts.

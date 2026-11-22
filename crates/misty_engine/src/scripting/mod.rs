@@ -1264,7 +1264,11 @@ impl ScriptHost {
         self.touching.retain(|_| keep.next().unwrap_or(false));
         let staying = advance_touching(&mut self.touching, contacts);
         for (a, b, trigger) in staying {
-            if !(if trigger { want_trigger } else { want_collision }) {
+            if !(if trigger {
+                want_trigger
+            } else {
+                want_collision
+            }) {
                 continue;
             }
             let (event, kind) = if trigger {
