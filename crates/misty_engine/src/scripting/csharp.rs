@@ -70,21 +70,14 @@ pub fn is_csharp_path(path: &str) -> bool {
 
 // ---- the .NET runtime ----------------------------------------------------------------------
 
-/// hostfxr's `char_t`: UTF-16 on Windows, UTF-8 bytes everywhere else (passing UTF-16 on
-/// Linux or macOS made the host read garbage: "the .NET runtime did not start").
-#[cfg(windows)]
-type HostChar = u16;
-#[cfg(not(windows))]
-type HostChar = u8;
-
-type HostfxrInit = unsafe extern "C" fn(*const HostChar, *const c_void, *mut *mut c_void) -> i32;
+type HostfxrInit = unsafe extern "C" fn(*const u16, *const c_void, *mut *mut c_void) -> i32;
 
 /// `hostfxr_initialize_parameters` (hostfxr.h).
 #[repr(C)]
 struct InitParameters {
     size: usize,
-    host_path: *const HostChar,
-    dotnet_root: *const HostChar,
+    host_path: *const u16,
+    dotnet_root: *const u16,
 }
 
 /// The folder a built game keeps its .NET runtime in, next to the executable.
@@ -101,10 +94,10 @@ fn bundled_root() -> Option<PathBuf> {
 }
 type HostfxrGetDelegate = unsafe extern "C" fn(*mut c_void, i32, *mut *mut c_void) -> i32;
 type LoadAssemblyAndGetFunctionPointer = unsafe extern "C" fn(
-    *const HostChar,
-    *const HostChar,
-    *const HostChar,
-    *const HostChar,
+    *const u16,
+    *const u16,
+    *const u16,
+    *const u16,
     *mut c_void,
     *mut *mut c_void,
 ) -> i32;
@@ -119,19 +112,11 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
 
-/// `s` as a NUL-terminated string in the host's `char_t`.
-fn wide(s: &str) -> Vec<HostChar> {
-    #[cfg(windows)]
-    {
-        s.encode_utf16().chain(std::iter::once(0)).collect()
-    }
-    #[cfg(not(windows))]
-    {
-        s.bytes().chain(std::iter::once(0)).collect()
-    }
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn wide_path(p: &Path) -> Vec<HostChar> {
+fn wide_path(p: &Path) -> Vec<u16> {
     wide(&p.to_string_lossy())
 }
 
@@ -322,7 +307,7 @@ impl Runtime {
                     path.as_ptr(),
                     type_name.as_ptr(),
                     method_w.as_ptr(),
-                    usize::MAX as *const HostChar,
+                    usize::MAX as *const u16,
                     std::ptr::null_mut(),
                     &mut f,
                 )
