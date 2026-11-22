@@ -55,6 +55,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#behaviourtree">BehaviourTree</a></li>
 <li><a href="#color">Color</a></li>
 <li><a href="#debug">Debug</a></li>
+<li><a href="#eventsystem">EventSystem</a></li>
 <li><a href="#forcemode">ForceMode</a></li>
 <li><a href="#forcemode2d">ForceMode2D</a></li>
 <li><a href="#gameobject">GameObject</a></li>
@@ -79,6 +80,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#savesystem">SaveSystem</a></li>
 <li><a href="#scenemanager">SceneManager</a></li>
 <li><a href="#screen">Screen</a></li>
+<li><a href="#sendmessageoptions">SendMessageOptions</a></li>
 <li><a href="#terrain">Terrain</a></li>
 <li><a href="#time">Time</a></li>
 <li><a href="#vector2">Vector2</a></li>
@@ -104,6 +106,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#type-charactercontroller">CharacterController (object)</a></li>
 <li><a href="#type-collider2d">Collider2D (object)</a></li>
 <li><a href="#type-dropdown">Dropdown (object)</a></li>
+<li><a href="#type-eventsystem">EventSystem (object)</a></li>
 <li><a href="#type-gameobject">GameObject (object)</a></li>
 <li><a href="#type-gamepad">Gamepad (object)</a></li>
 <li><a href="#type-image">Image (object)</a></li>
@@ -124,6 +127,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#type-particlesystem">ParticleSystem (object)</a></li>
 <li><a href="#type-playabledirector">PlayableDirector (object)</a></li>
 <li><a href="#type-playerinput">PlayerInput (object)</a></li>
+<li><a href="#type-playerinputmanager">PlayerInputManager (object)</a></li>
 <li><a href="#type-rawimage">RawImage (object)</a></li>
 <li><a href="#type-raycasthit">RaycastHit (object)</a></li>
 <li><a href="#type-rebind">Rebind (object)</a></li>
@@ -164,6 +168,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Destroy(gameObject)</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Destroy an object at the end of the frame</p>
+</div>
+<div class="entry" data-key="dontdestroyonload(target) ">
+<div class="sig">DontDestroyOnLoad(target)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p class="notes">Keep an object (its root) and its scripts' state through single scene loads.</p>
 </div>
 <div class="entry" data-key="header(text) ">
 <div class="sig">Header(text)</div>
@@ -473,6 +482,13 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Debug.LogWarning(...)</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Write a warning to the Console</p>
+</div>
+</section>
+<section id="eventsystem">
+<h2>EventSystem</h2>
+<div class="entry" data-key="eventsystem.current ">
+<div class="sig">EventSystem.current</div>
+<div class="meta">property · source: <code>event_system_api.rs</code></div>
 </div>
 </section>
 <section id="forcemode">
@@ -1495,13 +1511,17 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function · source: <code>scene_api.rs</code></div>
 <p>Make a loaded scene active (its lighting is used)</p>
 </div>
+<div class="entry" data-key="scenemanager.unloadscene(v) ">
+<div class="sig">SceneManager.UnloadScene(v)</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+</div>
 <div class="entry" data-key="scenemanager.unloadsceneasync(nameorindex) unload an additively loaded scene after this frame">
 <div class="sig">SceneManager.UnloadSceneAsync(nameOrIndex)</div>
-<div class="meta">function · source: <code>scene_api.rs</code></div>
+<div class="meta">function</div>
 <p>Unload an additively loaded scene after this frame</p>
 </div>
-<div class="entry" data-key="scenemanager.unloadscene ">
-<div class="sig">SceneManager.UnloadScene</div>
+<div class="entry" data-key="scenemanager.__prim ">
+<div class="sig">SceneManager.__prim</div>
 <div class="meta">property · source: <code>scene_api.rs</code></div>
 </div>
 </section>
@@ -1531,6 +1551,17 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="entry" data-key="screen.width ">
 <div class="sig">Screen.width</div>
 <div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+</section>
+<section id="sendmessageoptions">
+<h2>SendMessageOptions</h2>
+<div class="entry" data-key="sendmessageoptions.dontrequirereceiver ">
+<div class="sig">SendMessageOptions.DontRequireReceiver</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="sendmessageoptions.requirereceiver ">
+<div class="sig">SendMessageOptions.RequireReceiver</div>
+<div class="meta">property · source: <code>api.rs</code></div>
 </div>
 </section>
 <section id="terrain">
@@ -2362,6 +2393,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-button">
 <h2>Button (object)</h2>
+<div class="entry" data-key="button:select() ">
+<div class="sig">button:Select()</div>
+<div class="meta">function · source: <code>ui_api.rs</code></div>
+</div>
 <div class="entry" data-key="button.gameobject ">
 <div class="sig">button.gameObject</div>
 <div class="meta">property · source: <code>ui_api.rs</code></div>
@@ -2624,6 +2659,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
 <p class="notes">The caption follows the value every frame; kept for familiarity.</p>
 </div>
+<div class="entry" data-key="dropdown:select() ">
+<div class="sig">dropdown:Select()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
 <div class="entry" data-key="dropdown.captiontext ">
 <div class="sig">dropdown.captionText</div>
 <div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
@@ -2637,8 +2676,36 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
 </div>
 </section>
+<section id="type-eventsystem">
+<h2>EventSystem (object)</h2>
+<div class="entry" data-key="eventsystem:setselectedgameobject(v) ">
+<div class="sig">eventSystem:SetSelectedGameObject(v)</div>
+<div class="meta">function · source: <code>event_system_api.rs</code></div>
+</div>
+<div class="entry" data-key="eventsystem.currentselectedgameobject ">
+<div class="sig">eventSystem.currentSelectedGameObject</div>
+<div class="meta">property · source: <code>event_system_api.rs</code></div>
+</div>
+<div class="entry" data-key="eventsystem.firstselectedgameobject ">
+<div class="sig">eventSystem.firstSelectedGameObject</div>
+<div class="meta">property (read / write) · source: <code>event_system_api.rs</code></div>
+</div>
+<div class="entry" data-key="eventsystem.gameobject ">
+<div class="sig">eventSystem.gameObject</div>
+<div class="meta">property · source: <code>event_system_api.rs</code></div>
+</div>
+<div class="entry" data-key="eventsystem.sendnavigationevents ">
+<div class="sig">eventSystem.sendNavigationEvents</div>
+<div class="meta">property (read / write) · source: <code>event_system_api.rs</code></div>
+</div>
+</section>
 <section id="type-gameobject">
 <h2>GameObject (object)</h2>
+<div class="entry" data-key="gameobject:addcomponent(name) ">
+<div class="sig">gameObject:AddComponent(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p class="notes"><code>AddComponent(&quot;Rigidbody&quot;)</code>: adds a default engine component (and what it requires) and returns it like GetComponent; the existing one when the object has it.</p>
+</div>
 <div class="entry" data-key="gameobject:comparetag(tag) true when the tag matches">
 <div class="sig">gameObject:CompareTag(tag)</div>
 <div class="meta">function · source: <code>api.rs</code></div>
@@ -2829,6 +2896,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-inputfield">
 <h2>InputField (object)</h2>
+<div class="entry" data-key="inputfield:select() ">
+<div class="sig">inputField:Select()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
 <div class="entry" data-key="inputfield.characterlimit ">
 <div class="sig">inputField.characterLimit</div>
 <div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
@@ -3478,6 +3549,46 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property · source: <code>input_actions_api.rs</code></div>
 </div>
 </section>
+<section id="type-playerinputmanager">
+<h2>PlayerInputManager (object)</h2>
+<div class="entry" data-key="playerinputmanager:disablejoining() ">
+<div class="sig">playerInputManager:DisableJoining()</div>
+<div class="meta">function · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager:enablejoining() ">
+<div class="sig">playerInputManager:EnableJoining()</div>
+<div class="meta">function · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager:joinplayer() ">
+<div class="sig">playerInputManager:JoinPlayer()</div>
+<div class="meta">function · source: <code>player_manager_api.rs</code></div>
+<p class="notes">Spawn a player now (paired with free devices): its GameObject, or nil when full.</p>
+</div>
+<div class="entry" data-key="playerinputmanager.enabled ">
+<div class="sig">playerInputManager.enabled</div>
+<div class="meta">property (read / write) · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager.gameobject ">
+<div class="sig">playerInputManager.gameObject</div>
+<div class="meta">property · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager.joiningenabled ">
+<div class="sig">playerInputManager.joiningEnabled</div>
+<div class="meta">property · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager.maxplayercount ">
+<div class="sig">playerInputManager.maxPlayerCount</div>
+<div class="meta">property · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager.playercount ">
+<div class="sig">playerInputManager.playerCount</div>
+<div class="meta">property · source: <code>player_manager_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinputmanager.splitscreen ">
+<div class="sig">playerInputManager.splitScreen</div>
+<div class="meta">property (read / write) · source: <code>player_manager_api.rs</code></div>
+</div>
+</section>
 <section id="type-rawimage">
 <h2>RawImage (object)</h2>
 <div class="entry" data-key="rawimage.color ">
@@ -3752,6 +3863,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-scrollbar">
 <h2>Scrollbar (object)</h2>
+<div class="entry" data-key="scrollbar:select() ">
+<div class="sig">scrollbar:Select()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
 <div class="entry" data-key="scrollbar.numberofsteps ">
 <div class="sig">scrollbar.numberOfSteps</div>
 <div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
@@ -3842,6 +3957,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-slider">
 <h2>Slider (object)</h2>
+<div class="entry" data-key="slider:select() ">
+<div class="sig">slider:Select()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
 <div class="entry" data-key="slider.maxvalue ">
 <div class="sig">slider.maxValue</div>
 <div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
@@ -4175,6 +4294,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-toggle">
 <h2>Toggle (object)</h2>
+<div class="entry" data-key="toggle:select() ">
+<div class="sig">toggle:Select()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
 <div class="entry" data-key="toggle.group ">
 <div class="sig">toggle.group</div>
 <div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
@@ -4326,31 +4449,32 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <h2>Vector3 (object)</h2>
 <div class="entry" data-key="vector3.magnitude length">
 <div class="sig">vector3.magnitude</div>
-<div class="meta">property · source: <code>api.rs</code></div>
+<div class="meta">property</div>
 <p>Length</p>
 </div>
 <div class="entry" data-key="vector3.normalized unit-length copy">
 <div class="sig">vector3.normalized</div>
-<div class="meta">property · source: <code>api.rs</code></div>
+<div class="meta">property</div>
 <p>Unit-length copy</p>
 </div>
-<div class="entry" data-key="vector3.sqrmagnitude ">
+<div class="entry" data-key="vector3.sqrmagnitude squared length (cheaper than magnitude)">
 <div class="sig">vector3.sqrMagnitude</div>
-<div class="meta">property · source: <code>api.rs</code></div>
+<div class="meta">property</div>
+<p>Squared length (cheaper than magnitude)</p>
 </div>
 <div class="entry" data-key="vector3.x x component">
 <div class="sig">vector3.x</div>
-<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<div class="meta">property</div>
 <p>X component</p>
 </div>
 <div class="entry" data-key="vector3.y y component">
 <div class="sig">vector3.y</div>
-<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<div class="meta">property</div>
 <p>Y component</p>
 </div>
 <div class="entry" data-key="vector3.z z component">
 <div class="sig">vector3.z</div>
-<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<div class="meta">property</div>
 <p>Z component</p>
 </div>
 </section>

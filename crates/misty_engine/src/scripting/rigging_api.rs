@@ -147,8 +147,7 @@ fn get(lua: &Lua, c: &LRigComponent, key: &str) -> Result<Value> {
         serde_json::Value::String(s) => Value::String(lua.create_string(s)?),
         serde_json::Value::Array(a) if a.len() == 3 && a.iter().all(|x| x.is_number()) => {
             let f = |i: usize| number(&a[i]) as f32;
-            lua.create_userdata(LVec3(glam::Vec3::new(f(0), f(1), f(2))))
-                .map(Value::UserData)?
+            mlua::IntoLua::into_lua(LVec3(glam::Vec3::new(f(0), f(1), f(2))), lua)?
         }
         _ => {
             return Err(mlua::Error::runtime(format!(

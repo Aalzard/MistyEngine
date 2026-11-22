@@ -117,7 +117,7 @@ pub fn register(lua: &Lua) -> Result<()> {
             }
             match (value, &previous) {
                 (Some(Prop::Bool(b)), _) => Ok(Value::Boolean(b)),
-                (Some(Prop::Vec(v)), _) => Ok(Value::UserData(lua.create_userdata(LVec3(v))?)),
+                (Some(Prop::Vec(v)), _) => Ok(mlua::IntoLua::into_lua(LVec3(v), lua)?),
                 (None, Some(f)) => f.call((t, key)),
                 (None, None) => Ok(Value::Nil),
             }

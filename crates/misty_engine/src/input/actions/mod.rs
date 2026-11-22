@@ -12,6 +12,7 @@ pub mod composites;
 pub mod interactions;
 pub mod path;
 pub mod player_input;
+pub mod player_manager;
 pub mod processors;
 pub mod state;
 pub mod system;
@@ -24,6 +25,7 @@ pub use asset::{
 };
 pub use interactions::Phase;
 pub use player_input::{PlayerInput, PlayerInputBehavior, PlayerInputCall};
+pub use player_manager::{PlayerInputManager, PlayerJoinBehavior};
 pub use state::{ActionEvent, ActionSet};
 pub use system::{ActiveInputHandling, DeviceId, InputSystem, SystemEvent};
 pub use value::Value;

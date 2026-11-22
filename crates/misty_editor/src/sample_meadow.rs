@@ -336,7 +336,7 @@ fn tree_assets() -> Vec<(&'static str, TreeAsset)> {
             "Assets/Trees/Young Oak.tree",
             TreeAsset {
                 seed: 11,
-                height: 7.5,
+                height: 11.2,
                 crown_shape: CrownShape::Oval,
                 crown_width: 0.8,
                 crown_base: 0.3,
@@ -344,7 +344,7 @@ fn tree_assets() -> Vec<(&'static str, TreeAsset)> {
                 leader: 0.55,
                 branches: 8,
                 twigs: 9,
-                leaf_density: 1.5,
+                leaf_density: 1.13,
                 leaf_size: 1.0,
                 leaf_color: [0.9, 0.92, 0.85],
                 ..TreeAsset::oak()

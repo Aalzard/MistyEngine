@@ -1,6 +1,47 @@
 Misty Engine changelog
 ======================
 
+0.5.0 - C# catches up, split screen, touch controls and a faster engine (November 2026)
+-------------------------------------------------------------------------------------
+
+C# scripting
+- Camera, Light, Renderer and Material, Color, Screen and Cursor from C#.
+- UI from C#: Text, Image, Button, Toggle, Slider and InputField, with onClick,
+  onValueChanged and onEndEdit listeners. A Button's On Click set in Properties reaches C#.
+- 2D physics from C#: Rigidbody2D, Collider2D, the 2D collision and trigger callbacks and
+  Physics2D queries (Raycast, Linecast, OverlapCircle, OverlapBox, OverlapPoint and more).
+- NavMeshAgent, ParticleSystem and PlayerPrefs from C#.
+- C# scripts now run on Linux and macOS too, not only on Windows.
+- Fix: Destroy(GetComponent<Rigidbody>()) removed the whole object; now only the component.
+
+New for Lua and C#
+- AddComponent while playing, for engine components and scripts.
+- SendMessage, BroadcastMessage and SendMessageUpwards.
+- DontDestroyOnLoad: objects and their script state survive a scene load.
+- LoadSceneAsync and UnloadSceneAsync with isDone, progress and allowSceneActivation.
+- Animator Override Controllers (.overrideController): swap the clips of a base controller.
+
+Input
+- Gamepad menus from Lua: EventSystem.current, Select(), OnSelect and OnDeselect.
+- On-Screen Stick and On-Screen Button for touch screens; they drive a virtual gamepad, so
+  existing actions and Input calls work unchanged. Multi-touch.
+- Split screen: Camera Viewport Rect now works in the player and the Game view.
+- Player Input Manager: press a button on a new gamepad to join; each player keeps their
+  own device. OnPlayerJoined and OnPlayerLeft.
+
+Faster
+- Saving scenes about 2 to 5 times faster; loading about 2 times faster (new memory
+  allocator, mimalloc).
+- Spawning many objects under one parent: 2,000 objects 1.8 s -> 0.1 s.
+- Lua Vector3 is much faster (v.x about 13 times). Note: type(v) is now "table".
+- Scripts with many objects run about 20% faster per frame.
+
+Fixes
+- OnCollisionStay and OnTriggerStay no longer end early for objects with several colliders.
+- Network messages with deeply nested tables are no longer dropped.
+- Save slots named like Windows devices (CON, NUL, COM1...) get a safe file name.
+- A component could show twice in Properties.
+
 0.4.5 - C# scripting, Behaviour Trees, Recorder, themes and autosave (November 2026)
 -----------------------------------------------------------------------------------
 

@@ -34,6 +34,8 @@ pub struct Gpu {
     pub color_filter: misty_engine::render::color_filter::ColorFilter,
     pub scene: Viewport,
     pub game: Viewport,
+    /// Game view cameras with a partial Viewport Rect (split screen, picture in picture).
+    pub split: misty_engine::split_screen::SplitScreen,
     /// [`misty_engine::quality::generation`] the renderer was set up for.
     quality: u64,
     /// How view images are stretched to their panel (Quality ▸ Upscale Filter).
@@ -172,8 +174,33 @@ impl Gpu {
             color_filter: Default::default(),
             scene: Viewport::default(),
             game: Viewport::default(),
+            split: Default::default(),
             quality: u64::MAX,
             filter: wgpu::FilterMode::Linear,
+        }
+    }
+
+    /// Draw the cameras with a partial Viewport Rect into their rects of the Game view image
+    /// (after [`Gpu::render`]; `main_rendered` = a full-screen camera drew it).
+    pub fn render_split(
+        &mut self,
+        scene: &Scene,
+        materials: &dyn misty_engine::render_scene::MaterialSource,
+        main_rendered: bool,
+    ) {
+        if let Some(target) = self.game.target.as_ref() {
+            self.renderer.set_view_label("Game (split)");
+            self.renderer.set_background_loads(true);
+            self.split.render(
+                &mut self.renderer,
+                &self.state.device,
+                &self.state.queue,
+                target,
+                scene,
+                materials,
+                main_rendered,
+            );
+            self.renderer.set_background_loads(false);
         }
     }
 
@@ -233,7 +260,7 @@ impl Gpu {
         &mut self,
         view: ViewId,
         size_px: [u32; 2],
-        frame: &Frame,
+        frame: Option<&Frame>,
         effects: &[misty_engine::vfx::EffectDraw],
     ) -> egui::TextureId {
         misty_engine::profile_scope!(
@@ -305,15 +332,18 @@ impl Gpu {
         // it (new shader variants, models, textures). Material previews do the same and are
         // redrawn once their loads finish; bakes, which render through the same renderer,
         // always wait for everything.
-        self.renderer.set_background_loads(true);
-        self.renderer.render_with_effects(
-            &self.state.device,
-            &self.state.queue,
-            target,
-            frame,
-            effects,
-        );
-        self.renderer.set_background_loads(false);
+        // No frame: split-screen cameras alone draw the Game view (Gpu::render_split).
+        if let Some(frame) = frame {
+            self.renderer.set_background_loads(true);
+            self.renderer.render_with_effects(
+                &self.state.device,
+                &self.state.queue,
+                target,
+                frame,
+                effects,
+            );
+            self.renderer.set_background_loads(false);
+        }
         vp.last_render = Some(std::time::Instant::now());
         vp.texture.expect("texture registered above")
     }

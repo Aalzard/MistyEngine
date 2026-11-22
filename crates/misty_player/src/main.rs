@@ -20,6 +20,11 @@
 // Release builds are windowed apps with no console; output goes to Player.log.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+/// mimalloc instead of the system allocator: the engine allocates heavily in scene loads, saves,
+/// whole-scene copies and JSON work, which run 2-3x faster on it.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod game;
 mod gfx;
 mod input;
@@ -293,6 +298,7 @@ impl Player {
             frame.as_ref(),
             effects,
             &self.game.scene,
+            &self.game.assets,
             self.game.ui_interaction(),
         );
         for w in gfx.take_warnings() {

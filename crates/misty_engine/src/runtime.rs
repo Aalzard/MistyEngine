@@ -361,6 +361,52 @@ impl Runtime {
         Ok(id)
     }
 
+    /// Whether scripts marked objects with `DontDestroyOnLoad`: then a single scene load goes
+    /// through [`Runtime::load_scene_single`] instead of starting a new runtime.
+    pub fn has_persistent_objects(&self, scene: &Scene) -> bool {
+        !self.host.dont_destroy_roots(scene).is_empty()
+    }
+
+    /// `SceneManager.LoadScene` (single) keeping the `DontDestroyOnLoad` objects, with their
+    /// scripts' state: they move to a scene named "DontDestroyOnLoad", every other scene
+    /// unloads (OnDisable / OnDestroy), then the new scene loads, becomes the active one (its
+    /// lighting and navigation) and its objects wake up.
+    pub fn load_scene_single(
+        &mut self,
+        scene: &mut Scene,
+        rel: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        const KEEP: &str = "DontDestroyOnLoad";
+        let _root = crate::assets::scoped_root(&self.root);
+        let keep = self.host.dont_destroy_roots(scene);
+        let holder = match scene
+            .find_loaded(KEEP)
+            .filter(|id| scene.scene_path(*id).is_none())
+        {
+            Some(id) => id,
+            None => scene.add_empty_scene(KEEP),
+        };
+        for e in &keep {
+            scene.move_to_scene(*e, holder);
+        }
+        for id in scene.loaded_scenes() {
+            if id == holder {
+                continue;
+            }
+            let roots = scene.roots_in(id);
+            self.host.remove_objects(scene, &roots);
+            scene.remove_scene(id)?;
+        }
+        let (id, roots, report) = scene.load_additive(rel, text)?;
+        let warnings = report.warnings.into_iter().map(|w| format!("{rel}: {w}"));
+        self.pending.extend(warnings);
+        scene.set_active_scene(id);
+        self.host.reload_navigation(scene);
+        self.host.add_objects(scene, &roots);
+        Ok(())
+    }
+
     /// Remove a loaded scene and its objects (scripts and bodies go with them).
     pub fn unload_scene(&mut self, scene: &mut Scene, id: SceneId) -> Result<(), String> {
         if !scene.loaded_scenes().contains(&id) {

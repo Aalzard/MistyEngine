@@ -334,9 +334,9 @@ impl Scene {
             false
         });
         if compact {
-            super::file::write_json_compact(objects)
+            super::file::write_json_compact(&objects)
         } else {
-            super::file::write_json(objects, None, None)
+            super::file::write_entries(&objects, None, None)
         }
     }
 

@@ -279,6 +279,18 @@ impl GraphRuntime {
         self.instances.len()
     }
 
+    /// Script `removed` of `e` was taken out of its Scripts list while playing: the graphs
+    /// after it move down one slot.
+    pub fn shift_slots(&mut self, e: Entity, removed: usize) {
+        for i in self
+            .instances
+            .iter_mut()
+            .filter(|i| i.entity == e && i.slot > removed)
+        {
+            i.slot -= 1;
+        }
+    }
+
     fn index_of(&self, e: Entity, slot: usize) -> Option<usize> {
         self.instances
             .iter()

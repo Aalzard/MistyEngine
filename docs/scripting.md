@@ -136,7 +136,7 @@ variables of type GameObject are object fields too.
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it; `AddComponent("Spin")` (or `"Spin.lua"` / `"Health.cs"`) adds that script from under `Assets/`: its Awake and OnEnable run right after the calling function and Start before the next Update, so it returns nil (use `GetComponent("Spin")` afterwards); `Destroy(self)` (or another script's instance table) removes that script at the end of the frame (OnDisable, OnDestroy); `SendMessage(name [, value [, options]])` calls that function on every script of the object (`BroadcastMessage` also on everything under it, `SendMessageUpwards` also on its parents; inactive objects are skipped; with no receiver it logs an error unless `options` is `SendMessageOptions.DontRequireReceiver`). C# scripts on those objects get the message right after the calling function returns |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
@@ -160,7 +160,7 @@ variables of type GameObject are object fields too.
 | Canvas (UI) | `GetComponent("Canvas")`: `renderMode` (`"ScreenSpaceOverlay"`, `"ScreenSpaceCamera"`, `"WorldSpace"`), `sortingOrder`, `planeDistance`, `enabled`, `gameObject` |
 | CanvasGroup (UI) | `GetComponent("CanvasGroup")`: `alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`, `enabled`, `gameObject` |
 | AspectRatioFitter (UI) | `GetComponent("AspectRatioFitter")`: `aspectMode` (`"None"`, `"WidthControlsHeight"`, `"HeightControlsWidth"`, `"FitInParent"`, `"EnvelopeParent"`), `aspectRatio`, `gameObject` |
-| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Properties panel |
+| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`, `Select()`; clicks call the On Click methods set in the Properties panel |
 | Toggle (UI) | `GetComponent("Toggle")`: `isOn`, `interactable`, `group` (ToggleGroup or nil), `onValueChanged` (bool) |
 | ToggleGroup (UI) | `allowSwitchOff`, `AnyTogglesOn()`, `SetAllTogglesOff()` |
 | Slider (UI) | `value` (clamped, rounded with whole numbers), `minValue`, `maxValue`, `wholeNumbers`, `normalizedValue`, `interactable`, `onValueChanged` (number) |
@@ -173,14 +173,15 @@ variables of type GameObject are object fields too.
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Scene Viewer focus (click it), gamepads always reach a playing game |
+| `EventSystem.current` | `currentSelectedGameObject`, `SetSelectedGameObject(go or nil)`, `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject` — the UI selection keyboard and gamepad navigation move (see UI navigation below) |
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
-| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
+| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name`. `LoadSceneAsync(scene[, mode])` / `UnloadSceneAsync(scene)` return an operation: `isDone`, `progress` (0.9 while loading or waiting, 1 when done), `allowSceneActivation` (set it to false right after the call to hold the load, true to let it go), `op:OnCompleted(fn)` or `op.completed = fn`. The load itself happens between frames; with `DontDestroyOnLoad` objects a single load keeps them, so a loading screen can watch its operation finish |
 | `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor); `HasDefine(name)` — the Build Profile's scripting defines; `isDedicatedServer`, `isEditor` |
 | `Achievements` | `Unlock(id)` (true the first time), `IsUnlocked(id)`, `Clear(id)`, `GetUnlocked()` — stored locally (see docs/building.md) |
 | Tags | `gameObject.tag`, `gameObject:CompareTag("Enemy")`, `GameObject.FindWithTag(tag)` (first active object or nil), `GameObject.FindGameObjectsWithTag(tag)` (list); tags come from Project Settings ▸ Tags and Layers (an undefined tag is an error) |
-| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
+| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `DontDestroyOnLoad(gameObject)` (the object's root and its scripts, with their state, survive `SceneManager.LoadScene`; they move to a scene named "DontDestroyOnLoad"), `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
 `"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…, mouse buttons `"mouse 0"`–`"mouse 2"` and joystick
@@ -314,6 +315,42 @@ Sample: `Scenes/InputSystemDemo.scene` — the First Person Player with a Player
 (`FirstPersonController.lua` reads Move, Look, Jump, Sprint and Crouch when a Player Input is on its object),
 `PlayerActions.lua` (Send Messages: holding E / X rumbles the pad) and `RebindMenu.lua` (Tab / Start: rebinding
 saved to PlayerPrefs).
+
+### Local multiplayer and split screen
+
+A camera whose **Viewport Rect** covers only part of the screen renders into that part (split screen, a
+minimap). The full-screen image comes from the highest-Depth camera that covers the screen; with none, the
+screen starts black and only the viewport cameras draw, lowest Depth first. The UI draws over all of them.
+
+**Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
+Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns
+the **Player Prefab** and pairs its Player Input with that device; a player keeps its device when others join
+or leave. **Max Player Count** caps the players (0 = no limit). With **Split-Screen** on, each player's camera
+(the first Camera on the player object or under it) gets its part of the screen: one fills it, two sit side by
+side, three or four share a 2×2 grid, more a larger grid; **Fixed Screens** keeps at least that many parts.
+While joining is on, even a lone player keeps to its own devices (no control scheme auto-switch), so the
+others stay free to join with.
+
+Scripts on the manager's object hear `OnPlayerJoined(player)` (the new player's GameObject, after its scripts'
+`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). `GetComponent("PlayerInputManager")` or
+`PlayerInputManager.instance`: `playerCount`, `maxPlayerCount`, `joiningEnabled`, `EnableJoining()`,
+`DisableJoining()`, `JoinPlayer()` (spawns a player now with free devices; nil when full), `splitScreen`,
+`enabled`, `gameObject`.
+
+### On-screen controls (touch)
+
+Add **On-Screen Stick** or **On-Screen Button** (Add Component ▸ Input) to a UI object with an Image to make
+touch controls. Each names a **Control Path** it drives: a stick drives `<Gamepad>/leftStick`, `rightStick` or
+`dpad`; a button drives a gamepad button, trigger or d-pad direction (`<Gamepad>/buttonSouth`,
+`<Gamepad>/rightTrigger`, `<Gamepad>/dpad/up`) or a key (`<Keyboard>/space`). Fingers pressing them drive a
+virtual gamepad named "On-Screen Controls" (present while the scene has on-screen controls), so game code
+needs no changes: Input System actions bound to the gamepad, `Input.GetAxis`, `Input.GetKey("joystick button
+0")` and `Input.GetKey("space")` all see it. The left mouse button presses them too, for testing in the editor.
+
+Each finger keeps the control it landed on until it lifts, so one thumb can steer while the other jumps. A
+stick follows its finger up to **Movement Range** (canvas units) and springs back on release; its value is the
+offset over the range. With **Dynamic Origin** the stick first jumps to where the finger landed inside the
+object: put it on a large transparent Image covering the left half of the screen for a floating stick.
 
 ### Layers
 
@@ -492,7 +529,14 @@ Horizontal, Vertical, Explicit or None). The Event System reads Navigate / Submi
 its Actions Asset (the default UI actions when none is set: arrows, Return, Esc, the gamepad's stick, d-pad,
 South and East); with Active Input Handling set to the Input Manager it reads the arrow keys, Return / Space /
 Esc and the first joystick. Cancel closes an open dropdown, or calls `OnCancel()` on the selected object's
-scripts. Sample: `Assets/Scenes/UIShowcase.scene` with `Assets/Scripts/UIShowcase.lua` (a gamepad menu, a
+scripts. When nothing is selected, the first move selects the Event System's First Selected, or the top-left
+selectable on screen when that isn't set, so a gamepad can always get into a menu.
+
+Scripts move the selection with `EventSystem.current:SetSelectedGameObject(go)` (`nil` clears it) or a widget's
+`Select()` (Button, Toggle, Slider, Scrollbar, InputField, Dropdown), for example to select the first button
+when a pause menu opens. It takes effect in the next UI step (the same frame from `Start`), and
+`currentSelectedGameObject` returns it at once. Scripts on an object hear `OnSelect()` when the selection moves
+to it (pointer, navigation or script) and `OnDeselect()` when it leaves, before that step's clicks. Sample: `Assets/Scenes/UIShowcase.scene` with `Assets/Scripts/UIShowcase.lua` (a gamepad menu, a
 radial health ring driven by `fillAmount`, a World Space sign and a Screen Space - Camera HUD).
 
 ### Particle systems
@@ -1246,7 +1290,66 @@ IEnumerator Start()
   `activeSelf`, `activeInHierarchy`, `SetActive`, `transform`, `GetComponent<T>()`,
   `GetComponents<T>()`, `GetComponentInChildren<T>()`, `GetComponentInParent<T>()`,
   `TryGetComponent`, `GetComponent("Name")`. Components are your C# scripts, `Transform`,
-  `Rigidbody`, `Collider`, `AudioSource` and `Animator`.
+  `Rigidbody`, `Collider`, `AudioSource`, `Animator`, `Camera`, `Light` and `Renderer` /
+  `MeshRenderer`.
+- `Camera`: `Camera.main`, `fieldOfView`, `nearClipPlane`, `farClipPlane`, `orthographic`,
+  `orthographicSize`, `enabled`, `cullingMask`, `backgroundColor`, `depth`, `pixelWidth`,
+  `pixelHeight`, `aspect`, `ScreenPointToRay`, `ViewportPointToRay`, `WorldToScreenPoint`,
+  `WorldToViewportPoint`, `ScreenToWorldPoint`, `ViewportToWorldPoint` (screen points are
+  pixels from the bottom-left, like `Input.mousePosition`; `z` is the distance in front of the
+  camera).
+- `Light`: `enabled`, `intensity`, `range`, `spotAngle`, `color`, `type` (`LightType`),
+  `shadows` (`LightShadows`).
+- `Renderer` / `MeshRenderer`: `enabled`, `castShadows`, `receiveShadows`, `material` (this
+  object's own copy of its first material) and `sharedMaterial` (the asset). `Material`:
+  `color`, `mainTextureOffset`, `mainTextureScale`, `GetColor` / `SetColor`, `GetFloat` /
+  `SetFloat`, `HasProperty`, `EnableKeyword` / `DisableKeyword` / `IsKeywordEnabled`, with the
+  same property names as Lua (`_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`, …).
+  Changes last until Play mode ends.
+- `Color` (`r`, `g`, `b`, `a`, the named colours, `Lerp`, `HSVToRGB`), `Screen.width` /
+  `height`, `Cursor.lockState` (`CursorLockMode`) and `Cursor.visible`.
+- UI: `Text` (`text`, `fontSize`, `color`, `enabled`), `Image` (`color`, `fillAmount`,
+  `raycastTarget`, `enabled`), `Button` (`interactable`, `onClick`), `Toggle` (`isOn`,
+  `onValueChanged`), `Slider` (`value`, `minValue`, `maxValue`, `wholeNumbers`,
+  `normalizedValue`, `onValueChanged`) and `InputField` (`text`, `readOnly`, `onValueChanged`,
+  `onEndEdit`). Events take listeners: `button.onClick.AddListener(() => …)`,
+  `slider.onValueChanged.AddListener(v => …)`, `RemoveListener`, `RemoveAllListeners`. Setting a
+  value from a script doesn't send its event.
+- A Button's **On Click** calls set in the Properties panel, `SendMessage` from Lua and Script
+  Graphs, and the other events that call a method by name (`OnCancel`, `OnLinkClicked`) reach C#
+  methods too: public or private, with no parameter or one `bool`, `int`, `float`, `string`
+  (the value is converted). A method returning `IEnumerator` starts as a coroutine.
+- 2D physics: `Rigidbody2D` (`velocity`, `angularVelocity`, `position`, `rotation`,
+  `gravityScale`, `mass`, `AddForce` / `AddTorque` with `ForceMode2D`, `MovePosition`,
+  `MoveRotation`), `Collider2D.attachedRigidbody`, and the callbacks `OnCollisionEnter2D` /
+  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`) and
+  `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+- `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
+  `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
+  `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
+  `stoppingDistance`, `enabled`.
+- `ParticleSystem`: `Play`, `Stop`, `Pause`, `Clear`, `Emit(count)`, `isPlaying`, `isPaused`,
+  `isStopped`, `particleCount`, `time`.
+- `gameObject.AddComponent<T>()` adds an engine component (`Rigidbody`, `BoxCollider`,
+  `SphereCollider`, `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D`,
+  `Rigidbody2D`, `Light`, `AudioSource`, `ParticleSystem`, …) with its defaults and returns it
+  (the existing one when the object has it); physics picks it up at once. `Destroy(component)`
+  removes that component (not the object). `AddComponent<MyScript>()` adds a script (the
+  file named like the class, under `Assets/`) and returns it at once, so its fields can be set;
+  its Awake and OnEnable run right after the calling method, Start before the next Update. `Destroy(script)`
+  removes a script at the end of the frame (OnDisable, then OnDestroy).
+- `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
+  single scene loads, like Lua's.
+- `Physics2D`: `Raycast` / `RaycastAll` / `Linecast` / `LinecastAll` returning
+  `RaycastHit2D` (`point`, `normal`, `distance`, `fraction`, `collider`, `rigidbody`,
+  `transform`; test it like a bool), `OverlapCircle(All)`, `OverlapBox(All)` (angle in degrees),
+  `OverlapPoint(All)`, `DefaultRaycastLayers` / `AllLayers`.
+- `SendMessage`, `BroadcastMessage`, `SendMessageUpwards` (with `SendMessageOptions`) on
+  `GameObject` and `Component`: C# scripts are called at once; Lua scripts on the same objects
+  right after the calling method returns (a value Lua can't take, like an object, reaches C#
+  only).
+- `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
+  `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
   `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
@@ -1259,7 +1362,9 @@ IEnumerator Start()
   `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
   `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
 - `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
-  `UnloadSceneAsync`; `Application.Quit`.
+  `LoadSceneAsync` / `UnloadSceneAsync` returning an `AsyncOperation` (`isDone`, `progress`,
+  `allowSceneActivation`, the `completed` event; `yield return op` waits for it);
+  `Application.Quit`.
 - `MonoBehaviour` / `Component`: `gameObject`, `transform`, `name`, `tag`, `enabled`,
   `isActiveAndEnabled`, the `GetComponent` family, `print`.
 - `Transform`: world `position` / `rotation` / `eulerAngles` / `lossyScale`, `localPosition` /
@@ -1281,11 +1386,10 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (UI, cameras, lights, particles, navigation, Character
-Controller, …), contact points and `OnCollisionStay`, 2D physics callbacks, `Instantiate` of a
-script (instantiate its `gameObject`), adding or removing scripts during Play, object-reference
-fields in the Properties panel and completion in the code editor. Each changed build stays
-loaded until the editor is closed.
+Not yet: the other engine components (Character Controller, Sprite Renderer, Timeline, the
+other UI widgets, …), contact points of 2D collisions, `Physics2D` queries, `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
+or removing scripts or components during Play, materials after a renderer's first, and
+textures on materials. Each changed build stays loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

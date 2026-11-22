@@ -367,6 +367,20 @@ const OBJECT_TYPES: &[&str] = &[
     "Collider",
     "AudioSource",
     "Animator",
+    "Camera",
+    "Light",
+    "Renderer",
+    "MeshRenderer",
+    "Text",
+    "Image",
+    "Button",
+    "Toggle",
+    "Slider",
+    "InputField",
+    "Rigidbody2D",
+    "Collider2D",
+    "NavMeshAgent",
+    "ParticleSystem",
 ];
 
 /// Script classes of the project (a C# script's class is named like its file): fields of

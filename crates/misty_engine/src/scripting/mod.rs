@@ -28,10 +28,12 @@ pub mod attributes;
 pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
+mod component_ops;
 pub mod csharp;
 pub mod csharp_fields;
 mod csharp_native;
 pub mod cursor_api;
+pub mod event_system_api;
 pub mod input_actions_api;
 pub mod input_api;
 mod lifecycle;
@@ -40,18 +42,21 @@ mod lifecycle_tests;
 pub mod light_probes_api;
 pub mod localization_api;
 pub mod material_api;
+mod messages;
 pub mod navigation_api;
 pub mod network_api;
 mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
+pub mod player_manager_api;
 pub mod recorder_api;
 pub mod render_settings_api;
 pub mod rigging_api;
 pub mod save_api;
 mod save_host;
 pub mod scene_api;
+mod scene_ops;
 pub mod skinning_api;
 pub mod spline_api;
 pub mod syntax;
@@ -244,6 +249,16 @@ pub struct World {
     pub input: Input,
     pub logs: Vec<(LogKind, String)>,
     pub destroy: Vec<Entity>,
+    /// Objects scripts marked with `DontDestroyOnLoad`: a single scene load keeps them.
+    pub dont_destroy: Vec<Entity>,
+    /// `LoadSceneAsync` / `UnloadSceneAsync` operations (scene_ops.rs).
+    pub scene_ops: Vec<scene_ops::SceneOp>,
+    /// `SendMessage` calls waiting for the scripts of the other language (messages.rs).
+    pub messages: Vec<messages::QueuedMessage>,
+    /// Scripts added while playing, by object and slot, waiting for their instance.
+    pub added_scripts: Vec<(Entity, usize)>,
+    /// Scripts `Destroy(script)` removes at the end of the frame.
+    pub destroy_scripts: Vec<(Entity, component_ops::ScriptSel)>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -290,6 +305,15 @@ pub struct World {
     pub graph_events: Vec<crate::visual_script::runtime::CustomEvent>,
     /// Behaviour Tree Agents, their blackboards and the shared ones.
     pub behaviour: crate::behaviour_tree::BtRuntime,
+    /// The UI selection as of the last UI pass (`EventSystem.currentSelectedGameObject`).
+    pub ui_selected: Option<Entity>,
+    /// A selection a script asked for (`SetSelectedGameObject`, `Selectable.Select`), applied
+    /// at the start of the next UI pass; `Some(None)` clears it.
+    pub ui_select_request: Option<Option<Entity>>,
+    /// Fingers on On-Screen Sticks and Buttons (the virtual gamepad they drive).
+    pub on_screen: crate::input::OnScreenControls,
+    /// Players the Player Input Manager has reported (joined / left).
+    pub player_manager: player_manager_api::PlayerManagerState,
 }
 
 impl World {
@@ -332,6 +356,11 @@ impl World {
                 .map(|w| (LogKind::Warning, w))
                 .collect(),
             destroy: Vec::new(),
+            dont_destroy: Vec::new(),
+            scene_ops: Vec::new(),
+            messages: Vec::new(),
+            added_scripts: Vec::new(),
+            destroy_scripts: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -355,6 +384,10 @@ impl World {
             graph_vars: Default::default(),
             graph_events: Vec::new(),
             behaviour: crate::behaviour_tree::BtRuntime::new(&project_root_for_bt),
+            ui_selected: None,
+            ui_select_request: None,
+            on_screen: Default::default(),
+            player_manager: Default::default(),
         }
     }
 }
@@ -390,6 +423,26 @@ fn register_script_instance(lua: &Lua, e: Entity, name: &str, t: &Table) -> mlua
         }
     };
     mine.set(name, t.clone())
+}
+
+/// The script name `t` is registered under on `e`, if it is one of its instance tables.
+pub(crate) fn script_name_of(lua: &Lua, e: Entity, t: &Table) -> Option<String> {
+    let all: Table = lua.named_registry_value(SCRIPT_INSTANCES).ok()?;
+    let mine: Table = all.get(e.to_bits().get() as i64).ok()?;
+    mine.pairs::<String, Table>()
+        .flatten()
+        .find(|(_, v)| v == t)
+        .map(|(k, _)| k)
+}
+
+/// Forget the instance table of script `name` on `e` (the script was removed while playing).
+fn unregister_script_instance(lua: &Lua, e: Entity, name: &str) {
+    let Ok(all) = lua.named_registry_value::<Table>(SCRIPT_INSTANCES) else {
+        return;
+    };
+    if let Ok(mine) = all.get::<Table>(e.to_bits().get() as i64) {
+        let _ = mine.set(name, Value::Nil);
+    }
 }
 
 fn unregister_script_instances(lua: &Lua, entities: &[Entity]) {
@@ -430,6 +483,37 @@ const FRAME_CALLBACKS: [&str; 5] = [
     "OnCollisionStay",
     "OnTriggerStay",
 ];
+
+/// Update the touching pairs (a, b, trigger) with a step's contacts; returns the pairs that
+/// touched before the step and still do (the ones that get Stay).
+///
+/// One entry per collider pair: an object with several colliders (a Box and a Sphere, a
+/// terrain's heightfield and trunks) meets another once per collider, so a Stop takes away
+/// one entry, not every entry of the two objects (that ended Stay while another collider
+/// still touched).
+fn advance_touching(
+    touching: &mut Vec<(Entity, Entity, bool)>,
+    contacts: &[Contact],
+) -> Vec<(Entity, Entity, bool)> {
+    fn same(c: &Contact) -> impl Fn(&(Entity, Entity, bool)) -> bool + '_ {
+        move |&(a, b, t)| t == c.trigger && ((a, b) == (c.a, c.b) || (a, b) == (c.b, c.a))
+    }
+    let mut staying = std::mem::take(touching);
+    let mut met = Vec::new();
+    for c in contacts {
+        if c.started {
+            met.push((c.a, c.b, c.trigger));
+        } else if let Some(i) = met.iter().position(same(c)) {
+            // Met and parted within this step.
+            met.remove(i);
+        } else if let Some(i) = staying.iter().position(same(c)) {
+            staying.remove(i);
+        }
+    }
+    *touching = staying.clone();
+    touching.extend(met);
+    staying
+}
 
 /// Bit of `Instance::lacks` for callback `name` (0 for the others: always called).
 fn lacks_bit(name: &str) -> u8 {
@@ -827,14 +911,15 @@ impl ScriptHost {
     /// Whether an instance should receive callbacks (object alive + active, script enabled).
     fn runnable(&self, i: &Instance) -> bool {
         self.with_world(|w| {
-            w.scene.contains(i.entity)
-                && w.scene.active_in_hierarchy(i.entity)
-                && w.scene
-                    .world
-                    .get::<&Scripts>(i.entity)
-                    .ok()
-                    .and_then(|s| s.list.get(i.slot).map(|r| r.enabled))
-                    .unwrap_or(false)
+            // The script's checkbox first (one lookup, and it answers for missing objects).
+            let enabled = w
+                .scene
+                .world
+                .get::<&Scripts>(i.entity)
+                .ok()
+                .and_then(|s| s.list.get(i.slot).map(|r| r.enabled))
+                .unwrap_or(false);
+            enabled && w.scene.active_in_hierarchy(i.entity)
         })
     }
 
@@ -926,6 +1011,8 @@ impl ScriptHost {
             let quiet = self.with_world(|w| {
                 w.spawned.is_empty()
                     && w.graph_events.is_empty()
+                    && w.messages.is_empty()
+                    && w.added_scripts.is_empty()
                     && !w.physics.has_controller_hits()
                     && w.scene.activity() == seen
                     && !w.network.settle_due
@@ -943,7 +1030,8 @@ impl ScriptHost {
         self.sync_enabled();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
-            let delivered = self.deliver_custom_events();
+            let delivered =
+                self.wake_added_scripts() | self.deliver_custom_events() | self.deliver_messages();
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
                 if delivered {
@@ -1223,11 +1311,6 @@ impl ScriptHost {
         };
         let want_collision = listens(self, "OnCollisionStay", &EventKind::CollisionStay);
         let want_trigger = listens(self, "OnTriggerStay", &EventKind::TriggerStay);
-        let parted = |a: Entity, b: Entity, trigger: bool| {
-            contacts.iter().any(|c| {
-                !c.started && c.trigger == trigger && ((c.a, c.b) == (a, b) || (c.a, c.b) == (b, a))
-            })
-        };
         let alive = self.with_world(|w| {
             self.touching
                 .iter()
@@ -1236,30 +1319,21 @@ impl ScriptHost {
         });
         let mut keep = alive.into_iter();
         self.touching.retain(|_| keep.next().unwrap_or(false));
-        let staying: Vec<(Entity, Entity, bool)> = self
-            .touching
-            .iter()
-            .copied()
-            .filter(
-                |(a, b, t)| if *t { want_trigger } else { want_collision } && !parted(*a, *b, *t),
-            )
-            .collect();
+        let staying = advance_touching(&mut self.touching, contacts);
         for (a, b, trigger) in staying {
+            if !(if trigger {
+                want_trigger
+            } else {
+                want_collision
+            }) {
+                continue;
+            }
             let (event, kind) = if trigger {
                 ("OnTriggerStay", EventKind::TriggerStay)
             } else {
                 ("OnCollisionStay", EventKind::CollisionStay)
             };
             self.contact_event(a, b, event, &kind);
-        }
-        for c in contacts {
-            if c.started {
-                self.touching.push((c.a, c.b, c.trigger));
-            } else {
-                self.touching.retain(|(a, b, t)| {
-                    !(*t == c.trigger && ((*a, *b) == (c.a, c.b) || (*a, *b) == (c.b, c.a)))
-                });
-            }
         }
         for c in contacts {
             let (event, kind) = match (c.trigger, c.started) {
@@ -1347,7 +1421,8 @@ impl ScriptHost {
                     if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
-                    let arg = if c.trigger {
+                    // C# scripts get the other object (`Collision2D` / `Collider2D`).
+                    let arg = if c.trigger || self.instances[i].cs.is_some() {
                         self.lua
                             .create_userdata(LGameObject(other))
                             .map(Value::UserData)
@@ -1381,14 +1456,28 @@ impl ScriptHost {
             }
             w.time = *time;
             w.save.mark_time(time.time);
+            // On-screen sticks and buttons become a virtual gamepad / keys before anything
+            // reads the input.
+            let mut input = input;
+            w.on_screen.apply(&mut w.scene, &mut input);
+            for msg in std::mem::take(&mut w.on_screen.logs) {
+                w.logs
+                    .push((LogKind::Warning, format!("On-screen control {msg}")));
+            }
             // Axis smoothing runs on real time, so it works while the game is paused.
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;
         });
+        // Scene operations carried out between frames finish (their `completed` callbacks).
+        self.scene_ops_tick();
         let input_events = {
             profile_scope!("Input.Update", Category::Scripts);
             self.input_update(time.unscaled_delta)
         };
+        {
+            profile_scope!("PlayerInputManager", Category::Scripts);
+            self.player_manager_frame();
+        }
         if let Some(w) = self.lua.app_data_ref::<World>()
             && let Err(e) = api::refresh_time(&self.lua, &w)
         {
@@ -1686,11 +1775,16 @@ impl ScriptHost {
     /// UI events (before FixedUpdate/Update, like an event system): hover/press/selection,
     /// widget input, then On Click / On Value Changed calls and Lua listeners.
     fn ui_events(&mut self) {
-        let events = {
+        let before = self.ui.selected;
+        let mut events = Vec::new();
+        {
             let Some(mut w) = self.lua.app_data_mut::<World>() else {
                 return;
             };
             let w = &mut *w;
+            if let Some(req) = w.ui_select_request.take() {
+                events.extend(self.ui.select(&mut w.scene, req));
+            }
             let mut pointer = w.input.ui_pointer(w.time.unscaled_delta);
             // Navigation through the Input System's UI map, else the keys and joystick.
             let asset = crate::ui::events::settings(&w.scene).actions_asset;
@@ -1705,8 +1799,20 @@ impl ScriptHost {
                     (pointer.navigate, pointer.submit, pointer.cancel) = w.input.ui_legacy_pad();
                 }
             }
-            self.ui.update(&mut w.scene, &pointer)
-        };
+            events.extend(self.ui.update(&mut w.scene, &pointer));
+            w.ui_selected = self.ui.selected;
+        }
+        // OnDeselect / OnSelect when the selection moved (pointer, navigation or a script),
+        // before the clicks and value changes, like Unity's event system.
+        let after = self.ui.selected;
+        if before != after {
+            if let Some(old) = before.filter(|e| self.with_world(|w| w.scene.contains(*e))) {
+                self.ui_selection_changed(old, false);
+            }
+            if let Some(new) = after {
+                self.ui_selection_changed(new, true);
+            }
+        }
         for ev in events {
             self.ui_event(ev);
         }
@@ -1738,6 +1844,13 @@ impl ScriptHost {
             if inst.entity != target || !self.runnable(inst) {
                 continue;
             }
+            if let Some(cs) = inst.cs {
+                if self.cs_message(cs, method, arg.as_ref()) {
+                    found = true;
+                    self.flush_spawned();
+                }
+                continue;
+            }
             let defined = self
                 .lua
                 .registry_value::<Table>(&inst.table)
@@ -1762,6 +1875,17 @@ impl ScriptHost {
                 format!("{what}: no script on '{name}' has a method '{method}'"),
             );
         }
+    }
+
+    /// Call C# method `method` of instance `cs` by name, with a Lua argument (one C# can't take
+    /// is left out). Whether the class has it.
+    pub(crate) fn cs_message(&self, cs: csharp::CsRef, method: &str, arg: Option<&Value>) -> bool {
+        let arg = arg.and_then(csharp::CsArg::from_lua);
+        let mut w = self
+            .lua
+            .app_data_mut::<World>()
+            .expect("world is installed");
+        self.csharp.message(&mut w, cs, method, arg.as_ref())
     }
 
     /// Button hover/press state (the Game view and player tint buttons with it).
@@ -1798,6 +1922,33 @@ impl ScriptHost {
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
     }
 
+    /// Root objects marked with `DontDestroyOnLoad` that still exist in `scene`.
+    pub fn dont_destroy_roots(&self, scene: &Scene) -> Vec<Entity> {
+        let marked = self.with_world(|w| {
+            w.dont_destroy.retain(|e| scene.contains(*e));
+            w.dont_destroy.clone()
+        });
+        let mut roots: Vec<Entity> = marked
+            .into_iter()
+            .map(|mut e| {
+                while let Some(p) = scene.parent(e) {
+                    e = p;
+                }
+                e
+            })
+            .collect();
+        roots.sort_unstable_by_key(|e| e.to_bits());
+        roots.dedup();
+        roots
+    }
+
+    /// Load the nav meshes of `scene` again (its active scene changed while playing).
+    pub fn reload_navigation(&mut self, scene: &Scene) {
+        let root = self.root.clone();
+        let nav = crate::navigation::NavRuntime::load(scene, &root);
+        self.with_world(|w| w.navigation = nav);
+    }
+
     /// Remove objects between frames (an unloaded scene) with their bodies and scripts.
     pub fn remove_objects(&mut self, scene: &mut Scene, roots: &[Entity]) {
         let scene_in = std::mem::take(scene);
@@ -1811,6 +1962,7 @@ impl ScriptHost {
 
     /// Remove objects queued by `Destroy` (with their children and physics bodies).
     fn process_destroy(&mut self) {
+        self.remove_destroyed_scripts();
         let queued = self.with_world(|w| std::mem::take(&mut w.destroy));
         for e in queued {
             let subtree: Vec<Entity> = self.with_world(|w| {
@@ -2145,9 +2297,7 @@ fn to_lua(lua: &Lua, v: &ScriptValue) -> mlua::Result<Value> {
         ScriptValue::Bool(b) => Value::Boolean(*b),
         ScriptValue::Number(n) => Value::Number(*n),
         ScriptValue::Text(s) => Value::String(lua.create_string(s)?),
-        ScriptValue::Vector3(a) => {
-            Value::UserData(lua.create_userdata(LVec3(glam::Vec3::from(*a)))?)
-        }
+        ScriptValue::Vector3(a) => mlua::IntoLua::into_lua(LVec3(glam::Vec3::from(*a)), lua)?,
         // An object field: its Transform when asked for one, else the object (components and
         // scripts through GetComponent); nil when empty.
         ScriptValue::Object(o) => match o.entity() {
@@ -2201,12 +2351,9 @@ pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
             Value::Integer(i) => ScriptValue::Number(i as f64),
             Value::Number(n) => ScriptValue::Number(n),
             Value::String(s) => ScriptValue::Text(s.to_string_lossy()),
-            Value::UserData(ud) if ud.is::<LVec3>() => ScriptValue::Vector3(
-                ud.borrow::<LVec3>()
-                    .map_err(|e| e.to_string())?
-                    .0
-                    .to_array(),
-            ),
+            Value::Table(_) if api::vec3_in(&v).is_some() => {
+                ScriptValue::Vector3(api::vec3_in(&v).unwrap_or_default().to_array())
+            }
             Value::Table(t) => match t.raw_get::<Option<String>>(api::OBJECT_FIELD_KEY) {
                 Ok(Some(kind)) => ScriptValue::Object(crate::scene::ObjectValue::none(kind)),
                 _ => continue,
@@ -2277,8 +2424,12 @@ mod material_tests;
 #[cfg(test)]
 mod network_tests;
 #[cfg(test)]
+mod scene_async_tests;
+#[cfg(test)]
 mod set_active_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod ships_bench;
 #[cfg(test)]
 mod tilemap_tests;

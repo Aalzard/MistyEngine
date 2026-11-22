@@ -192,9 +192,12 @@ impl UiInteraction {
         self.forget_missing(scene);
         if !self.started {
             self.ensure_groups(scene, true);
-            self.selected = settings(scene)
-                .first_selected
-                .filter(|e| scene.contains(*e));
+            // A script may have picked one before the first frame (SetSelectedGameObject).
+            if self.selected.is_none() {
+                self.selected = settings(scene)
+                    .first_selected
+                    .filter(|e| scene.contains(*e));
+            }
         }
         let l = layout(scene, input.screen);
         let hit_at = input.position.and_then(|p| raycast_hit(&l, scene, p));
@@ -253,6 +256,19 @@ impl UiInteraction {
         self.scroll_rects(scene, &l, input.dt);
         self.caret_time += input.dt;
         self.diff_values(scene, &mut events);
+        events
+    }
+
+    /// Select `e` (`None` clears the selection), like `EventSystem.SetSelectedGameObject`:
+    /// any live object can be selected, and an Input Field being typed into stops editing
+    /// when the selection moves off it (its End Edit is returned).
+    pub fn select(&mut self, scene: &mut Scene, e: Option<Entity>) -> Vec<UiEvent> {
+        let mut events = Vec::new();
+        let e = e.filter(|x| scene.contains(*x));
+        if self.editing.as_ref().is_some_and(|ed| Some(ed.field) != e) {
+            self.end_edit(scene, &mut events);
+        }
+        self.selected = e;
         events
     }
 
@@ -653,7 +669,13 @@ impl UiInteraction {
         }
         for dir in moves {
             let Some(cur) = self.selected.filter(|e| l.node(*e).is_some()) else {
-                self.selected = es.first_selected.filter(|e| scene.contains(*e));
+                // Nothing selected (the pointer clicked empty space, or the menu just opened):
+                // the first move picks First Selected, or the top-left selectable when that
+                // isn't set or isn't showing, so a gamepad can always get into a menu.
+                self.selected = es
+                    .first_selected
+                    .filter(|e| scene.contains(*e) && scene.active_in_hierarchy(*e))
+                    .or_else(|| super::navigation::top_left(scene, l));
                 continue;
             };
             let v = dir.vec();
@@ -847,6 +869,10 @@ impl UiInteraction {
     /// Toggle groups: a toggle switched on turns the others off; on the first frame a group
     /// that may not be all-off gets its first toggle switched on.
     fn ensure_groups(&mut self, scene: &mut Scene, first: bool) {
+        // Most scenes have no toggles: skip the per-frame walk of the whole Hierarchy.
+        if !scene.has_any::<UiToggle>() {
+            return;
+        }
         let toggles: Vec<(Entity, Entity, bool)> = scene
             .walk()
             .into_iter()
@@ -896,19 +922,24 @@ impl UiInteraction {
         self.ensure_groups(scene, false);
         let now = current_values(scene);
         if self.started {
-            // Hierarchy order, so handlers run top to bottom.
-            let order: HashMap<Entity, usize> = scene
-                .walk()
-                .into_iter()
-                .enumerate()
-                .map(|(i, (e, _))| (e, i))
-                .collect();
             let mut changed: Vec<(Entity, UiValue)> = now
                 .iter()
                 // New widgets (instantiated, list items) only start reporting next frame.
                 .filter(|(e, v)| self.values.get(e).is_some_and(|old| old != v))
                 .cloned()
                 .collect();
+            // Hierarchy order, so handlers run top to bottom (the walk only when something
+            // changed: it visits every object, every frame).
+            let order: HashMap<Entity, usize> = if changed.len() > 1 {
+                scene
+                    .walk()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (e, _))| (e, i))
+                    .collect()
+            } else {
+                HashMap::new()
+            };
             changed.sort_by_key(|(e, _)| order.get(e).copied().unwrap_or(usize::MAX));
             events.extend(
                 changed

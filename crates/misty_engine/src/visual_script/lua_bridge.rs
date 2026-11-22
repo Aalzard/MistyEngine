@@ -20,11 +20,9 @@ pub fn to_lua(lua: &Lua, v: &Value) -> mlua::Result<LuaValue> {
         Value::Int(i) => LuaValue::Integer(*i),
         Value::Float(f) => LuaValue::Number(f64::from(*f)),
         Value::Str(s) => LuaValue::String(lua.create_string(s.as_bytes())?),
-        Value::Vec3(v) => LuaValue::UserData(lua.create_userdata(LVec3(*v))?),
+        Value::Vec3(v) => mlua::IntoLua::into_lua(LVec3(*v), lua)?,
         // Lua has no quaternion type: rotations travel as Euler angles.
-        Value::Quat(q) => {
-            LuaValue::UserData(lua.create_userdata(LVec3(crate::camera::quat_to_euler(*q)))?)
-        }
+        Value::Quat(q) => mlua::IntoLua::into_lua(LVec3(crate::camera::quat_to_euler(*q)), lua)?,
         Value::Object(e) => LuaValue::UserData(lua.create_userdata(LGameObject(*e))?),
         Value::List(l) => {
             let t = lua.create_table()?;
@@ -70,10 +68,11 @@ fn convert(lua: &Lua, v: LuaValue, walk: &mut Walk) -> Value {
         LuaValue::Integer(i) => Value::Int(i),
         LuaValue::Number(n) => Value::Float(n as f32),
         LuaValue::String(s) => Value::str(&s.to_string_lossy()),
+        LuaValue::Table(ref t) if crate::scripting::api::vec3_in(&v).is_some() => {
+            let _ = t;
+            Value::Vec3(crate::scripting::api::vec3_in(&v).unwrap_or_default())
+        }
         LuaValue::UserData(ud) => {
-            if let Ok(v) = ud.borrow::<LVec3>() {
-                return Value::Vec3(v.0);
-            }
             if let Ok(g) = ud.borrow::<LGameObject>() {
                 return Value::Object(g.0);
             }

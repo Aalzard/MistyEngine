@@ -7,12 +7,14 @@ pub mod axes;
 pub mod gamepad;
 pub mod keys;
 pub mod manager;
+pub mod on_screen;
 pub mod touch;
 
 pub use axes::{AxisType, InputAxis, InputSettings};
 pub use gamepad::Gamepads;
 pub use keys::{ButtonName, Joystick};
 pub use manager::InputManager;
+pub use on_screen::{OnScreenButton, OnScreenControls, OnScreenStick};
 pub use touch::{Touch, TouchPhase, TouchTracker};
 
 #[cfg(test)]

@@ -11,6 +11,18 @@ fn mode_from_name(name: &str) -> Option<CursorLockMode> {
     CursorLockMode::ALL.into_iter().find(|m| m.name() == name)
 }
 
+/// `Cursor.lockState = mode` (Lua and C#).
+pub(super) fn set_lock(cursor: &mut super::CursorState, mode: CursorLockMode) {
+    // Locking hides the cursor unless a script says otherwise after.
+    if mode == CursorLockMode::Locked && cursor.lock != mode {
+        cursor.visible = false;
+    }
+    if mode == CursorLockMode::None && cursor.lock == CursorLockMode::Locked {
+        cursor.visible = true;
+    }
+    cursor.lock = mode;
+}
+
 pub fn register(lua: &Lua) -> Result<()> {
     let g = lua.globals();
     let modes = lua.create_table()?;
@@ -47,16 +59,7 @@ pub fn register(lua: &Lua) -> Result<()> {
                              (got '{name}')"
                         )));
                     };
-                    with_world(lua, |w| {
-                        // Locking hides the cursor unless a script says otherwise after.
-                        if mode == CursorLockMode::Locked && w.cursor.lock != mode {
-                            w.cursor.visible = false;
-                        }
-                        if mode == CursorLockMode::None && w.cursor.lock == CursorLockMode::Locked {
-                            w.cursor.visible = true;
-                        }
-                        w.cursor.lock = mode;
-                    })?;
+                    with_world(lua, |w| set_lock(&mut w.cursor, mode))?;
                 }
                 "visible" => {
                     let on = matches!(value, Value::Boolean(true));

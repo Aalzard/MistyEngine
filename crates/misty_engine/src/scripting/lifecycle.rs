@@ -214,7 +214,7 @@ impl ScriptHost {
     }
 
     /// OnDisable for the enabled of `which`, then OnDestroy for the ones that woke.
-    fn goodbye(&mut self, which: &[usize]) {
+    pub(super) fn goodbye(&mut self, which: &[usize]) {
         let was = std::mem::replace(&mut self.syncing, true);
         for &i in which {
             if self.instances[i].enabled {

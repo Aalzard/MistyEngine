@@ -328,7 +328,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             ));
             drop(settings_scope);
             drop(gather);
-            let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
+            let texture = gpu.render(ViewId::Scene, size, Some(&frame), &effects);
             // Canvases in the world, drawn with the scene's depth.
             {
                 misty_engine::profile_scope!("SceneView.WorldUi");

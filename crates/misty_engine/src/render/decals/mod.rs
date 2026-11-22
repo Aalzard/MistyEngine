@@ -1108,20 +1108,25 @@ mod shader_beside_tests {
 
     #[test]
     fn absolute_materials_resolve_their_shader_in_their_own_project() {
+        // An absolute path on the host: `C:/...` is only absolute on Windows.
+        let root = if cfg!(windows) { "C:/" } else { "/" };
         assert_eq!(
             shader_beside(
-                "C:/Games/Puddles/Assets/M/Puddle.mat",
+                &format!("{root}Games/Puddles/Assets/M/Puddle.mat"),
                 "Assets/G/Puddle.shadergraph"
             ),
-            "C:/Games/Puddles/Assets/G/Puddle.shadergraph"
+            format!("{root}Games/Puddles/Assets/G/Puddle.shadergraph")
         );
         assert_eq!(
             shader_beside("Assets/M/Puddle.mat", "Assets/G/Puddle.shadergraph"),
             "Assets/G/Puddle.shadergraph"
         );
         assert_eq!(
-            shader_beside("C:/P/Assets/M/Puddle.mat", "C:/Other/Puddle.shadergraph"),
-            "C:/Other/Puddle.shadergraph"
+            shader_beside(
+                &format!("{root}P/Assets/M/Puddle.mat"),
+                &format!("{root}Other/Puddle.shadergraph")
+            ),
+            format!("{root}Other/Puddle.shadergraph")
         );
     }
 }

@@ -141,8 +141,10 @@ fn materials() -> [(&'static str, Material); 6] {
             GHOST,
             Material {
                 color: [0.55, 0.65, 1.0, 0.4],
-                smoothness: 0.3,
-                rendering_mode: RenderingMode::Fade,
+                albedo_map: Some(FENCE_PNG.into()),
+                smoothness: 0.0,
+                rendering_mode: RenderingMode::Cutout,
+                alpha_cutoff: 0.3,
                 ..Default::default()
             },
         ),
@@ -171,10 +173,10 @@ fn materials() -> [(&'static str, Material); 6] {
             PANEL,
             Material {
                 color: [0.08, 0.09, 0.1, 1.0],
-                smoothness: 0.7,
+                smoothness: 1.0,
                 emission_enabled: true,
                 emission: [0.25, 0.85, 1.0],
-                emission_intensity: 3.0,
+                emission_intensity: 2.0,
                 emission_map: Some(GLOW_PNG.into()),
                 ..Default::default()
             },

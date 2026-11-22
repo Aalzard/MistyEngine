@@ -60,12 +60,12 @@ pub fn value_to_lua(lua: &Lua, v: crate::input::actions::Value) -> Result<Value>
     use crate::input::actions::Value as V;
     Ok(match v {
         V::Float(f) => Value::Number(f64::from(f)),
-        V::Vector2(v) => Value::UserData(lua.create_userdata(LVec3(v.extend(0.0)))?),
+        V::Vector2(v) => mlua::IntoLua::into_lua(LVec3(v.extend(0.0)), lua)?,
     })
 }
 
 fn vec2(lua: &Lua, v: Vec2) -> Result<Value> {
-    Ok(Value::UserData(lua.create_userdata(LVec3(v.extend(0.0)))?))
+    mlua::IntoLua::into_lua(LVec3(v.extend(0.0)), lua)
 }
 
 // ---- listener events ----------------------------------------------------------------------

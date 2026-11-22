@@ -103,6 +103,9 @@ pub struct PlayerState {
     pub auto_switch: bool,
     default_scheme: String,
     lost: Vec<DeviceId>,
+    /// The devices its control scheme took, also when alone (when alone `devices` lists every
+    /// device): other devices are free for a new player to join with.
+    pub own: Vec<DeviceId>,
 }
 
 /// An interactive rebinding (`PerformInteractiveRebinding`).
@@ -165,9 +168,20 @@ pub struct InputSystem {
     pub logs: Vec<String>,
     /// The UI event system's action map (see `ui_module`).
     pub ui_module: Option<super::ui_module::UiModule>,
+    /// Devices new players should be paired with first (a player joined by pressing a button
+    /// on it, through the Player Input Manager or `PlayerInput.Instantiate`).
+    pub preferred: HashMap<Entity, DeviceId>,
+    /// A Player Input Manager lets players join: even a lone player keeps to its own devices
+    /// (no auto-switch), so the others stay free to join with.
+    pub joining: bool,
 }
 
 impl InputSystem {
+    /// One player with every device to itself (auto-switching control schemes).
+    fn alone(&self) -> bool {
+        self.players.len() == 1 && !self.joining
+    }
+
     pub fn new(root: &Path, handling: ActiveInputHandling) -> Self {
         Self {
             root: root.to_path_buf(),
@@ -188,6 +202,8 @@ impl InputSystem {
             prev_input: Input::default(),
             logs: Vec::new(),
             ui_module: None,
+            preferred: HashMap::new(),
+            joining: false,
         }
     }
 
@@ -299,6 +315,7 @@ impl InputSystem {
         }
         // Players that failed to start and are gone may be new objects next time.
         self.failed.retain(|f| present.iter().any(|(e, _)| e == f));
+        self.preferred.retain(|e, _| scene.contains(*e));
         for (e, c) in &present {
             if before.contains(e) || self.failed.contains(e) {
                 continue;
@@ -365,6 +382,7 @@ impl InputSystem {
             auto_switch: c.auto_switch,
             default_scheme: c.default_control_scheme.clone(),
             lost: Vec::new(),
+            own: Vec::new(),
         })
     }
 
@@ -407,7 +425,7 @@ impl InputSystem {
     /// control scheme); with several players each gets its own devices, in player order.
     fn pair_all(&mut self, input: &Input) {
         let available = self.available(input);
-        let single = self.players.len() == 1;
+        let single = self.alone();
         let mut free = available.clone();
         for i in 0..self.players.len() {
             let (set_id, default_scheme) =
@@ -422,11 +440,35 @@ impl InputSystem {
             }
             // Alone with a gamepad plugged in and no default: start on the scheme of whatever
             // comes first in the asset.
-            let pool = if single {
+            let mut pool = if single {
                 available.clone()
             } else {
                 free.clone()
             };
+            // A device the player joined with comes first, then the ones it had: players keep
+            // their devices when others join or leave.
+            let mut first: Vec<DeviceId> = self.players[i].own.clone();
+            if let Some(d) = self.preferred.get(&self.players[i].entity) {
+                first.retain(|x| x != d);
+                first.insert(0, *d);
+            }
+            for d in first.into_iter().rev() {
+                if let Some(at) = pool.iter().position(|x| *x == d) {
+                    let d = pool.remove(at);
+                    pool.insert(0, d);
+                }
+            }
+            // A joined player starts on a scheme that uses the device it joined with.
+            if let Some(d) = self.preferred.get(&self.players[i].entity) {
+                let uses = |s: &usize| {
+                    set.asset.control_schemes[*s].devices.iter().any(|r| {
+                        r.path
+                            .trim_matches(|c| c == '<' || c == '>')
+                            .eq_ignore_ascii_case(d.kind().name())
+                    })
+                };
+                order.sort_by_key(|s| !uses(s));
+            }
             let pick = order
                 .iter()
                 .find_map(|s| Self::devices_for(set, *s, &pool).map(|d| (*s, d)));
@@ -451,6 +493,7 @@ impl InputSystem {
             set.devices = filter;
             let p = &mut self.players[i];
             p.scheme = scheme;
+            p.own = devices.clone();
             p.devices = if single { available.clone() } else { devices };
             p.lost.clear();
         }
@@ -460,7 +503,7 @@ impl InputSystem {
     /// `SwitchCurrentControlScheme`: the named scheme with the devices it needs (a player's own
     /// devices plus free ones).
     pub fn switch_scheme(&mut self, e: Entity, name: &str, input: &Input) -> Result<(), String> {
-        let single = self.players.len() == 1;
+        let single = self.alone();
         let Some(pi) = self.players.iter().position(|p| p.entity == e) else {
             return Err("not a playing Player Input".into());
         };
@@ -494,6 +537,7 @@ impl InputSystem {
         };
         let p = &mut self.players[pi];
         p.scheme = Some(scheme);
+        p.own = devices.clone();
         if !single {
             p.devices = devices;
         }
@@ -532,6 +576,51 @@ impl InputSystem {
     }
 
     /// Which devices were used this frame.
+    /// Devices with a button or key pressed this frame (joining a player): keys, mouse
+    /// buttons, gamepad buttons, touches beginning.
+    pub fn pressed_devices(input: &Input) -> Vec<DeviceId> {
+        let mut out = Vec::new();
+        if !input.pressed.is_empty() {
+            out.push(DeviceId::Keyboard);
+        }
+        if input.mouse_pressed.iter().any(|b| *b) {
+            out.push(DeviceId::Mouse);
+        }
+        for (i, j) in input.joysticks.iter().enumerate() {
+            if !j.name.is_empty() && j.pressed.iter().any(|b| *b) {
+                out.push(DeviceId::Gamepad(i));
+            }
+        }
+        if input
+            .touches
+            .iter()
+            .any(|t| t.phase == crate::input::touch::TouchPhase::Began)
+        {
+            out.push(DeviceId::Touchscreen);
+        }
+        out
+    }
+
+    /// Turn joining on or off (the Player Input Manager), re-pairing the players when it
+    /// changes.
+    pub fn set_joining(&mut self, on: bool, input: &Input) {
+        if self.joining != on {
+            self.joining = on;
+            if !self.players.is_empty() {
+                self.pair_all(input);
+            }
+        }
+    }
+
+    /// Devices some player's control scheme took (see [`PlayerState::own`]).
+    pub fn claimed_devices(&self) -> Vec<DeviceId> {
+        let mut out: Vec<DeviceId> = self.players.iter().flat_map(|p| p.own.clone()).collect();
+        out.extend(self.preferred.values().copied());
+        out.sort();
+        out.dedup();
+        out
+    }
+
     fn activity(input: &Input) -> Vec<DeviceId> {
         let mut out = Vec::new();
         if !input.pressed.is_empty() {
@@ -632,7 +721,7 @@ impl InputSystem {
             }
         }
         self.connected = now_connected;
-        let single = self.players.len() == 1;
+        let single = self.alone();
         if !newly.is_empty() {
             if single {
                 let available = self.available(input);
@@ -676,10 +765,12 @@ impl InputSystem {
         if let Some(s) = switch {
             let cs = &set.asset.control_schemes[s];
             let (name, group) = (cs.name.clone(), cs.group().to_owned());
+            let own = Self::devices_for(set, s, &pool).unwrap_or_default();
             if let Some(set) = self.set_mut(set_id) {
                 set.binding_mask = Some(group);
             }
             self.players[0].scheme = Some(name);
+            self.players[0].own = own;
             events.push(SystemEvent::ControlsChanged(self.players[0].entity));
         }
     }

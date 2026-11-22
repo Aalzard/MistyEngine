@@ -81,10 +81,12 @@ impl NetValue {
             6 => NetValue::Vector3(r.vec3()?),
             7 => NetValue::Object(r.varint()?),
             8 => {
-                if depth >= MAX_DEPTH {
+                let n = r.varint()? as usize;
+                // The writer cuts tables nested past the limit down to empty ones, so an
+                // empty table there is a valid (cut) value; anything inside it is refused.
+                if depth >= MAX_DEPTH && n != 0 {
                     return None;
                 }
-                let n = r.varint()? as usize;
                 // Each pair takes at least two bytes: refuse lengths the packet can't hold.
                 if n > r.remaining() / 2 {
                     return None;
@@ -307,5 +309,36 @@ mod tests {
         w.varint(u64::MAX);
         let mut r = Reader::new(&w.buf);
         assert_eq!((r.varint(), r.varint()), (Some(300), Some(u64::MAX)));
+    }
+
+    /// A table nested deeper than the limit is sent cut to an empty table: the receiver
+    /// gets the rest of the message instead of dropping all of it.
+    #[test]
+    fn too_deep_tables_are_cut_not_refused() {
+        let mut v = NetValue::Int(7);
+        for _ in 0..MAX_DEPTH + 4 {
+            v = NetValue::Table(vec![(NetValue::Int(1), v)]);
+        }
+        let mut w = Writer::new();
+        v.write(&mut w);
+        let mut r = Reader::new(&w.buf);
+        let got = NetValue::read(&mut r).expect("a cut value, not a dropped message");
+        assert!(r.is_empty());
+        let mut depth = 0;
+        let mut cur = &got;
+        while let NetValue::Table(p) = cur {
+            match p.first() {
+                Some((_, inner)) => cur = inner,
+                None => break,
+            }
+            depth += 1;
+        }
+        assert_eq!(depth, MAX_DEPTH);
+        // Hostile data nesting deeper than the limit with content is still refused.
+        let mut bytes = Vec::new();
+        for _ in 0..=MAX_DEPTH + 1 {
+            bytes.extend_from_slice(&[8, 1, 3, 2]);
+        }
+        assert_eq!(NetValue::read(&mut Reader::new(&bytes)), None);
     }
 }

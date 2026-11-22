@@ -293,6 +293,15 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
 
 /// The enabled, active camera with the highest Depth renders the game.
 pub fn game_camera(scene: &Scene) -> Option<(Camera, CameraComponent)> {
+    let e = enabled_cameras(scene)
+        .into_iter()
+        .max_by(|a, b| a.1.depth.total_cmp(&b.1.depth))?
+        .0;
+    camera_of(scene, e)
+}
+
+/// Enabled, active cameras and their settings.
+fn enabled_cameras(scene: &Scene) -> Vec<(Entity, CameraComponent)> {
     scene
         .active_with::<CameraComponent>()
         .into_iter()
@@ -300,23 +309,78 @@ pub fn game_camera(scene: &Scene) -> Option<(Camera, CameraComponent)> {
             let c = scene.world.get::<&CameraComponent>(e).ok()?;
             c.enabled.then(|| (e, (*c).clone()))
         })
+        .collect()
+}
+
+/// The render camera of camera object `e` (`None` when it has no Camera).
+pub fn camera_of(scene: &Scene, e: Entity) -> Option<(Camera, CameraComponent)> {
+    let c = (*scene.world.get::<&CameraComponent>(e).ok()?).clone();
+    let (_, rotation, position) = scene.world_matrix(e).to_scale_rotation_translation();
+    let projection = if c.orthographic {
+        Projection::Orthographic { size: c.ortho_size }
+    } else {
+        Projection::Perspective { fov_y: c.fov }
+    };
+    let camera = Camera {
+        position,
+        rotation,
+        projection,
+        near: c.near,
+        far: c.far,
+    };
+    Some((camera, c))
+}
+
+/// Does a normalised viewport rect (x, y, w, h) cover the whole screen?
+pub fn covers_screen(viewport: [f32; 4]) -> bool {
+    let [x, y, w, h] = viewport;
+    x <= 1e-4 && y <= 1e-4 && x + w >= 1.0 - 1e-4 && y + h >= 1.0 - 1e-4
+}
+
+/// Cameras whose Viewport Rect covers only part of the screen (split screen, picture in
+/// picture), lowest Depth first: each draws into its own rect over the full-screen image.
+pub fn viewport_cameras(scene: &Scene) -> Vec<Entity> {
+    let mut v: Vec<(Entity, CameraComponent)> = enabled_cameras(scene)
+        .into_iter()
+        .filter(|(_, c)| !covers_screen(c.viewport) && c.viewport[2] > 0.0 && c.viewport[3] > 0.0)
+        .collect();
+    v.sort_by(|a, b| a.1.depth.total_cmp(&b.1.depth));
+    v.into_iter().map(|(e, _)| e).collect()
+}
+
+/// The camera that draws the full-screen image: the highest-Depth one whose Viewport Rect
+/// covers the screen. With no such camera, the one with the highest Depth when no camera
+/// has a partial viewport either (so a lone camera always renders), else none: the
+/// viewport cameras draw over a black image.
+pub fn screen_camera(scene: &Scene) -> Option<Entity> {
+    let cams = enabled_cameras(scene);
+    let full = cams
+        .iter()
+        .filter(|(_, c)| covers_screen(c.viewport))
         .max_by(|a, b| a.1.depth.total_cmp(&b.1.depth))
-        .map(|(e, c)| {
-            let (_, rotation, position) = scene.world_matrix(e).to_scale_rotation_translation();
-            let projection = if c.orthographic {
-                Projection::Orthographic { size: c.ortho_size }
-            } else {
-                Projection::Perspective { fov_y: c.fov }
-            };
-            let camera = Camera {
-                position,
-                rotation,
-                projection,
-                near: c.near,
-                far: c.far,
-            };
-            (camera, c)
-        })
+        .map(|(e, _)| *e);
+    full.or_else(|| {
+        if cams.iter().any(|(_, c)| !covers_screen(c.viewport)) {
+            None
+        } else {
+            cams.iter()
+                .max_by(|a, b| a.1.depth.total_cmp(&b.1.depth))
+                .map(|(e, _)| *e)
+        }
+    })
+}
+
+/// Pixel rect (x, y from the top-left, width, height) of a normalised viewport rect (origin
+/// bottom-left, like Unity's) in a `size` image; `None` when it is empty or off screen.
+pub fn viewport_pixels(viewport: [f32; 4], size: (u32, u32)) -> Option<(u32, u32, u32, u32)> {
+    let [x, y, w, h] = viewport;
+    let (sw, sh) = (size.0 as f32, size.1 as f32);
+    let px = |v: f32, s: f32| (v.clamp(0.0, 1.0) * s).round();
+    let (x0, x1) = (px(x, sw), px(x + w, sw));
+    // Flip: viewport y grows up, image rows grow down.
+    let (y0, y1) = (px(1.0 - (y + h), sh), px(1.0 - y, sh));
+    let (w, h) = (x1 - x0, y1 - y0);
+    (w >= 1.0 && h >= 1.0).then_some((x0 as u32, y0 as u32, w as u32, h as u32))
 }
 
 /// What the game camera sees: everything a [`Frame`] borrows.
@@ -357,13 +421,26 @@ impl GameView {
     }
 
     /// [`GameView::new`] reusing the previous frame's draws through `cache`.
+    /// The full-screen camera is [`screen_camera`]; cameras with a partial Viewport Rect
+    /// render through [`crate::split_screen::SplitScreen`].
     pub fn cached(
         scene: &Scene,
         materials: &dyn MaterialSource,
         cache: &mut DrawCache,
     ) -> Option<Self> {
+        Self::cached_for(scene, materials, cache, screen_camera(scene)?)
+    }
+
+    /// What camera object `camera` sees, reusing the previous frame's draws through `cache`
+    /// (one cache per camera).
+    pub fn cached_for(
+        scene: &Scene,
+        materials: &dyn MaterialSource,
+        cache: &mut DrawCache,
+        camera: Entity,
+    ) -> Option<Self> {
         crate::profile_scope!("Render.GatherScene", crate::profiler::Category::Rendering);
-        let (camera, settings) = game_camera(scene)?;
+        let (camera, settings) = camera_of(scene, camera)?;
         let lights = lights(scene);
         // Only the layers in the camera's Culling Mask are drawn (lights light everything).
         let mask = settings.culling_mask;

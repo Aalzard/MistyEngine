@@ -2480,6 +2480,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,6 +2634,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mimalloc"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+dependencies = [
+ "libmimalloc-sys",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2652,7 +2670,7 @@ checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 
 [[package]]
 name = "misty_editor"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "ar-reshaper",
  "bytemuck",
@@ -2665,6 +2683,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.4",
  "glam 0.34.2",
+ "mimalloc",
  "misty_engine",
  "misty_recorder",
  "mlua",
@@ -2687,7 +2706,7 @@ dependencies = [
 
 [[package]]
 name = "misty_engine"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "ab_glyph",
  "block_compression",
@@ -2704,6 +2723,7 @@ dependencies = [
  "libloading",
  "libm",
  "lz4_flex",
+ "mimalloc",
  "mlua",
  "pollster 0.4.0",
  "quick-xml",
@@ -2726,8 +2746,9 @@ dependencies = [
 
 [[package]]
 name = "misty_player"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
+ "mimalloc",
  "misty_engine",
  "png",
  "pollster 0.4.0",
@@ -2738,7 +2759,7 @@ dependencies = [
 
 [[package]]
 name = "misty_recorder"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "glam 0.34.2",
  "image",

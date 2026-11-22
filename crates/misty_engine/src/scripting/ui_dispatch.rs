@@ -46,10 +46,16 @@ fn persistent_calls(w: &World, e: Entity, event: &str) -> Vec<ButtonCall> {
 
 impl ScriptHost {
     /// Call `method` on `target`'s scripts that define it (no warning when none does).
-    fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
+    pub(super) fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
         for i in 0..self.instances.len() {
             let inst = &self.instances[i];
             if inst.entity != target || !self.runnable(inst) {
+                continue;
+            }
+            if let Some(cs) = inst.cs {
+                if self.cs_message(cs, method, arg.as_ref()) {
+                    self.flush_spawned();
+                }
                 continue;
             }
             let defined = self
@@ -62,6 +68,13 @@ impl ScriptHost {
                 self.flush_spawned();
             }
         }
+    }
+
+    /// `OnSelect()` / `OnDeselect()` on the scripts of an object the UI selection moved to /
+    /// off.
+    pub(super) fn ui_selection_changed(&mut self, e: Entity, selected: bool) {
+        let method = if selected { "OnSelect" } else { "OnDeselect" };
+        self.call_if_defined(e, method, None);
     }
 
     pub(super) fn ui_event(&mut self, ev: UiEvent) {
@@ -98,6 +111,7 @@ impl ScriptHost {
                     .unwrap_or(Value::Nil),
             }
         };
+        let ui_arg = arg.clone();
         let arg = arg.as_ref().map(to_lua);
         let calls = self.with_world(|w| persistent_calls(w, e, event));
         for call in calls {
@@ -114,6 +128,20 @@ impl ScriptHost {
                 self.log(LogKind::Error, format!("{label} listener: {err}"));
             }
             self.flush_spawned();
+        }
+        // C# listeners (`button.onClick.AddListener(…)`).
+        if let Some(kind) = super::csharp::UiEventKind::from_name(event) {
+            let cs_arg = ui_arg.as_ref().map(super::csharp::CsArg::from_ui);
+            let ran = {
+                let mut w = self
+                    .lua
+                    .app_data_mut::<World>()
+                    .expect("world is installed");
+                self.csharp.ui_event(&mut w, e, kind, cs_arg.as_ref())
+            };
+            if ran {
+                self.flush_spawned();
+            }
         }
     }
 }
