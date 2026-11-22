@@ -4954,35 +4954,37 @@ Green axis in world space
 
 ### `vector3.magnitude`
 
-*property* · source: `api.rs`
+*property*
 
 Length
 
 ### `vector3.normalized`
 
-*property* · source: `api.rs`
+*property*
 
 Unit-length copy
 
 ### `vector3.sqrMagnitude`
 
-*property* · source: `api.rs`
+*property*
+
+Squared length (cheaper than magnitude)
 
 ### `vector3.x`
 
-*property (read / write)* · source: `api.rs`
+*property*
 
 X component
 
 ### `vector3.y`
 
-*property (read / write)* · source: `api.rs`
+*property*
 
 Y component
 
 ### `vector3.z`
 
-*property (read / write)* · source: `api.rs`
+*property*
 
 Z component
 

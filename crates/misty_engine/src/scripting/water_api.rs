@@ -12,8 +12,8 @@ pub fn register(lua: &Lua) -> Result<()> {
         "GetHeight",
         lua.create_function(|lua, (a, b): (Value, Option<f32>)| {
             let (x, z) = match (a, b) {
-                (Value::UserData(u), _) => {
-                    let p = u.borrow::<LVec3>()?.0;
+                (v @ Value::Table(_), _) => {
+                    let p = <LVec3 as mlua::FromLua>::from_lua(v, lua)?.0;
                     (p.x, p.z)
                 }
                 (Value::Number(x), Some(z)) => (x as f32, z),

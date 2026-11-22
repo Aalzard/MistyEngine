@@ -2145,9 +2145,7 @@ fn to_lua(lua: &Lua, v: &ScriptValue) -> mlua::Result<Value> {
         ScriptValue::Bool(b) => Value::Boolean(*b),
         ScriptValue::Number(n) => Value::Number(*n),
         ScriptValue::Text(s) => Value::String(lua.create_string(s)?),
-        ScriptValue::Vector3(a) => {
-            Value::UserData(lua.create_userdata(LVec3(glam::Vec3::from(*a)))?)
-        }
+        ScriptValue::Vector3(a) => mlua::IntoLua::into_lua(LVec3(glam::Vec3::from(*a)), lua)?,
         // An object field: its Transform when asked for one, else the object (components and
         // scripts through GetComponent); nil when empty.
         ScriptValue::Object(o) => match o.entity() {
@@ -2201,12 +2199,9 @@ pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
             Value::Integer(i) => ScriptValue::Number(i as f64),
             Value::Number(n) => ScriptValue::Number(n),
             Value::String(s) => ScriptValue::Text(s.to_string_lossy()),
-            Value::UserData(ud) if ud.is::<LVec3>() => ScriptValue::Vector3(
-                ud.borrow::<LVec3>()
-                    .map_err(|e| e.to_string())?
-                    .0
-                    .to_array(),
-            ),
+            Value::Table(_) if api::vec3_in(&v).is_some() => {
+                ScriptValue::Vector3(api::vec3_in(&v).unwrap_or_default().to_array())
+            }
             Value::Table(t) => match t.raw_get::<Option<String>>(api::OBJECT_FIELD_KEY) {
                 Ok(Some(kind)) => ScriptValue::Object(crate::scene::ObjectValue::none(kind)),
                 _ => continue,

@@ -76,6 +76,7 @@ Vector3|Lerp|Lerp(a, b, t)|Linear interpolation
 #Vector3|z|z|Z component
 #Vector3|magnitude|magnitude|Length
 #Vector3|normalized|normalized|Unit-length copy
+#Vector3|sqrMagnitude|sqrMagnitude|Squared length (cheaper than magnitude)
 Color|new|new(r, g, b [, a])|A new colour (0..1)
 Color|white|white|(1, 1, 1, 1)
 Color|black|black|(0, 0, 0, 1)

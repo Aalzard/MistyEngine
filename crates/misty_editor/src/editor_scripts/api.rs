@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{ScriptRef, ScriptValue};
-use misty_engine::scripting::api::{LGameObject, LTransform, LVec3, with_world};
+use misty_engine::scripting::api::{LGameObject, LTransform, LVec3, vec3_in, with_world};
 use misty_engine::scripting::ui_api::LColor;
 use mlua::{Function, Lua, RegistryKey, Result, Table, Value};
 
@@ -147,9 +147,7 @@ pub(crate) fn field_to_lua(lua: &Lua, v: &ScriptValue) -> Result<Value> {
         ScriptValue::Bool(b) => Value::Boolean(*b),
         ScriptValue::Number(n) => Value::Number(*n),
         ScriptValue::Text(s) => Value::String(lua.create_string(s)?),
-        ScriptValue::Vector3(a) => {
-            Value::UserData(lua.create_userdata(LVec3(glam::Vec3::from(*a)))?)
-        }
+        ScriptValue::Vector3(a) => mlua::IntoLua::into_lua(LVec3(glam::Vec3::from(*a)), lua)?,
         ScriptValue::Object(o) => match o.entity() {
             Some(e) if o.kind == "Transform" => {
                 Value::UserData(lua.create_userdata(LTransform(e))?)
@@ -167,8 +165,8 @@ pub(crate) fn lua_to_field(v: &Value, like: &ScriptValue) -> Option<ScriptValue>
         (ScriptValue::Number(_), Value::Integer(i)) => ScriptValue::Number(*i as f64),
         (ScriptValue::Number(_), Value::Number(n)) => ScriptValue::Number(*n),
         (ScriptValue::Text(_), Value::String(s)) => ScriptValue::Text(s.to_string_lossy()),
-        (ScriptValue::Vector3(_), Value::UserData(ud)) if ud.is::<LVec3>() => {
-            ScriptValue::Vector3(ud.borrow::<LVec3>().ok()?.0.to_array())
+        (ScriptValue::Vector3(_), Value::Table(_)) if vec3_in(v).is_some() => {
+            ScriptValue::Vector3(vec3_in(v)?.to_array())
         }
         // An object field takes an object (or its Transform), or nil to clear it.
         (ScriptValue::Object(o), Value::Nil) => {
@@ -743,8 +741,8 @@ pub(crate) fn to_json(v: &Value) -> Option<serde_json::Value> {
         Value::Integer(i) => json!(i),
         Value::Number(n) if n.is_finite() => json!(n),
         Value::String(s) => json!(s.to_string_lossy()),
-        Value::UserData(ud) if ud.is::<LVec3>() => {
-            let v = ud.borrow::<LVec3>().ok()?.0;
+        Value::Table(_) if vec3_in(v).is_some() => {
+            let v = vec3_in(v)?;
             json!({ "type": "Vector3", "x": v.x, "y": v.y, "z": v.z })
         }
         Value::UserData(ud) if ud.is::<LColor>() => {
@@ -768,9 +766,9 @@ pub(crate) fn from_json(lua: &Lua, v: &serde_json::Value) -> Result<Value> {
             None => Value::Number(n.as_f64().unwrap_or(0.0)),
         },
         J::String(s) => Value::String(lua.create_string(s)?),
-        J::Object(o) if o.get("type").and_then(J::as_str) == Some("Vector3") => Value::UserData(
-            lua.create_userdata(LVec3(glam::Vec3::new(f(o, "x"), f(o, "y"), f(o, "z"))))?,
-        ),
+        J::Object(o) if o.get("type").and_then(J::as_str) == Some("Vector3") => {
+            mlua::IntoLua::into_lua(LVec3(glam::Vec3::new(f(o, "x"), f(o, "y"), f(o, "z"))), lua)?
+        }
         J::Object(o) if o.get("type").and_then(J::as_str) == Some("Color") => {
             Value::UserData(lua.create_userdata(LColor([
                 f(o, "r"),
