@@ -847,6 +847,10 @@ impl UiInteraction {
     /// Toggle groups: a toggle switched on turns the others off; on the first frame a group
     /// that may not be all-off gets its first toggle switched on.
     fn ensure_groups(&mut self, scene: &mut Scene, first: bool) {
+        // Most scenes have no toggles: skip the per-frame walk of the whole Hierarchy.
+        if !scene.has_any::<UiToggle>() {
+            return;
+        }
         let toggles: Vec<(Entity, Entity, bool)> = scene
             .walk()
             .into_iter()
@@ -896,19 +900,24 @@ impl UiInteraction {
         self.ensure_groups(scene, false);
         let now = current_values(scene);
         if self.started {
-            // Hierarchy order, so handlers run top to bottom.
-            let order: HashMap<Entity, usize> = scene
-                .walk()
-                .into_iter()
-                .enumerate()
-                .map(|(i, (e, _))| (e, i))
-                .collect();
             let mut changed: Vec<(Entity, UiValue)> = now
                 .iter()
                 // New widgets (instantiated, list items) only start reporting next frame.
                 .filter(|(e, v)| self.values.get(e).is_some_and(|old| old != v))
                 .cloned()
                 .collect();
+            // Hierarchy order, so handlers run top to bottom (the walk only when something
+            // changed: it visits every object, every frame).
+            let order: HashMap<Entity, usize> = if changed.len() > 1 {
+                scene
+                    .walk()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (e, _))| (e, i))
+                    .collect()
+            } else {
+                HashMap::new()
+            };
             changed.sort_by_key(|(e, _)| order.get(e).copied().unwrap_or(usize::MAX));
             events.extend(
                 changed

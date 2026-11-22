@@ -826,21 +826,57 @@ impl Scene {
         self.set_transform(e, t);
     }
 
-    /// "Cube", then "Cube (1)", "Cube (2)"… unique among the siblings under `parent`.
+    /// "Cube", then "Cube (1)", "Cube (2)"… unique among the siblings under `parent` (the
+    /// smallest free number). One pass over the siblings' names, borrowed: it was a list of
+    /// copied names searched once per candidate number, so spawning n objects under one parent
+    /// cost O(n³) (10,000 scripted objects took minutes to set up).
     pub fn unique_name(&self, base: &str, parent: Option<Entity>) -> String {
         let base = strip_number_suffix(base);
-        let taken: Vec<String> = self
-            .siblings(parent)
-            .iter()
-            .map(|s| self.name(*s))
-            .collect();
-        if !taken.iter().any(|n| n == base) {
+        let mut base_taken = false;
+        let mut used: Vec<bool> = Vec::new();
+        let mut check = |name: &str| {
+            if name == base {
+                base_taken = true;
+            } else if let Some(n) = name
+                .strip_prefix(base)
+                .and_then(|rest| rest.strip_prefix(" ("))
+                .and_then(|rest| rest.strip_suffix(')'))
+                .filter(|d| {
+                    // Only the exact form `format!("{base} ({n})")` writes.
+                    !d.is_empty() && !d.starts_with('0') && d.bytes().all(|b| b.is_ascii_digit())
+                })
+                .and_then(|d| d.parse::<usize>().ok())
+            {
+                if used.len() <= n {
+                    used.resize(n + 1, false);
+                }
+                used[n] = true;
+            }
+        };
+        let siblings: &[Entity] = match parent {
+            Some(p) => match self.world.get::<&Node>(p) {
+                Ok(node) => {
+                    for &c in &node.children {
+                        if let Ok(go) = self.world.get::<&GameObject>(c) {
+                            check(&go.name);
+                        }
+                    }
+                    &[]
+                }
+                Err(_) => &[],
+            },
+            None => &self.roots,
+        };
+        for &c in siblings {
+            if let Ok(go) = self.world.get::<&GameObject>(c) {
+                check(&go.name);
+            }
+        }
+        if !base_taken {
             return base.to_owned();
         }
-        (1..)
-            .map(|n| format!("{base} ({n})"))
-            .find(|name| !taken.contains(name))
-            .unwrap_or_default()
+        let n = (1..).find(|n| used.get(*n) != Some(&true)).unwrap_or(1);
+        format!("{base} ({n})")
     }
 
     pub fn find_by_name(&self, name: &str) -> Option<Entity> {
@@ -894,6 +930,25 @@ mod tests {
             1,
             "duplicate goes right after the original"
         );
+    }
+
+    /// The smallest free number, counting only names in the exact "Base (n)" form, under a
+    /// parent as among the roots.
+    #[test]
+    fn unique_names_take_the_smallest_free_number() {
+        let mut s = Scene::new("t");
+        let parent = s.spawn("Parent", None);
+        for under in [None, Some(parent)] {
+            for n in ["Cube", "Cube (1)", "Cube (01)", "Cube (3)", "Cube (x)", "Cubes (2)"] {
+                let e = s.spawn("tmp", under);
+                s.world.get::<&mut GameObject>(e).unwrap().name = n.to_owned();
+            }
+            assert_eq!(s.unique_name("Cube", under), "Cube (2)");
+            assert_eq!(s.unique_name("Cube (7)", under), "Cube (2)");
+            assert_eq!(s.unique_name("Sphere", under), "Sphere");
+            s.spawn("Cube", under);
+            assert_eq!(s.unique_name("Cube", under), "Cube (4)");
+        }
     }
 
     #[test]
