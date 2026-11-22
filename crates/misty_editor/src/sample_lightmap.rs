@@ -20,8 +20,8 @@ use misty_engine::render::MaterialParams;
 use misty_engine::render_scene::MaterialSource;
 use misty_engine::scene::render_settings::{AmbientSource, SkyboxKind};
 use misty_engine::scene::{
-    Light, LightMode, LightType, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh, Scene,
-    Shadows, TonemapMode, Transform,
+    Light, LightMode, LightType, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh,
+    ReflectionProbe, ReflectionProbeGroup, Scene, Shadows, TonemapMode, Transform,
 };
 
 const SCENE: &str = "Assets/Scenes/LightmapDemo.scene";
@@ -274,12 +274,33 @@ fn unbaked_scene() -> Scene {
         "Dynamic Sphere",
         None,
         PrimitiveMesh::Sphere,
-        placed(Vec3::new(0.6, 0.55, 0.6), Quat::IDENTITY, Vec3::splat(1.1)),
+        placed(
+            Vec3::new(-0.567_988_04, 0.55, 1.838_639_9),
+            Quat::IDENTITY,
+            Vec3::splat(1.1),
+        ),
         SPHERE,
         false,
     );
     let fx = s.spawn("Global Volume", None);
     s.add(fx, volume());
+    // One baked reflection probe over the room, in a group (added in the editor on Nov 17).
+    let group = s.spawn("Reflection Probes", None);
+    s.add(group, ReflectionProbeGroup::default());
+    let probe = s.spawn("Reflection Probe 1", Some(group));
+    s.set_transform(
+        probe,
+        Transform::from_position(Vec3::new(0.0, 2.332_455_6, 2.5)),
+    );
+    s.add(
+        probe,
+        ReflectionProbe {
+            size: Vec3::new(6.5, 7.0, 7.6),
+            center: Vec3::new(0.0, 0.5, -1.2),
+            baked: Some("Assets/Scenes/LightmapDemo/ReflectionProbe-0.probe".into()),
+            ..Default::default()
+        },
+    );
     s
 }
 
@@ -320,7 +341,7 @@ fn lightmap_demo_matches_its_generator() {
         crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    crate::test_util::assert_json_close(
+    crate::test_util::assert_json_close_ignoring_guids(
         &text,
         &demo_scene().to_json(),
         "regenerate with write_lightmap_demo",

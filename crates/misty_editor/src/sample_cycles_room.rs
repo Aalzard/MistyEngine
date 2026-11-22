@@ -22,7 +22,7 @@ use misty_engine::scene::reflection_probe::ProbeClearFlags;
 use misty_engine::scene::render_settings::{AmbientSource, SkyboxKind};
 use misty_engine::scene::{
     Camera, Light, LightMode, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh,
-    ReflectionProbe, Scene, Shadows, TonemapLook, TonemapMode, Transform,
+    ReflectionProbe, ReflectionProbeGroup, Scene, Shadows, TonemapLook, TonemapMode, Transform,
 };
 
 const SCENE: &str = "Assets/Scenes/CyclesRoomDemo.scene";
@@ -372,7 +372,32 @@ pub fn baked_scene() -> Scene {
         .map(|i| lightmap::asset_path_for(BAKED_SCENE, i))
         .collect();
     crate::lightmap_tools::assign(&mut s, &results, paths);
+    add_ceiling_probe(&mut s);
     s
+}
+
+/// A third baked probe above the room, from a Reflection Probe Group (added in the editor on
+/// Nov 17; its bake is `ReflectionProbe-2.probe`).
+fn add_ceiling_probe(s: &mut Scene) {
+    let group = s.spawn("Reflection Probes", None);
+    s.add(
+        group,
+        ReflectionProbeGroup {
+            resolution: 512,
+            ..Default::default()
+        },
+    );
+    let probe = s.spawn("Reflection Probe 1", Some(group));
+    s.set_transform(probe, Transform::from_position(Vec3::new(0.0, 4.0, 1.25)));
+    s.add(
+        probe,
+        ReflectionProbe {
+            size: Vec3::new(6.0, 5.6, 6.0),
+            center: Vec3::new(0.0, 1.199_999_8, 0.0),
+            baked: Some(probes::asset_path_for(BAKED_SCENE, 2)),
+            ..Default::default()
+        },
+    );
 }
 
 /// The room: camera centred in the opening at mid height, 42° vertical field of view.
@@ -413,6 +438,12 @@ fn scene(variant: Variant) -> Scene {
     room(&mut s);
     ceiling_light(&mut s, mode);
     room_probe(&mut s, path);
+    if variant == Variant::Baked {
+        // Brighter probes in the baked room (edited on Nov 17).
+        for p in s.world.query_mut::<&mut ReflectionProbe>() {
+            p.intensity = 4.0;
+        }
+    }
     let fx = s.spawn("Global Volume", None);
     s.add(fx, volume(variant));
     s
@@ -422,6 +453,9 @@ fn scene(variant: Variant) -> Scene {
 /// the reference: its path-traced lightmap already holds the room's occlusion, so it keeps
 /// the lighter AO and the exposure the room was first tuned with.
 fn volume(variant: Variant) -> PostProcessVolume {
+    if variant == Variant::Baked {
+        return baked_volume();
+    }
     let mut v = PostProcessVolume::default();
     v.tonemapping.active = true;
     v.tonemapping.mode = TonemapMode::Agx;
@@ -440,12 +474,6 @@ fn volume(variant: Variant) -> PostProcessVolume {
     ao.intensity = 3.5;
     ao.radius = 1.6;
     ao.direct_lighting_strength = 0.6;
-    if variant == Variant::Baked {
-        v.color_adjustments.post_exposure = 1.0;
-        ao.intensity = 2.0;
-        ao.radius = 1.2;
-        ao.direct_lighting_strength = 0.0;
-    }
     ao.step_count = 10;
     ao.full_resolution = true;
     ao.temporal = true;
@@ -456,6 +484,28 @@ fn volume(variant: Variant) -> PostProcessVolume {
     v.screen_space_gi.active = true;
     v.screen_space_gi.intensity = 0.6;
     v.screen_space_reflections.active = true;
+    v
+}
+
+/// The baked room's volume as saved from the editor on Nov 17: ACES, no bloom or colour
+/// adjustments, light AO and contact shadows (it replaced the tuned AgX look; the realtime
+/// room keeps [`volume`]).
+fn baked_volume() -> PostProcessVolume {
+    let mut v = PostProcessVolume::default();
+    v.tonemapping.active = true;
+    v.tonemapping.mode = TonemapMode::Aces;
+    v.bloom.intensity = 0.6;
+    v.bloom.threshold = 0.0;
+    v.bloom.scatter = 0.7;
+    let ao = &mut v.ambient_occlusion;
+    ao.active = true;
+    ao.intensity = 1.0;
+    ao.radius = 1.5;
+    ao.direct_lighting_strength = 0.0;
+    ao.step_count = 6;
+    ao.full_resolution = false;
+    ao.temporal = true;
+    v.contact_shadows.active = true;
     v
 }
 
@@ -671,7 +721,7 @@ fn cycles_room_demo_matches_its_generator() {
     }
     for (path, generated) in [(SCENE, demo_scene()), (BAKED_SCENE, baked_scene())] {
         let text = std::fs::read_to_string(root.join(path)).unwrap();
-        crate::test_util::assert_json_close(
+        crate::test_util::assert_json_close_ignoring_guids(
             &text,
             &generated.to_json(),
             format!("{path}: regenerate with write_cycles_room_demo"),

@@ -359,9 +359,12 @@ impl Scene {
             self.add_by_name(e, required);
         }
         (info.add_default)(&mut self.world, e);
-        self.game_object_mut(e)
-            .component_order
-            .push(name.to_owned());
+        // The order can still name a component that was removed behind its back: don't list
+        // the new one twice (the Inspector drew it twice).
+        let order = &mut self.game_object_mut(e).component_order;
+        if !order.iter().any(|n| n == name) {
+            order.push(name.to_owned());
+        }
         true
     }
 
@@ -381,12 +384,14 @@ impl Scene {
 
     /// Present components in Inspector order.
     pub fn component_names(&self, e: Entity) -> Vec<String> {
-        self.game_object(e)
-            .component_order
-            .iter()
-            .filter(|n| registry::find(n).is_some_and(|i| (i.has)(&self.world, e)))
-            .cloned()
-            .collect()
+        let mut names: Vec<String> = Vec::new();
+        for n in &self.game_object(e).component_order {
+            // A name twice in the order (hand-edited or older files) lists the component once.
+            if !names.contains(n) && registry::find(n).is_some_and(|i| (i.has)(&self.world, e)) {
+                names.push(n.clone());
+            }
+        }
+        names
     }
 
     /// Move a component one slot up (-1) or down (+1); Transform stays first.
@@ -992,5 +997,20 @@ mod tests {
         assert!(!s.remove_by_name(e, "Transform"));
         assert!(s.remove_by_name(e, "Light"));
         assert_eq!(s.component_names(e), ["Transform", "Camera"]);
+    }
+
+    /// A component listed twice in the order (a stale entry, then added again) shows once.
+    #[test]
+    fn component_order_never_lists_a_component_twice() {
+        let mut s = Scene::new("t");
+        let e = s.spawn("E", None);
+        assert!(s.add_by_name(e, "Light"));
+        // Removed behind the order's back: the name stays listed.
+        s.world.remove_one::<Light>(e).unwrap();
+        assert!(s.add_by_name(e, "Light"));
+        assert_eq!(s.game_object(e).component_order, ["Transform", "Light"]);
+        // A file that already holds the duplicate lists it once.
+        s.game_object_mut(e).component_order.push("Light".into());
+        assert_eq!(s.component_names(e), ["Transform", "Light"]);
     }
 }

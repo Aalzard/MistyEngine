@@ -74,7 +74,15 @@ fn terrain_data() -> TerrainData {
         }
     }
     d.layers = vec![
-        layer("Meadow", GRASS, 9.0, rules([0.0, 20.0], 0)),
+        layer(
+            "Meadow",
+            GRASS,
+            9.0,
+            AutoPaintRules {
+                height: [0.0, 520.0],
+                ..rules([0.0, 20.0], 0)
+            },
+        ),
         layer("Scree", SCREE, 7.0, rules([18.0, 32.0], 1)),
         layer("Cliff", ROCK, 30.0, rules([32.0, 90.0], 2)),
         layer(
@@ -110,20 +118,34 @@ fn volume() -> PostProcessVolume {
     c.active = true;
     CloudPreset::Cloudy.apply(c);
     c.coverage = 0.45;
-    c.density = 0.75;
+    c.density = 0.7;
+    c.altitude = 5720.0;
+    c.thickness = 5430.0;
+    c.shape = 0.53;
+    c.shadow_opacity = 0.62;
     c.wind_direction = 100.0;
     c.wind_speed = 18.0;
     c.silver_lining = 0.8;
     let f = &mut v.fog;
     f.active = true;
     f.max_fog_distance = 3000.0;
-    f.attenuation_distance = 9000.0;
-    f.base_height = 0.0;
+    f.attenuation_distance = 1125.0;
+    f.ambient_dimmer = 0.32;
+    f.base_height = 164.5;
     f.maximum_height = 300.0;
     f.anisotropy = 0.35;
     f.volumetric_distance = 200.0;
     v.sun_shafts.active = true;
-    v.sun_shafts.intensity = 0.4;
+    v.sun_shafts.intensity = 3.47;
+    v.sun_shafts.length = 0.72;
+    v.sun_shafts.radius = 1.17;
+    v.ambient_occlusion.active = true;
+    v.ambient_occlusion.direct_lighting_strength = 0.0;
+    v.ambient_occlusion.intensity = 1.0;
+    v.ambient_occlusion.radius = 1.5;
+    v.ambient_occlusion.step_count = 6;
+    v.ambient_occlusion.full_resolution = false;
+    v.ambient_occlusion.temporal = true;
     v
 }
 

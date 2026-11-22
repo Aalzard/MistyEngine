@@ -870,7 +870,6 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Post-process Volume",
             "Post-process Volume"
           ],
           "is_static": false,
