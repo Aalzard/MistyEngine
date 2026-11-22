@@ -136,7 +136,7 @@ variables of type GameObject are object fields too.
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it (scripts can't be added during Play yet) |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it (scripts can't be added during Play yet); `SendMessage(name [, value [, options]])` calls that function on every script of the object (`BroadcastMessage` also on everything under it, `SendMessageUpwards` also on its parents; inactive objects are skipped; with no receiver it logs an error unless `options` is `SendMessageOptions.DontRequireReceiver`). C# scripts on those objects get the message right after the calling function returns |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
@@ -1293,6 +1293,10 @@ IEnumerator Start()
   removes that component (not the object). Scripts can't be added during Play yet.
 - `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
   single scene loads, like Lua's.
+- `SendMessage`, `BroadcastMessage`, `SendMessageUpwards` (with `SendMessageOptions`) on
+  `GameObject` and `Component`: C# scripts are called at once; Lua scripts on the same objects
+  right after the calling method returns (a value Lua can't take, like an object, reaches C#
+  only).
 - `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
   `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,

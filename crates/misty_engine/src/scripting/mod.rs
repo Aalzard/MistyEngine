@@ -41,6 +41,7 @@ mod lifecycle_tests;
 pub mod light_probes_api;
 pub mod localization_api;
 pub mod material_api;
+mod messages;
 pub mod navigation_api;
 pub mod network_api;
 mod override_api;
@@ -250,6 +251,8 @@ pub struct World {
     pub dont_destroy: Vec<Entity>,
     /// `LoadSceneAsync` / `UnloadSceneAsync` operations (scene_ops.rs).
     pub scene_ops: Vec<scene_ops::SceneOp>,
+    /// `SendMessage` calls waiting for the scripts of the other language (messages.rs).
+    pub messages: Vec<messages::QueuedMessage>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -340,6 +343,7 @@ impl World {
             destroy: Vec::new(),
             dont_destroy: Vec::new(),
             scene_ops: Vec::new(),
+            messages: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -934,6 +938,7 @@ impl ScriptHost {
             let quiet = self.with_world(|w| {
                 w.spawned.is_empty()
                     && w.graph_events.is_empty()
+                    && w.messages.is_empty()
                     && !w.physics.has_controller_hits()
                     && w.scene.activity() == seen
                     && !w.network.settle_due
@@ -951,7 +956,7 @@ impl ScriptHost {
         self.sync_enabled();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
-            let delivered = self.deliver_custom_events();
+            let delivered = self.deliver_custom_events() | self.deliver_messages();
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
                 if delivered {

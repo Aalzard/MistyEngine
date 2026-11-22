@@ -143,6 +143,7 @@ pub(super) struct NativeApi {
     particles: extern "C" fn(u64, i32, *mut f32) -> i32,
     component_op: extern "C" fn(u64, i32, *const u16, i32) -> i32,
     scene_op: extern "C" fn(i64, i32) -> i32,
+    message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -198,6 +199,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     particles,
     component_op,
     scene_op,
+    message,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -1918,6 +1920,33 @@ extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
                 -1
             }
         }
+    })
+    .unwrap_or(0)
+}
+
+/// C# `SendMessage` for the Lua scripts of `id` (queued until the C# callback returns): kind
+/// -1 no value, 0 bool, 1 number, 2 whole number, 3 text, -2 a value Lua can't get (none is
+/// passed). Returns 1 when the object has Lua scripts.
+extern "C" fn message(
+    id: u64,
+    name: *const u16,
+    len: i32,
+    kind: i32,
+    num: f64,
+    txt: *const u16,
+    txt_len: i32,
+) -> i32 {
+    use super::csharp::CsArg;
+    let method = text(name, len);
+    let arg = match kind {
+        0 => Some(CsArg::Bool(num != 0.0)),
+        1 => Some(CsArg::Number(num)),
+        2 => Some(CsArg::Int(num as i64)),
+        3 => Some(CsArg::Text(text(txt, txt_len))),
+        _ => None,
+    };
+    with_object(id, |w, e| {
+        i32::from(super::messages::queue_for_lua(w, e, method, arg))
     })
     .unwrap_or(0)
 }

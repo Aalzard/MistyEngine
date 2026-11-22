@@ -1470,3 +1470,89 @@ return T
     );
     assert!(scene.world.get::<&crate::scene::Rigidbody>(ball).is_ok());
 }
+
+#[test]
+fn csharp_and_lua_send_broadcast_and_upwards_messages() {
+    if skip() {
+        return;
+    }
+    let sender = r#"
+using Misty;
+public class Sender : MonoBehaviour
+{
+    void Start()
+    {
+        var child = transform.GetChild(0).gameObject;
+        child.SendMessage("Hit", 5);
+        Debug.Log("after send");
+        BroadcastMessage("Ping", "all", SendMessageOptions.DontRequireReceiver);
+        child.SendMessageUpwards("Up");
+        child.SendMessage("Nobody", SendMessageOptions.DontRequireReceiver);
+    }
+    void Up() { Debug.Log("cs up root"); }
+    void Ping(string s) { Debug.Log("cs ping root " + s); }
+}
+"#;
+    let cs_child = r#"
+using Misty;
+public class CsChild : MonoBehaviour
+{
+    void Hit(int n) { Debug.Log("cs hit " + n); }
+    void Up() { Debug.Log("cs up child"); }
+    void FromLua(float f) { Debug.Log("cs fromlua " + f); }
+}
+"#;
+    let lua_child = r#"
+local L = {}
+function L:Start()
+    self.gameObject:SendMessage("FromLua", 7)
+    self.gameObject:SendMessage("Missing", nil, SendMessageOptions.DontRequireReceiver)
+    self.gameObject:SendMessage("Echo", "hi")
+    Debug.Log("lua after")
+end
+function L:Echo(s) Debug.Log("lua echo", s) end
+function L:Hit(n) Debug.Log("lua hit", n) end
+function L:Ping(s) Debug.Log("lua ping child", s) end
+return L
+"#;
+    let root = project(&[
+        ("Sender.cs", sender),
+        ("CsChild.cs", cs_child),
+        ("LuaChild.lua", lua_child),
+    ]);
+    let mut scene = Scene::new("t");
+    let parent = scene.spawn("Root", None);
+    attach(&mut scene, parent, "Sender.cs");
+    let child = scene.spawn("Child", Some(parent));
+    attach(&mut scene, child, "CsChild.cs");
+    attach(&mut scene, child, "LuaChild.lua");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..2 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+    }
+    host.shutdown(&mut scene);
+    assert_eq!(
+        all,
+        [
+            "cs hit 5",
+            "after send",
+            "cs ping root all",
+            "cs up child",
+            "cs up root",
+            "lua hit 5",
+            "lua ping child all",
+            "lua echo hi",
+            "lua after",
+            "cs fromlua 7",
+        ],
+        "{all:?}"
+    );
+}

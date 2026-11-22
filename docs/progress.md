@@ -6600,6 +6600,11 @@ thread). Not numbered as a round: round 92 lives on another computer.
   frame when `allowSceneActivation` is true and done at the start of the next frame, when
   `completed` runs. Loads are still instant between frames (no background streaming): `progress`
   is 0.9 until done. `UnloadSceneAsync` returns one too.
+- **SendMessage / BroadcastMessage / SendMessageUpwards from scripts** (Lua and C#;
+  `messages.rs`): before, only the engine (On Click, signals) could call a script method by
+  name. The caller's language runs at once; the other language's scripts on the same objects
+  run right after the calling callback (`World::messages`, delivered from `flush_spawned`),
+  since neither runtime can call into the other mid-call.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
@@ -6608,7 +6613,8 @@ New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `csharp_and_lua_add_and_remove_components_while_playing`,
 `dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load`,
 `lua_load_scene_async_waits_for_activation_and_completes`,
-`csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`. The 20 C# tests and the 144 scripting tests
+`csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
+`csharp_and_lua_send_broadcast_and_upwards_messages`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done

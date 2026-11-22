@@ -459,6 +459,29 @@ impl UserData for LGameObject {
             let ud = lua.create_userdata(LGameObject(e))?;
             mlua::ObjectLike::call_method::<Value>(&ud, "GetComponent", name)
         });
+        // `SendMessage(name [, value [, options]])`, `BroadcastMessage` (children too) and
+        // `SendMessageUpwards` (parents too); see messages.rs.
+        for (method, dir) in [
+            ("SendMessage", 0),
+            ("BroadcastMessage", 1),
+            ("SendMessageUpwards", 2),
+        ] {
+            m.add_method(
+                method,
+                move |lua, g, (name, value, options): (String, Value, Option<i64>)| {
+                    let found = super::messages::lua_send(lua, g.0, &name, value, dir)?;
+                    if !found && options.unwrap_or(0) == 0 {
+                        with_world(lua, |w| {
+                            w.logs.push((
+                                super::LogKind::Error,
+                                format!("SendMessage {name} has no receiver!"),
+                            ));
+                        })?;
+                    }
+                    Ok(())
+                },
+            );
+        }
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
         m.add_meta_method(MetaMethod::ToString, |lua, g, ()| {
             with_world(lua, |w| {
@@ -959,6 +982,10 @@ pub fn register(lua: &Lua) -> Result<()> {
             with_world(lua, |w| instantiate(w, source, position))?.map(LGameObject)
         })?,
     )?;
+    let options = lua.create_table()?;
+    options.set("RequireReceiver", 0)?;
+    options.set("DontRequireReceiver", 1)?;
+    g.set("SendMessageOptions", options)?;
     g.set(
         "Destroy",
         lua.create_function(|lua, target: Value| {

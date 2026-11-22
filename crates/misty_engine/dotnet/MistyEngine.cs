@@ -611,6 +611,23 @@ namespace Misty
         public T AddComponent<T>() where T : Component => (T)AddComponent(typeof(T));
         public Component AddComponent(Type type) => Internal.Native.AddComponent(id, type);
 
+        /// <summary>Call method `methodName` on every script of this object (C# now, Lua right
+        /// after this callback). A value C# can't hand to Lua (an object) reaches C# only.</summary>
+        public void SendMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 0, options);
+        public void SendMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 0, options);
+        /// <summary>SendMessage to this object and everything under it.</summary>
+        public void BroadcastMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 1, options);
+        public void BroadcastMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 1, options);
+        /// <summary>SendMessage to this object and each of its parents.</summary>
+        public void SendMessageUpwards(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 2, options);
+        public void SendMessageUpwards(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 2, options);
+
         /// <summary>An object by name anywhere in the open scenes, or null.</summary>
         public static GameObject Find(string name) => Internal.Native.Wrap(Internal.Native.Find(0, name));
         /// <summary>The first active object with `tag`, or null.</summary>
@@ -643,6 +660,23 @@ namespace Misty
             return component != null;
         }
         public MonoBehaviour GetComponent(string type) => Internal.Host.GetComponentByName(EntityId, type);
+
+        /// <summary>Call method `methodName` on every script of this object (C# now, Lua right
+        /// after this callback). A value C# can't hand to Lua (an object) reaches C# only.</summary>
+        public void SendMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 0, options);
+        public void SendMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 0, options);
+        /// <summary>SendMessage to this object and everything under it.</summary>
+        public void BroadcastMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 1, options);
+        public void BroadcastMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 1, options);
+        /// <summary>SendMessage to this object and each of its parents.</summary>
+        public void SendMessageUpwards(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 2, options);
+        public void SendMessageUpwards(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 2, options);
     }
 
     /// <summary>Position, rotation and scale of an object, and its place in the hierarchy.</summary>
@@ -1667,6 +1701,9 @@ namespace Misty
 
     public enum LoadSceneMode { Single, Additive }
 
+    /// <summary>Whether SendMessage logs an error when no script has the method.</summary>
+    public enum SendMessageOptions { RequireReceiver, DontRequireReceiver }
+
     /// <summary>Scene loading (carried out after the frame), like Unity's SceneManager.</summary>
     public static unsafe class SceneManager
     {
@@ -1930,6 +1967,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, float*, int> particles;
         public delegate* unmanaged<ulong, int, char*, int, int> componentOp;
         public delegate* unmanaged<long, int, int> sceneOp;
+        public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2155,6 +2193,26 @@ namespace Misty.Internal
         internal static void Destroy(ulong id) => api.destroy(id);
 
         /// <summary>which: 0 add, 1 remove. 1 when it changed, 0 when not, -1 for an unknown name.</summary>
+        /// <summary>Queue SendMessage for the Lua scripts of `id`; whether it has any.</summary>
+        internal static bool QueueMessage(ulong id, string method, object value)
+        {
+            int kind = -1;
+            double num = 0;
+            string text = "";
+            switch (value)
+            {
+                case null: break;
+                case bool b: kind = 0; num = b ? 1 : 0; break;
+                case int or long or short or byte or uint or ulong: kind = 2; num = Convert.ToDouble(value); break;
+                case float or double or decimal: kind = 1; num = Convert.ToDouble(value); break;
+                case string str: kind = 3; text = str; break;
+                default: kind = -2; break;
+            }
+            fixed (char* m = method)
+            fixed (char* t = text)
+                return api.message(id, m, method.Length, kind, num, t, text.Length) != 0;
+        }
+
         internal static int ComponentOp(ulong id, int op, string name)
         {
             fixed (char* p = name) return api.componentOp(id, op, p, name.Length);
@@ -2453,10 +2511,17 @@ namespace Misty.Internal
             if (pendingRefs.Count > 0) ResolvePending();
             string method = new string(name, 0, len);
             object arg = Arg(kind, num, text, textLen);
+            return CallByName(e.script, e.typeName, method, arg) ? 1 : 0;
+        }
+
+        /// <summary>Call method `method` of `script` by name: one with no parameters, or one
+        /// parameter `arg` converts to. Whether the class has such a method.</summary>
+        static bool CallByName(MonoBehaviour script, string typeName, string method, object arg)
+        {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
             MethodInfo best = null;
             object[] args = null;
-            for (var t = e.script.GetType(); t != null && t != typeof(MonoBehaviour) && best == null; t = t.BaseType)
+            for (var t = script.GetType(); t != null && t != typeof(MonoBehaviour) && best == null; t = t.BaseType)
             {
                 foreach (var m in t.GetMethods(flags | BindingFlags.DeclaredOnly))
                 {
@@ -2475,17 +2540,59 @@ namespace Misty.Internal
                     }
                 }
             }
-            if (best == null) return 0;
+            if (best == null) return false;
             try
             {
-                var result = best.Invoke(e.script, args);
-                if (result is System.Collections.IEnumerator routine) e.script.StartCoroutine(routine);
+                var result = best.Invoke(script, args);
+                if (result is System.Collections.IEnumerator routine) script.StartCoroutine(routine);
             }
             catch (Exception ex)
             {
-                Report(e.typeName, method, ex);
+                Report(typeName, method, ex);
             }
-            return 1;
+            return true;
+        }
+
+        /// <summary>`SendMessage` (`dir` 0), `BroadcastMessage` (1: the object and everything
+        /// under it) and `SendMessageUpwards` (2: the object and its parents). C# scripts are
+        /// called now; Lua scripts on the same objects right after the calling callback.</summary>
+        internal static void SendMessage(ulong entity, string method, object value, int dir, SendMessageOptions options)
+        {
+            if (string.IsNullOrEmpty(method)) return;
+            var targets = new List<Transform>();
+            var start = new Transform(entity);
+            if (dir == 1)
+            {
+                var stack = new Stack<Transform>();
+                stack.Push(start);
+                while (stack.Count > 0)
+                {
+                    var t = stack.Pop();
+                    targets.Add(t);
+                    for (int i = t.childCount - 1; i >= 0; i--) stack.Push(t.GetChild(i));
+                }
+            }
+            else
+            {
+                for (var t = start; t != null; t = dir == 2 ? t.parent : null) targets.Add(t);
+            }
+            bool found = false;
+            foreach (var t in targets)
+            {
+                ulong id = t.EntityId;
+                if (!Native.Flag(id, 1)) continue;
+                if (byObject.TryGetValue(id, out var list))
+                {
+                    foreach (var script in list.ToArray())
+                    {
+                        if (!script.Alive) continue;
+                        if (CallByName(script, script.GetType().Name, method, value)) found = true;
+                    }
+                }
+                if (Native.QueueMessage(id, method, value)) found = true;
+            }
+            if (!found && options == SendMessageOptions.RequireReceiver)
+                Native.Log(2, $"SendMessage {method} has no receiver!");
         }
 
         static bool TryConvert(object value, Type t, out object converted)
@@ -2493,14 +2600,15 @@ namespace Misty.Internal
             converted = null;
             try
             {
-                if (t == typeof(string)) converted = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (t.IsInstanceOfType(value)) converted = value;
+                else if (t == typeof(string)) converted = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
                 else if (value is string) return false;
                 else if (t == typeof(bool)) converted = value is bool b ? b : Convert.ToDouble(value) != 0;
                 else if (t == typeof(float)) converted = Convert.ToSingle(value);
                 else if (t == typeof(double)) converted = Convert.ToDouble(value);
                 else if (t == typeof(int)) converted = (int)Math.Round(Convert.ToDouble(value));
                 else if (t == typeof(long)) converted = (long)Math.Round(Convert.ToDouble(value));
-                else if (t == typeof(object)) converted = value;
+                else if (t == typeof(object) || t.IsInstanceOfType(value)) converted = value;
                 else return false;
                 return true;
             }
