@@ -431,6 +431,37 @@ const FRAME_CALLBACKS: [&str; 5] = [
     "OnTriggerStay",
 ];
 
+/// Update the touching pairs (a, b, trigger) with a step's contacts; returns the pairs that
+/// touched before the step and still do (the ones that get Stay).
+///
+/// One entry per collider pair: an object with several colliders (a Box and a Sphere, a
+/// terrain's heightfield and trunks) meets another once per collider, so a Stop takes away
+/// one entry, not every entry of the two objects (that ended Stay while another collider
+/// still touched).
+fn advance_touching(
+    touching: &mut Vec<(Entity, Entity, bool)>,
+    contacts: &[Contact],
+) -> Vec<(Entity, Entity, bool)> {
+    fn same(c: &Contact) -> impl Fn(&(Entity, Entity, bool)) -> bool + '_ {
+        move |&(a, b, t)| t == c.trigger && ((a, b) == (c.a, c.b) || (a, b) == (c.b, c.a))
+    }
+    let mut staying = std::mem::take(touching);
+    let mut met = Vec::new();
+    for c in contacts {
+        if c.started {
+            met.push((c.a, c.b, c.trigger));
+        } else if let Some(i) = met.iter().position(same(c)) {
+            // Met and parted within this step.
+            met.remove(i);
+        } else if let Some(i) = staying.iter().position(same(c)) {
+            staying.remove(i);
+        }
+    }
+    *touching = staying.clone();
+    touching.extend(met);
+    staying
+}
+
 /// Bit of `Instance::lacks` for callback `name` (0 for the others: always called).
 fn lacks_bit(name: &str) -> u8 {
     FRAME_CALLBACKS
@@ -1223,11 +1254,6 @@ impl ScriptHost {
         };
         let want_collision = listens(self, "OnCollisionStay", &EventKind::CollisionStay);
         let want_trigger = listens(self, "OnTriggerStay", &EventKind::TriggerStay);
-        let parted = |a: Entity, b: Entity, trigger: bool| {
-            contacts.iter().any(|c| {
-                !c.started && c.trigger == trigger && ((c.a, c.b) == (a, b) || (c.a, c.b) == (b, a))
-            })
-        };
         let alive = self.with_world(|w| {
             self.touching
                 .iter()
@@ -1236,30 +1262,17 @@ impl ScriptHost {
         });
         let mut keep = alive.into_iter();
         self.touching.retain(|_| keep.next().unwrap_or(false));
-        let staying: Vec<(Entity, Entity, bool)> = self
-            .touching
-            .iter()
-            .copied()
-            .filter(
-                |(a, b, t)| if *t { want_trigger } else { want_collision } && !parted(*a, *b, *t),
-            )
-            .collect();
+        let staying = advance_touching(&mut self.touching, contacts);
         for (a, b, trigger) in staying {
+            if !(if trigger { want_trigger } else { want_collision }) {
+                continue;
+            }
             let (event, kind) = if trigger {
                 ("OnTriggerStay", EventKind::TriggerStay)
             } else {
                 ("OnCollisionStay", EventKind::CollisionStay)
             };
             self.contact_event(a, b, event, &kind);
-        }
-        for c in contacts {
-            if c.started {
-                self.touching.push((c.a, c.b, c.trigger));
-            } else {
-                self.touching.retain(|(a, b, t)| {
-                    !(*t == c.trigger && ((*a, *b) == (c.a, c.b) || (*a, *b) == (c.b, c.a)))
-                });
-            }
         }
         for c in contacts {
             let (event, kind) = match (c.trigger, c.started) {

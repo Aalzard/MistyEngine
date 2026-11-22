@@ -991,3 +991,41 @@ return S
     assert_eq!(g.lines("S:"), ["S:Other 3.0 true"]);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// An object meeting another with two colliders keeps getting Stay while one still touches:
+/// a Stop takes away one collider pair, not both (Stay ended while a Box still sat on the
+/// ground after its Sphere lifted off).
+#[test]
+fn stay_lasts_while_any_collider_pair_still_touches() {
+    use crate::physics::Contact;
+    let mut scene = Scene::new("t");
+    let (a, b) = (scene.spawn("A", None), scene.spawn("B", None));
+    let contact = |started: bool, swap: bool| Contact {
+        a: if swap { b } else { a },
+        b: if swap { a } else { b },
+        started,
+        trigger: false,
+    };
+    let mut touching = Vec::new();
+    // Both of A's colliders meet B.
+    let stay = super::advance_touching(&mut touching, &[contact(true, false), contact(true, true)]);
+    assert!(stay.is_empty(), "no Stay in the step they meet");
+    assert_eq!(super::advance_touching(&mut touching, &[]).len(), 2);
+    // One parts: the other pair still stays, this step and the next.
+    let stay = super::advance_touching(&mut touching, &[contact(false, false)]);
+    assert_eq!(stay, vec![(b, a, false)]);
+    assert_eq!(super::advance_touching(&mut touching, &[]).len(), 1);
+    // A trigger pair of the same objects is its own entry.
+    let trig = Contact {
+        trigger: true,
+        ..contact(false, false)
+    };
+    assert_eq!(super::advance_touching(&mut touching, &[trig]).len(), 1);
+    // Met and parted within one step: never stays.
+    let stay = super::advance_touching(&mut touching, &[contact(true, false), contact(false, false)]);
+    assert_eq!(stay.len(), 1);
+    assert_eq!(touching.len(), 1);
+    // The last parts.
+    assert!(super::advance_touching(&mut touching, &[contact(false, true)]).is_empty());
+    assert!(touching.is_empty());
+}
