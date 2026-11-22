@@ -907,6 +907,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("Input", input)?;
     super::camera_api::register(lua)?;
     super::cursor_api::register(lua)?;
+    super::event_system_api::register(lua)?;
     super::recorder_api::register(lua)?;
     super::navigation_api::register(lua)?;
     super::save_api::register(lua)?;

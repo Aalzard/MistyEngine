@@ -64,6 +64,13 @@ impl ScriptHost {
         }
     }
 
+    /// `OnSelect()` / `OnDeselect()` on the scripts of an object the UI selection moved to /
+    /// off.
+    pub(super) fn ui_selection_changed(&mut self, e: Entity, selected: bool) {
+        let method = if selected { "OnSelect" } else { "OnDeselect" };
+        self.call_if_defined(e, method, None);
+    }
+
     pub(super) fn ui_event(&mut self, ev: UiEvent) {
         let (e, event, label, arg) = match ev {
             // Scripts on the selected object hear Cancel as OnCancel().

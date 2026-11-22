@@ -32,6 +32,7 @@ pub mod csharp;
 pub mod csharp_fields;
 mod csharp_native;
 pub mod cursor_api;
+pub mod event_system_api;
 pub mod input_actions_api;
 pub mod input_api;
 mod lifecycle;
@@ -290,6 +291,11 @@ pub struct World {
     pub graph_events: Vec<crate::visual_script::runtime::CustomEvent>,
     /// Behaviour Tree Agents, their blackboards and the shared ones.
     pub behaviour: crate::behaviour_tree::BtRuntime,
+    /// The UI selection as of the last UI pass (`EventSystem.currentSelectedGameObject`).
+    pub ui_selected: Option<Entity>,
+    /// A selection a script asked for (`SetSelectedGameObject`, `Selectable.Select`), applied
+    /// at the start of the next UI pass; `Some(None)` clears it.
+    pub ui_select_request: Option<Option<Entity>>,
 }
 
 impl World {
@@ -355,6 +361,8 @@ impl World {
             graph_vars: Default::default(),
             graph_events: Vec::new(),
             behaviour: crate::behaviour_tree::BtRuntime::new(&project_root_for_bt),
+            ui_selected: None,
+            ui_select_request: None,
         }
     }
 }
@@ -1686,11 +1694,16 @@ impl ScriptHost {
     /// UI events (before FixedUpdate/Update, like an event system): hover/press/selection,
     /// widget input, then On Click / On Value Changed calls and Lua listeners.
     fn ui_events(&mut self) {
-        let events = {
+        let before = self.ui.selected;
+        let mut events = Vec::new();
+        {
             let Some(mut w) = self.lua.app_data_mut::<World>() else {
                 return;
             };
             let w = &mut *w;
+            if let Some(req) = w.ui_select_request.take() {
+                events.extend(self.ui.select(&mut w.scene, req));
+            }
             let mut pointer = w.input.ui_pointer(w.time.unscaled_delta);
             // Navigation through the Input System's UI map, else the keys and joystick.
             let asset = crate::ui::events::settings(&w.scene).actions_asset;
@@ -1705,8 +1718,20 @@ impl ScriptHost {
                     (pointer.navigate, pointer.submit, pointer.cancel) = w.input.ui_legacy_pad();
                 }
             }
-            self.ui.update(&mut w.scene, &pointer)
-        };
+            events.extend(self.ui.update(&mut w.scene, &pointer));
+            w.ui_selected = self.ui.selected;
+        }
+        // OnDeselect / OnSelect when the selection moved (pointer, navigation or a script),
+        // before the clicks and value changes, like Unity's event system.
+        let after = self.ui.selected;
+        if before != after {
+            if let Some(old) = before.filter(|e| self.with_world(|w| w.scene.contains(*e))) {
+                self.ui_selection_changed(old, false);
+            }
+            if let Some(new) = after {
+                self.ui_selection_changed(new, true);
+            }
+        }
         for ev in events {
             self.ui_event(ev);
         }
