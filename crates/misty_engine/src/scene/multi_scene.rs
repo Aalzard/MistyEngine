@@ -414,7 +414,7 @@ impl Scene {
         let lighting = Some(&render).filter(|r| **r != RenderSettings::default());
         let navigation = Some(&nav).filter(|n| **n != NavigationSettings::default());
         let objects = self.entries_where(|e| self.scene_of(e) == id);
-        super::file::write_json(objects, lighting, navigation)
+        super::file::write_entries(&objects, lighting, navigation)
     }
 
     /// Write one scene to disk.

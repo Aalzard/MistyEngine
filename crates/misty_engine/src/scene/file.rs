@@ -51,10 +51,7 @@ pub struct LoadReport {
 fn tidy_numbers(v: &mut serde_json::Value) {
     match v {
         serde_json::Value::Number(n) if n.is_f64() => {
-            let short = (n.as_f64().unwrap_or(0.0) as f32).to_string();
-            if let Ok(parsed) = short.parse::<f64>()
-                && let Some(num) = serde_json::Number::from_f64(parsed)
-            {
+            if let Some(num) = tidy_f64(n.as_f64().unwrap_or(0.0)) {
                 *n = num;
             }
         }
@@ -62,6 +59,18 @@ fn tidy_numbers(v: &mut serde_json::Value) {
         serde_json::Value::Object(map) => map.values_mut().for_each(tidy_numbers),
         _ => {}
     }
+}
+
+/// The f64 whose shortest form is `x`'s shortest f32 form (formatted into a stack buffer: a
+/// big scene has hundreds of thousands of numbers, and a `String` each was most of the cost).
+fn tidy_f64(x: f64) -> Option<serde_json::Number> {
+    use std::io::Write;
+    let mut buf = [0u8; 64];
+    let mut cur = std::io::Cursor::new(&mut buf[..]);
+    write!(cur, "{}", x as f32).ok()?;
+    let len = cur.position() as usize;
+    let short = std::str::from_utf8(&buf[..len]).ok()?;
+    serde_json::Number::from_f64(short.parse::<f64>().ok()?)
 }
 
 /// GameObject reference fields: (component, list field, reference field in each item).
@@ -257,34 +266,81 @@ pub(super) fn remap_copied_refs(
     }
 }
 
-/// Pretty JSON with tidy numbers (shared by scenes and prefabs).
+/// What [`write_json`] writes: [`SceneFile`] with its fields in the order a `serde_json::Value`
+/// map sorts them (alphabetical), so files stay byte-identical to the ones written by going
+/// through a `Value` (which deep-copied every component of the scene first).
+#[derive(Serialize)]
+struct SceneFileOut<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lighting: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    navigation: Option<serde_json::Value>,
+    objects: Vec<ObjectOut<'a>>,
+    version: u32,
+}
+
+/// [`ObjectEntry`] with its fields in sorted order (see [`SceneFileOut`]).
+#[derive(Serialize)]
+struct ObjectOut<'a> {
+    components: &'a BTreeMap<String, serde_json::Value>,
+    parent: Option<usize>,
+}
+
+/// Settings as tidy JSON values.
+fn tidy_value<T: Serialize>(t: &T) -> serde_json::Value {
+    let mut v = serde_json::to_value(t).expect("settings serialise");
+    tidy_numbers(&mut v);
+    v
+}
+
+/// Objects (numbers already tidy) and settings ready to write.
+fn file_out<'a>(
+    objects: &'a [ObjectEntry],
+    lighting: Option<&RenderSettings>,
+    navigation: Option<&NavigationSettings>,
+) -> SceneFileOut<'a> {
+    SceneFileOut {
+        lighting: lighting.map(tidy_value),
+        navigation: navigation.map(tidy_value),
+        objects: objects
+            .iter()
+            .map(|o| ObjectOut {
+                components: &o.components,
+                parent: o.parent,
+            })
+            .collect(),
+        version: VERSION,
+    }
+}
+
+/// Pretty JSON with tidy numbers (prefabs: their objects may come from a file or carry an
+/// added link).
 pub(super) fn write_json(
-    objects: Vec<ObjectEntry>,
+    mut objects: Vec<ObjectEntry>,
     lighting: Option<&RenderSettings>,
     navigation: Option<&NavigationSettings>,
 ) -> String {
-    let mut value = serde_json::to_value(SceneFile {
-        version: VERSION,
-        lighting: lighting.map(|l| serde_json::to_value(l).expect("settings serialise")),
-        navigation: navigation.map(|n| serde_json::to_value(n).expect("settings serialise")),
-        objects,
-    })
-    .expect("scene data serialises");
-    tidy_numbers(&mut value);
-    serde_json::to_string_pretty(&value).expect("scene data serialises")
+    for o in &mut objects {
+        o.components.values_mut().for_each(tidy_numbers);
+    }
+    write_entries(&objects, lighting, navigation)
 }
 
-/// [`write_json`] of objects only, on one line (World Partition cells).
-pub(super) fn write_json_compact(objects: Vec<ObjectEntry>) -> String {
-    let mut value = serde_json::to_value(SceneFile {
-        version: VERSION,
-        lighting: None,
-        navigation: None,
-        objects,
-    })
-    .expect("scene data serialises");
-    tidy_numbers(&mut value);
-    serde_json::to_string(&value).expect("scene data serialises")
+/// [`write_json`] of entries straight from [`Scene::entries_mapped`] (their numbers are tidy
+/// already, so they are not walked a second time).
+pub(super) fn write_entries(
+    objects: &[ObjectEntry],
+    lighting: Option<&RenderSettings>,
+    navigation: Option<&NavigationSettings>,
+) -> String {
+    let file = file_out(objects, lighting, navigation);
+    serde_json::to_string_pretty(&file).expect("scene data serialises")
+}
+
+/// [`write_entries`] of objects only, on one line (World Partition cells).
+pub(super) fn write_json_compact(objects: &[ObjectEntry]) -> String {
+    let file = file_out(objects, None, None);
+    serde_json::to_string(&file).expect("scene data serialises")
 }
 
 /// Parse the object list and check the format version.
@@ -491,7 +547,7 @@ impl Scene {
         // Default settings are left out, so older scenes save byte-identical.
         let lighting = Some(&self.render_settings).filter(|r| **r != RenderSettings::default());
         let navigation = Some(&self.navigation).filter(|n| **n != NavigationSettings::default());
-        write_json(self.entries(None), lighting, navigation)
+        write_entries(&self.entries(None), lighting, navigation)
     }
 
     /// Parse `.scene` JSON. Unknown components are skipped with a warning.
@@ -679,6 +735,16 @@ mod tests {
                 .volume,
             1.0
         );
+    }
+
+    /// Scenes are written without going through a `serde_json::Value`; the keys must still
+    /// come out sorted, as a `Value` map writes them (files stay byte-identical).
+    #[test]
+    fn saved_keys_are_sorted_like_a_value_map() {
+        let s = sample();
+        let text = s.to_json();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(text, serde_json::to_string_pretty(&value).unwrap());
     }
 
     #[test]
