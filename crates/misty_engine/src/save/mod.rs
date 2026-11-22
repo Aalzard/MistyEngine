@@ -207,7 +207,21 @@ pub fn slot_file_name(slot: &str) -> String {
         })
         .collect();
     let s = s.trim_end_matches('.').to_owned();
-    if s.is_empty() { "slot".into() } else { s }
+    if s.is_empty() {
+        return "slot".into();
+    }
+    // Windows device names (also with an extension: `CON.save`) can't be files there.
+    let stem = s
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_ascii_uppercase();
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.ends_with(|c: char| c.is_ascii_digit() && c != '0'));
+    if device { format!("_{s}") } else { s }
 }
 
 fn slot_path(folder: &Path, slot: &str, ext: &str) -> PathBuf {

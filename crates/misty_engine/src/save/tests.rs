@@ -481,3 +481,17 @@ fn huge_data_versions_do_not_wrap() {
     assert_eq!(super::version_of(&v), u32::MAX);
     assert_eq!(super::version_of(&serde_json::json!({ "version": 7 })), 7);
 }
+
+#[test]
+fn slot_names_are_safe_file_names() {
+    assert_eq!(slot_file_name("Slot 1"), "Slot 1");
+    assert_eq!(slot_file_name("a/b:c"), "a_b_c");
+    assert_eq!(slot_file_name(".."), "slot");
+    // Windows device names would open the device, not a file.
+    for name in ["CON", "nul", "Aux.x", "com1", "LPT9", "prn"] {
+        assert_eq!(slot_file_name(name), format!("_{name}"), "{name}");
+    }
+    for name in ["COM0", "COM10", "CONSOLE", "lpt", "Nulls"] {
+        assert_eq!(slot_file_name(name), name, "{name}");
+    }
+}
