@@ -2744,6 +2744,16 @@ namespace Misty.Internal
         [UnmanagedCallersOnly]
         public static void Tick() => Coroutines.Tick();
 
+        /// <summary>Script `removed` of `entity` left its Scripts list (Destroy(script)): the
+        /// later scripts move down one slot.</summary>
+        [UnmanagedCallersOnly]
+        public static void ShiftSlots(ulong entity, int removed)
+        {
+            if (!byObject.TryGetValue(entity, out var list)) return;
+            foreach (var other in list)
+                if (other.slot > removed) other.slot--;
+        }
+
         [UnmanagedCallersOnly]
         public static void Release(int handle)
         {
@@ -2755,7 +2765,8 @@ namespace Misty.Internal
             pendingRefs.RemoveAll(p => p.owner == s);
             if (byObject.TryGetValue(s.entity, out var list))
             {
-                list.Remove(s);
+                // By reference: scripts on one object compare equal (Object.Equals).
+                list.RemoveAll(x => ReferenceEquals(x, s));
                 if (list.Count == 0) byObject.Remove(s.entity);
             }
             entries[handle] = null;
@@ -2912,9 +2923,8 @@ namespace Misty.Internal
             if (obj is null || !obj.Alive) return;
             if (obj is MonoBehaviour mb)
             {
-                // Removing one script during Play isn't supported yet: switch it off instead.
-                mb.enabled = false;
-                Native.Log(1, $"Destroy({mb.GetType().Name}): removing a script during Play is not supported yet; it was disabled instead");
+                // Removed at the end of the frame (OnDisable, OnDestroy).
+                Native.ComponentOp(mb.entity, 4, mb.slot.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 return;
             }
             // An engine component: remove it (not the object), now.

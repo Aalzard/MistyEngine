@@ -1015,6 +1015,19 @@ pub fn register(lua: &Lua) -> Result<()> {
             let e = match &target {
                 Value::UserData(ud) if ud.is::<LGameObject>() => ud.borrow::<LGameObject>()?.0,
                 Value::UserData(ud) if ud.is::<LTransform>() => ud.borrow::<LTransform>()?.0,
+                // A script instance: that script is removed at the end of the frame.
+                Value::Table(t) => {
+                    let Some(Value::UserData(go)) = t.get::<Option<Value>>("gameObject")? else {
+                        return Err(mlua::Error::runtime("Destroy expects a GameObject"));
+                    };
+                    let e = go.borrow::<LGameObject>()?.0;
+                    let name = super::script_name_of(lua, e, t)
+                        .ok_or_else(|| mlua::Error::runtime("Destroy: not a script instance"))?;
+                    return with_world(lua, |w| {
+                        w.destroy_scripts
+                            .push((e, super::component_ops::ScriptSel::Name(name)))
+                    });
+                }
                 _ => return Err(mlua::Error::runtime("Destroy expects a GameObject")),
             };
             with_world(lua, |w| w.destroy.push(e))

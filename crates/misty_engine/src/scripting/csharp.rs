@@ -297,6 +297,7 @@ type HasFn = unsafe extern "C" fn(i32, i32) -> i32;
 type CallFn = unsafe extern "C" fn(i32, i32, u64);
 type TickFn = unsafe extern "C" fn();
 type ReleaseFn = unsafe extern "C" fn(i32);
+type ShiftSlotsFn = unsafe extern "C" fn(u64, i32);
 type SetTimeFn = unsafe extern "C" fn(f32, f32, f32, f32, f32, i32);
 type SetFieldFn =
     unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const [f32; 3], *const u16, i32) -> i32;
@@ -315,6 +316,7 @@ struct Entry {
     tick: TickFn,
     message: MessageFn,
     ui_event: UiEventFn,
+    shift_slots: ShiftSlotsFn,
 }
 
 impl Runtime {
@@ -361,6 +363,7 @@ impl Runtime {
                 tick: transmute::<P, TickFn>(get("Tick")?),
                 message: transmute::<P, MessageFn>(get("Message")?),
                 ui_event: transmute::<P, UiEventFn>(get("UiEvent")?),
+                shift_slots: transmute::<P, ShiftSlotsFn>(get("ShiftSlots")?),
             };
             let count = init(&NATIVE_API);
             if count as usize != METHOD_COUNT {
@@ -1238,6 +1241,15 @@ impl CsHost {
         if let Some(entry) = self.entry {
             // SAFETY: entry point of the loaded assembly.
             unsafe { (entry.release)(r.handle) };
+        }
+    }
+
+    /// Script `removed` of `entity` left its Scripts list (`Destroy(script)`): the object's
+    /// later C# scripts move down one slot.
+    pub fn shift_slots(&self, entity: hecs::Entity, removed: usize) {
+        if let Some(entry) = self.entry {
+            // SAFETY: entry point of the loaded assembly.
+            unsafe { (entry.shift_slots)(entity.to_bits().get(), removed as i32) };
         }
     }
 }

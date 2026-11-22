@@ -1726,3 +1726,77 @@ public class Prober : MonoBehaviour
     );
     host.shutdown(&mut scene);
 }
+
+#[test]
+fn csharp_and_lua_destroy_scripts_while_playing() {
+    if skip() {
+        return;
+    }
+    let bee = r#"
+local B = { f = 0 }
+function B:Update()
+    self.f = self.f + 1
+    if self.f == 2 then Destroy(self) end
+end
+function B:OnDisable() Debug.Log("bee disable") end
+function B:OnDestroy() Debug.Log("bee destroy") end
+return B
+"#;
+    let ay = r#"
+using Misty;
+public class Ay : MonoBehaviour
+{
+    int frames;
+    void Update()
+    {
+        frames++;
+        if (frames == 4) { GetComponent<Cee>().enabled = false; Debug.Log("cee off"); }
+        if (frames == 5) Destroy(GetComponent<Cee>());
+        if (frames == 6) Debug.Log("gone " + (GetComponent<Cee>() == null) + " " + enabled + " " + GetComponents<MonoBehaviour>()[0].GetType().Name);
+    }
+}
+"#;
+    let cee = r#"
+using Misty;
+public class Cee : MonoBehaviour
+{
+    void OnDisable() { Debug.Log("cee disable"); }
+    void OnDestroy() { Debug.Log("cee destroy"); }
+}
+"#;
+    let root = project(&[("Bee.lua", bee), ("Ay.cs", ay), ("Cee.cs", cee)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Thing", None);
+    attach(&mut scene, e, "Bee.lua");
+    attach(&mut scene, e, "Ay.cs");
+    attach(&mut scene, e, "Cee.cs");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    let mut counts = Vec::new();
+    for _ in 0..7 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+        counts.push(scene.world.get::<&Scripts>(e).unwrap().list.len());
+    }
+    host.shutdown(&mut scene);
+    assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1], "{all:?}");
+    assert_eq!(
+        all,
+        [
+            "bee disable",
+            "bee destroy",
+            "cee off",
+            "cee disable",
+            "cee destroy",
+            "gone True True Ay",
+        ],
+        "{all:?}"
+    );
+    assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1]);
+}

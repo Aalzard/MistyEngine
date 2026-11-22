@@ -147,3 +147,54 @@ impl super::ScriptHost {
         true
     }
 }
+
+/// Which script of an object `Destroy(script)` names.
+#[derive(Debug)]
+pub enum ScriptSel {
+    /// A Lua instance by script name.
+    Name(String),
+    /// A C# instance by Scripts slot.
+    Slot(usize),
+}
+
+impl super::ScriptHost {
+    /// End of the frame: remove the scripts `Destroy(script)` named (OnDisable, OnDestroy),
+    /// taking them out of their objects' Scripts lists; later scripts move down one slot.
+    pub(super) fn remove_destroyed_scripts(&mut self) {
+        let queued = self.with_world(|w| std::mem::take(&mut w.destroy_scripts));
+        for (e, sel) in queued {
+            let Some(i) = self.instances.iter().position(|x| {
+                x.entity == e
+                    && match &sel {
+                        ScriptSel::Name(n) => x.cs.is_none() && x.name == *n,
+                        ScriptSel::Slot(s) => x.cs.is_some() && x.slot == *s,
+                    }
+            }) else {
+                continue;
+            };
+            self.goodbye(&[i]);
+            let inst = self.instances.remove(i);
+            let slot = inst.slot;
+            match inst.cs {
+                Some(cs) => self.csharp.release(cs),
+                None => super::unregister_script_instance(&self.lua, e, &inst.name),
+            }
+            self.csharp.shift_slots(e, slot);
+            for x in self
+                .instances
+                .iter_mut()
+                .filter(|x| x.entity == e && x.slot > slot)
+            {
+                x.slot -= 1;
+            }
+            self.graphs.shift_slots(e, slot);
+            self.with_world(|w| {
+                if let Ok(mut s) = w.scene.world.get::<&mut crate::scene::Scripts>(e)
+                    && slot < s.list.len()
+                {
+                    s.list.remove(slot);
+                }
+            });
+        }
+    }
+}

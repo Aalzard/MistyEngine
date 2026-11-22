@@ -1912,6 +1912,17 @@ extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
             w.dont_destroy.push(e);
             return 1;
         }
+        // Destroy(script): the slot, as text; removed at the end of the frame.
+        if op == 4 {
+            return match name.parse::<usize>() {
+                Ok(slot) => {
+                    w.destroy_scripts
+                        .push((e, super::component_ops::ScriptSel::Slot(slot)));
+                    1
+                }
+                Err(_) => 0,
+            };
+        }
         // AddComponent of a C# script by class name: its slot.
         if op == 3 {
             let root = w.root.clone();

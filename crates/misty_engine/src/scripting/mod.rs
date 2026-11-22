@@ -255,6 +255,8 @@ pub struct World {
     pub messages: Vec<messages::QueuedMessage>,
     /// Scripts added while playing, by object and slot, waiting for their instance.
     pub added_scripts: Vec<(Entity, usize)>,
+    /// Scripts `Destroy(script)` removes at the end of the frame.
+    pub destroy_scripts: Vec<(Entity, component_ops::ScriptSel)>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -347,6 +349,7 @@ impl World {
             scene_ops: Vec::new(),
             messages: Vec::new(),
             added_scripts: Vec::new(),
+            destroy_scripts: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -405,6 +408,26 @@ fn register_script_instance(lua: &Lua, e: Entity, name: &str, t: &Table) -> mlua
         }
     };
     mine.set(name, t.clone())
+}
+
+/// The script name `t` is registered under on `e`, if it is one of its instance tables.
+pub(crate) fn script_name_of(lua: &Lua, e: Entity, t: &Table) -> Option<String> {
+    let all: Table = lua.named_registry_value(SCRIPT_INSTANCES).ok()?;
+    let mine: Table = all.get(e.to_bits().get() as i64).ok()?;
+    mine.pairs::<String, Table>()
+        .flatten()
+        .find(|(_, v)| v == t)
+        .map(|(k, _)| k)
+}
+
+/// Forget the instance table of script `name` on `e` (the script was removed while playing).
+fn unregister_script_instance(lua: &Lua, e: Entity, name: &str) {
+    let Ok(all) = lua.named_registry_value::<Table>(SCRIPT_INSTANCES) else {
+        return;
+    };
+    if let Ok(mine) = all.get::<Table>(e.to_bits().get() as i64) {
+        let _ = mine.set(name, Value::Nil);
+    }
 }
 
 fn unregister_script_instances(lua: &Lua, entities: &[Entity]) {
@@ -1877,6 +1900,7 @@ impl ScriptHost {
 
     /// Remove objects queued by `Destroy` (with their children and physics bodies).
     fn process_destroy(&mut self) {
+        self.remove_destroyed_scripts();
         let queued = self.with_world(|w| std::mem::take(&mut w.destroy));
         for e in queued {
             let subtree: Vec<Entity> = self.with_world(|w| {

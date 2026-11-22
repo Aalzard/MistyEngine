@@ -6619,6 +6619,12 @@ thread). Not numbered as a round: round 92 lives on another computer.
   live edits of the base controller don't reach overrides while playing.
 - **Physics2D queries from C#**: `Raycast`, `RaycastAll`, `Linecast(All)`, `OverlapCircle(All)`,
   `OverlapBox(All)`, `OverlapPoint(All)` and `RaycastHit2D` (one native `physics2d` entry).
+- **Removing scripts while playing** (Lua `Destroy(self)`, C# `Destroy(script)`): it used to
+  only disable the script. It is removed at the end of the frame (OnDisable, OnDestroy) and
+  taken out of the Scripts list; later scripts (Lua, C#, Script Graphs) move down a slot (C#
+  `Host.ShiftSlots`).
+- **Bug: C# `Release` removed the wrong script** from an object's list when it had several
+  (`List.Remove` went through `Object.Equals`); now it removes by reference.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
@@ -6630,7 +6636,7 @@ New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
 `csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`, `overrides_swap_motions_in_states_trees_and_synced_layers`,
 `animators_play_the_override_clips_and_loops_fail_cleanly`,
-`csharp_physics2d_raycasts_linecasts_and_overlaps`. The 20 C# tests and the 144 scripting tests
+`csharp_physics2d_raycasts_linecasts_and_overlaps`, `csharp_and_lua_destroy_scripts_while_playing`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done
