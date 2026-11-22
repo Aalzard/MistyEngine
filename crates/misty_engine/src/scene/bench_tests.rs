@@ -46,3 +46,27 @@ fn whole_scene_operations_bench() {
         );
     }
 }
+
+/// One operation in a loop, for `perf stat` (MISTY_BENCH_OP = load | clone | save).
+#[test]
+#[ignore = "bench: needs MISTY_BENCH_PROJECT"]
+fn one_scene_operation_loop() {
+    let Some(root) = std::env::var_os("MISTY_BENCH_PROJECT").map(PathBuf::from) else {
+        return;
+    };
+    let name = std::env::var("MISTY_BENCH_SCENES").unwrap_or_else(|_| "StressDemo".to_owned());
+    let op = std::env::var("MISTY_BENCH_OP").unwrap_or_else(|_| "load".to_owned());
+    let path = root.join(format!("Assets/Scenes/{name}.scene"));
+    let (scene, _) = Scene::load(&path).expect("scene loads");
+    let mut times = vec![];
+    for _ in 0..20 {
+        let t = Instant::now();
+        match op.as_str() {
+            "load" => drop(Scene::load(&path).expect("scene loads")),
+            "clone" => drop(scene.clone()),
+            _ => assert!(!scene.scene_to_json(scene.active_scene()).is_empty()),
+        }
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    eprintln!("{name} {op}: {:.2} ms (median of 20)", median(times));
+}
