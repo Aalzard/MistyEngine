@@ -153,6 +153,19 @@ impl Game {
     /// connection carries over to the new scene.
     pub fn load_path(&mut self, rel: &str, file: Option<&Path>) -> Result<(), String> {
         let path = file.map_or_else(|| self.root.join(rel), Path::to_path_buf);
+        // Objects marked DontDestroyOnLoad: keep the runtime and swap scenes inside it.
+        if let Some(rt) = self.runtime.as_mut()
+            && rt.has_persistent_objects(&self.scene)
+        {
+            let text =
+                misty_engine::vfs::read_to_string(&path).map_err(|e| format!("{rel}: {e}"))?;
+            let result = rt.load_scene_single(&mut self.scene, rel, &text);
+            if let Some(i) = self.build.enabled().position(|b| b.path == rel) {
+                self.scene_index = i;
+            }
+            self.collect_logs();
+            return result;
+        }
         let (mut scene, report) = Scene::load(&path)?;
         scene.set_scene_path(0, rel);
         for w in report.warnings {

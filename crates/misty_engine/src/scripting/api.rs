@@ -448,6 +448,63 @@ impl UserData for LGameObject {
                 None => other_component(lua, e, &name),
             }
         });
+        // `AddComponent("Rigidbody")`: adds a default engine component (and what it requires)
+        // and returns it like GetComponent; the existing one when the object has it.
+        m.add_method("AddComponent", |lua, g, name: String| {
+            let e = g.0;
+            // A script ("Spin" or "Spin.lua"): added now, its instance (Awake, OnEnable) right
+            // after this callback, so nil comes back; GetComponent finds it from then on.
+            if super::component_ops::registry_name(&name).is_none() {
+                return with_world(lua, |w| {
+                    alive(w, e)?;
+                    let files = if name.ends_with(".lua") || name.ends_with(".cs") {
+                        vec![name.clone()]
+                    } else {
+                        vec![format!("{name}.lua"), format!("{name}.cs")]
+                    };
+                    let root = w.root.clone();
+                    let path = files
+                        .iter()
+                        .find_map(|f| super::component_ops::find_script(&root, f))
+                        .ok_or_else(|| {
+                            mlua::Error::runtime(format!(
+                                "AddComponent: '{name}' is neither a component nor a script under Assets"
+                            ))
+                        })?;
+                    super::component_ops::add_script(w, e, path);
+                    Ok(Value::Nil)
+                })?;
+            }
+            with_world(lua, |w| {
+                alive(w, e)?;
+                super::component_ops::add(w, e, &name).map_err(mlua::Error::runtime)
+            })??;
+            let ud = lua.create_userdata(LGameObject(e))?;
+            mlua::ObjectLike::call_method::<Value>(&ud, "GetComponent", name)
+        });
+        // `SendMessage(name [, value [, options]])`, `BroadcastMessage` (children too) and
+        // `SendMessageUpwards` (parents too); see messages.rs.
+        for (method, dir) in [
+            ("SendMessage", 0),
+            ("BroadcastMessage", 1),
+            ("SendMessageUpwards", 2),
+        ] {
+            m.add_method(
+                method,
+                move |lua, g, (name, value, options): (String, Value, Option<i64>)| {
+                    let found = super::messages::lua_send(lua, g.0, &name, value, dir)?;
+                    if !found && options.unwrap_or(0) == 0 {
+                        with_world(lua, |w| {
+                            w.logs.push((
+                                super::LogKind::Error,
+                                format!("SendMessage {name} has no receiver!"),
+                            ));
+                        })?;
+                    }
+                    Ok(())
+                },
+            );
+        }
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
         m.add_meta_method(MetaMethod::ToString, |lua, g, ()| {
             with_world(lua, |w| {
@@ -948,15 +1005,48 @@ pub fn register(lua: &Lua) -> Result<()> {
             with_world(lua, |w| instantiate(w, source, position))?.map(LGameObject)
         })?,
     )?;
+    let options = lua.create_table()?;
+    options.set("RequireReceiver", 0)?;
+    options.set("DontRequireReceiver", 1)?;
+    g.set("SendMessageOptions", options)?;
     g.set(
         "Destroy",
         lua.create_function(|lua, target: Value| {
             let e = match &target {
                 Value::UserData(ud) if ud.is::<LGameObject>() => ud.borrow::<LGameObject>()?.0,
                 Value::UserData(ud) if ud.is::<LTransform>() => ud.borrow::<LTransform>()?.0,
+                // A script instance: that script is removed at the end of the frame.
+                Value::Table(t) => {
+                    let Some(Value::UserData(go)) = t.get::<Option<Value>>("gameObject")? else {
+                        return Err(mlua::Error::runtime("Destroy expects a GameObject"));
+                    };
+                    let e = go.borrow::<LGameObject>()?.0;
+                    let name = super::script_name_of(lua, e, t)
+                        .ok_or_else(|| mlua::Error::runtime("Destroy: not a script instance"))?;
+                    return with_world(lua, |w| {
+                        w.destroy_scripts
+                            .push((e, super::component_ops::ScriptSel::Name(name)))
+                    });
+                }
                 _ => return Err(mlua::Error::runtime("Destroy expects a GameObject")),
             };
             with_world(lua, |w| w.destroy.push(e))
+        })?,
+    )?;
+    // Keep an object (its root) and its scripts' state through single scene loads.
+    g.set(
+        "DontDestroyOnLoad",
+        lua.create_function(|lua, target: Value| {
+            let e = match &target {
+                Value::UserData(ud) if ud.is::<LGameObject>() => ud.borrow::<LGameObject>()?.0,
+                Value::UserData(ud) if ud.is::<LTransform>() => ud.borrow::<LTransform>()?.0,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "DontDestroyOnLoad expects a GameObject",
+                    ));
+                }
+            };
+            with_world(lua, |w| w.dont_destroy.push(e))
         })?,
     )?;
 

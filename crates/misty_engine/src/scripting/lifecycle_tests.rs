@@ -1032,3 +1032,70 @@ fn stay_lasts_while_any_collider_pair_still_touches() {
     assert!(super::advance_touching(&mut touching, &[contact(false, true)]).is_empty());
     assert!(touching.is_empty());
 }
+
+/// `DontDestroyOnLoad` keeps an object (from its child too) and its script state through a
+/// single scene load: the other objects unload, the new scene's objects wake up and its scene
+/// becomes the active one.
+#[test]
+fn dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load() {
+    let keeper = r#"
+local K = { n = 0 }
+function K:Awake()
+    Debug.Log("Keeper:Awake")
+    DontDestroyOnLoad(self.transform:GetChild(0).gameObject)
+end
+function K:Update()
+    self.n = self.n + 1
+    if self.n == 12 then Debug.Log("Keeper:n=12") end
+end
+function K:OnDestroy() Debug.Log("Keeper:OnDestroy") end
+return K
+"#;
+    let root = project(&[("Keeper", keeper)]);
+    let mut next = Scene::new("Next");
+    scripted(&mut next, "New", "Life", None);
+    let rel = "Assets/Scenes/Next.scene";
+    next.save(&root.join(rel)).unwrap();
+    let text = std::fs::read_to_string(root.join(rel)).unwrap();
+
+    let mut scene = Scene::new("First");
+    let k = scripted(&mut scene, "Keeper", "Keeper", None);
+    scene.spawn("Child", Some(k));
+    scripted(&mut scene, "Old", "Life", None);
+    let (audio, _log) = Audio::null(root.clone());
+    let mut rt = Runtime::start_with_audio(&mut scene, root.clone(), &Default::default(), audio);
+    let mut time = Time::default();
+    for _ in 0..10 {
+        time.advance(1.0 / 60.0);
+        rt.update(&mut scene, &time, Input::default());
+    }
+    assert!(rt.has_persistent_objects(&scene));
+    rt.take_logs();
+    rt.load_scene_single(&mut scene, rel, &text).unwrap();
+    for _ in 0..2 {
+        time.advance(1.0 / 60.0);
+        rt.update(&mut scene, &time, Input::default());
+    }
+    let lines: Vec<String> = rt
+        .take_logs()
+        .into_iter()
+        .inspect(|(kind, t)| assert_ne!(*kind, LogKind::Error, "{t}"))
+        .map(|(_, t)| t)
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "Old:OnDisable",
+            "Old:OnDestroy",
+            "New:Awake",
+            "New:OnEnable",
+            "New:Start",
+            "Keeper:n=12",
+        ],
+        "{lines:?}"
+    );
+    assert!(scene.find_by_name("Old").is_none());
+    assert!(scene.find_by_name("Child").is_some());
+    assert_eq!(scene.scene_name(scene.active_scene()), "Next");
+    let _ = std::fs::remove_dir_all(&root);
+}

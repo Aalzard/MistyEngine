@@ -57,9 +57,15 @@ pub(crate) enum Method {
     OnTriggerExit = 11,
     OnCollisionStay = 12,
     OnTriggerStay = 13,
+    OnCollisionEnter2D = 14,
+    OnCollisionExit2D = 15,
+    OnTriggerEnter2D = 16,
+    OnTriggerExit2D = 17,
+    OnCollisionStay2D = 18,
+    OnTriggerStay2D = 19,
 }
 
-const METHOD_COUNT: usize = 14;
+const METHOD_COUNT: usize = 20;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -70,14 +76,21 @@ pub fn is_csharp_path(path: &str) -> bool {
 
 // ---- the .NET runtime ----------------------------------------------------------------------
 
-type HostfxrInit = unsafe extern "C" fn(*const u16, *const c_void, *mut *mut c_void) -> i32;
+/// hostfxr's `char_t`: UTF-16 on Windows, UTF-8 everywhere else. (The engine's own calls into
+/// C# pass UTF-16 on every OS: a C# `char` is always 16 bits.)
+#[cfg(windows)]
+type HostChar = u16;
+#[cfg(not(windows))]
+type HostChar = u8;
+
+type HostfxrInit = unsafe extern "C" fn(*const HostChar, *const c_void, *mut *mut c_void) -> i32;
 
 /// `hostfxr_initialize_parameters` (hostfxr.h).
 #[repr(C)]
 struct InitParameters {
     size: usize,
-    host_path: *const u16,
-    dotnet_root: *const u16,
+    host_path: *const HostChar,
+    dotnet_root: *const HostChar,
 }
 
 /// The folder a built game keeps its .NET runtime in, next to the executable.
@@ -94,10 +107,10 @@ fn bundled_root() -> Option<PathBuf> {
 }
 type HostfxrGetDelegate = unsafe extern "C" fn(*mut c_void, i32, *mut *mut c_void) -> i32;
 type LoadAssemblyAndGetFunctionPointer = unsafe extern "C" fn(
-    *const u16,
-    *const u16,
-    *const u16,
-    *const u16,
+    *const HostChar,
+    *const HostChar,
+    *const HostChar,
+    *const HostChar,
     *mut c_void,
     *mut *mut c_void,
 ) -> i32;
@@ -112,11 +125,18 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
 
-fn wide(s: &str) -> Vec<u16> {
+/// `s` as a NUL-terminated hostfxr string.
+#[cfg(windows)]
+fn wide(s: &str) -> Vec<HostChar> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn wide_path(p: &Path) -> Vec<u16> {
+#[cfg(not(windows))]
+fn wide(s: &str) -> Vec<HostChar> {
+    s.bytes().chain(std::iter::once(0)).collect()
+}
+
+fn wide_path(p: &Path) -> Vec<HostChar> {
     wide(&p.to_string_lossy())
 }
 
@@ -277,9 +297,12 @@ type HasFn = unsafe extern "C" fn(i32, i32) -> i32;
 type CallFn = unsafe extern "C" fn(i32, i32, u64);
 type TickFn = unsafe extern "C" fn();
 type ReleaseFn = unsafe extern "C" fn(i32);
+type ShiftSlotsFn = unsafe extern "C" fn(u64, i32);
 type SetTimeFn = unsafe extern "C" fn(f32, f32, f32, f32, f32, i32);
 type SetFieldFn =
     unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const [f32; 3], *const u16, i32) -> i32;
+type MessageFn = unsafe extern "C" fn(i32, *const u16, i32, i32, f64, *const u16, i32) -> i32;
+type UiEventFn = unsafe extern "C" fn(u64, i32, i32, f64, *const u16, i32) -> i32;
 
 /// The entry points of one script assembly.
 #[derive(Clone, Copy)]
@@ -291,6 +314,9 @@ struct Entry {
     set_time: SetTimeFn,
     set_field: SetFieldFn,
     tick: TickFn,
+    message: MessageFn,
+    ui_event: UiEventFn,
+    shift_slots: ShiftSlotsFn,
 }
 
 impl Runtime {
@@ -307,7 +333,7 @@ impl Runtime {
                     path.as_ptr(),
                     type_name.as_ptr(),
                     method_w.as_ptr(),
-                    usize::MAX as *const u16,
+                    usize::MAX as *const HostChar,
                     std::ptr::null_mut(),
                     &mut f,
                 )
@@ -335,6 +361,9 @@ impl Runtime {
                 set_time: transmute::<P, SetTimeFn>(get("SetTime")?),
                 set_field: transmute::<P, SetFieldFn>(get("SetField")?),
                 tick: transmute::<P, TickFn>(get("Tick")?),
+                message: transmute::<P, MessageFn>(get("Message")?),
+                ui_event: transmute::<P, UiEventFn>(get("UiEvent")?),
+                shift_slots: transmute::<P, ShiftSlotsFn>(get("ShiftSlots")?),
             };
             let count = init(&NATIVE_API);
             if count as usize != METHOD_COUNT {
@@ -958,7 +987,7 @@ pub fn prestart(project: &Path) {
 pub(crate) struct CsRef {
     handle: i32,
     /// Bit per [`Method`].
-    defined: u16,
+    defined: u32,
 }
 
 impl CsRef {
@@ -984,6 +1013,12 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnTriggerExit" => Method::OnTriggerExit,
         "OnCollisionStay" => Method::OnCollisionStay,
         "OnTriggerStay" => Method::OnTriggerStay,
+        "OnCollisionEnter2D" => Method::OnCollisionEnter2D,
+        "OnCollisionExit2D" => Method::OnCollisionExit2D,
+        "OnTriggerEnter2D" => Method::OnTriggerEnter2D,
+        "OnTriggerExit2D" => Method::OnTriggerExit2D,
+        "OnCollisionStay2D" => Method::OnCollisionStay2D,
+        "OnTriggerStay2D" => Method::OnTriggerStay2D,
         _ => return None,
     })
 }
@@ -1099,7 +1134,7 @@ impl CsHost {
                     text.len() as i32,
                 );
             }
-            let mut defined = 0u16;
+            let mut defined = 0u32;
             for m in 0..METHOD_COUNT as i32 {
                 if (entry.has)(handle, m) != 0 {
                     defined |= 1 << m;
@@ -1140,6 +1175,59 @@ impl CsHost {
         unsafe { (entry.call)(r.handle, m as i32, other) };
     }
 
+    /// Call the method `name` of instance `r` by name (SendMessage, Inspector event calls):
+    /// with no argument, or one bool, number, whole number or text. Whether the class has a
+    /// method of that name that takes it.
+    pub fn message(&self, w: &mut World, r: CsRef, name: &str, arg: Option<&CsArg>) -> bool {
+        let Some(entry) = self.entry else {
+            return false;
+        };
+        let name_w: Vec<u16> = name.encode_utf16().collect();
+        let (kind, num, text) = arg_parts(arg);
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly; the strings outlive the call.
+        let found = unsafe {
+            (entry.message)(
+                r.handle,
+                name_w.as_ptr(),
+                name_w.len() as i32,
+                kind,
+                num,
+                text.as_ptr(),
+                text.len() as i32,
+            )
+        };
+        found == 1
+    }
+
+    /// Run the C# listeners of UI event `event` on `e` (`AddListener` on `onClick`,
+    /// `onValueChanged`, `onEndEdit`). Whether any ran.
+    pub fn ui_event(
+        &self,
+        w: &mut World,
+        e: Entity,
+        event: UiEventKind,
+        arg: Option<&CsArg>,
+    ) -> bool {
+        let Some(entry) = self.entry else {
+            return false;
+        };
+        let (kind, num, text) = arg_parts(arg);
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly; the string outlives the call.
+        let ran = unsafe {
+            (entry.ui_event)(
+                e.to_bits().get(),
+                event as i32,
+                kind,
+                num,
+                text.as_ptr(),
+                text.len() as i32,
+            )
+        };
+        ran == 1
+    }
+
     /// Advance the coroutines (after the Update pass, like the familiar engine).
     pub fn tick(&self, w: &mut World) {
         let Some(entry) = self.entry else { return };
@@ -1154,6 +1242,77 @@ impl CsHost {
             // SAFETY: entry point of the loaded assembly.
             unsafe { (entry.release)(r.handle) };
         }
+    }
+
+    /// Script `removed` of `entity` left its Scripts list (`Destroy(script)`): the object's
+    /// later C# scripts move down one slot.
+    pub fn shift_slots(&self, entity: hecs::Entity, removed: usize) {
+        if let Some(entry) = self.entry {
+            // SAFETY: entry point of the loaded assembly.
+            unsafe { (entry.shift_slots)(entity.to_bits().get(), removed as i32) };
+        }
+    }
+}
+
+/// The argument of a call by name or a UI event.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CsArg {
+    Bool(bool),
+    Number(f64),
+    Int(i64),
+    Text(String),
+}
+
+impl CsArg {
+    /// From a Lua value (None for values C# methods can't take).
+    pub fn from_lua(v: &mlua::Value) -> Option<Self> {
+        Some(match v {
+            mlua::Value::Boolean(b) => Self::Bool(*b),
+            mlua::Value::Integer(i) => Self::Int(*i),
+            mlua::Value::Number(n) => Self::Number(*n),
+            mlua::Value::String(s) => Self::Text(s.to_string_lossy()),
+            _ => return None,
+        })
+    }
+
+    pub fn from_ui(v: &crate::ui::UiValue) -> Self {
+        use crate::ui::UiValue;
+        match v {
+            UiValue::Bool(b) => Self::Bool(*b),
+            UiValue::Number(n) => Self::Number(f64::from(*n)),
+            UiValue::Int(i) => Self::Int(i64::from(*i)),
+            UiValue::Text(t) => Self::Text(t.clone()),
+        }
+    }
+}
+
+/// Kind (-1 none, 0 bool, 1 number, 2 whole number, 3 text), number and text of an argument.
+fn arg_parts(arg: Option<&CsArg>) -> (i32, f64, Vec<u16>) {
+    match arg {
+        None => (-1, 0.0, Vec::new()),
+        Some(CsArg::Bool(b)) => (0, f64::from(u8::from(*b)), Vec::new()),
+        Some(CsArg::Number(n)) => (1, *n, Vec::new()),
+        Some(CsArg::Int(i)) => (2, *i as f64, Vec::new()),
+        Some(CsArg::Text(t)) => (3, 0.0, t.encode_utf16().collect()),
+    }
+}
+
+/// UI events C# listeners can hear, in the order of `Misty.UiEvents` in MistyEngine.cs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiEventKind {
+    Click = 0,
+    ValueChanged = 1,
+    EndEdit = 2,
+}
+
+impl UiEventKind {
+    pub fn from_name(event: &str) -> Option<Self> {
+        Some(match event {
+            "onClick" => Self::Click,
+            "onValueChanged" => Self::ValueChanged,
+            "onEndEdit" => Self::EndEdit,
+            _ => return None,
+        })
     }
 }
 

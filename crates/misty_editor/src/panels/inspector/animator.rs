@@ -27,7 +27,13 @@ pub fn animator(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut a) = state.scene.world.get::<&Animator>(e).map(|c| (*c).clone()) else {
         return false;
     };
-    let controllers: Vec<String> = state.assets.controllers.iter().cloned().collect();
+    let controllers: Vec<String> = state
+        .assets
+        .controllers
+        .iter()
+        .chain(&state.assets.override_controllers)
+        .cloned()
+        .collect();
     let bones = misty_engine::animation::AvatarMask::skeleton(&state.scene, e);
     let avatars: Vec<String> = state.assets.avatars.iter().cloned().collect();
     let mut open = false;
@@ -37,7 +43,11 @@ pub fn animator(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.label("Controller");
         ui.horizontal(|ui| {
             ch |= controller_slot(ui, &controllers, &mut a.controller);
-            open = a.controller.is_some()
+            // An override has no graph of its own (its base controller's is the one to edit).
+            open = a
+                .controller
+                .as_deref()
+                .is_some_and(misty_engine::animation::is_controller)
                 && ui
                     .small_button("Open")
                     .on_hover_text("Open in the Animator window")
@@ -144,7 +154,8 @@ pub fn animator(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     changed
 }
 
-/// Controller picker: project `.controller` files, or one dragged from the Project window.
+/// Controller picker: project `.controller` and `.overrideController` files, or one dragged
+/// from the Project window.
 fn controller_slot(ui: &mut Ui, controllers: &[String], value: &mut Option<String>) -> bool {
     let mut ch = false;
     let none = "None (Animator Controller)";
@@ -164,7 +175,7 @@ fn controller_slot(ui: &mut Ui, controllers: &[String], value: &mut Option<Strin
         })
         .response;
     if let Some(p) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
-        && misty_engine::animation::is_controller(&p.0)
+        && misty_engine::animation::is_runtime_controller(&p.0)
     {
         *value = Some(p.0.clone());
         ch = true;

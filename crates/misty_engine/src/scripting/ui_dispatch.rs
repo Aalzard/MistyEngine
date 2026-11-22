@@ -52,6 +52,12 @@ impl ScriptHost {
             if inst.entity != target || !self.runnable(inst) {
                 continue;
             }
+            if let Some(cs) = inst.cs {
+                if self.cs_message(cs, method, arg.as_ref()) {
+                    self.flush_spawned();
+                }
+                continue;
+            }
             let defined = self
                 .lua
                 .registry_value::<mlua::Table>(&inst.table)
@@ -98,6 +104,7 @@ impl ScriptHost {
                     .unwrap_or(Value::Nil),
             }
         };
+        let ui_arg = arg.clone();
         let arg = arg.as_ref().map(to_lua);
         let calls = self.with_world(|w| persistent_calls(w, e, event));
         for call in calls {
@@ -114,6 +121,20 @@ impl ScriptHost {
                 self.log(LogKind::Error, format!("{label} listener: {err}"));
             }
             self.flush_spawned();
+        }
+        // C# listeners (`button.onClick.AddListener(…)`).
+        if let Some(kind) = super::csharp::UiEventKind::from_name(event) {
+            let cs_arg = ui_arg.as_ref().map(super::csharp::CsArg::from_ui);
+            let ran = {
+                let mut w = self
+                    .lua
+                    .app_data_mut::<World>()
+                    .expect("world is installed");
+                self.csharp.ui_event(&mut w, e, kind, cs_arg.as_ref())
+            };
+            if ran {
+                self.flush_spawned();
+            }
         }
     }
 }

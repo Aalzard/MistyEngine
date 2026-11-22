@@ -562,6 +562,12 @@ namespace Misty
         /// `t` seconds.</summary>
         public static void Destroy(Object obj, float t = 0f) => Internal.Host.Destroy(obj, t);
 
+        /// <summary>Keep the object (its root) and its scripts through single scene loads.</summary>
+        public static void DontDestroyOnLoad(Object obj)
+        {
+            if (obj != null) Internal.Native.ComponentOp(obj.ObjectId, 2, "");
+        }
+
         /// <summary>The first script of type T in the scene (active objects first), or null.</summary>
         public static T FindObjectOfType<T>() where T : MonoBehaviour => Internal.Host.FindOfType<T>();
         public static T[] FindObjectsOfType<T>() where T : MonoBehaviour => Internal.Host.FindAllOfType<T>();
@@ -599,6 +605,28 @@ namespace Misty
         }
         /// <summary>A script by class name, or null.</summary>
         public MonoBehaviour GetComponent(string type) => Internal.Host.GetComponentByName(id, type);
+        /// <summary>Add an engine component (Rigidbody, BoxCollider, Light, AudioSource, …) with
+        /// its defaults and return it (the existing one when the object has it), or a script:
+        /// returned at once, its Awake and OnEnable run right after the calling method.</summary>
+        public T AddComponent<T>() where T : Component => (T)AddComponent(typeof(T));
+        public Component AddComponent(Type type) => Internal.Native.AddComponent(id, type);
+
+        /// <summary>Call method `methodName` on every script of this object (C# now, Lua right
+        /// after this callback). A value C# can't hand to Lua (an object) reaches C# only.</summary>
+        public void SendMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 0, options);
+        public void SendMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 0, options);
+        /// <summary>SendMessage to this object and everything under it.</summary>
+        public void BroadcastMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 1, options);
+        public void BroadcastMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 1, options);
+        /// <summary>SendMessage to this object and each of its parents.</summary>
+        public void SendMessageUpwards(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(id, methodName, value, 2, options);
+        public void SendMessageUpwards(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(id, methodName, null, 2, options);
 
         /// <summary>An object by name anywhere in the open scenes, or null.</summary>
         public static GameObject Find(string name) => Internal.Native.Wrap(Internal.Native.Find(0, name));
@@ -632,6 +660,23 @@ namespace Misty
             return component != null;
         }
         public MonoBehaviour GetComponent(string type) => Internal.Host.GetComponentByName(EntityId, type);
+
+        /// <summary>Call method `methodName` on every script of this object (C# now, Lua right
+        /// after this callback). A value C# can't hand to Lua (an object) reaches C# only.</summary>
+        public void SendMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 0, options);
+        public void SendMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 0, options);
+        /// <summary>SendMessage to this object and everything under it.</summary>
+        public void BroadcastMessage(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 1, options);
+        public void BroadcastMessage(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 1, options);
+        /// <summary>SendMessage to this object and each of its parents.</summary>
+        public void SendMessageUpwards(string methodName, object value = null, SendMessageOptions options = SendMessageOptions.RequireReceiver) =>
+            Internal.Host.SendMessage(EntityId, methodName, value, 2, options);
+        public void SendMessageUpwards(string methodName, SendMessageOptions options) =>
+            Internal.Host.SendMessage(EntityId, methodName, null, 2, options);
     }
 
     /// <summary>Position, rotation and scale of an object, and its place in the hierarchy.</summary>
@@ -831,7 +876,7 @@ namespace Misty
     }
 
     /// <summary>The colliders of an object (Box, Sphere, Capsule or Mesh Collider).</summary>
-    public sealed class Collider : Component
+    public class Collider : Component
     {
         internal readonly ulong id;
         internal Collider(ulong id) { this.id = id; }
@@ -839,6 +884,11 @@ namespace Misty
         /// <summary>The Rigidbody this collider moves with (its own or a parent's), or null.</summary>
         public Rigidbody attachedRigidbody => GetComponentInParent<Rigidbody>();
     }
+
+    public sealed class BoxCollider : Collider { internal BoxCollider(ulong id) : base(id) { } }
+    public sealed class SphereCollider : Collider { internal SphereCollider(ulong id) : base(id) { } }
+    public sealed class CapsuleCollider : Collider { internal CapsuleCollider(ulong id) : base(id) { } }
+    public sealed class MeshCollider : Collider { internal MeshCollider(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter / OnCollisionExit callback hit.</summary>
     public sealed class Collision
@@ -1047,31 +1097,786 @@ namespace Misty
             Play(2, stateName, layer, fixedTransitionDuration, normalizedTimeOffset);
     }
 
+    // ---- colour, cameras, lights, renderers and materials ------------------------------------
+
+    /// <summary>A colour: red, green, blue and alpha, each 0..1 (HDR colours go above 1).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Color : IEquatable<Color>
+    {
+        public float r, g, b, a;
+        public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; }
+
+        public static Color white => new Color(1, 1, 1);
+        public static Color black => new Color(0, 0, 0);
+        public static Color red => new Color(1, 0, 0);
+        public static Color green => new Color(0, 1, 0);
+        public static Color blue => new Color(0, 0, 1);
+        public static Color yellow => new Color(1, 0.92f, 0.016f);
+        public static Color cyan => new Color(0, 1, 1);
+        public static Color magenta => new Color(1, 0, 1);
+        public static Color gray => new Color(0.5f, 0.5f, 0.5f);
+        public static Color grey => gray;
+        public static Color clear => new Color(0, 0, 0, 0);
+
+        /// <summary>Perceived brightness (0..1 for colours in range).</summary>
+        public float grayscale => 0.299f * r + 0.587f * g + 0.114f * b;
+        public float maxColorComponent => Mathf.Max(r, Mathf.Max(g, b));
+
+        public static Color Lerp(Color a, Color b, float t) => LerpUnclamped(a, b, Mathf.Clamp01(t));
+        public static Color LerpUnclamped(Color a, Color b, float t) =>
+            new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+
+        /// <summary>A colour from hue, saturation and value, each 0..1.</summary>
+        public static Color HSVToRGB(float h, float s, float v)
+        {
+            h = Mathf.Repeat(h, 1f) * 6f;
+            int i = (int)Mathf.Floor(h);
+            float f = h - i, p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+            return i switch
+            {
+                0 => new Color(v, t, p),
+                1 => new Color(q, v, p),
+                2 => new Color(p, v, t),
+                3 => new Color(p, q, v),
+                4 => new Color(t, p, v),
+                _ => new Color(v, p, q),
+            };
+        }
+
+        public static Color operator +(Color a, Color b) => new Color(a.r + b.r, a.g + b.g, a.b + b.b, a.a + b.a);
+        public static Color operator -(Color a, Color b) => new Color(a.r - b.r, a.g - b.g, a.b - b.b, a.a - b.a);
+        public static Color operator *(Color a, Color b) => new Color(a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a);
+        public static Color operator *(Color a, float k) => new Color(a.r * k, a.g * k, a.b * k, a.a * k);
+        public static Color operator *(float k, Color a) => a * k;
+        public static Color operator /(Color a, float k) => new Color(a.r / k, a.g / k, a.b / k, a.a / k);
+        public static bool operator ==(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        public static bool operator !=(Color a, Color b) => !(a == b);
+        public bool Equals(Color other) => this == other;
+        public override bool Equals(object obj) => obj is Color c && this == c;
+        public override int GetHashCode() => HashCode.Combine(r, g, b, a);
+        public override string ToString() => $"RGBA({r:F3}, {g:F3}, {b:F3}, {a:F3})";
+    }
+
+    /// <summary>A component with an on/off checkbox.</summary>
+    public abstract unsafe class Behaviour : Component
+    {
+        internal readonly ulong id;
+        internal Behaviour(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        internal abstract int Kind { get; }
+        internal abstract string TypeName { get; }
+
+        internal Color Get(int which)
+        {
+            Color v = default;
+            if (Internal.Native.api.componentValue(id, Kind, which, 0, &v) == 0) throw Internal.Native.Missing(TypeName);
+            return v;
+        }
+
+        internal void Set(int which, Color v)
+        {
+            if (Internal.Native.api.componentValue(id, Kind, which, 1, &v) == 0) throw Internal.Native.Missing(TypeName);
+        }
+
+        internal float GetFloat(int which) => Get(which).r;
+        internal void SetFloat(int which, float v) => Set(which, new Color(v, 0, 0, 0));
+        internal bool GetBool(int which) => Get(which).r != 0;
+        internal void SetBool(int which, bool v) => Set(which, new Color(v ? 1 : 0, 0, 0, 0));
+    }
+
+    /// <summary>The object's Camera.</summary>
+    public sealed unsafe class Camera : Behaviour
+    {
+        internal Camera(ulong id) : base(id) { }
+        internal override int Kind => 4;
+        internal override string TypeName => "Camera";
+
+        /// <summary>The first enabled camera tagged MainCamera, or null.</summary>
+        public static Camera main
+        {
+            get
+            {
+                ulong id = Internal.Native.api.global(0, 0, null);
+                return id == 0 ? null : new Camera(id);
+            }
+        }
+
+        /// <summary>Vertical field of view in degrees.</summary>
+        public float fieldOfView { get => GetFloat(0); set => SetFloat(0, value); }
+        public float nearClipPlane { get => GetFloat(1); set => SetFloat(1, value); }
+        public float farClipPlane { get => GetFloat(2); set => SetFloat(2, value); }
+        public bool orthographic { get => GetBool(3); set => SetBool(3, value); }
+        /// <summary>Half the height of an orthographic camera's view, in world units.</summary>
+        public float orthographicSize { get => GetFloat(4); set => SetFloat(4, value); }
+        public bool enabled { get => GetBool(5); set => SetBool(5, value); }
+        /// <summary>Layer bits the camera renders (`~(1 &lt;&lt; layer)` hides one).</summary>
+        public int cullingMask
+        {
+            get => BitConverter.SingleToInt32Bits(GetFloat(6));
+            set => SetFloat(6, BitConverter.Int32BitsToSingle(value));
+        }
+        public Color backgroundColor { get => Get(7); set => Set(7, value); }
+        /// <summary>Draw order: cameras with a higher depth draw on top.</summary>
+        public float depth { get => GetFloat(8); set => SetFloat(8, value); }
+        public int pixelWidth => (int)Get(9).r;
+        public int pixelHeight => (int)Get(9).g;
+        /// <summary>Width divided by height.</summary>
+        public float aspect => Get(9).b;
+
+        Vector3 Point(int op, Vector3 p, out Vector3 second)
+        {
+            Vector3 a, b;
+            if (Internal.Native.api.cameraPoint(id, op, &p, &a, &b) == 0) throw Internal.Native.Missing("Camera");
+            second = b;
+            return a;
+        }
+
+        /// <summary>A ray from the camera through a screen point (pixels from the bottom-left,
+        /// like Input.mousePosition).</summary>
+        public Ray ScreenPointToRay(Vector3 position)
+        {
+            var origin = Point(0, position, out var direction);
+            return new Ray(origin, direction);
+        }
+        /// <summary>A ray through a viewport point (0..1 from the bottom-left).</summary>
+        public Ray ViewportPointToRay(Vector3 position)
+        {
+            var origin = Point(1, position, out var direction);
+            return new Ray(origin, direction);
+        }
+        /// <summary>World to screen pixels; z is the distance in front of the camera.</summary>
+        public Vector3 WorldToScreenPoint(Vector3 position) => Point(2, position, out _);
+        public Vector3 WorldToViewportPoint(Vector3 position) => Point(3, position, out _);
+        /// <summary>Screen pixels to world; z is the distance in front of the camera.</summary>
+        public Vector3 ScreenToWorldPoint(Vector3 position) => Point(4, position, out _);
+        public Vector3 ViewportToWorldPoint(Vector3 position) => Point(5, position, out _);
+    }
+
+    public enum LightType { Spot, Directional, Point, Rectangle }
+    public enum LightShadows { None, Hard, Soft }
+
+    /// <summary>The object's Light.</summary>
+    public sealed class Light : Behaviour
+    {
+        internal Light(ulong id) : base(id) { }
+        internal override int Kind => 5;
+        internal override string TypeName => "Light";
+
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public float intensity { get => GetFloat(1); set => SetFloat(1, value); }
+        /// <summary>How far a point or spot light reaches, in metres.</summary>
+        public float range { get => GetFloat(2); set => SetFloat(2, value); }
+        /// <summary>Full cone angle of a spot light in degrees.</summary>
+        public float spotAngle { get => GetFloat(3); set => SetFloat(3, value); }
+        public Color color { get => Get(4); set => Set(4, value); }
+        public LightType type { get => (LightType)(int)GetFloat(5); set => SetFloat(5, (int)value); }
+        public LightShadows shadows { get => (LightShadows)(int)GetFloat(6); set => SetFloat(6, (int)value); }
+    }
+
+    /// <summary>The object's Mesh Renderer: draws its mesh with its materials.</summary>
+    public unsafe class Renderer : Behaviour
+    {
+        internal Renderer(ulong id) : base(id) { }
+        internal override int Kind => 6;
+        internal override string TypeName => "MeshRenderer";
+
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public bool castShadows { get => GetBool(1); set => SetBool(1, value); }
+        public bool receiveShadows { get => GetBool(2); set => SetBool(2, value); }
+        /// <summary>This renderer's own copy of its first material, made on first use: changes
+        /// show on this object only, and last until Play mode ends.</summary>
+        public Material material => new Material(id, false);
+        /// <summary>The material asset itself: changes show on every object using it, and last
+        /// until Play mode ends.</summary>
+        public Material sharedMaterial => new Material(id, true);
+    }
+
+    public sealed class MeshRenderer : Renderer
+    {
+        internal MeshRenderer(ulong id) : base(id) { }
+    }
+
+    /// <summary>A material of a renderer, with the Standard shader's property names:
+    /// `_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`, `_BumpScale`, `_Cutoff`, …</summary>
+    public sealed unsafe class Material
+    {
+        readonly ulong id;
+        readonly bool shared;
+        internal Material(ulong id, bool shared) { this.id = id; this.shared = shared; }
+
+        int Call(int op, string name, Color* v)
+        {
+            name ??= "";
+            int r;
+            fixed (char* p = name) r = Internal.Native.api.material(id, shared ? 1 : 0, op, p, name.Length, v);
+            if (r == -1) throw Internal.Native.Missing("MeshRenderer");
+            if (r == -2) throw new InvalidOperationException("Default-Material can't be changed; assign a material first.");
+            return r;
+        }
+
+        Color Read(int op, string name)
+        {
+            Color v = default;
+            Call(op, name, &v);
+            return v;
+        }
+
+        public Color color { get => GetColor("_Color"); set => SetColor("_Color", value); }
+        public Vector2 mainTextureOffset
+        {
+            get { var v = Read(8, null); return new Vector2(v.r, v.g); }
+            set { var v = new Color(value.x, value.y, 0, 0); Call(9, null, &v); }
+        }
+        public Vector2 mainTextureScale
+        {
+            get { var v = Read(10, null); return new Vector2(v.r, v.g); }
+            set { var v = new Color(value.x, value.y, 0, 0); Call(11, null, &v); }
+        }
+
+        /// <summary>A colour property (black when the material has no such property).</summary>
+        public Color GetColor(string name) => Read(0, name);
+        public void SetColor(string name, Color value) => Call(1, name, &value);
+        /// <summary>A number property (0 when the material has no such property).</summary>
+        public float GetFloat(string name) => Read(2, name).r;
+        public void SetFloat(string name, float value)
+        {
+            var v = new Color(value, 0, 0, 0);
+            Call(3, name, &v);
+        }
+        public bool HasProperty(string name) => Call(4, name, null) == 1;
+        public bool IsKeywordEnabled(string keyword) => Call(5, keyword, null) == 1;
+        /// <summary>`_EMISSION` and the feature keywords are switches; the other keywords follow
+        /// the material's settings.</summary>
+        public void EnableKeyword(string keyword) => Call(6, keyword, null);
+        public void DisableKeyword(string keyword) => Call(7, keyword, null);
+    }
+
+    /// <summary>The game image.</summary>
+    public static unsafe class Screen
+    {
+        static Color Size()
+        {
+            Color v = default;
+            Internal.Native.api.global(1, 0, &v);
+            return v;
+        }
+
+        /// <summary>Width of the game image in pixels.</summary>
+        public static int width => (int)Size().r;
+        public static int height => (int)Size().g;
+    }
+
+    public enum CursorLockMode { None, Locked, Confined }
+
+    /// <summary>The mouse cursor: lock it for mouse look, hide or show it.</summary>
+    public static unsafe class Cursor
+    {
+        static float Get(int which)
+        {
+            Color v = default;
+            Internal.Native.api.global(which, 0, &v);
+            return v.r;
+        }
+
+        static void Set(int which, float value)
+        {
+            var v = new Color(value, 0, 0, 0);
+            Internal.Native.api.global(which, 1, &v);
+        }
+
+        /// <summary>Locked holds the cursor at the centre and hides it; Confined keeps it in
+        /// the window.</summary>
+        public static CursorLockMode lockState { get => (CursorLockMode)(int)Get(2); set => Set(2, (int)value); }
+        public static bool visible { get => Get(3) != 0; set => Set(3, value ? 1 : 0); }
+    }
+
+    // ---- 2D physics ----------------------------------------------------------------------------
+
+    public enum ForceMode2D { Force, Impulse }
+
+    /// <summary>A 2D physics body (the object's Rigidbody 2D).</summary>
+    public sealed unsafe class Rigidbody2D : Component
+    {
+        internal readonly ulong id;
+        internal Rigidbody2D(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        Vector3 Op(int op, Vector3 v = default, int mode = 0)
+        {
+            if (Internal.Native.api.rigidbody2d(id, op, &v, mode) == 0) throw Internal.Native.Missing("Rigidbody2D");
+            return v;
+        }
+
+        public Vector2 velocity { get => Op(0); set => Op(1, value); }
+        public Vector2 position => Op(2);
+        /// <summary>Degrees per second, counter-clockwise positive.</summary>
+        public float angularVelocity { get => Op(5).x; set => Op(6, new Vector3(value, 0, 0)); }
+        public float gravityScale { get => Op(7).x; set => Op(8, new Vector3(value, 0, 0)); }
+        public float mass => Op(9).x;
+        /// <summary>Degrees.</summary>
+        public float rotation => Op(10).x;
+        public void AddForce(Vector2 force, ForceMode2D mode = ForceMode2D.Force) => Op(3, force, (int)mode);
+        public void AddTorque(float torque, ForceMode2D mode = ForceMode2D.Force) => Op(12, new Vector3(torque, 0, 0), (int)mode);
+        public void MovePosition(Vector2 position) => Op(4, position);
+        public void MoveRotation(float angle) => Op(11, new Vector3(angle, 0, 0));
+    }
+
+    /// <summary>The 2D colliders of an object (Box, Circle, Capsule, Polygon or Edge Collider 2D).</summary>
+    public class Collider2D : Component
+    {
+        internal readonly ulong id;
+        internal Collider2D(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        /// <summary>The Rigidbody 2D this collider moves with (its own or a parent's), or null.</summary>
+        public Rigidbody2D attachedRigidbody => GetComponentInParent<Rigidbody2D>();
+    }
+
+    public sealed class BoxCollider2D : Collider2D { internal BoxCollider2D(ulong id) : base(id) { } }
+    public sealed class CircleCollider2D : Collider2D { internal CircleCollider2D(ulong id) : base(id) { } }
+
+    /// <summary>What an OnCollisionEnter2D / Stay2D / Exit2D callback hit.</summary>
+    public sealed class Collision2D
+    {
+        readonly ulong id;
+        internal Collision2D(ulong id) { this.id = id; }
+        public GameObject gameObject => new GameObject(id);
+        public Transform transform => new Transform(id);
+        public Collider2D collider => new Collider2D(id);
+        public Rigidbody2D rigidbody => gameObject.GetComponentInParent<Rigidbody2D>();
+    }
+
+    /// <summary>What a Physics2D ray hit; false (no collider) when it hit nothing.</summary>
+    public struct RaycastHit2D
+    {
+        internal Internal.HitData data;
+        internal float rayLength;
+        public Vector2 point => data.point;
+        public Vector2 normal => data.normal;
+        public float distance => data.distance;
+        /// <summary>Distance as a fraction of the ray length (0 for an infinite ray).</summary>
+        public float fraction => float.IsInfinity(rayLength) || rayLength <= 0 ? 0 : data.distance / rayLength;
+        public Collider2D collider => data.entity == 0 ? null : new Collider2D(data.entity);
+        public Rigidbody2D rigidbody => data.body == 0 ? null : new Rigidbody2D(data.body);
+        public Transform transform => data.entity == 0 ? null : new Transform(data.entity);
+        public static implicit operator bool(RaycastHit2D hit) => hit.data.entity != 0;
+    }
+
+    /// <summary>2D physics queries (the 2D world, not the 3D one).</summary>
+    public static unsafe class Physics2D
+    {
+        public const int DefaultRaycastLayers = ~(1 << 2);
+        public const int AllLayers = ~0;
+        public const int IgnoreRaycastLayer = 1 << 2;
+
+        static RaycastHit2D[] Rays(Vector2 origin, Vector2 direction, float distance, int layerMask)
+        {
+            var buf = new Internal.HitData[16];
+            Vector3 o = origin, d = direction;
+            while (true)
+            {
+                int n;
+                fixed (Internal.HitData* b = buf) n = Internal.Native.api.physics2d(0, &o, &d, distance, (uint)layerMask, b, null, buf.Length);
+                if (n > buf.Length) { buf = new Internal.HitData[n]; continue; }
+                var hits = new RaycastHit2D[n];
+                for (int i = 0; i < n; i++) hits[i] = new RaycastHit2D { data = buf[i], rayLength = distance };
+                return hits;
+            }
+        }
+
+        static Collider2D[] Overlap(int op, Vector2 a, Vector3 b, float num, int layerMask)
+        {
+            var buf = new ulong[32];
+            Vector3 p = a;
+            while (true)
+            {
+                int n;
+                fixed (ulong* ids = buf) n = Internal.Native.api.physics2d(op, &p, &b, num, (uint)layerMask, null, ids, buf.Length);
+                if (n > buf.Length) { buf = new ulong[n]; continue; }
+                var found = new Collider2D[n];
+                for (int i = 0; i < n; i++) found[i] = new Collider2D(buf[i]);
+                return found;
+            }
+        }
+
+        /// <summary>The nearest hit along the ray; test it like a bool.</summary>
+        public static RaycastHit2D Raycast(Vector2 origin, Vector2 direction, float distance = Mathf.Infinity, int layerMask = DefaultRaycastLayers)
+        {
+            var all = Rays(origin, direction, distance, layerMask);
+            return all.Length > 0 ? all[0] : default;
+        }
+        /// <summary>Every hit along the ray, nearest first.</summary>
+        public static RaycastHit2D[] RaycastAll(Vector2 origin, Vector2 direction, float distance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Rays(origin, direction, distance, layerMask);
+        public static RaycastHit2D Linecast(Vector2 start, Vector2 end, int layerMask = DefaultRaycastLayers) =>
+            Raycast(start, end - start, (end - start).magnitude, layerMask);
+        public static RaycastHit2D[] LinecastAll(Vector2 start, Vector2 end, int layerMask = DefaultRaycastLayers) =>
+            Rays(start, end - start, (end - start).magnitude, layerMask);
+
+        public static Collider2D OverlapCircle(Vector2 point, float radius, int layerMask = AllLayers)
+        {
+            var all = Overlap(1, point, default, radius, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapCircleAll(Vector2 point, float radius, int layerMask = AllLayers) =>
+            Overlap(1, point, default, radius, layerMask);
+        /// <summary>`angle` in degrees.</summary>
+        public static Collider2D OverlapBox(Vector2 point, Vector2 size, float angle, int layerMask = AllLayers)
+        {
+            var all = Overlap(2, point, new Vector3(size.x, size.y, 0), angle, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapBoxAll(Vector2 point, Vector2 size, float angle, int layerMask = AllLayers) =>
+            Overlap(2, point, new Vector3(size.x, size.y, 0), angle, layerMask);
+        public static Collider2D OverlapPoint(Vector2 point, int layerMask = AllLayers)
+        {
+            var all = Overlap(3, point, default, 0, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapPointAll(Vector2 point, int layerMask = AllLayers) =>
+            Overlap(3, point, default, 0, layerMask);
+    }
+
+    // ---- navigation and particles -----------------------------------------------------------
+
+    public enum NavMeshPathStatus { PathComplete, PathPartial, PathInvalid }
+
+    /// <summary>The object's Nav Mesh Agent: walks the baked nav mesh to a destination.</summary>
+    public sealed unsafe class NavMeshAgent : Component
+    {
+        internal readonly ulong id;
+        internal NavMeshAgent(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        int Call(int op, ref Vector3 v)
+        {
+            Vector3 x = v;
+            int r = Internal.Native.api.navAgent(id, op, &x);
+            if (r == 0) throw Internal.Native.Missing("NavMeshAgent");
+            v = x;
+            return r;
+        }
+
+        Vector3 Get(int op) { var v = Vector3.zero; Call(op, ref v); return v; }
+        void Set(int op, float value) { var v = new Vector3(value, 0, 0); Call(op, ref v); }
+        void Set(int op, Vector3 value) => Call(op, ref value);
+
+        /// <summary>Plan a path to `target`; false when the agent isn't on the nav mesh.</summary>
+        public bool SetDestination(Vector3 target) => Call(0, ref target) == 2;
+        public Vector3 destination { get => Get(1); set => SetDestination(value); }
+        public float remainingDistance => Get(2).x;
+        public bool hasPath => Get(3).x != 0;
+        public bool pathPending => Get(4).x != 0;
+        public bool isOnNavMesh => Get(5).x != 0;
+        public bool isStopped { get => Get(6).x != 0; set => Set(7, value ? 1 : 0); }
+        public Vector3 velocity => Get(8);
+        public Vector3 desiredVelocity => Get(9);
+        public Vector3 nextPosition => Get(20);
+        public NavMeshPathStatus pathStatus => (NavMeshPathStatus)(int)Get(21).x;
+        /// <summary>Jump to the nav mesh point nearest `position` (clears the path).</summary>
+        public bool Warp(Vector3 position) => Call(10, ref position) == 2;
+        public void ResetPath() => Set(11, 0);
+        public float speed { get => Get(12).x; set => Set(13, value); }
+        public float stoppingDistance { get => Get(14).x; set => Set(15, value); }
+        public float angularSpeed { get => Get(16).x; set => Set(17, value); }
+        public float acceleration { get => Get(18).x; set => Set(19, value); }
+        public bool enabled { get => Get(22).x != 0; set => Set(23, value ? 1 : 0); }
+    }
+
+    /// <summary>The object's Particle System (its live emitter).</summary>
+    public sealed unsafe class ParticleSystem : Component
+    {
+        internal readonly ulong id;
+        internal ParticleSystem(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        float Op(int op, float v = 0)
+        {
+            if (Internal.Native.api.particles(id, op, &v) == 0) throw Internal.Native.Missing("ParticleSystem");
+            return v;
+        }
+
+        public void Play() => Op(0);
+        public void Stop() => Op(1);
+        public void Pause() => Op(2);
+        public void Clear() => Op(3);
+        /// <summary>Emit `count` particles now.</summary>
+        public void Emit(int count) => Op(4, count);
+        public bool isPlaying => Op(5) != 0;
+        public bool isPaused => Op(6) != 0;
+        public bool isStopped => Op(7) != 0;
+        public int particleCount => (int)Op(8);
+        public float time => Op(9);
+    }
+
+    // ---- UI ----------------------------------------------------------------------------------
+
+    /// <summary>An event scripts listen to with AddListener (a Button's onClick).</summary>
+    public sealed class UnityEvent
+    {
+        readonly ulong entity;
+        readonly int kind;
+        internal UnityEvent(ulong entity, int kind) { this.entity = entity; this.kind = kind; }
+        public void AddListener(Action call) => Internal.UiEvents.Add(entity, kind, call);
+        public void RemoveListener(Action call) => Internal.UiEvents.Remove(entity, kind, call);
+        public void RemoveAllListeners() => Internal.UiEvents.Clear(entity, kind);
+        /// <summary>Run the C# listeners now.</summary>
+        public void Invoke() => Internal.UiEvents.Run(entity, kind, null);
+    }
+
+    /// <summary>An event with a value (a Slider's onValueChanged, an Input Field's onEndEdit).</summary>
+    public sealed class UnityEvent<T>
+    {
+        readonly ulong entity;
+        readonly int kind;
+        internal UnityEvent(ulong entity, int kind) { this.entity = entity; this.kind = kind; }
+        public void AddListener(Action<T> call) => Internal.UiEvents.Add(entity, kind, call);
+        public void RemoveListener(Action<T> call) => Internal.UiEvents.Remove(entity, kind, call);
+        public void RemoveAllListeners() => Internal.UiEvents.Clear(entity, kind);
+        public void Invoke(T value) => Internal.UiEvents.Run(entity, kind, value);
+    }
+
+    /// <summary>A UI component (read and set through the engine).</summary>
+    public abstract unsafe class UIBehaviour : Behaviour
+    {
+        internal UIBehaviour(ulong id) : base(id) { }
+
+        internal string GetText()
+        {
+            char* buf = stackalloc char[256];
+            int n = Internal.Native.api.componentText(id, Kind, 0, buf, 256);
+            if (n < 0) throw Internal.Native.Missing(TypeName);
+            if (n <= 256) return new string(buf, 0, n);
+            var big = new char[n];
+            fixed (char* p = big)
+            {
+                n = Internal.Native.api.componentText(id, Kind, 0, p, big.Length);
+                return new string(p, 0, Math.Min(Math.Max(n, 0), big.Length));
+            }
+        }
+
+        internal void SetText(string value)
+        {
+            value ??= "";
+            int r;
+            fixed (char* p = value) r = Internal.Native.api.componentText(id, Kind, 1, p, value.Length);
+            if (r < 0) throw Internal.Native.Missing(TypeName);
+        }
+    }
+
+    /// <summary>A UI Text.</summary>
+    public sealed class Text : UIBehaviour
+    {
+        internal Text(ulong id) : base(id) { }
+        internal override int Kind => 10;
+        internal override string TypeName => "Text";
+        public string text { get => GetText(); set => SetText(value); }
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public float fontSize { get => GetFloat(1); set => SetFloat(1, value); }
+        public Color color { get => Get(2); set => Set(2, value); }
+    }
+
+    /// <summary>A UI Image.</summary>
+    public sealed class Image : UIBehaviour
+    {
+        internal Image(ulong id) : base(id) { }
+        internal override int Kind => 11;
+        internal override string TypeName => "Image";
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public Color color { get => Get(1); set => Set(1, value); }
+        /// <summary>0..1, for Filled images (health bars, cooldowns).</summary>
+        public float fillAmount { get => GetFloat(2); set => SetFloat(2, value); }
+        public bool raycastTarget { get => GetBool(3); set => SetBool(3, value); }
+    }
+
+    /// <summary>A UI Button.</summary>
+    public sealed class Button : UIBehaviour
+    {
+        internal Button(ulong id) : base(id) { }
+        internal override int Kind => 12;
+        internal override string TypeName => "Button";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public UnityEvent onClick => new UnityEvent(id, 0);
+    }
+
+    /// <summary>A UI Toggle (a check box).</summary>
+    public sealed class Toggle : UIBehaviour
+    {
+        internal Toggle(ulong id) : base(id) { }
+        internal override int Kind => 13;
+        internal override string TypeName => "Toggle";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public bool isOn { get => GetBool(1); set => SetBool(1, value); }
+        public UnityEvent<bool> onValueChanged => new UnityEvent<bool>(id, 1);
+    }
+
+    /// <summary>A UI Slider.</summary>
+    public sealed class Slider : UIBehaviour
+    {
+        internal Slider(ulong id) : base(id) { }
+        internal override int Kind => 14;
+        internal override string TypeName => "Slider";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public float value { get => GetFloat(1); set => SetFloat(1, value); }
+        public float minValue { get => GetFloat(2); set => SetFloat(2, value); }
+        public float maxValue { get => GetFloat(3); set => SetFloat(3, value); }
+        public bool wholeNumbers { get => GetBool(4); set => SetBool(4, value); }
+        /// <summary>The value as 0..1 between minValue and maxValue.</summary>
+        public float normalizedValue { get => GetFloat(5); set => SetFloat(5, value); }
+        public UnityEvent<float> onValueChanged => new UnityEvent<float>(id, 1);
+    }
+
+    /// <summary>A UI Input Field.</summary>
+    public sealed class InputField : UIBehaviour
+    {
+        internal InputField(ulong id) : base(id) { }
+        internal override int Kind => 15;
+        internal override string TypeName => "InputField";
+        public bool interactable { get => GetBool(0); set => SetBool(0, value); }
+        public bool readOnly { get => GetBool(1); set => SetBool(1, value); }
+        /// <summary>The text (the field's character limit and content type apply).</summary>
+        public string text { get => GetText(); set => SetText(value); }
+        public UnityEvent<string> onValueChanged => new UnityEvent<string>(id, 1);
+        public UnityEvent<string> onEndEdit => new UnityEvent<string>(id, 2);
+    }
+
+    // ---- PlayerPrefs ---------------------------------------------------------------------------
+
+    /// <summary>Small values kept between runs of the game (settings, high scores).</summary>
+    public static unsafe class PlayerPrefs
+    {
+        static int Op(int op, string key, double* num, char* buf, int len)
+        {
+            key ??= "";
+            fixed (char* k = key) return Internal.Native.api.prefs(op, k, key.Length, num, buf, len);
+        }
+
+        static double Num(int op, string key, double value)
+        {
+            Op(op, key, &value, null, 0);
+            return value;
+        }
+
+        public static int GetInt(string key, int defaultValue = 0) => (int)Num(0, key, defaultValue);
+        public static void SetInt(string key, int value) => Num(1, key, value);
+        public static float GetFloat(string key, float defaultValue = 0f) => (float)Num(2, key, defaultValue);
+        public static void SetFloat(string key, float value) => Num(3, key, value);
+
+        public static string GetString(string key, string defaultValue = "")
+        {
+            defaultValue ??= "";
+            var buf = new char[Math.Max(256, defaultValue.Length)];
+            defaultValue.CopyTo(0, buf, 0, defaultValue.Length);
+            int n;
+            fixed (char* p = buf) n = Op(4, key, null, p, defaultValue.Length);
+            if (n <= buf.Length) return new string(buf, 0, n);
+            // Longer than the buffer: the key exists, so ask again with room for it.
+            buf = new char[n];
+            fixed (char* p = buf) n = Op(4, key, null, p, buf.Length);
+            return new string(buf, 0, Math.Min(n, buf.Length));
+        }
+
+        public static void SetString(string key, string value)
+        {
+            value ??= "";
+            fixed (char* p = value) Op(5, key, null, p, value.Length);
+        }
+
+        public static bool HasKey(string key) => Op(6, key, null, null, 0) == 1;
+        public static void DeleteKey(string key) => Op(7, key, null, null, 0);
+        public static void DeleteAll() => Op(8, "", null, null, 0);
+        /// <summary>Write the values to disk now (they are also saved when the game quits).</summary>
+        public static void Save() => Op(9, "", null, null, 0);
+    }
+
     // ---- scenes and the application ----------------------------------------------------------
 
     public enum LoadSceneMode { Single, Additive }
 
+    /// <summary>Whether SendMessage logs an error when no script has the method.</summary>
+    public enum SendMessageOptions { RequireReceiver, DontRequireReceiver }
+
     /// <summary>Scene loading (carried out after the frame), like Unity's SceneManager.</summary>
     public static unsafe class SceneManager
     {
-        static void Request(int op, int index, string name)
+        static long Request(int op, int index, string name, int track = 0)
         {
             name ??= "";
-            fixed (char* p = name) Internal.Native.api.request(op, index, p, name.Length);
+            fixed (char* p = name) return Internal.Native.api.request(op, index, p, name.Length, track);
         }
 
         public static void LoadScene(string sceneName, LoadSceneMode mode = LoadSceneMode.Single) =>
             Request(mode == LoadSceneMode.Additive ? 1 : 0, -1, sceneName);
         public static void LoadScene(int sceneBuildIndex, LoadSceneMode mode = LoadSceneMode.Single) =>
             Request(mode == LoadSceneMode.Additive ? 1 : 0, sceneBuildIndex, null);
-        public static void UnloadSceneAsync(string sceneName) => Request(2, -1, sceneName);
-        public static void UnloadSceneAsync(int sceneBuildIndex) => Request(2, sceneBuildIndex, null);
+        public static AsyncOperation LoadSceneAsync(string sceneName, LoadSceneMode mode = LoadSceneMode.Single) =>
+            new AsyncOperation(Request(mode == LoadSceneMode.Additive ? 1 : 0, -1, sceneName, 1));
+        public static AsyncOperation LoadSceneAsync(int sceneBuildIndex, LoadSceneMode mode = LoadSceneMode.Single) =>
+            new AsyncOperation(Request(mode == LoadSceneMode.Additive ? 1 : 0, sceneBuildIndex, null, 1));
+        public static AsyncOperation UnloadSceneAsync(string sceneName) => new AsyncOperation(Request(2, -1, sceneName, 1));
+        public static AsyncOperation UnloadSceneAsync(int sceneBuildIndex) => new AsyncOperation(Request(2, sceneBuildIndex, null, 1));
+    }
+
+    /// <summary>A scene load or unload in progress (`LoadSceneAsync`); `yield return` it in a
+    /// coroutine to wait for it. Loads happen between frames: `progress` is 0.9 until done
+    /// (and while `allowSceneActivation` is false), then 1.</summary>
+    public sealed unsafe class AsyncOperation : CustomYieldInstruction
+    {
+        static readonly List<AsyncOperation> pending = new List<AsyncOperation>();
+        readonly long id;
+        Action<AsyncOperation> completedHandlers;
+        bool fired;
+
+        internal AsyncOperation(long id)
+        {
+            this.id = id;
+            if (id > 0) pending.Add(this);
+        }
+
+        int State => id > 0 ? Internal.Native.api.sceneOp(id, -1) : 2;
+        public bool isDone => State == 2;
+        public float progress => isDone ? 1f : 0.9f;
+        public int priority { get; set; }
+        public bool allowSceneActivation
+        {
+            get => State != 0;
+            set { if (id > 0) Internal.Native.api.sceneOp(id, value ? 1 : 0); }
+        }
+        public override bool keepWaiting => !isDone;
+
+        /// <summary>Runs once the operation is done (at once when it already is).</summary>
+        public event Action<AsyncOperation> completed
+        {
+            add
+            {
+                if (fired || isDone) { fired = true; value?.Invoke(this); }
+                else completedHandlers += value;
+            }
+            remove => completedHandlers -= value;
+        }
+
+        /// <summary>Start of a frame: fire `completed` for the operations that finished.</summary>
+        internal static void Tick()
+        {
+            for (int i = 0; i < pending.Count; i++)
+            {
+                var op = pending[i];
+                if (!op.isDone) continue;
+                pending.RemoveAt(i--);
+                op.fired = true;
+                var handlers = op.completedHandlers;
+                op.completedHandlers = null;
+                try { handlers?.Invoke(op); }
+                catch (Exception e) { Internal.Native.Log(2, "AsyncOperation.completed: " + e); }
+            }
+        }
+
+        internal static void Reset() => pending.Clear();
     }
 
     public static unsafe class Application
     {
         /// <summary>Quit the game (stops Play mode in the editor).</summary>
-        public static void Quit() => Internal.Native.api.request(3, -1, null, 0);
+        public static void Quit() => Internal.Native.api.request(3, -1, null, 0, 0);
         public static bool isPlaying => true;
     }
 
@@ -1241,7 +2046,20 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, int, float, float*, int> audioScalar;
         public delegate* unmanaged<ulong, int, char*, int, int, float, float*, int> animatorParam;
         public delegate* unmanaged<ulong, int, char*, int, int, float, float, int> animatorPlay;
-        public delegate* unmanaged<int, long, char*, int, void> request;
+        public delegate* unmanaged<int, long, char*, int, int, long> request;
+        public delegate* unmanaged<ulong, int, int, int, Color*, int> componentValue;
+        public delegate* unmanaged<ulong, int, Vector3*, Vector3*, Vector3*, int> cameraPoint;
+        public delegate* unmanaged<ulong, int, int, char*, int, Color*, int> material;
+        public delegate* unmanaged<int, int, Color*, ulong> global;
+        public delegate* unmanaged<ulong, int, int, char*, int, int> componentText;
+        public delegate* unmanaged<int, char*, int, double*, char*, int, int> prefs;
+        public delegate* unmanaged<ulong, int, Vector3*, int, int> rigidbody2d;
+        public delegate* unmanaged<ulong, int, Vector3*, int> navAgent;
+        public delegate* unmanaged<ulong, int, float*, int> particles;
+        public delegate* unmanaged<ulong, int, char*, int, int> componentOp;
+        public delegate* unmanaged<long, int, int> sceneOp;
+        public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
+        public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -1253,6 +2071,55 @@ namespace Misty.Internal
         public float distance;
         public ulong entity;
         public ulong body;
+    }
+
+    /// <summary>C# listeners of UI events, by object and event (0 onClick, 1 onValueChanged,
+    /// 2 onEndEdit; `UiEventKind` in csharp.rs).</summary>
+    internal static class UiEvents
+    {
+        static readonly Dictionary<(ulong, int), List<Delegate>> listeners = new Dictionary<(ulong, int), List<Delegate>>();
+
+        internal static void Reset() => listeners.Clear();
+
+        internal static void Add(ulong entity, int kind, Delegate call)
+        {
+            if (call == null) return;
+            if (!listeners.TryGetValue((entity, kind), out var list)) listeners[(entity, kind)] = list = new List<Delegate>();
+            list.Add(call);
+        }
+
+        internal static void Remove(ulong entity, int kind, Delegate call)
+        {
+            if (listeners.TryGetValue((entity, kind), out var list)) list.Remove(call);
+        }
+
+        internal static void Clear(ulong entity, int kind) => listeners.Remove((entity, kind));
+
+        /// <summary>Run the listeners; whether there were any.</summary>
+        internal static bool Run(ulong entity, int kind, object value)
+        {
+            if (!listeners.TryGetValue((entity, kind), out var list) || list.Count == 0) return false;
+            foreach (var call in list.ToArray())
+            {
+                try
+                {
+                    switch (call)
+                    {
+                        case Action a: a(); break;
+                        case Action<bool> b: b(value is bool v ? v : Convert.ToDouble(value ?? 0) != 0); break;
+                        case Action<float> f: f(Convert.ToSingle(value ?? 0f)); break;
+                        case Action<int> i: i(Convert.ToInt32(value ?? 0)); break;
+                        case Action<string> t: t(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? ""); break;
+                        default: call.DynamicInvoke(value); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Host.Report(call.Method.DeclaringType?.Name ?? "UI", "listener", ex);
+                }
+            }
+            return true;
+        }
     }
 
     internal static unsafe class Native
@@ -1417,6 +2284,51 @@ namespace Misty.Internal
 
         internal static void Destroy(ulong id) => api.destroy(id);
 
+        /// <summary>which: 0 add, 1 remove. 1 when it changed, 0 when not, -1 for an unknown name.</summary>
+        /// <summary>Queue SendMessage for the Lua scripts of `id`; whether it has any.</summary>
+        internal static bool QueueMessage(ulong id, string method, object value)
+        {
+            int kind = -1;
+            double num = 0;
+            string text = "";
+            switch (value)
+            {
+                case null: break;
+                case bool b: kind = 0; num = b ? 1 : 0; break;
+                case int or long or short or byte or uint or ulong: kind = 2; num = Convert.ToDouble(value); break;
+                case float or double or decimal: kind = 1; num = Convert.ToDouble(value); break;
+                case string str: kind = 3; text = str; break;
+                default: kind = -2; break;
+            }
+            fixed (char* m = method)
+            fixed (char* t = text)
+                return api.message(id, m, method.Length, kind, num, t, text.Length) != 0;
+        }
+
+        internal static int ComponentOp(ulong id, int op, string name)
+        {
+            fixed (char* p = name) return api.componentOp(id, op, p, name.Length);
+        }
+
+        internal static Component AddComponent(ulong id, Type type)
+        {
+            if (!Alive(id)) throw Destroyed();
+            if (type == typeof(Transform)) return new Transform(id);
+            if (typeof(MonoBehaviour).IsAssignableFrom(type))
+            {
+                if (type.IsAbstract || type == typeof(MonoBehaviour))
+                    throw new ArgumentException($"AddComponent<{type.Name}>: name a concrete script class.");
+                int slot = ComponentOp(id, 3, type.Name);
+                return slot < 0 ? null : Host.PreCreate(type, id, slot);
+            }
+            if (type == typeof(Collider) || type == typeof(Collider2D) || type == typeof(Behaviour) || type == typeof(UIBehaviour) || type == typeof(Component))
+                throw new ArgumentException($"AddComponent<{type.Name}>: name a concrete type, e.g. BoxCollider.");
+            string name = type == typeof(MeshRenderer) || type == typeof(Renderer) ? "MeshRenderer" : type.Name;
+            if (ComponentOp(id, 0, name) < 0) throw new ArgumentException($"AddComponent<{type.Name}>: not an engine component.");
+            var found = Host.EngineComponentOf(type, id);
+            return found ?? new GameObject(id).GetComponent<Component>();
+        }
+
         internal static bool ScriptEnabled(ulong id, int slot, int set)
         {
             int r = api.scriptEnabled(id, slot, set);
@@ -1510,6 +2422,8 @@ namespace Misty.Internal
             "Awake", "OnEnable", "Start", "Update", "FixedUpdate", "LateUpdate", "OnDisable", "OnDestroy",
             "OnCollisionEnter", "OnCollisionExit", "OnTriggerEnter", "OnTriggerExit",
             "OnCollisionStay", "OnTriggerStay",
+            "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
+            "OnCollisionStay2D", "OnTriggerStay2D",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -1536,8 +2450,11 @@ namespace Misty.Internal
         {
             Native.api = *(NativeApi*)table;
             Coroutines.Clear();
+            UiEvents.Reset();
+            AsyncOperation.Reset();
             types.Clear();
             byObject.Clear();
+            preCreated.Clear();
             timed.Clear();
             entries.Clear();
             entries.Add(null);
@@ -1566,12 +2483,9 @@ namespace Misty.Internal
                     Native.Log(2, $"{typeName}.cs: no class named {typeName} that derives from MonoBehaviour");
                     return 0;
                 }
-                var script = (MonoBehaviour)RuntimeHelpers_GetUninitialized(type);
-                script.entity = entity;
-                script.slot = slot;
-                // Field initialisers and the constructor run with the object already known.
-                type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    ?.Invoke(script, null);
+                // AddComponent made the object already (it was returned to the caller).
+                if (!preCreated.Remove((entity, slot), out var script) || script.GetType() != type)
+                    script = Construct(type, entity, slot);
                 var calls = new Action<ulong>[Methods.Length];
                 for (int i = 0; i < Methods.Length; i++)
                 {
@@ -1592,6 +2506,28 @@ namespace Misty.Internal
                 Report(typeName, "constructor", e);
                 return 0;
             }
+        }
+
+        /// <summary>Scripts made by AddComponent, waiting for the engine to create their
+        /// instance right after the calling callback (Awake, OnEnable).</summary>
+        static readonly Dictionary<(ulong, int), MonoBehaviour> preCreated = new Dictionary<(ulong, int), MonoBehaviour>();
+
+        static MonoBehaviour Construct(Type type, ulong entity, int slot)
+        {
+            var script = (MonoBehaviour)RuntimeHelpers_GetUninitialized(type);
+            script.entity = entity;
+            script.slot = slot;
+            // Field initialisers and the constructor run with the object already known.
+            type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                ?.Invoke(script, null);
+            return script;
+        }
+
+        internal static MonoBehaviour PreCreate(Type type, ulong entity, int slot)
+        {
+            var script = Construct(type, entity, slot);
+            preCreated[(entity, slot)] = script;
+            return script;
         }
 
         static object RuntimeHelpers_GetUninitialized(Type t) =>
@@ -1634,6 +2570,16 @@ namespace Misty.Internal
                         var a = (Action<Collider>)Delegate.CreateDelegate(typeof(Action<Collider>), script, m);
                         return other => a(new Collider(other));
                     }
+                    if (p == typeof(Collision2D))
+                    {
+                        var a = (Action<Collision2D>)Delegate.CreateDelegate(typeof(Action<Collision2D>), script, m);
+                        return other => a(new Collision2D(other));
+                    }
+                    if (p == typeof(Collider2D))
+                    {
+                        var a = (Action<Collider2D>)Delegate.CreateDelegate(typeof(Action<Collider2D>), script, m);
+                        return other => a(new Collider2D(other));
+                    }
                     if (p == typeof(GameObject))
                     {
                         var a = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), script, m);
@@ -1660,9 +2606,153 @@ namespace Misty.Internal
             Invoke(handle, method, other);
         }
 
+        /// <summary>A call argument from the engine: kind -1 none, 0 bool, 1 number, 2 whole
+        /// number, 3 text.</summary>
+        static object Arg(int kind, double num, char* text, int len) => kind switch
+        {
+            0 => num != 0,
+            1 => num,
+            2 => (long)num,
+            3 => new string(text, 0, len),
+            _ => null,
+        };
+
+        /// <summary>Call method `name` of script `handle` by name (SendMessage, the Inspector's
+        /// On Click calls): one with no parameters, or one parameter the argument converts to.
+        /// Returns 1 when the class has such a method.</summary>
+        [UnmanagedCallersOnly]
+        public static int Message(int handle, char* name, int len, int kind, double num, char* text, int textLen)
+        {
+            var e = Lookup(handle);
+            if (e == null) return 0;
+            if (pendingRefs.Count > 0) ResolvePending();
+            string method = new string(name, 0, len);
+            object arg = Arg(kind, num, text, textLen);
+            return CallByName(e.script, e.typeName, method, arg) ? 1 : 0;
+        }
+
+        /// <summary>Call method `method` of `script` by name: one with no parameters, or one
+        /// parameter `arg` converts to. Whether the class has such a method.</summary>
+        static bool CallByName(MonoBehaviour script, string typeName, string method, object arg)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            MethodInfo best = null;
+            object[] args = null;
+            for (var t = script.GetType(); t != null && t != typeof(MonoBehaviour) && best == null; t = t.BaseType)
+            {
+                foreach (var m in t.GetMethods(flags | BindingFlags.DeclaredOnly))
+                {
+                    if (m.Name != method || m.IsGenericMethodDefinition) continue;
+                    var ps = m.GetParameters();
+                    if (ps.Length == 1 && arg != null && TryConvert(arg, ps[0].ParameterType, out var converted))
+                    {
+                        best = m;
+                        args = new[] { converted };
+                        break;
+                    }
+                    if (ps.Length == 0 && best == null)
+                    {
+                        best = m;
+                        args = Array.Empty<object>();
+                    }
+                }
+            }
+            if (best == null) return false;
+            try
+            {
+                var result = best.Invoke(script, args);
+                if (result is System.Collections.IEnumerator routine) script.StartCoroutine(routine);
+            }
+            catch (Exception ex)
+            {
+                Report(typeName, method, ex);
+            }
+            return true;
+        }
+
+        /// <summary>`SendMessage` (`dir` 0), `BroadcastMessage` (1: the object and everything
+        /// under it) and `SendMessageUpwards` (2: the object and its parents). C# scripts are
+        /// called now; Lua scripts on the same objects right after the calling callback.</summary>
+        internal static void SendMessage(ulong entity, string method, object value, int dir, SendMessageOptions options)
+        {
+            if (string.IsNullOrEmpty(method)) return;
+            var targets = new List<Transform>();
+            var start = new Transform(entity);
+            if (dir == 1)
+            {
+                var stack = new Stack<Transform>();
+                stack.Push(start);
+                while (stack.Count > 0)
+                {
+                    var t = stack.Pop();
+                    targets.Add(t);
+                    for (int i = t.childCount - 1; i >= 0; i--) stack.Push(t.GetChild(i));
+                }
+            }
+            else
+            {
+                for (var t = start; t != null; t = dir == 2 ? t.parent : null) targets.Add(t);
+            }
+            bool found = false;
+            foreach (var t in targets)
+            {
+                ulong id = t.EntityId;
+                if (!Native.Flag(id, 1)) continue;
+                if (byObject.TryGetValue(id, out var list))
+                {
+                    foreach (var script in list.ToArray())
+                    {
+                        if (!script.Alive) continue;
+                        if (CallByName(script, script.GetType().Name, method, value)) found = true;
+                    }
+                }
+                if (Native.QueueMessage(id, method, value)) found = true;
+            }
+            if (!found && options == SendMessageOptions.RequireReceiver)
+                Native.Log(2, $"SendMessage {method} has no receiver!");
+        }
+
+        static bool TryConvert(object value, Type t, out object converted)
+        {
+            converted = null;
+            try
+            {
+                if (t.IsInstanceOfType(value)) converted = value;
+                else if (t == typeof(string)) converted = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+                else if (value is string) return false;
+                else if (t == typeof(bool)) converted = value is bool b ? b : Convert.ToDouble(value) != 0;
+                else if (t == typeof(float)) converted = Convert.ToSingle(value);
+                else if (t == typeof(double)) converted = Convert.ToDouble(value);
+                else if (t == typeof(int)) converted = (int)Math.Round(Convert.ToDouble(value));
+                else if (t == typeof(long)) converted = (long)Math.Round(Convert.ToDouble(value));
+                else if (t == typeof(object) || t.IsInstanceOfType(value)) converted = value;
+                else return false;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>Run the C# listeners of UI event `kind` on `entity`; 1 when there were any.</summary>
+        [UnmanagedCallersOnly]
+        public static int UiEvent(ulong entity, int kind, int argKind, double num, char* text, int len)
+        {
+            if (pendingRefs.Count > 0) ResolvePending();
+            return UiEvents.Run(entity, kind, Arg(argKind, num, text, len)) ? 1 : 0;
+        }
+
         /// <summary>Advance every running coroutine (once per frame, after Update).</summary>
         [UnmanagedCallersOnly]
         public static void Tick() => Coroutines.Tick();
+
+        /// <summary>Script `removed` of `entity` left its Scripts list (Destroy(script)): the
+        /// later scripts move down one slot.</summary>
+        [UnmanagedCallersOnly]
+        public static void ShiftSlots(ulong entity, int removed)
+        {
+            if (!byObject.TryGetValue(entity, out var list)) return;
+            foreach (var other in list)
+                if (other.slot > removed) other.slot--;
+        }
 
         [UnmanagedCallersOnly]
         public static void Release(int handle)
@@ -1675,7 +2765,8 @@ namespace Misty.Internal
             pendingRefs.RemoveAll(p => p.owner == s);
             if (byObject.TryGetValue(s.entity, out var list))
             {
-                list.Remove(s);
+                // By reference: scripts on one object compare equal (Object.Equals).
+                list.RemoveAll(x => ReferenceEquals(x, s));
                 if (list.Count == 0) byObject.Remove(s.entity);
             }
             entries[handle] = null;
@@ -1700,6 +2791,7 @@ namespace Misty.Internal
                     timed.RemoveAt(i);
                 }
             }
+            AsyncOperation.Tick();
         }
 
         /// <summary>Set the Inspector value of field `name`: kind 0 bool (num != 0), 1 number,
@@ -1831,9 +2923,20 @@ namespace Misty.Internal
             if (obj is null || !obj.Alive) return;
             if (obj is MonoBehaviour mb)
             {
-                // Removing one script during Play isn't supported yet: switch it off instead.
-                mb.enabled = false;
-                Native.Log(1, $"Destroy({mb.GetType().Name}): removing a script during Play is not supported yet; it was disabled instead");
+                // Removed at the end of the frame (OnDisable, OnDestroy).
+                Native.ComponentOp(mb.entity, 4, mb.slot.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                return;
+            }
+            // An engine component: remove it (not the object), now.
+            if (obj is Component c && !(obj is Transform))
+            {
+                string name = c is MeshRenderer ? "MeshRenderer" : c.GetType().Name;
+                if (c is Collider || c is Collider2D)
+                {
+                    Native.Log(1, $"Destroy({name}): name the collider type to remove it (GetComponent<BoxCollider>()); nothing was removed");
+                    return;
+                }
+                Native.ComponentOp(obj.ObjectId, 1, name);
                 return;
             }
             if (t > 0f) timed.Add((obj.ObjectId, Time.time + t));
@@ -1841,18 +2944,48 @@ namespace Misty.Internal
         }
 
         /// <summary>The engine component of type `t` on `entity` (Rigidbody, Collider,
-        /// AudioSource, Animator), or null.</summary>
+        /// AudioSource, Animator, Camera, Light, Renderer), or null.</summary>
+        internal static Component EngineComponentOf(Type t, ulong entity) => EngineComponent(t, entity);
+
         static Component EngineComponent(Type t, ulong entity)
         {
             int kind = t == typeof(Rigidbody) ? 0 : t == typeof(Collider) ? 1
-                : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3 : -1;
+                : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3
+                : t == typeof(Camera) ? 4 : t == typeof(Light) ? 5
+                : t == typeof(Renderer) || t == typeof(MeshRenderer) ? 6
+                : t == typeof(Text) ? 10 : t == typeof(Image) ? 11 : t == typeof(Button) ? 12
+                : t == typeof(Toggle) ? 13 : t == typeof(Slider) ? 14 : t == typeof(InputField) ? 15
+                : t == typeof(Rigidbody2D) ? 20 : t == typeof(Collider2D) ? 21
+                : t == typeof(NavMeshAgent) ? 22 : t == typeof(ParticleSystem) ? 23
+                : t == typeof(BoxCollider) ? 30 : t == typeof(SphereCollider) ? 31
+                : t == typeof(CapsuleCollider) ? 32 : t == typeof(MeshCollider) ? 33
+                : t == typeof(BoxCollider2D) ? 34 : t == typeof(CircleCollider2D) ? 35 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
                 0 => new Rigidbody(entity),
                 1 => new Collider(entity),
                 2 => new AudioSource(entity),
-                _ => new Animator(entity),
+                3 => new Animator(entity),
+                4 => new Camera(entity),
+                5 => new Light(entity),
+                6 => new MeshRenderer(entity),
+                10 => new Text(entity),
+                11 => new Image(entity),
+                12 => new Button(entity),
+                13 => new Toggle(entity),
+                14 => new Slider(entity),
+                15 => new InputField(entity),
+                20 => new Rigidbody2D(entity),
+                21 => new Collider2D(entity),
+                22 => new NavMeshAgent(entity),
+                23 => new ParticleSystem(entity),
+                30 => new BoxCollider(entity),
+                31 => new SphereCollider(entity),
+                32 => new CapsuleCollider(entity),
+                33 => new MeshCollider(entity),
+                34 => new BoxCollider2D(entity),
+                _ => new CircleCollider2D(entity),
             };
         }
 

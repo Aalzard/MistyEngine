@@ -893,3 +893,910 @@ return R
     assert!(t.contains(&"cs stays True True sane"), "{t:?}");
     assert!(t.contains(&"lua stays true"), "{t:?}");
 }
+
+#[test]
+fn csharp_camera_light_renderer_material_screen_and_cursor() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Look : MonoBehaviour
+{
+    static string V(Vector3 v) => v.x.ToString("F1") + " " + v.y.ToString("F1") + " " + v.z.ToString("F1");
+    void Start()
+    {
+        var cam = Camera.main;
+        Debug.Log("main " + cam.name + " own " + (GetComponent<Camera>() == null));
+        cam.fieldOfView = 50f;
+        cam.farClipPlane = 500f;
+        cam.cullingMask = ~(1 << 4);
+        cam.backgroundColor = new Color(0.1f, 0.2f, 0.3f);
+        Debug.Log("cam " + cam.fieldOfView + " " + cam.farClipPlane + " " + cam.orthographic + " "
+            + (cam.cullingMask == ~(1 << 4)) + " " + cam.backgroundColor.b.ToString("F1")
+            + " " + cam.pixelWidth + "x" + cam.pixelHeight + " " + cam.aspect.ToString("F2"));
+        Debug.Log("screen " + Screen.width + "x" + Screen.height);
+        var ray = cam.ScreenPointToRay(new Vector3(400, 300, 0));
+        Debug.Log("ray " + V(ray.direction) + " from " + ray.origin.z.ToString("F1"));
+        Debug.Log("to screen " + V(cam.WorldToScreenPoint(Vector3.zero)));
+        Debug.Log("to viewport " + V(cam.WorldToViewportPoint(Vector3.zero)));
+        Debug.Log("to world " + V(cam.ScreenToWorldPoint(new Vector3(400, 300, 10))));
+        Debug.Log("corner " + (cam.ScreenToWorldPoint(new Vector3(800, 600, 10)).x > 1f)
+            + " " + (cam.ScreenToWorldPoint(new Vector3(800, 600, 10)).y > 1f));
+        Debug.Log("viewport world " + V(cam.ViewportToWorldPoint(new Vector3(0.5f, 0.5f, 5))));
+        Debug.Log("behind " + (cam.WorldToScreenPoint(new Vector3(0, 0, -20)).z < 0));
+
+        var lamp = GameObject.Find("Lamp").GetComponent<Light>();
+        lamp.intensity = 3f;
+        lamp.color = Color.red;
+        lamp.type = LightType.Spot;
+        lamp.spotAngle = 40f;
+        lamp.shadows = LightShadows.Hard;
+        Debug.Log("light " + lamp.intensity + " " + lamp.color + " " + lamp.type + " " + lamp.spotAngle + " " + lamp.shadows + " " + lamp.enabled);
+
+        var r = GetComponent<Renderer>();
+        Debug.Log("renderer " + (r != null) + " " + (GetComponent<MeshRenderer>() != null) + " " + r.enabled);
+        r.material.color = Color.Lerp(Color.black, Color.blue, 0.5f);
+        r.material.SetFloat("_Metallic", 0.75f);
+        r.material.SetColor("_EmissionColor", new Color(2, 0, 0));
+        r.material.EnableKeyword("_EMISSION");
+        Debug.Log("material " + r.material.color + " " + r.material.GetFloat("_Metallic") + " "
+            + r.material.GetColor("_EmissionColor").r + " " + r.material.IsKeywordEnabled("_EMISSION")
+            + " " + r.material.HasProperty("_Color") + " " + r.material.HasProperty("_Nope"));
+        r.material.mainTextureScale = new Vector2(2, 3);
+        Debug.Log("tiling " + r.material.mainTextureScale.y);
+        try { r.sharedMaterial.color = Color.red; }
+        catch (System.InvalidOperationException e) { Debug.Log("shared: " + e.Message); }
+        r.receiveShadows = false;
+        r.enabled = false;
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Debug.Log("cursor " + Cursor.lockState + " " + Cursor.visible);
+        Debug.Log("hsv " + Color.HSVToRGB(0f, 1f, 1f));
+    }
+}
+"#;
+    let root = project(&[("Look.cs", src)]);
+    let mut scene = Scene::new("t");
+    let cam = scene.spawn("Cam", None);
+    scene.game_object_mut(cam).tag = "MainCamera".into();
+    scene.set_transform(
+        cam,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 0.0, -10.0)),
+    );
+    scene.add(cam, crate::scene::Camera::default());
+    let lamp = scene.spawn("Lamp", None);
+    scene.add(lamp, crate::scene::Light::default());
+    let cube = scene.spawn("Cube", None);
+    scene.add(cube, crate::scene::MeshRenderer::default());
+    attach(&mut scene, cube, "Look.cs");
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    let input = Input {
+        screen_size: glam::Vec2::new(800.0, 600.0),
+        ..Default::default()
+    };
+    host.update(&mut scene, &time, input);
+    let cursor = host.cursor();
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "main Cam own True",
+        "cam 50 500 False True 0.3 800x600 1.33",
+        "screen 800x600",
+        "to screen 400.0 300.0 10.0",
+        "to viewport 0.5 0.5 10.0",
+        "to world 0.0 0.0 0.0",
+        "corner True True",
+        "viewport world 0.0 0.0 -5.0",
+        "behind True",
+        "light 3 RGBA(1.000, 0.000, 0.000, 1.000) Spot 40 Hard True",
+        "renderer True True True",
+        "material RGBA(0.000, 0.000, 0.500, 1.000) 0.75 2 True True False",
+        "tiling 3",
+        "shared: Default-Material can't be changed; assign a material first.",
+        "cursor Locked False",
+        "hsv RGBA(1.000, 0.000, 0.000, 1.000)",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    assert!(
+        t.iter().any(|l| l.starts_with("ray 0.0 0.0 1.0 from -9.")),
+        "{t:#?}"
+    );
+    let c = scene.world.get::<&crate::scene::Camera>(cam).unwrap();
+    assert_eq!((c.fov, c.far, c.culling_mask), (50.0, 500.0, !(1 << 4)));
+    let l = scene.world.get::<&crate::scene::Light>(lamp).unwrap();
+    assert_eq!(l.intensity, 3.0);
+    assert_eq!(l.kind, crate::scene::LightType::Spot);
+    let r = scene
+        .world
+        .get::<&crate::scene::MeshRenderer>(cube)
+        .unwrap();
+    assert!(!r.enabled && !r.receive_shadows && r.cast_shadows);
+    assert_eq!(r.instance(0).unwrap().metallic, 0.75);
+    assert_eq!(cursor.lock, CursorLockMode::Locked);
+}
+
+#[test]
+fn csharp_ui_components_listeners_messages_and_player_prefs() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+using System.Collections;
+public class Menu : MonoBehaviour
+{
+    public Text label;
+    public Slider volume;
+    void Start()
+    {
+        label.text = "Score: " + 3;
+        label.color = Color.yellow;
+        label.fontSize = 30;
+        Debug.Log("label " + label.text + " " + label.fontSize + " " + (label.color == Color.yellow));
+        var button = GameObject.Find("Play").GetComponent<Button>();
+        button.onClick.AddListener(() => Debug.Log("clicked by listener"));
+        button.onClick.AddListener(Clicked);
+        button.onClick.RemoveListener(Clicked);
+        volume.minValue = 0; volume.maxValue = 10; volume.wholeNumbers = true;
+        volume.value = 7.6f;
+        Debug.Log("slider " + volume.value + " " + volume.normalizedValue);
+        volume.onValueChanged.AddListener(v => Debug.Log("volume now " + v));
+        var toggle = GameObject.Find("Mute").GetComponent<Toggle>();
+        toggle.isOn = true;
+        toggle.onValueChanged.AddListener(on => Debug.Log("mute " + on));
+        var field = GameObject.Find("Name").GetComponent<InputField>();
+        field.text = "Rayan";
+        field.onEndEdit.AddListener(t => Debug.Log("name " + t));
+        Debug.Log("field " + field.text + " toggle " + toggle.isOn);
+        var image = GameObject.Find("Bar").GetComponent<Image>();
+        image.fillAmount = 1.5f;
+        Debug.Log("fill " + image.fillAmount + " no button " + (image.GetComponent<Button>() == null));
+
+        PlayerPrefs.SetInt("csharp_test.score", 42);
+        PlayerPrefs.SetFloat("csharp_test.volume", 0.5f);
+        PlayerPrefs.SetString("csharp_test.name", new string('x', 300));
+        Debug.Log("prefs " + PlayerPrefs.GetInt("csharp_test.score") + " " + PlayerPrefs.GetFloat("csharp_test.volume")
+            + " " + PlayerPrefs.GetString("csharp_test.name").Length + " " + PlayerPrefs.GetString("csharp_test.none", "dflt")
+            + " " + PlayerPrefs.HasKey("csharp_test.score") + " " + PlayerPrefs.GetInt("csharp_test.none", 9));
+        PlayerPrefs.DeleteKey("csharp_test.score");
+        Debug.Log("deleted " + PlayerPrefs.HasKey("csharp_test.score"));
+    }
+    void Clicked() { Debug.Log("removed listener ran"); }
+    // Called by the Button's On Click (Inspector) and by SendMessage.
+    public void StartGame() { Debug.Log("StartGame called"); }
+    void Shout(string what) { Debug.Log("shout " + what); }
+    IEnumerator Later() { yield return null; Debug.Log("later ran"); }
+}
+"#;
+    let root = project(&[("Menu.cs", src)]);
+    let mut scene = Scene::new("t");
+    let menu = scene.spawn("Menu", None);
+    let label = scene.spawn("Label", None);
+    scene.add(label, crate::scene::UiText::default());
+    let play = scene.spawn("Play", None);
+    let slider = scene.spawn("Volume", None);
+    scene.add(slider, crate::scene::UiSlider::default());
+    let mute = scene.spawn("Mute", None);
+    scene.add(mute, crate::scene::UiToggle::default());
+    let name = scene.spawn("Name", None);
+    scene.add(name, crate::scene::UiInputField::default());
+    let bar = scene.spawn("Bar", None);
+    scene.add(bar, crate::scene::UiImage::default());
+    scene.add(
+        play,
+        crate::scene::UiButton {
+            on_click: vec![crate::scene::ButtonCall {
+                target: Some(menu),
+                method: "StartGame".into(),
+            }],
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, menu, "Menu.cs");
+    {
+        let mut s = scene.world.get::<&mut Scripts>(menu).unwrap();
+        let fields = &mut s.list[0].fields;
+        fields.insert(
+            "label".into(),
+            ScriptValue::Object(crate::scene::ObjectValue {
+                object: Some(label.to_bits().get()),
+                kind: "Text".into(),
+            }),
+        );
+        fields.insert(
+            "volume".into(),
+            ScriptValue::Object(crate::scene::ObjectValue {
+                object: Some(slider.to_bits().get()),
+                kind: "Slider".into(),
+            }),
+        );
+    }
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    use crate::ui::{UiEvent, UiValue};
+    // Between frames, as the frame's UI pass and SendMessage callers see it: the scene is in
+    // the host.
+    let scene_in = std::mem::take(&mut scene);
+    host.with_world(|w| w.scene = scene_in);
+    host.ui_event(UiEvent::Click(play));
+    host.ui_event(UiEvent::ValueChanged(slider, UiValue::Number(3.0)));
+    host.ui_event(UiEvent::ValueChanged(mute, UiValue::Bool(false)));
+    host.ui_event(UiEvent::EndEdit(name, "Bo".into()));
+    host.send_message(menu, "StartGame");
+    host.send_message_with(menu, "Shout", Some(mlua::Value::Integer(5)), "SendMessage");
+    host.send_message(menu, "Later");
+    host.send_message(menu, "Missing");
+    scene = host.with_world(|w| std::mem::take(&mut w.scene));
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "label Score: 3 30 True",
+        "slider 8 0.8",
+        "field Rayan toggle True",
+        "fill 1 no button True",
+        "prefs 42 0.5 300 dflt True 9",
+        "deleted False",
+        "clicked by listener",
+        "StartGame called",
+        "volume now 3",
+        "mute False",
+        "name Bo",
+        "shout 5",
+        "later ran",
+        "SendMessage: no script on 'Menu' has a method 'Missing'",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    assert!(!t.contains(&"removed listener ran"), "{t:#?}");
+    // Inspector call and SendMessage: twice.
+    assert_eq!(t.iter().filter(|l| **l == "StartGame called").count(), 2);
+    assert_eq!(
+        scene
+            .world
+            .get::<&crate::scene::UiText>(label)
+            .unwrap()
+            .text,
+        "Score: 3"
+    );
+    assert_eq!(
+        scene
+            .world
+            .get::<&crate::scene::UiSlider>(slider)
+            .unwrap()
+            .value,
+        8.0
+    );
+}
+
+#[test]
+fn csharp_rigidbody2d_and_2d_callbacks() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Hopper : MonoBehaviour
+{
+    Rigidbody2D rb;
+    bool landed;
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        Debug.Log("rb " + (rb != null) + " col " + (GetComponent<Collider2D>() != null)
+            + " attached " + (GetComponent<Collider2D>().attachedRigidbody != null)
+            + " mass " + rb.mass + " scale " + rb.gravityScale + " no 3D " + (GetComponent<Rigidbody>() == null));
+    }
+    void FixedUpdate() { rb.velocity = new Vector2(1, rb.velocity.y); }
+    void OnCollisionEnter2D(Collision2D c)
+    {
+        if (landed) return;
+        landed = true;
+        Debug.Log("landed on " + c.gameObject.name + " rb " + (c.rigidbody == null));
+        rb.AddForce(Vector2.up * 4f, ForceMode2D.Impulse);
+    }
+    void OnTriggerEnter2D(Collider2D other) { Debug.Log("coin " + other.name); Destroy(other.gameObject); }
+}
+"#;
+    let root = project(&[("Hopper.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(
+        ground,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -3.0, 0.0)),
+    );
+    scene.add(
+        ground,
+        crate::scene::BoxCollider2D {
+            size: glam::Vec2::new(40.0, 1.0),
+            ..Default::default()
+        },
+    );
+    let coin = scene.spawn("Coin", None);
+    scene.set_transform(
+        coin,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -1.5, 0.0)),
+    );
+    scene.add(
+        coin,
+        crate::scene::CircleCollider2D {
+            common: crate::scene::Collider2DCommon {
+                is_trigger: true,
+                ..Default::default()
+            },
+            radius: 0.3,
+        },
+    );
+    let player = scene.spawn("Player", None);
+    scene.add(player, crate::scene::Rigidbody2D::default());
+    scene.add(player, crate::scene::BoxCollider2D::default());
+    attach(&mut scene, player, "Hopper.cs");
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut peak_after_landing = f32::MIN;
+    let mut landed_at = None;
+    for frame in 0..120 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        for (_, l) in &logs {
+            eprintln!("{l}");
+            if l.starts_with("landed") {
+                landed_at = Some(frame);
+            }
+        }
+        if landed_at.is_some() {
+            peak_after_landing = peak_after_landing.max(scene.world_position(player).y);
+        }
+        if frame == 0 {
+            assert_eq!(
+                texts(&logs),
+                ["rb True col True attached True mass 1 scale 1 no 3D True"]
+            );
+        }
+    }
+    host.shutdown(&mut scene);
+    assert!(landed_at.is_some(), "never landed");
+    assert!(
+        !scene.contains(coin),
+        "the trigger callback destroyed the coin"
+    );
+    assert!(
+        peak_after_landing > -1.5,
+        "the impulse in OnCollisionEnter2D threw it up: {peak_after_landing}"
+    );
+    assert!(
+        scene.world_position(player).x > 1.0,
+        "velocity moved it right"
+    );
+}
+
+#[test]
+fn csharp_nav_mesh_agent_walks_and_particles_play() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Walker : MonoBehaviour
+{
+    NavMeshAgent agent;
+    int frames;
+    void Start()
+    {
+        agent = GetComponent<NavMeshAgent>();
+        agent.speed = 4f;
+        bool ok = agent.SetDestination(new Vector3(3, 0, 2));
+        Debug.Log("go " + ok + " " + agent.hasPath + " " + agent.pathStatus + " " + (agent.remainingDistance > 5) + " " + agent.speed);
+        var ps = GameObject.Find("Sparks").GetComponent<ParticleSystem>();
+        ps.Emit(5);
+        Debug.Log("particles " + ps.particleCount);
+        ps.Stop();
+        ps.Clear();
+        Debug.Log("cleared " + ps.particleCount + " " + ps.isPlaying);
+    }
+    void Update()
+    {
+        if (++frames != 240) return;
+        Debug.Log("arrived " + agent.hasPath + " " + Mathf.Round(transform.position.x) + " " + Mathf.Round(transform.position.z));
+        agent.Warp(new Vector3(-2, 0, -2));
+        agent.isStopped = true;
+        Debug.Log("warped " + Mathf.Round(agent.nextPosition.x) + " " + agent.isStopped);
+    }
+}
+"#;
+    let root = project(&[("Walker.cs", src)]);
+    let mut scene = Scene::new("T");
+    crate::navigation::tests::floor(&mut scene, 0.0, 0.0, 10.0, 10.0);
+    let rel = "Assets/Scenes/T/NavMesh.navmesh";
+    crate::navigation::bake::bake_scene(&scene)
+        .save(&root.join(rel))
+        .unwrap();
+    scene.navigation.nav_mesh = Some(rel.into());
+    let e = scene.spawn("Agent", None);
+    scene.set_transform(
+        e,
+        crate::scene::Transform::from_position(Vec3::new(-3.0, 1.0, -3.0)),
+    );
+    scene.add(
+        e,
+        crate::navigation::NavMeshAgent {
+            base_offset: 1.0,
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, e, "Walker.cs");
+    let sparks = scene.spawn("Sparks", None);
+    scene.add(sparks, crate::particles::ParticleSystem::default());
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..240 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        all.extend(logs.into_iter().map(|(_, t)| t));
+    }
+    host.shutdown(&mut scene);
+    for want in [
+        "go True True PathComplete True 4",
+        "particles 5",
+        "cleared 0 False",
+        "arrived False 3 2",
+        "warped -2 True",
+    ] {
+        assert!(
+            all.iter().any(|l| l == want),
+            "{want:?} missing in {all:#?}"
+        );
+    }
+}
+
+#[test]
+fn csharp_and_lua_add_and_remove_components_while_playing() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Builder : MonoBehaviour
+{
+    int frames;
+    void Start()
+    {
+        DontDestroyOnLoad(gameObject);
+        var rb = gameObject.AddComponent<Rigidbody>();
+        var box = gameObject.AddComponent<BoxCollider>();
+        var light = gameObject.AddComponent<Light>();
+        light.intensity = 2f;
+        Debug.Log("added " + (rb != null) + " " + (box != null) + " " + (GetComponent<Collider>() != null)
+            + " " + (gameObject.AddComponent<Rigidbody>() != null) + " " + light.intensity);
+    }
+    void Update()
+    {
+        frames++;
+        if (frames == 30)
+        {
+            Debug.Log("falling " + (transform.position.y < 4f));
+            Destroy(GetComponent<Rigidbody>());
+            Destroy(GetComponent<Light>());
+        }
+        if (frames == 31)
+            Debug.Log("removed " + (GetComponent<Rigidbody>() == null) + " " + (GetComponent<Light>() == null)
+                + " alive " + (gameObject != null) + " box " + (GetComponent<BoxCollider>() != null));
+    }
+}
+"#;
+    let lua = r#"
+local T = {}
+function T:Start()
+    local rb = self.gameObject:AddComponent("Rigidbody")
+    Debug.Log("lua rb", rb ~= nil, rb.mass)
+    local ok, err = pcall(function() self.gameObject:AddComponent("Nope") end)
+    Debug.Log("lua unknown", ok)
+end
+return T
+"#;
+    let root = project(&[("Builder.cs", src), ("LuaAdder.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let cube = scene.spawn("Cube", None);
+    scene.set_transform(
+        cube,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 5.0, 0.0)),
+    );
+    attach(&mut scene, cube, "Builder.cs");
+    let ball = scene.spawn("Ball", None);
+    attach(&mut scene, ball, "LuaAdder.lua");
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    let mut y_at_31 = 0.0;
+    for frame in 0..60 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+        assert!(errors.is_empty(), "errors: {errors:#?}");
+        all.extend(logs.into_iter().map(|(_, t)| t));
+        if frame == 31 {
+            y_at_31 = scene.world_position(cube).y;
+        }
+    }
+    assert_eq!(host.dont_destroy_roots(&scene), vec![cube]);
+    host.shutdown(&mut scene);
+    for want in [
+        "added True True True True 2",
+        "falling True",
+        "removed True True alive True box True",
+        "lua rb true 1",
+        "lua unknown false",
+    ] {
+        assert!(
+            all.iter().any(|l| l == want),
+            "{want:?} missing in {all:#?}"
+        );
+    }
+    let y = scene.world_position(cube).y;
+    assert!(
+        (y - y_at_31).abs() < 1e-3,
+        "without its Rigidbody the cube stops falling: {y_at_31} → {y}"
+    );
+    assert!(scene.world.get::<&crate::scene::Rigidbody>(ball).is_ok());
+}
+
+#[test]
+fn csharp_and_lua_send_broadcast_and_upwards_messages() {
+    if skip() {
+        return;
+    }
+    let sender = r#"
+using Misty;
+public class Sender : MonoBehaviour
+{
+    void Start()
+    {
+        var child = transform.GetChild(0).gameObject;
+        child.SendMessage("Hit", 5);
+        Debug.Log("after send");
+        BroadcastMessage("Ping", "all", SendMessageOptions.DontRequireReceiver);
+        child.SendMessageUpwards("Up");
+        child.SendMessage("Nobody", SendMessageOptions.DontRequireReceiver);
+    }
+    void Up() { Debug.Log("cs up root"); }
+    void Ping(string s) { Debug.Log("cs ping root " + s); }
+}
+"#;
+    let cs_child = r#"
+using Misty;
+public class CsChild : MonoBehaviour
+{
+    void Hit(int n) { Debug.Log("cs hit " + n); }
+    void Up() { Debug.Log("cs up child"); }
+    void FromLua(float f) { Debug.Log("cs fromlua " + f); }
+}
+"#;
+    let lua_child = r#"
+local L = {}
+function L:Start()
+    self.gameObject:SendMessage("FromLua", 7)
+    self.gameObject:SendMessage("Missing", nil, SendMessageOptions.DontRequireReceiver)
+    self.gameObject:SendMessage("Echo", "hi")
+    Debug.Log("lua after")
+end
+function L:Echo(s) Debug.Log("lua echo", s) end
+function L:Hit(n) Debug.Log("lua hit", n) end
+function L:Ping(s) Debug.Log("lua ping child", s) end
+return L
+"#;
+    let root = project(&[
+        ("Sender.cs", sender),
+        ("CsChild.cs", cs_child),
+        ("LuaChild.lua", lua_child),
+    ]);
+    let mut scene = Scene::new("t");
+    let parent = scene.spawn("Root", None);
+    attach(&mut scene, parent, "Sender.cs");
+    let child = scene.spawn("Child", Some(parent));
+    attach(&mut scene, child, "CsChild.cs");
+    attach(&mut scene, child, "LuaChild.lua");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..2 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+    }
+    host.shutdown(&mut scene);
+    assert_eq!(
+        all,
+        [
+            "cs hit 5",
+            "after send",
+            "cs ping root all",
+            "cs up child",
+            "cs up root",
+            "lua hit 5",
+            "lua ping child all",
+            "lua echo hi",
+            "lua after",
+            "cs fromlua 7",
+        ],
+        "{all:?}"
+    );
+}
+
+#[test]
+fn csharp_and_lua_add_scripts_while_playing() {
+    if skip() {
+        return;
+    }
+    let adder = r#"
+using Misty;
+public class Adder : MonoBehaviour
+{
+    int frames;
+    void Update()
+    {
+        frames++;
+        if (frames == 2)
+        {
+            var h = gameObject.AddComponent<Health>();
+            h.max = 50;
+            Debug.Log("added " + (h != null) + " " + h.gameObject.name);
+        }
+        if (frames == 4)
+        {
+            var h = GetComponent<Health>();
+            Debug.Log("health " + h.max + " " + h.started);
+            SendMessage("Report");
+        }
+    }
+}
+"#;
+    let health = r#"
+using Misty;
+public class Health : MonoBehaviour
+{
+    public int max = 10;
+    public bool started;
+    void Awake() { Debug.Log("health awake " + max); }
+    void Start() { started = true; Debug.Log("health start " + max); }
+}
+"#;
+    let spin = r#"
+local S = { turns = 0 }
+function S:Awake() Debug.Log("spin awake") end
+function S:Start() Debug.Log("spin start") end
+function S:Update() self.turns = self.turns + 1 end
+function S:Report() Debug.Log("spin turns", self.turns) end
+return S
+"#;
+    let lua_adder = r#"
+local A = { f = 0 }
+function A:Update()
+    self.f = self.f + 1
+    if self.f == 2 then Debug.Log("lua add", tostring(self.gameObject:AddComponent("Spin") == nil)) end
+end
+return A
+"#;
+    let root = project(&[
+        ("Adder.cs", adder),
+        ("Health.cs", health),
+        ("Spin.lua", spin),
+        ("LuaAdder.lua", lua_adder),
+    ]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Hero", None);
+    attach(&mut scene, e, "Adder.cs");
+    attach(&mut scene, e, "LuaAdder.lua");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..5 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+    }
+    let scripts = scene.world.get::<&Scripts>(e).unwrap().list.len();
+    host.shutdown(&mut scene);
+    assert_eq!(
+        all,
+        [
+            "added True Hero",
+            "health awake 50",
+            "lua add true",
+            "spin awake",
+            "health start 50",
+            "spin start",
+            "health 50 True",
+            "spin turns 1",
+        ],
+        "{all:?}"
+    );
+    assert_eq!(scripts, 4);
+}
+
+#[test]
+fn csharp_physics2d_raycasts_linecasts_and_overlaps() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Prober : MonoBehaviour
+{
+    void Start()
+    {
+        var hit = Physics2D.Raycast(new Vector2(0, 5), Vector2.down, 20f);
+        Debug.Log("ray " + (bool)hit + " " + hit.collider.name + " " + hit.point.y + " " + hit.normal.y
+            + " " + hit.distance + " " + (hit.rigidbody == null) + " " + hit.fraction);
+        var miss = Physics2D.Raycast(new Vector2(30, 5), Vector2.down, 20f);
+        Debug.Log("miss " + (bool)miss + " " + (miss.collider == null));
+        Debug.Log("all " + Physics2D.RaycastAll(new Vector2(0, 5), Vector2.down).Length);
+        Debug.Log("line " + Physics2D.Linecast(new Vector2(0, 5), new Vector2(0, 0)).collider?.name);
+        Debug.Log("circle " + Physics2D.OverlapCircle(new Vector2(0, 0), 1f)?.name
+            + " " + Physics2D.OverlapCircleAll(new Vector2(0, -1.5f), 1f).Length);
+        Debug.Log("box " + Physics2D.OverlapBox(new Vector2(0, -3), new Vector2(2, 2), 45f)?.name);
+        Debug.Log("point " + Physics2D.OverlapPoint(new Vector2(5, -3))?.name
+            + " " + (Physics2D.OverlapPoint(new Vector2(5, 5)) == null));
+    }
+}
+"#;
+    let root = project(&[("Prober.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(
+        ground,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -3.0, 0.0)),
+    );
+    scene.add(
+        ground,
+        crate::scene::BoxCollider2D {
+            size: glam::Vec2::new(20.0, 2.0),
+            ..Default::default()
+        },
+    );
+    let ball = scene.spawn("Ball", None);
+    scene.add(
+        ball,
+        crate::scene::CircleCollider2D {
+            radius: 0.5,
+            ..Default::default()
+        },
+    );
+    let probe = scene.spawn("Probe", None);
+    scene.set_transform(
+        probe,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 50.0, 0.0)),
+    );
+    attach(&mut scene, probe, "Prober.cs");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    let logs = host.take_logs();
+    assert!(logs.iter().all(|(k, _)| *k != LogKind::Error), "{logs:#?}");
+    let lines: Vec<String> = logs.into_iter().map(|(_, t)| t).collect();
+    assert_eq!(
+        lines,
+        [
+            "ray True Ball 0.5 1 4.5 True 0.225",
+            "miss False True",
+            "all 2",
+            "line Ball",
+            "circle Ball 2",
+            "box Ground",
+            "point Ground True",
+        ],
+        "{lines:?}"
+    );
+    host.shutdown(&mut scene);
+}
+
+#[test]
+fn csharp_and_lua_destroy_scripts_while_playing() {
+    if skip() {
+        return;
+    }
+    let bee = r#"
+local B = { f = 0 }
+function B:Update()
+    self.f = self.f + 1
+    if self.f == 2 then Destroy(self) end
+end
+function B:OnDisable() Debug.Log("bee disable") end
+function B:OnDestroy() Debug.Log("bee destroy") end
+return B
+"#;
+    let ay = r#"
+using Misty;
+public class Ay : MonoBehaviour
+{
+    int frames;
+    void Update()
+    {
+        frames++;
+        if (frames == 4) { GetComponent<Cee>().enabled = false; Debug.Log("cee off"); }
+        if (frames == 5) Destroy(GetComponent<Cee>());
+        if (frames == 6) Debug.Log("gone " + (GetComponent<Cee>() == null) + " " + enabled + " " + GetComponents<MonoBehaviour>()[0].GetType().Name);
+    }
+}
+"#;
+    let cee = r#"
+using Misty;
+public class Cee : MonoBehaviour
+{
+    void OnDisable() { Debug.Log("cee disable"); }
+    void OnDestroy() { Debug.Log("cee destroy"); }
+}
+"#;
+    let root = project(&[("Bee.lua", bee), ("Ay.cs", ay), ("Cee.cs", cee)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Thing", None);
+    attach(&mut scene, e, "Bee.lua");
+    attach(&mut scene, e, "Ay.cs");
+    attach(&mut scene, e, "Cee.cs");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    let mut counts = Vec::new();
+    for _ in 0..7 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+        counts.push(scene.world.get::<&Scripts>(e).unwrap().list.len());
+    }
+    host.shutdown(&mut scene);
+    assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1], "{all:?}");
+    assert_eq!(
+        all,
+        [
+            "bee disable",
+            "bee destroy",
+            "cee off",
+            "cee disable",
+            "cee destroy",
+            "gone True True Ay",
+        ],
+        "{all:?}"
+    );
+    assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1]);
+}

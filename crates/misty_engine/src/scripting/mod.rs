@@ -28,6 +28,7 @@ pub mod attributes;
 pub mod audio_api;
 pub mod behaviour_tree_api;
 pub mod camera_api;
+mod component_ops;
 pub mod csharp;
 pub mod csharp_fields;
 mod csharp_native;
@@ -40,6 +41,7 @@ mod lifecycle_tests;
 pub mod light_probes_api;
 pub mod localization_api;
 pub mod material_api;
+mod messages;
 pub mod navigation_api;
 pub mod network_api;
 mod override_api;
@@ -52,6 +54,7 @@ pub mod rigging_api;
 pub mod save_api;
 mod save_host;
 pub mod scene_api;
+mod scene_ops;
 pub mod skinning_api;
 pub mod spline_api;
 pub mod syntax;
@@ -244,6 +247,16 @@ pub struct World {
     pub input: Input,
     pub logs: Vec<(LogKind, String)>,
     pub destroy: Vec<Entity>,
+    /// Objects scripts marked with `DontDestroyOnLoad`: a single scene load keeps them.
+    pub dont_destroy: Vec<Entity>,
+    /// `LoadSceneAsync` / `UnloadSceneAsync` operations (scene_ops.rs).
+    pub scene_ops: Vec<scene_ops::SceneOp>,
+    /// `SendMessage` calls waiting for the scripts of the other language (messages.rs).
+    pub messages: Vec<messages::QueuedMessage>,
+    /// Scripts added while playing, by object and slot, waiting for their instance.
+    pub added_scripts: Vec<(Entity, usize)>,
+    /// Scripts `Destroy(script)` removes at the end of the frame.
+    pub destroy_scripts: Vec<(Entity, component_ops::ScriptSel)>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -332,6 +345,11 @@ impl World {
                 .map(|w| (LogKind::Warning, w))
                 .collect(),
             destroy: Vec::new(),
+            dont_destroy: Vec::new(),
+            scene_ops: Vec::new(),
+            messages: Vec::new(),
+            added_scripts: Vec::new(),
+            destroy_scripts: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -390,6 +408,26 @@ fn register_script_instance(lua: &Lua, e: Entity, name: &str, t: &Table) -> mlua
         }
     };
     mine.set(name, t.clone())
+}
+
+/// The script name `t` is registered under on `e`, if it is one of its instance tables.
+pub(crate) fn script_name_of(lua: &Lua, e: Entity, t: &Table) -> Option<String> {
+    let all: Table = lua.named_registry_value(SCRIPT_INSTANCES).ok()?;
+    let mine: Table = all.get(e.to_bits().get() as i64).ok()?;
+    mine.pairs::<String, Table>()
+        .flatten()
+        .find(|(_, v)| v == t)
+        .map(|(k, _)| k)
+}
+
+/// Forget the instance table of script `name` on `e` (the script was removed while playing).
+fn unregister_script_instance(lua: &Lua, e: Entity, name: &str) {
+    let Ok(all) = lua.named_registry_value::<Table>(SCRIPT_INSTANCES) else {
+        return;
+    };
+    if let Ok(mine) = all.get::<Table>(e.to_bits().get() as i64) {
+        let _ = mine.set(name, Value::Nil);
+    }
 }
 
 fn unregister_script_instances(lua: &Lua, entities: &[Entity]) {
@@ -957,6 +995,8 @@ impl ScriptHost {
             let quiet = self.with_world(|w| {
                 w.spawned.is_empty()
                     && w.graph_events.is_empty()
+                    && w.messages.is_empty()
+                    && w.added_scripts.is_empty()
                     && !w.physics.has_controller_hits()
                     && w.scene.activity() == seen
                     && !w.network.settle_due
@@ -974,7 +1014,8 @@ impl ScriptHost {
         self.sync_enabled();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
-            let delivered = self.deliver_custom_events();
+            let delivered =
+                self.wake_added_scripts() | self.deliver_custom_events() | self.deliver_messages();
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
                 if delivered {
@@ -1364,7 +1405,8 @@ impl ScriptHost {
                     if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
-                    let arg = if c.trigger {
+                    // C# scripts get the other object (`Collision2D` / `Collider2D`).
+                    let arg = if c.trigger || self.instances[i].cs.is_some() {
                         self.lua
                             .create_userdata(LGameObject(other))
                             .map(Value::UserData)
@@ -1402,6 +1444,8 @@ impl ScriptHost {
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;
         });
+        // Scene operations carried out between frames finish (their `completed` callbacks).
+        self.scene_ops_tick();
         let input_events = {
             profile_scope!("Input.Update", Category::Scripts);
             self.input_update(time.unscaled_delta)
@@ -1755,6 +1799,13 @@ impl ScriptHost {
             if inst.entity != target || !self.runnable(inst) {
                 continue;
             }
+            if let Some(cs) = inst.cs {
+                if self.cs_message(cs, method, arg.as_ref()) {
+                    found = true;
+                    self.flush_spawned();
+                }
+                continue;
+            }
             let defined = self
                 .lua
                 .registry_value::<Table>(&inst.table)
@@ -1779,6 +1830,17 @@ impl ScriptHost {
                 format!("{what}: no script on '{name}' has a method '{method}'"),
             );
         }
+    }
+
+    /// Call C# method `method` of instance `cs` by name, with a Lua argument (one C# can't take
+    /// is left out). Whether the class has it.
+    pub(crate) fn cs_message(&self, cs: csharp::CsRef, method: &str, arg: Option<&Value>) -> bool {
+        let arg = arg.and_then(csharp::CsArg::from_lua);
+        let mut w = self
+            .lua
+            .app_data_mut::<World>()
+            .expect("world is installed");
+        self.csharp.message(&mut w, cs, method, arg.as_ref())
     }
 
     /// Button hover/press state (the Game view and player tint buttons with it).
@@ -1815,6 +1877,33 @@ impl ScriptHost {
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
     }
 
+    /// Root objects marked with `DontDestroyOnLoad` that still exist in `scene`.
+    pub fn dont_destroy_roots(&self, scene: &Scene) -> Vec<Entity> {
+        let marked = self.with_world(|w| {
+            w.dont_destroy.retain(|e| scene.contains(*e));
+            w.dont_destroy.clone()
+        });
+        let mut roots: Vec<Entity> = marked
+            .into_iter()
+            .map(|mut e| {
+                while let Some(p) = scene.parent(e) {
+                    e = p;
+                }
+                e
+            })
+            .collect();
+        roots.sort_unstable_by_key(|e| e.to_bits());
+        roots.dedup();
+        roots
+    }
+
+    /// Load the nav meshes of `scene` again (its active scene changed while playing).
+    pub fn reload_navigation(&mut self, scene: &Scene) {
+        let root = self.root.clone();
+        let nav = crate::navigation::NavRuntime::load(scene, &root);
+        self.with_world(|w| w.navigation = nav);
+    }
+
     /// Remove objects between frames (an unloaded scene) with their bodies and scripts.
     pub fn remove_objects(&mut self, scene: &mut Scene, roots: &[Entity]) {
         let scene_in = std::mem::take(scene);
@@ -1828,6 +1917,7 @@ impl ScriptHost {
 
     /// Remove objects queued by `Destroy` (with their children and physics bodies).
     fn process_destroy(&mut self) {
+        self.remove_destroyed_scripts();
         let queued = self.with_world(|w| std::mem::take(&mut w.destroy));
         for e in queued {
             let subtree: Vec<Entity> = self.with_world(|w| {
@@ -2293,6 +2383,8 @@ mod input_tests;
 mod material_tests;
 #[cfg(test)]
 mod network_tests;
+#[cfg(test)]
+mod scene_async_tests;
 #[cfg(test)]
 mod set_active_tests;
 #[cfg(test)]

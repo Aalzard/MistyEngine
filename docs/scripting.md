@@ -136,7 +136,7 @@ variables of type GameObject are object fields too.
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it; `AddComponent("Spin")` (or `"Spin.lua"` / `"Health.cs"`) adds that script from under `Assets/`: its Awake and OnEnable run right after the calling function and Start before the next Update, so it returns nil (use `GetComponent("Spin")` afterwards); `Destroy(self)` (or another script's instance table) removes that script at the end of the frame (OnDisable, OnDestroy); `SendMessage(name [, value [, options]])` calls that function on every script of the object (`BroadcastMessage` also on everything under it, `SendMessageUpwards` also on its parents; inactive objects are skipped; with no receiver it logs an error unless `options` is `SendMessageOptions.DontRequireReceiver`). C# scripts on those objects get the message right after the calling function returns |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
@@ -176,11 +176,11 @@ variables of type GameObject are object fields too.
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
-| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
+| `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name`. `LoadSceneAsync(scene[, mode])` / `UnloadSceneAsync(scene)` return an operation: `isDone`, `progress` (0.9 while loading or waiting, 1 when done), `allowSceneActivation` (set it to false right after the call to hold the load, true to let it go), `op:OnCompleted(fn)` or `op.completed = fn`. The load itself happens between frames; with `DontDestroyOnLoad` objects a single load keeps them, so a loading screen can watch its operation finish |
 | `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor); `HasDefine(name)` — the Build Profile's scripting defines; `isDedicatedServer`, `isEditor` |
 | `Achievements` | `Unlock(id)` (true the first time), `IsUnlocked(id)`, `Clear(id)`, `GetUnlocked()` — stored locally (see docs/building.md) |
 | Tags | `gameObject.tag`, `gameObject:CompareTag("Enemy")`, `GameObject.FindWithTag(tag)` (first active object or nil), `GameObject.FindGameObjectsWithTag(tag)` (list); tags come from Project Settings ▸ Tags and Layers (an undefined tag is an error) |
-| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
+| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `DontDestroyOnLoad(gameObject)` (the object's root and its scripts, with their state, survive `SceneManager.LoadScene`; they move to a scene named "DontDestroyOnLoad"), `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
 `"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…, mouse buttons `"mouse 0"`–`"mouse 2"` and joystick
@@ -1246,7 +1246,66 @@ IEnumerator Start()
   `activeSelf`, `activeInHierarchy`, `SetActive`, `transform`, `GetComponent<T>()`,
   `GetComponents<T>()`, `GetComponentInChildren<T>()`, `GetComponentInParent<T>()`,
   `TryGetComponent`, `GetComponent("Name")`. Components are your C# scripts, `Transform`,
-  `Rigidbody`, `Collider`, `AudioSource` and `Animator`.
+  `Rigidbody`, `Collider`, `AudioSource`, `Animator`, `Camera`, `Light` and `Renderer` /
+  `MeshRenderer`.
+- `Camera`: `Camera.main`, `fieldOfView`, `nearClipPlane`, `farClipPlane`, `orthographic`,
+  `orthographicSize`, `enabled`, `cullingMask`, `backgroundColor`, `depth`, `pixelWidth`,
+  `pixelHeight`, `aspect`, `ScreenPointToRay`, `ViewportPointToRay`, `WorldToScreenPoint`,
+  `WorldToViewportPoint`, `ScreenToWorldPoint`, `ViewportToWorldPoint` (screen points are
+  pixels from the bottom-left, like `Input.mousePosition`; `z` is the distance in front of the
+  camera).
+- `Light`: `enabled`, `intensity`, `range`, `spotAngle`, `color`, `type` (`LightType`),
+  `shadows` (`LightShadows`).
+- `Renderer` / `MeshRenderer`: `enabled`, `castShadows`, `receiveShadows`, `material` (this
+  object's own copy of its first material) and `sharedMaterial` (the asset). `Material`:
+  `color`, `mainTextureOffset`, `mainTextureScale`, `GetColor` / `SetColor`, `GetFloat` /
+  `SetFloat`, `HasProperty`, `EnableKeyword` / `DisableKeyword` / `IsKeywordEnabled`, with the
+  same property names as Lua (`_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`, …).
+  Changes last until Play mode ends.
+- `Color` (`r`, `g`, `b`, `a`, the named colours, `Lerp`, `HSVToRGB`), `Screen.width` /
+  `height`, `Cursor.lockState` (`CursorLockMode`) and `Cursor.visible`.
+- UI: `Text` (`text`, `fontSize`, `color`, `enabled`), `Image` (`color`, `fillAmount`,
+  `raycastTarget`, `enabled`), `Button` (`interactable`, `onClick`), `Toggle` (`isOn`,
+  `onValueChanged`), `Slider` (`value`, `minValue`, `maxValue`, `wholeNumbers`,
+  `normalizedValue`, `onValueChanged`) and `InputField` (`text`, `readOnly`, `onValueChanged`,
+  `onEndEdit`). Events take listeners: `button.onClick.AddListener(() => …)`,
+  `slider.onValueChanged.AddListener(v => …)`, `RemoveListener`, `RemoveAllListeners`. Setting a
+  value from a script doesn't send its event.
+- A Button's **On Click** calls set in the Properties panel, `SendMessage` from Lua and Script
+  Graphs, and the other events that call a method by name (`OnCancel`, `OnLinkClicked`) reach C#
+  methods too: public or private, with no parameter or one `bool`, `int`, `float`, `string`
+  (the value is converted). A method returning `IEnumerator` starts as a coroutine.
+- 2D physics: `Rigidbody2D` (`velocity`, `angularVelocity`, `position`, `rotation`,
+  `gravityScale`, `mass`, `AddForce` / `AddTorque` with `ForceMode2D`, `MovePosition`,
+  `MoveRotation`), `Collider2D.attachedRigidbody`, and the callbacks `OnCollisionEnter2D` /
+  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`) and
+  `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+- `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
+  `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
+  `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
+  `stoppingDistance`, `enabled`.
+- `ParticleSystem`: `Play`, `Stop`, `Pause`, `Clear`, `Emit(count)`, `isPlaying`, `isPaused`,
+  `isStopped`, `particleCount`, `time`.
+- `gameObject.AddComponent<T>()` adds an engine component (`Rigidbody`, `BoxCollider`,
+  `SphereCollider`, `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D`,
+  `Rigidbody2D`, `Light`, `AudioSource`, `ParticleSystem`, …) with its defaults and returns it
+  (the existing one when the object has it); physics picks it up at once. `Destroy(component)`
+  removes that component (not the object). `AddComponent<MyScript>()` adds a script (the
+  file named like the class, under `Assets/`) and returns it at once, so its fields can be set;
+  its Awake and OnEnable run right after the calling method, Start before the next Update. `Destroy(script)`
+  removes a script at the end of the frame (OnDisable, then OnDestroy).
+- `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
+  single scene loads, like Lua's.
+- `Physics2D`: `Raycast` / `RaycastAll` / `Linecast` / `LinecastAll` returning
+  `RaycastHit2D` (`point`, `normal`, `distance`, `fraction`, `collider`, `rigidbody`,
+  `transform`; test it like a bool), `OverlapCircle(All)`, `OverlapBox(All)` (angle in degrees),
+  `OverlapPoint(All)`, `DefaultRaycastLayers` / `AllLayers`.
+- `SendMessage`, `BroadcastMessage`, `SendMessageUpwards` (with `SendMessageOptions`) on
+  `GameObject` and `Component`: C# scripts are called at once; Lua scripts on the same objects
+  right after the calling method returns (a value Lua can't take, like an object, reaches C#
+  only).
+- `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
+  `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
   `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
@@ -1259,7 +1318,9 @@ IEnumerator Start()
   `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
   `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
 - `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
-  `UnloadSceneAsync`; `Application.Quit`.
+  `LoadSceneAsync` / `UnloadSceneAsync` returning an `AsyncOperation` (`isDone`, `progress`,
+  `allowSceneActivation`, the `completed` event; `yield return op` waits for it);
+  `Application.Quit`.
 - `MonoBehaviour` / `Component`: `gameObject`, `transform`, `name`, `tag`, `enabled`,
   `isActiveAndEnabled`, the `GetComponent` family, `print`.
 - `Transform`: world `position` / `rotation` / `eulerAngles` / `lossyScale`, `localPosition` /
@@ -1281,11 +1342,10 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (UI, cameras, lights, particles, navigation, Character
-Controller, …), contact points and `OnCollisionStay`, 2D physics callbacks, `Instantiate` of a
-script (instantiate its `gameObject`), adding or removing scripts during Play, object-reference
-fields in the Properties panel and completion in the code editor. Each changed build stays
-loaded until the editor is closed.
+Not yet: the other engine components (Character Controller, Sprite Renderer, Timeline, the
+other UI widgets, …), contact points of 2D collisions, `Physics2D` queries, `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
+or removing scripts or components during Play, materials after a renderer's first, and
+textures on materials. Each changed build stays loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

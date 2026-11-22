@@ -6551,3 +6551,96 @@ regenerated.
   (`Vector3.`, `Input.`, enum values), component types inside `GetComponent<`, callback names.
   Toggle Comment uses `//` in C# and WGSL (it inserted Lua's `--`); the status bar names the
   language.
+
+## C# API: cameras, lights, renderers and materials (cloud branch claude/project-thread-vhqp4i)
+
+The first step of closing the gap between the C# and Lua APIs (the gap list is in the project
+thread). Not numbered as a round: round 92 lives on another computer.
+
+### Done
+- `Camera` (`Camera.main`, field of view, clip planes, orthographic and its size, enabled,
+  culling mask, background colour, depth, pixel size and aspect, `ScreenPointToRay`,
+  `ViewportPointToRay`, `WorldToScreenPoint`, `WorldToViewportPoint`, `ScreenToWorldPoint`,
+  `ViewportToWorldPoint`), `Light` (enabled, intensity, range, spot angle, colour, type,
+  shadows), `Renderer` / `MeshRenderer` (enabled, cast / receive shadows, `material` and
+  `sharedMaterial`) and `Material` (colour, tiling / offset, Get/SetColor, Get/SetFloat,
+  HasProperty, keywords), sharing the Lua binding's code (`material_api`, `camera_api`,
+  `cursor_api::set_lock`). `Color`, `Screen.width` / `height`, `Cursor.lockState` / `visible`.
+  Object fields accept the new component types.
+- Four native functions (`component_value`, `camera_point`, `material`, `global`).
+- **The .NET host is no longer Windows only**: hostfxr's strings are UTF-8 outside Windows
+  (`HostChar`). The C# tests now run on Linux (with the distro's .NET 8 SDK); before, a Linux
+  editor or player could not start C# scripts at all.
+
+- **UI from C#**: `Text`, `Image`, `Button`, `Toggle`, `Slider`, `InputField`, with
+  `UnityEvent` / `UnityEvent<T>` listeners on `onClick`, `onValueChanged` and `onEndEdit` (kept on
+  the C# side, run by a new `Host.UiEvent` entry after the Lua listeners).
+- **Calls by name reach C#** (new `Host.Message` entry): a Button's On Click calls set in the
+  Properties panel, `SendMessage`, `OnCancel` / `OnLinkClicked`. Before, a C# script could not be
+  the target of a button wired in the Inspector at all.
+- `PlayerPrefs` (the same store as Lua's).
+- **2D physics, navigation and particles from C#**: `Rigidbody2D`, `Collider2D`, the six 2D
+  contact callbacks (method ids 14–19; the defined-callbacks mask is now 32 bits),
+  `NavMeshAgent` and `ParticleSystem`.
+
+- **AddComponent while playing** (Lua `AddComponent("Rigidbody")`, C# `AddComponent<T>()`;
+  `component_ops.rs`): neither language had it. Physics components rebuild the object's
+  bodies and colliders (and its children's) at once. C# `BoxCollider`, `SphereCollider`,
+  `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D` types.
+- **Bug: C# `Destroy(component)` destroyed the whole object** (`Destroy(GetComponent<Rigidbody>())`
+  deleted the GameObject). It now removes only that component.
+- **DontDestroyOnLoad** (Lua global, C# `Object.DontDestroyOnLoad`): neither language had it.
+  When marked objects exist, `SceneManager.LoadScene` (single) no longer restarts the runtime:
+  `Runtime::load_scene_single` moves the kept roots to an unsaved "DontDestroyOnLoad" scene,
+  unloads every other scene (OnDisable / OnDestroy), loads the new one additively, makes it the
+  active scene (lighting, navigation) and wakes its objects. Without marked objects the old
+  restart path runs unchanged. Wired into the editor's Play mode and the player.
+- **LoadSceneAsync** (Lua and C#; `scene_ops.rs`): returns an operation (`AsyncOperation` in
+  C#, a `CustomYieldInstruction`, so `yield return op` works). It is sent at the end of the
+  frame when `allowSceneActivation` is true and done at the start of the next frame, when
+  `completed` runs. Loads are still instant between frames (no background streaming): `progress`
+  is 0.9 until done. `UnloadSceneAsync` returns one too.
+- **SendMessage / BroadcastMessage / SendMessageUpwards from scripts** (Lua and C#;
+  `messages.rs`): before, only the engine (On Click, signals) could call a script method by
+  name. The caller's language runs at once; the other language's scripts on the same objects
+  run right after the calling callback (`World::messages`, delivered from `flush_spawned`),
+  since neither runtime can call into the other mid-call.
+- **Adding scripts while playing** (Lua `AddComponent("Spin")`, C# `AddComponent<Health>()`):
+  the script joins the object's Scripts list at once and gets its instance right after the
+  calling callback (`World::added_scripts`, from `flush_spawned`). C# returns the object at once
+  (built ahead and adopted by `Host.Create`), so `AddComponent<Health>().max = 50` works and
+  Awake sees 50; Lua returns nil.
+- **Animator Override Controller** (`.overrideController`, JSON: `controller` + `overrides`
+  clip map; `animation/override_controller.rs`): an Animator takes it like a `.controller`
+  (the Inspector lists both). It is the base controller with the clips swapped in state
+  motions, blend tree children and synced-layer motions, applied on load; an override naming
+  itself fails with a Console message instead of recursing. Builds pack the clips it names.
+  Project ▸ Create ▸ Animator Override Controller makes one from the selected `.controller`
+  (every clip it plays listed, mapped to itself, ready to swap). Not yet: an Inspector editor
+  for the clip list (edit the JSON), and live edits of the base controller don't reach
+  overrides while playing.
+- **Physics2D queries from C#**: `Raycast`, `RaycastAll`, `Linecast(All)`, `OverlapCircle(All)`,
+  `OverlapBox(All)`, `OverlapPoint(All)` and `RaycastHit2D` (one native `physics2d` entry).
+- **Removing scripts while playing** (Lua `Destroy(self)`, C# `Destroy(script)`): it used to
+  only disable the script. It is removed at the end of the frame (OnDisable, OnDestroy) and
+  taken out of the Scripts list; later scripts (Lua, C#, Script Graphs) move down a slot (C#
+  `Host.ShiftSlots`).
+- **Bug: C# `Release` removed the wrong script** from an object's list when it had several
+  (`List.Remove` went through `Object.Equals`); now it removes by reference.
+
+### Tests
+New: `csharp_camera_light_renderer_material_screen_and_cursor`,
+`csharp_ui_components_listeners_messages_and_player_prefs`, `csharp_rigidbody2d_and_2d_callbacks`,
+`csharp_nav_mesh_agent_walks_and_particles_play`,
+`csharp_and_lua_add_and_remove_components_while_playing`,
+`dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load`,
+`lua_load_scene_async_waits_for_activation_and_completes`,
+`csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
+`csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`, `overrides_swap_motions_in_states_trees_and_synced_layers`,
+`animators_play_the_override_clips_and_loops_fail_cleanly`,
+`csharp_physics2d_raycasts_linecasts_and_overlaps`, `csharp_and_lua_destroy_scripts_while_playing`. The 20 C# tests and the 144 scripting tests
+pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
+
+### Not done
+Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
+copy should now work there, not tried end to end).
