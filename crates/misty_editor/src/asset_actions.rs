@@ -114,6 +114,7 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .create(&rel, Default::default())
                 .map(|_| path)
         }
+        AssetKind::AnimatorOverrideController => override_controller(s, &dir),
         AssetKind::AvatarMask => {
             let ext = misty_engine::animation::mask::MASK_EXTENSION;
             let path = asset_ops::unique_path(&dir, "New Avatar Mask", ext);
@@ -241,6 +242,45 @@ fn create(s: &mut EditorState, kind: AssetKind) {
 }
 
 /// A material next to the others in `dir` using the selected `.shader` asset.
+/// A new Animator Override Controller: based on the `.controller` selected in the Project
+/// window (every clip it plays listed, mapped to itself, ready to swap), else empty.
+fn override_controller(s: &mut EditorState, dir: &Path) -> Result<PathBuf, String> {
+    use misty_engine::animation::{AnimatorController, OVERRIDE_EXTENSION, OverrideController};
+    let base = s
+        .project
+        .selected
+        .as_ref()
+        .map(|p| s.assets.relative(p))
+        .filter(|rel| misty_engine::animation::is_controller(rel));
+    let mut o = OverrideController {
+        controller: base.clone(),
+        ..Default::default()
+    };
+    if let Some(rel) = &base
+        && let Ok(mut c) = AnimatorController::load(&s.project.root.join(rel))
+    {
+        // remap_motions visits every clip; collect them as identity overrides.
+        let clips = std::cell::RefCell::new(Vec::new());
+        c.remap_motions(|clip| {
+            clips.borrow_mut().push(clip.to_owned());
+            None
+        });
+        for clip in clips.into_inner() {
+            o.overrides.insert(clip.clone(), clip);
+        }
+    }
+    let stem = base
+        .as_deref()
+        .and_then(|b| Path::new(b).file_stem())
+        .map_or_else(
+            || "New Animator Override Controller".to_owned(),
+            |n| format!("{} Override", n.to_string_lossy()),
+        );
+    let path = asset_ops::unique_path(dir, &stem, OVERRIDE_EXTENSION);
+    o.save(&path)?;
+    Ok(path)
+}
+
 fn material_from_shader(s: &mut EditorState, dir: &Path) -> Result<PathBuf, String> {
     let shader = s
         .project

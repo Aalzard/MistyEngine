@@ -6615,8 +6615,10 @@ thread). Not numbered as a round: round 92 lives on another computer.
   (the Inspector lists both). It is the base controller with the clips swapped in state
   motions, blend tree children and synced-layer motions, applied on load; an override naming
   itself fails with a Console message instead of recursing. Builds pack the clips it names.
-  Not yet: a Create menu entry and an Inspector editor for the clip list (edit the JSON), and
-  live edits of the base controller don't reach overrides while playing.
+  Project ▸ Create ▸ Animator Override Controller makes one from the selected `.controller`
+  (every clip it plays listed, mapped to itself, ready to swap). Not yet: an Inspector editor
+  for the clip list (edit the JSON), and live edits of the base controller don't reach
+  overrides while playing.
 - **Physics2D queries from C#**: `Raycast`, `RaycastAll`, `Linecast(All)`, `OverlapCircle(All)`,
   `OverlapBox(All)`, `OverlapPoint(All)` and `RaycastHit2D` (one native `physics2d` entry).
 - **Removing scripts while playing** (Lua `Destroy(self)`, C# `Destroy(script)`): it used to

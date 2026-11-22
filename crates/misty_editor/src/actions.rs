@@ -73,6 +73,9 @@ pub enum AssetKind {
     Scene,
     Animation,
     AnimatorController,
+    /// Animator Override Controller (`.overrideController`): another controller's machine
+    /// with some clips swapped (based on the selected `.controller`, if any).
+    AnimatorOverrideController,
     /// Avatar Mask (`.mask`): which bones an Animator layer animates.
     AvatarMask,
     AudioMixer,
@@ -112,7 +115,7 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 14] = [
+    pub const ALL: [AssetKind; 15] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
@@ -121,6 +124,7 @@ impl AssetKind {
         AssetKind::Scene,
         AssetKind::Animation,
         AssetKind::AnimatorController,
+        AssetKind::AnimatorOverrideController,
         AssetKind::AvatarMask,
         AssetKind::AudioMixer,
         AssetKind::Timeline,
@@ -141,6 +145,7 @@ impl AssetKind {
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",
+            AssetKind::AnimatorOverrideController => "Animator Override Controller",
             AssetKind::AvatarMask => "Avatar Mask",
             AssetKind::AudioMixer => "Audio Mixer",
             AssetKind::Timeline => "Timeline",
