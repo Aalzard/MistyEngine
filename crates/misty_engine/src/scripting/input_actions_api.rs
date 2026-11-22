@@ -65,7 +65,7 @@ pub fn value_to_lua(lua: &Lua, v: crate::input::actions::Value) -> Result<Value>
 }
 
 fn vec2(lua: &Lua, v: Vec2) -> Result<Value> {
-    Ok(mlua::IntoLua::into_lua(LVec3(v.extend(0.0)), lua)?)
+    mlua::IntoLua::into_lua(LVec3(v.extend(0.0)), lua)
 }
 
 // ---- listener events ----------------------------------------------------------------------

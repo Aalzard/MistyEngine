@@ -39,6 +39,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "light_probes_api.rs",
     "localization_api.rs",
     "material_api.rs",
+    "messages.rs",
     "mod.rs",
     "navigation_api.rs",
     "network_api.rs",

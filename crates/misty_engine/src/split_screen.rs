@@ -41,6 +41,7 @@ impl SplitScreen {
     /// Render each viewport camera of `scene` into its rect of `main`, lowest Depth first.
     /// `main_rendered` = the full-screen camera already drew `main` this frame (otherwise it is
     /// cleared to black first). Returns how many views were drawn.
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         renderer: &mut Renderer,
