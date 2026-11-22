@@ -15,6 +15,7 @@ pub mod fsm;
 pub mod humanoid;
 mod live_edit;
 pub mod mask;
+pub mod override_controller;
 pub mod player;
 pub mod root_motion;
 
@@ -37,6 +38,9 @@ pub use controller::{AnimatorController, is_controller};
 pub use curve::{Keyframe, Keys, TangentMode};
 pub use humanoid::{Avatar, HumanBone, is_avatar};
 pub use mask::{AvatarMask, is_mask};
+pub use override_controller::{
+    OVERRIDE_EXTENSION, OverrideController, is_override_controller, is_runtime_controller,
+};
 pub use player::AnimationPlayer;
 
 #[cfg(test)]

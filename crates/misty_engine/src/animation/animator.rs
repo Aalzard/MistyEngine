@@ -133,6 +133,28 @@ struct Assets {
 
 impl Assets {
     fn controller(&mut self, path: &str) -> Option<Arc<AnimatorController>> {
+        if !self.controllers.contains_key(path) && super::is_override_controller(path) {
+            // An override: its base controller with clips swapped. The entry is filled first
+            // so an override naming itself (directly or not) fails instead of recursing.
+            self.controllers.insert(path.to_owned(), None);
+            let loaded = match super::OverrideController::load(&self.root.join(path)) {
+                Ok(o) => {
+                    let base = o.controller.as_deref().and_then(|b| self.controller(b));
+                    if base.is_none() {
+                        self.logs.push(format!(
+                            "Animator Override Controller {path}: its controller is missing or failed to load"
+                        ));
+                    }
+                    base.map(|b| Arc::new(o.apply(&b)))
+                }
+                Err(e) => {
+                    self.logs
+                        .push(format!("Animator Override Controller failed to load: {e}"));
+                    None
+                }
+            };
+            self.controllers.insert(path.to_owned(), loaded);
+        }
         if !self.controllers.contains_key(path) {
             let loaded = match AnimatorController::load(&self.root.join(path)) {
                 Ok(c) => Some(Arc::new(c)),

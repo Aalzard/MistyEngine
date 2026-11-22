@@ -6610,6 +6610,13 @@ thread). Not numbered as a round: round 92 lives on another computer.
   calling callback (`World::added_scripts`, from `flush_spawned`). C# returns the object at once
   (built ahead and adopted by `Host.Create`), so `AddComponent<Health>().max = 50` works and
   Awake sees 50; Lua returns nil.
+- **Animator Override Controller** (`.overrideController`, JSON: `controller` + `overrides`
+  clip map; `animation/override_controller.rs`): an Animator takes it like a `.controller`
+  (the Inspector lists both). It is the base controller with the clips swapped in state
+  motions, blend tree children and synced-layer motions, applied on load; an override naming
+  itself fails with a Console message instead of recursing. Builds pack the clips it names.
+  Not yet: a Create menu entry and an Inspector editor for the clip list (edit the JSON), and
+  live edits of the base controller don't reach overrides while playing.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
@@ -6619,7 +6626,8 @@ New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load`,
 `lua_load_scene_async_waits_for_activation_and_completes`,
 `csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
-`csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`. The 20 C# tests and the 144 scripting tests
+`csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`, `overrides_swap_motions_in_states_trees_and_synced_layers`,
+`animators_play_the_override_clips_and_loops_fail_cleanly`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done

@@ -30,6 +30,8 @@ const JSON_ASSETS: &[&str] = &[
     "mat",
     "anim",
     "controller",
+    // Lowercase: extensions are compared lowercased (`.overrideController`).
+    "overridecontroller",
     "mixer",
     "terrain",
     "navmesh",

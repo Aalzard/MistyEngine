@@ -45,6 +45,8 @@ pub struct AssetDatabase {
     pub anims: BTreeSet<String>,
     /// Project-relative paths of Animator Controllers (.controller).
     pub controllers: BTreeSet<String>,
+    /// Animator Override Controllers (`.overrideController`).
+    pub override_controllers: BTreeSet<String>,
     /// Avatar Masks (`.mask`).
     pub masks: BTreeSet<String>,
     /// Humanoid Avatars (`.avatar`).
@@ -105,6 +107,7 @@ impl AssetDatabase {
             input_actions: BTreeSet::new(),
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
+            override_controllers: BTreeSet::new(),
             masks: BTreeSet::new(),
             avatars: BTreeSet::new(),
             timelines: BTreeSet::new(),
@@ -154,6 +157,7 @@ impl AssetDatabase {
         self.input_actions.clear();
         self.anims.clear();
         self.controllers.clear();
+        self.override_controllers.clear();
         self.masks.clear();
         self.avatars.clear();
         self.timelines.clear();
@@ -217,6 +221,8 @@ impl AssetDatabase {
                     self.anims.insert(self.relative(&path));
                 } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
                     self.controllers.insert(self.relative(&path));
+                } else if misty_engine::animation::is_override_controller(&path.to_string_lossy()) {
+                    self.override_controllers.insert(self.relative(&path));
                 } else if misty_engine::animation::is_mask(&path.to_string_lossy()) {
                     self.masks.insert(self.relative(&path));
                 } else if misty_engine::animation::is_avatar(&path.to_string_lossy()) {
