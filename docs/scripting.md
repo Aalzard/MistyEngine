@@ -136,7 +136,7 @@ variables of type GameObject are object fields too.
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it (scripts can't be added during Play yet); `SendMessage(name [, value [, options]])` calls that function on every script of the object (`BroadcastMessage` also on everything under it, `SendMessageUpwards` also on its parents; inactive objects are skipped; with no receiver it logs an error unless `options` is `SendMessageOptions.DontRequireReceiver`). C# scripts on those objects get the message right after the calling function returns |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one; `AddComponent("Rigidbody"/"BoxCollider"/"Light"/…)` adds an engine component with its defaults and returns it; `AddComponent("Spin")` (or `"Spin.lua"` / `"Health.cs"`) adds that script from under `Assets/`: its Awake and OnEnable run right after the calling function and Start before the next Update, so it returns nil (use `GetComponent("Spin")` afterwards); `SendMessage(name [, value [, options]])` calls that function on every script of the object (`BroadcastMessage` also on everything under it, `SendMessageUpwards` also on its parents; inactive objects are skipped; with no receiver it logs an error unless `options` is `SendMessageOptions.DontRequireReceiver`). C# scripts on those objects get the message right after the calling function returns |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
@@ -1290,7 +1290,9 @@ IEnumerator Start()
   `SphereCollider`, `CapsuleCollider`, `MeshCollider`, `BoxCollider2D`, `CircleCollider2D`,
   `Rigidbody2D`, `Light`, `AudioSource`, `ParticleSystem`, …) with its defaults and returns it
   (the existing one when the object has it); physics picks it up at once. `Destroy(component)`
-  removes that component (not the object). Scripts can't be added during Play yet.
+  removes that component (not the object). `AddComponent<MyScript>()` adds a script (the
+  file named like the class, under `Assets/`) and returns it at once, so its fields can be set;
+  its Awake and OnEnable run right after the calling method, Start before the next Update.
 - `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
   single scene loads, like Lua's.
 - `SendMessage`, `BroadcastMessage`, `SendMessageUpwards` (with `SendMessageOptions`) on

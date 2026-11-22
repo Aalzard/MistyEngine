@@ -71,3 +71,79 @@ pub(crate) fn remove(w: &mut World, e: Entity, script_name: &str) -> Result<bool
     }
     Ok(removed)
 }
+
+/// The project-relative path of the script file `file_name` ("Health.cs", "Spin.lua") under
+/// `Assets/`, searched in sorted order; None when there is none.
+pub(super) fn find_script(root: &std::path::Path, file_name: &str) -> Option<String> {
+    fn walk(dir: &std::path::Path, file_name: &str) -> Option<std::path::PathBuf> {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        entries.sort();
+        for p in &entries {
+            if p.is_file() && p.file_name().is_some_and(|n| n == file_name) {
+                return Some(p.clone());
+            }
+        }
+        entries
+            .iter()
+            .filter(|p| p.is_dir())
+            .find_map(|p| walk(p, file_name))
+    }
+    let found = walk(&root.join("Assets"), file_name)?;
+    let rel = found.strip_prefix(root).ok()?;
+    Some(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Add script `path` to `e` while playing: it joins the object's Scripts list now and gets
+/// its instance (Awake, OnEnable) right after the calling callback; Start comes before the
+/// next Update. Returns its slot.
+pub(super) fn add_script(w: &mut World, e: Entity, path: String) -> usize {
+    use crate::scene::{ScriptRef, Scripts};
+    let script = ScriptRef {
+        path,
+        ..Default::default()
+    };
+    let pushed = match w.scene.world.get::<&mut Scripts>(e) {
+        Ok(mut s) => {
+            s.list.push(script.clone());
+            Some(s.list.len() - 1)
+        }
+        Err(_) => None,
+    };
+    let slot = pushed.unwrap_or_else(|| {
+        w.scene.add(e, Scripts { list: vec![script] });
+        0
+    });
+    w.added_scripts.push((e, slot));
+    slot
+}
+
+impl super::ScriptHost {
+    /// Create the instances of scripts added while playing (Awake, OnEnable). Whether there
+    /// were any.
+    pub(super) fn wake_added_scripts(&mut self) -> bool {
+        let added = self.with_world(|w| {
+            std::mem::take(&mut w.added_scripts)
+                .into_iter()
+                .filter_map(|(e, slot)| {
+                    let s = w.scene.world.get::<&crate::scene::Scripts>(e).ok()?;
+                    s.list.get(slot).cloned().map(|r| (e, slot, r))
+                })
+                .collect::<Vec<_>>()
+        });
+        if added.is_empty() {
+            return false;
+        }
+        let first = self.instances.len();
+        for (e, slot, script) in added {
+            self.instantiate(e, slot, &script);
+        }
+        for i in first..self.instances.len() {
+            self.reconcile(i, None, false);
+        }
+        true
+    }
+}

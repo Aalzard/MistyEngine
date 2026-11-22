@@ -6605,6 +6605,11 @@ thread). Not numbered as a round: round 92 lives on another computer.
   name. The caller's language runs at once; the other language's scripts on the same objects
   run right after the calling callback (`World::messages`, delivered from `flush_spawned`),
   since neither runtime can call into the other mid-call.
+- **Adding scripts while playing** (Lua `AddComponent("Spin")`, C# `AddComponent<Health>()`):
+  the script joins the object's Scripts list at once and gets its instance right after the
+  calling callback (`World::added_scripts`, from `flush_spawned`). C# returns the object at once
+  (built ahead and adopted by `Host.Create`), so `AddComponent<Health>().max = 50` works and
+  Awake sees 50; Lua returns nil.
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
@@ -6614,7 +6619,7 @@ New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `dont_destroy_on_load_keeps_objects_and_their_state_through_a_scene_load`,
 `lua_load_scene_async_waits_for_activation_and_completes`,
 `csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
-`csharp_and_lua_send_broadcast_and_upwards_messages`. The 20 C# tests and the 144 scripting tests
+`csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done

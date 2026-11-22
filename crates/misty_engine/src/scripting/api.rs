@@ -452,6 +452,29 @@ impl UserData for LGameObject {
         // and returns it like GetComponent; the existing one when the object has it.
         m.add_method("AddComponent", |lua, g, name: String| {
             let e = g.0;
+            // A script ("Spin" or "Spin.lua"): added now, its instance (Awake, OnEnable) right
+            // after this callback, so nil comes back; GetComponent finds it from then on.
+            if super::component_ops::registry_name(&name).is_none() {
+                return with_world(lua, |w| {
+                    alive(w, e)?;
+                    let files = if name.ends_with(".lua") || name.ends_with(".cs") {
+                        vec![name.clone()]
+                    } else {
+                        vec![format!("{name}.lua"), format!("{name}.cs")]
+                    };
+                    let root = w.root.clone();
+                    let path = files
+                        .iter()
+                        .find_map(|f| super::component_ops::find_script(&root, f))
+                        .ok_or_else(|| {
+                            mlua::Error::runtime(format!(
+                                "AddComponent: '{name}' is neither a component nor a script under Assets"
+                            ))
+                        })?;
+                    super::component_ops::add_script(w, e, path);
+                    Ok(Value::Nil)
+                })?;
+            }
             with_world(lua, |w| {
                 alive(w, e)?;
                 super::component_ops::add(w, e, &name).map_err(mlua::Error::runtime)

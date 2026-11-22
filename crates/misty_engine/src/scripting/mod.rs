@@ -253,6 +253,8 @@ pub struct World {
     pub scene_ops: Vec<scene_ops::SceneOp>,
     /// `SendMessage` calls waiting for the scripts of the other language (messages.rs).
     pub messages: Vec<messages::QueuedMessage>,
+    /// Scripts added while playing, by object and slot, waiting for their instance.
+    pub added_scripts: Vec<(Entity, usize)>,
     /// Project folder, for reading prefab files.
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
@@ -344,6 +346,7 @@ impl World {
             dont_destroy: Vec::new(),
             scene_ops: Vec::new(),
             messages: Vec::new(),
+            added_scripts: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
@@ -939,6 +942,7 @@ impl ScriptHost {
                 w.spawned.is_empty()
                     && w.graph_events.is_empty()
                     && w.messages.is_empty()
+                    && w.added_scripts.is_empty()
                     && !w.physics.has_controller_hits()
                     && w.scene.activity() == seen
                     && !w.network.settle_due
@@ -956,7 +960,8 @@ impl ScriptHost {
         self.sync_enabled();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
-            let delivered = self.deliver_custom_events() | self.deliver_messages();
+            let delivered =
+                self.wake_added_scripts() | self.deliver_custom_events() | self.deliver_messages();
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
                 if delivered {

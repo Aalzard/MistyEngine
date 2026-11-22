@@ -606,8 +606,8 @@ namespace Misty
         /// <summary>A script by class name, or null.</summary>
         public MonoBehaviour GetComponent(string type) => Internal.Host.GetComponentByName(id, type);
         /// <summary>Add an engine component (Rigidbody, BoxCollider, Light, AudioSource, …) with
-        /// its defaults and return it; the existing one when the object has it. Scripts can't be
-        /// added during Play yet.</summary>
+        /// its defaults and return it (the existing one when the object has it), or a script:
+        /// returned at once, its Awake and OnEnable run right after the calling method.</summary>
         public T AddComponent<T>() where T : Component => (T)AddComponent(typeof(T));
         public Component AddComponent(Type type) => Internal.Native.AddComponent(id, type);
 
@@ -2223,7 +2223,12 @@ namespace Misty.Internal
             if (!Alive(id)) throw Destroyed();
             if (type == typeof(Transform)) return new Transform(id);
             if (typeof(MonoBehaviour).IsAssignableFrom(type))
-                throw new NotSupportedException($"AddComponent<{type.Name}>: adding scripts during Play is not supported yet; put the script on a prefab and Instantiate it.");
+            {
+                if (type.IsAbstract || type == typeof(MonoBehaviour))
+                    throw new ArgumentException($"AddComponent<{type.Name}>: name a concrete script class.");
+                int slot = ComponentOp(id, 3, type.Name);
+                return slot < 0 ? null : Host.PreCreate(type, id, slot);
+            }
             if (type == typeof(Collider) || type == typeof(Collider2D) || type == typeof(Behaviour) || type == typeof(UIBehaviour) || type == typeof(Component))
                 throw new ArgumentException($"AddComponent<{type.Name}>: name a concrete type, e.g. BoxCollider.");
             string name = type == typeof(MeshRenderer) || type == typeof(Renderer) ? "MeshRenderer" : type.Name;
@@ -2357,6 +2362,7 @@ namespace Misty.Internal
             AsyncOperation.Reset();
             types.Clear();
             byObject.Clear();
+            preCreated.Clear();
             timed.Clear();
             entries.Clear();
             entries.Add(null);
@@ -2385,12 +2391,9 @@ namespace Misty.Internal
                     Native.Log(2, $"{typeName}.cs: no class named {typeName} that derives from MonoBehaviour");
                     return 0;
                 }
-                var script = (MonoBehaviour)RuntimeHelpers_GetUninitialized(type);
-                script.entity = entity;
-                script.slot = slot;
-                // Field initialisers and the constructor run with the object already known.
-                type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    ?.Invoke(script, null);
+                // AddComponent made the object already (it was returned to the caller).
+                if (!preCreated.Remove((entity, slot), out var script) || script.GetType() != type)
+                    script = Construct(type, entity, slot);
                 var calls = new Action<ulong>[Methods.Length];
                 for (int i = 0; i < Methods.Length; i++)
                 {
@@ -2411,6 +2414,28 @@ namespace Misty.Internal
                 Report(typeName, "constructor", e);
                 return 0;
             }
+        }
+
+        /// <summary>Scripts made by AddComponent, waiting for the engine to create their
+        /// instance right after the calling callback (Awake, OnEnable).</summary>
+        static readonly Dictionary<(ulong, int), MonoBehaviour> preCreated = new Dictionary<(ulong, int), MonoBehaviour>();
+
+        static MonoBehaviour Construct(Type type, ulong entity, int slot)
+        {
+            var script = (MonoBehaviour)RuntimeHelpers_GetUninitialized(type);
+            script.entity = entity;
+            script.slot = slot;
+            // Field initialisers and the constructor run with the object already known.
+            type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                ?.Invoke(script, null);
+            return script;
+        }
+
+        internal static MonoBehaviour PreCreate(Type type, ulong entity, int slot)
+        {
+            var script = Construct(type, entity, slot);
+            preCreated[(entity, slot)] = script;
+            return script;
         }
 
         static object RuntimeHelpers_GetUninitialized(Type t) =>

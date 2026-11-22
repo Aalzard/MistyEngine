@@ -1899,7 +1899,8 @@ extern "C" fn particles(id: u64, op: i32, v: *mut f32) -> i32 {
 }
 
 /// `AddComponent` (op 0) and `Destroy(component)` (op 1) for engine components by name, and
-/// `DontDestroyOnLoad` (op 2, no name) for the object.
+/// `DontDestroyOnLoad` (op 2, no name) for the object, and adding a C# script by class name
+/// (op 3, returns its slot).
 /// Returns 1 when added / removed, 0 when nothing changed, -1 for an unknown name (logged).
 extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
     let name = text(ptr, len);
@@ -1907,6 +1908,20 @@ extern "C" fn component_op(id: u64, op: i32, ptr: *const u16, len: i32) -> i32 {
         if op == 2 {
             w.dont_destroy.push(e);
             return 1;
+        }
+        // AddComponent of a C# script by class name: its slot.
+        if op == 3 {
+            let root = w.root.clone();
+            return match super::component_ops::find_script(&root, &format!("{name}.cs")) {
+                Some(path) => super::component_ops::add_script(w, e, path) as i32,
+                None => {
+                    w.logs.push((
+                        LogKind::Error,
+                        format!("AddComponent<{name}>: no {name}.cs under Assets"),
+                    ));
+                    -1
+                }
+            };
         }
         let r = if op == 0 {
             super::component_ops::add(w, e, &name)

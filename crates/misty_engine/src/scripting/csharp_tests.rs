@@ -1394,8 +1394,6 @@ public class Builder : MonoBehaviour
         light.intensity = 2f;
         Debug.Log("added " + (rb != null) + " " + (box != null) + " " + (GetComponent<Collider>() != null)
             + " " + (gameObject.AddComponent<Rigidbody>() != null) + " " + light.intensity);
-        try { gameObject.AddComponent<Builder>(); }
-        catch (System.NotSupportedException) { Debug.Log("no scripts"); }
     }
     void Update()
     {
@@ -1452,7 +1450,6 @@ return T
     host.shutdown(&mut scene);
     for want in [
         "added True True True True 2",
-        "no scripts",
         "falling True",
         "removed True True alive True box True",
         "lua rb true 1",
@@ -1555,4 +1552,99 @@ return L
         ],
         "{all:?}"
     );
+}
+
+#[test]
+fn csharp_and_lua_add_scripts_while_playing() {
+    if skip() {
+        return;
+    }
+    let adder = r#"
+using Misty;
+public class Adder : MonoBehaviour
+{
+    int frames;
+    void Update()
+    {
+        frames++;
+        if (frames == 2)
+        {
+            var h = gameObject.AddComponent<Health>();
+            h.max = 50;
+            Debug.Log("added " + (h != null) + " " + h.gameObject.name);
+        }
+        if (frames == 4)
+        {
+            var h = GetComponent<Health>();
+            Debug.Log("health " + h.max + " " + h.started);
+            SendMessage("Report");
+        }
+    }
+}
+"#;
+    let health = r#"
+using Misty;
+public class Health : MonoBehaviour
+{
+    public int max = 10;
+    public bool started;
+    void Awake() { Debug.Log("health awake " + max); }
+    void Start() { started = true; Debug.Log("health start " + max); }
+}
+"#;
+    let spin = r#"
+local S = { turns = 0 }
+function S:Awake() Debug.Log("spin awake") end
+function S:Start() Debug.Log("spin start") end
+function S:Update() self.turns = self.turns + 1 end
+function S:Report() Debug.Log("spin turns", self.turns) end
+return S
+"#;
+    let lua_adder = r#"
+local A = { f = 0 }
+function A:Update()
+    self.f = self.f + 1
+    if self.f == 2 then Debug.Log("lua add", tostring(self.gameObject:AddComponent("Spin") == nil)) end
+end
+return A
+"#;
+    let root = project(&[
+        ("Adder.cs", adder),
+        ("Health.cs", health),
+        ("Spin.lua", spin),
+        ("LuaAdder.lua", lua_adder),
+    ]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Hero", None);
+    attach(&mut scene, e, "Adder.cs");
+    attach(&mut scene, e, "LuaAdder.lua");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut all = Vec::new();
+    for _ in 0..5 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            all.push(t);
+        }
+    }
+    let scripts = scene.world.get::<&Scripts>(e).unwrap().list.len();
+    host.shutdown(&mut scene);
+    assert_eq!(
+        all,
+        [
+            "added True Hero",
+            "health awake 50",
+            "lua add true",
+            "spin awake",
+            "health start 50",
+            "spin start",
+            "health 50 True",
+            "spin turns 1",
+        ],
+        "{all:?}"
+    );
+    assert_eq!(scripts, 4);
 }
