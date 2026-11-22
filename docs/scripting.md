@@ -316,6 +316,21 @@ Sample: `Scenes/InputSystemDemo.scene` — the First Person Player with a Player
 `PlayerActions.lua` (Send Messages: holding E / X rumbles the pad) and `RebindMenu.lua` (Tab / Start: rebinding
 saved to PlayerPrefs).
 
+### On-screen controls (touch)
+
+Add **On-Screen Stick** or **On-Screen Button** (Add Component ▸ Input) to a UI object with an Image to make
+touch controls. Each names a **Control Path** it drives: a stick drives `<Gamepad>/leftStick`, `rightStick` or
+`dpad`; a button drives a gamepad button, trigger or d-pad direction (`<Gamepad>/buttonSouth`,
+`<Gamepad>/rightTrigger`, `<Gamepad>/dpad/up`) or a key (`<Keyboard>/space`). Fingers pressing them drive a
+virtual gamepad named "On-Screen Controls" (present while the scene has on-screen controls), so game code
+needs no changes: Input System actions bound to the gamepad, `Input.GetAxis`, `Input.GetKey("joystick button
+0")` and `Input.GetKey("space")` all see it. The left mouse button presses them too, for testing in the editor.
+
+Each finger keeps the control it landed on until it lifts, so one thumb can steer while the other jumps. A
+stick follows its finger up to **Movement Range** (canvas units) and springs back on release; its value is the
+offset over the range. With **Dynamic Origin** the stick first jumps to where the finger landed inside the
+object: put it on a large transparent Image covering the left half of the screen for a floating stick.
+
 ### Layers
 
 `LayerMask.NameToLayer("Hidden")`, `LayerMask.LayerToName(8)` and `LayerMask.GetMask("Water", "Hidden")` use

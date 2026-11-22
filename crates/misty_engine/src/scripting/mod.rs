@@ -296,6 +296,8 @@ pub struct World {
     /// A selection a script asked for (`SetSelectedGameObject`, `Selectable.Select`), applied
     /// at the start of the next UI pass; `Some(None)` clears it.
     pub ui_select_request: Option<Option<Entity>>,
+    /// Fingers on On-Screen Sticks and Buttons (the virtual gamepad they drive).
+    pub on_screen: crate::input::OnScreenControls,
 }
 
 impl World {
@@ -363,6 +365,7 @@ impl World {
             behaviour: crate::behaviour_tree::BtRuntime::new(&project_root_for_bt),
             ui_selected: None,
             ui_select_request: None,
+            on_screen: Default::default(),
         }
     }
 }
@@ -1389,6 +1392,14 @@ impl ScriptHost {
             }
             w.time = *time;
             w.save.mark_time(time.time);
+            // On-screen sticks and buttons become a virtual gamepad / keys before anything
+            // reads the input.
+            let mut input = input;
+            w.on_screen.apply(&mut w.scene, &mut input);
+            for msg in std::mem::take(&mut w.on_screen.logs) {
+                w.logs
+                    .push((LogKind::Warning, format!("On-screen control {msg}")));
+            }
             // Axis smoothing runs on real time, so it works while the game is paused.
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;

@@ -293,6 +293,7 @@ impl Player {
             frame.as_ref(),
             effects,
             &self.game.scene,
+            &self.game.assets,
             self.game.ui_interaction(),
         );
         for w in gfx.take_warnings() {

@@ -45,6 +45,8 @@ pub struct Gfx {
     /// Colour-blind filter over the final image (Player Settings ▸ Accessibility).
     color_filter: misty_engine::render::color_filter::ColorFilter,
     target: RenderTarget,
+    /// Cameras with a partial Viewport Rect (split screen, picture in picture).
+    split: misty_engine::split_screen::SplitScreen,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     group: wgpu::BindGroup,
@@ -140,6 +142,7 @@ impl Gfx {
             ui,
             color_filter: Default::default(),
             target,
+            split: Default::default(),
             layout,
             sampler,
             group,
@@ -379,22 +382,38 @@ impl Gfx {
             .update(&mut self.renderer, device, queue, scene, materials);
     }
 
-    /// Render `frame` (or black when no camera renders) with `scene`'s UI on top, and present it.
+    /// Render `frame` (or black when no camera renders) and the cameras with a partial
+    /// Viewport Rect into their rects, with `scene`'s UI on top, and present it.
     pub fn draw(
         &mut self,
         frame: Option<&Frame>,
         effects: &[misty_engine::vfx::EffectDraw],
         scene: &Scene,
+        materials: &dyn misty_engine::render_scene::MaterialSource,
         ui: Option<&UiInteraction>,
     ) {
-        if let Some(frame) = frame {
+        let split = misty_engine::split_screen::SplitScreen::active(scene);
+        if frame.is_some() || split {
             let (device, queue) = (&self.device, &self.queue);
             // World Space / Screen Space - Camera canvases need the scene depth after the pass.
             misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(
                 scene, false,
             ));
-            self.renderer
-                .render_with_effects(device, queue, &self.target, frame, effects);
+            if let Some(frame) = frame {
+                self.renderer
+                    .render_with_effects(device, queue, &self.target, frame, effects);
+            }
+            if split {
+                self.split.render(
+                    &mut self.renderer,
+                    device,
+                    queue,
+                    &self.target,
+                    scene,
+                    materials,
+                    frame.is_some(),
+                );
+            }
             misty_engine::profiler::set_render_stats(self.renderer.stats());
             self.ui
                 .render(&self.device, &self.queue, &self.target, scene, ui);
@@ -408,7 +427,7 @@ impl Gfx {
             format: Some(self.view_format),
             ..Default::default()
         });
-        self.blit(&view, self.view_format, frame.is_some());
+        self.blit(&view, self.view_format, frame.is_some() || split);
         self.queue.present(texture);
     }
 

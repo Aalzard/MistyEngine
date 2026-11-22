@@ -13,10 +13,10 @@ use crate::state::EditorState;
 use crate::theme;
 
 /// Names of the components handled here.
-pub const NAMES: [&str; 1] = ["Player Input"];
+pub const NAMES: [&str; 3] = ["Player Input", "On-Screen Stick", "On-Screen Button"];
 
 pub fn icon(name: &str) -> Option<&'static str> {
-    (name == "Player Input").then_some(ICON)
+    NAMES.contains(&name).then_some(ICON)
 }
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
@@ -28,7 +28,12 @@ fn load(state: &EditorState, rel: &str) -> Option<InputActionAsset> {
     InputActionAsset::load(&state.assets.absolute(rel)).ok()
 }
 
-pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, _name: &str) -> bool {
+pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool {
+    match name {
+        "On-Screen Stick" => return on_screen_stick(ui, state, e),
+        "On-Screen Button" => return on_screen_button(ui, state, e),
+        _ => {}
+    }
     let Ok(mut c) = state
         .scene
         .world
@@ -342,4 +347,129 @@ pub fn actions_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
     if ui.button("Edit Asset").clicked() {
         crate::panels::input_actions::open(s, rel);
     }
+}
+
+/// Control paths offered by the on-screen control editors (any other path can be typed).
+const STICK_PATHS: [&str; 3] = [
+    "<Gamepad>/leftStick",
+    "<Gamepad>/rightStick",
+    "<Gamepad>/dpad",
+];
+const BUTTON_PATHS: [&str; 12] = [
+    "<Gamepad>/buttonSouth",
+    "<Gamepad>/buttonEast",
+    "<Gamepad>/buttonWest",
+    "<Gamepad>/buttonNorth",
+    "<Gamepad>/leftShoulder",
+    "<Gamepad>/rightShoulder",
+    "<Gamepad>/leftTrigger",
+    "<Gamepad>/rightTrigger",
+    "<Gamepad>/start",
+    "<Gamepad>/select",
+    "<Keyboard>/space",
+    "<Keyboard>/escape",
+];
+
+/// A control path field with a menu of common paths, and the path's problem when it has one.
+fn control_path(ui: &mut Ui, e: Entity, path: &mut String, common: &[&str]) {
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Control Path",
+            "The gamepad or keyboard control this drives, e.g. <Gamepad>/leftStick or \
+             <Keyboard>/space. Scripts and Input Actions read it like a real gamepad named \
+             \"On-Screen Controls\".",
+        );
+        ui.add(egui::TextEdit::singleline(path).desired_width(150.0));
+        egui::ComboBox::from_id_salt(("osc_path", e))
+            .selected_text("")
+            .width(20.0)
+            .show_ui(ui, |ui| {
+                for p in common {
+                    if ui.selectable_label(path == p, *p).clicked() {
+                        *path = (*p).to_owned();
+                    }
+                }
+            });
+    });
+    if let Err(err) = misty_engine::input::on_screen::target(path) {
+        ui.colored_label(theme::shade(theme::AXIS_X), err);
+    }
+}
+
+fn on_screen_stick(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    use misty_engine::input::OnScreenStick;
+    let Ok(mut c) = state
+        .scene
+        .world
+        .get::<&OnScreenStick>(e)
+        .map(|c| (*c).clone())
+    else {
+        return false;
+    };
+    let before = c.clone();
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Enabled",
+            "Off: touches pass through and the control rests.",
+        );
+        ui.checkbox(&mut c.enabled, "");
+    });
+    control_path(ui, e, &mut c.control_path, &STICK_PATHS);
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Movement Range",
+            "How far (canvas units) the stick moves from where it rests; full tilt there.",
+        );
+        ui.add(
+            egui::DragValue::new(&mut c.movement_range)
+                .range(1.0..=2000.0)
+                .speed(1.0),
+        );
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Dynamic Origin",
+            "The stick first jumps to where the finger lands inside this object, so a large \
+             (even invisible) area can hold a floating stick.",
+        );
+        ui.checkbox(&mut c.dynamic_origin, "");
+    });
+    ui.weak("Needs a graphic (Image) to catch touches. The left mouse button works too.");
+    if c == before {
+        return false;
+    }
+    let _ = state.scene.world.insert_one(e, c);
+    true
+}
+
+fn on_screen_button(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    use misty_engine::input::OnScreenButton;
+    let Ok(mut c) = state
+        .scene
+        .world
+        .get::<&OnScreenButton>(e)
+        .map(|c| (*c).clone())
+    else {
+        return false;
+    };
+    let before = c.clone();
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Enabled",
+            "Off: touches pass through and the control rests.",
+        );
+        ui.checkbox(&mut c.enabled, "");
+    });
+    control_path(ui, e, &mut c.control_path, &BUTTON_PATHS);
+    ui.weak("Needs a graphic (Image) to catch touches. The left mouse button works too.");
+    if c == before {
+        return false;
+    }
+    let _ = state.scene.world.insert_one(e, c);
+    true
 }
