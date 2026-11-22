@@ -145,6 +145,7 @@ pub fn build(scene: &mut Scene, parent: Option<Entity>) -> Entity {
         Camera {
             // Close to walls: the capsule radius is 0.35 m.
             near: 0.1,
+            far: 2000.0,
             ..Default::default()
         },
     );

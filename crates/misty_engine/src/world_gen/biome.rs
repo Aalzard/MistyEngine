@@ -359,7 +359,7 @@ impl Preset {
                 ..base
             },
             Self::Desert => Biome {
-                tone: [0.85, 0.68, 0.42],
+                tone: [1.0, 0.398_003_17, 0.250_909_1],
                 flat: tex("DesertSand", 8.0),
                 slope: tex("DesertSand", 8.0),
                 cliff: tex("RedRock", 12.0),

@@ -120,11 +120,12 @@ fn paste_as_new(s: &mut EditorState, entities: &[Entity]) {
     s.record(&format!("Paste {name} As New"));
     for e in targets {
         match (info.from_json)(&mut s.scene.world, e, value.clone()) {
-            Ok(()) => s
-                .scene
-                .game_object_mut(e)
-                .component_order
-                .push(name.clone()),
+            Ok(()) => {
+                let order = &mut s.scene.game_object_mut(e).component_order;
+                if !order.contains(&name) {
+                    order.push(name.clone());
+                }
+            }
             Err(err) => s.console.warn(format!("Paste failed: {err}")),
         }
     }

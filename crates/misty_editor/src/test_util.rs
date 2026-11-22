@@ -47,6 +47,21 @@ pub fn assert_json_close(actual: &str, expected: &str, what: impl Display) {
     }
 }
 
+/// [`assert_json_close`] for files the editor saves: the asset GUID table it adds on save is
+/// not part of what a generator writes, so it is left out of both sides (compared as values,
+/// floats close).
+#[track_caller]
+pub fn assert_json_close_ignoring_guids(actual: &str, expected: &str, what: impl Display) {
+    let parse = |text: &str| -> Value {
+        let mut v: Value = serde_json::from_str(text).expect("json");
+        if let Some(o) = v.as_object_mut() {
+            o.remove(misty_engine::asset_db::refs::KEY);
+        }
+        v
+    };
+    assert_value_close(&parse(actual), &parse(expected), what);
+}
+
 /// Asserts that two JSON values match: same structure, equal strings / bools / integers, close
 /// floats.
 #[track_caller]
