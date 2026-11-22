@@ -893,3 +893,133 @@ return R
     assert!(t.contains(&"cs stays True True sane"), "{t:?}");
     assert!(t.contains(&"lua stays true"), "{t:?}");
 }
+
+#[test]
+fn csharp_camera_light_renderer_material_screen_and_cursor() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Look : MonoBehaviour
+{
+    static string V(Vector3 v) => v.x.ToString("F1") + " " + v.y.ToString("F1") + " " + v.z.ToString("F1");
+    void Start()
+    {
+        var cam = Camera.main;
+        Debug.Log("main " + cam.name + " own " + (GetComponent<Camera>() == null));
+        cam.fieldOfView = 50f;
+        cam.farClipPlane = 500f;
+        cam.cullingMask = ~(1 << 4);
+        cam.backgroundColor = new Color(0.1f, 0.2f, 0.3f);
+        Debug.Log("cam " + cam.fieldOfView + " " + cam.farClipPlane + " " + cam.orthographic + " "
+            + (cam.cullingMask == ~(1 << 4)) + " " + cam.backgroundColor.b.ToString("F1")
+            + " " + cam.pixelWidth + "x" + cam.pixelHeight + " " + cam.aspect.ToString("F2"));
+        Debug.Log("screen " + Screen.width + "x" + Screen.height);
+        var ray = cam.ScreenPointToRay(new Vector3(400, 300, 0));
+        Debug.Log("ray " + V(ray.direction) + " from " + ray.origin.z.ToString("F1"));
+        Debug.Log("to screen " + V(cam.WorldToScreenPoint(Vector3.zero)));
+        Debug.Log("to viewport " + V(cam.WorldToViewportPoint(Vector3.zero)));
+        Debug.Log("to world " + V(cam.ScreenToWorldPoint(new Vector3(400, 300, 10))));
+        Debug.Log("corner " + (cam.ScreenToWorldPoint(new Vector3(800, 600, 10)).x > 1f)
+            + " " + (cam.ScreenToWorldPoint(new Vector3(800, 600, 10)).y > 1f));
+        Debug.Log("viewport world " + V(cam.ViewportToWorldPoint(new Vector3(0.5f, 0.5f, 5))));
+        Debug.Log("behind " + (cam.WorldToScreenPoint(new Vector3(0, 0, -20)).z < 0));
+
+        var lamp = GameObject.Find("Lamp").GetComponent<Light>();
+        lamp.intensity = 3f;
+        lamp.color = Color.red;
+        lamp.type = LightType.Spot;
+        lamp.spotAngle = 40f;
+        lamp.shadows = LightShadows.Hard;
+        Debug.Log("light " + lamp.intensity + " " + lamp.color + " " + lamp.type + " " + lamp.spotAngle + " " + lamp.shadows + " " + lamp.enabled);
+
+        var r = GetComponent<Renderer>();
+        Debug.Log("renderer " + (r != null) + " " + (GetComponent<MeshRenderer>() != null) + " " + r.enabled);
+        r.material.color = Color.Lerp(Color.black, Color.blue, 0.5f);
+        r.material.SetFloat("_Metallic", 0.75f);
+        r.material.SetColor("_EmissionColor", new Color(2, 0, 0));
+        r.material.EnableKeyword("_EMISSION");
+        Debug.Log("material " + r.material.color + " " + r.material.GetFloat("_Metallic") + " "
+            + r.material.GetColor("_EmissionColor").r + " " + r.material.IsKeywordEnabled("_EMISSION")
+            + " " + r.material.HasProperty("_Color") + " " + r.material.HasProperty("_Nope"));
+        r.material.mainTextureScale = new Vector2(2, 3);
+        Debug.Log("tiling " + r.material.mainTextureScale.y);
+        try { r.sharedMaterial.color = Color.red; }
+        catch (System.InvalidOperationException e) { Debug.Log("shared: " + e.Message); }
+        r.receiveShadows = false;
+        r.enabled = false;
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Debug.Log("cursor " + Cursor.lockState + " " + Cursor.visible);
+        Debug.Log("hsv " + Color.HSVToRGB(0f, 1f, 1f));
+    }
+}
+"#;
+    let root = project(&[("Look.cs", src)]);
+    let mut scene = Scene::new("t");
+    let cam = scene.spawn("Cam", None);
+    scene.game_object_mut(cam).tag = "MainCamera".into();
+    scene.set_transform(
+        cam,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 0.0, -10.0)),
+    );
+    scene.add(cam, crate::scene::Camera::default());
+    let lamp = scene.spawn("Lamp", None);
+    scene.add(lamp, crate::scene::Light::default());
+    let cube = scene.spawn("Cube", None);
+    scene.add(cube, crate::scene::MeshRenderer::default());
+    attach(&mut scene, cube, "Look.cs");
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    let input = Input {
+        screen_size: glam::Vec2::new(800.0, 600.0),
+        ..Default::default()
+    };
+    host.update(&mut scene, &time, input);
+    let cursor = host.cursor();
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "main Cam own True",
+        "cam 50 500 False True 0.3 800x600 1.33",
+        "screen 800x600",
+        "to screen 400.0 300.0 10.0",
+        "to viewport 0.5 0.5 10.0",
+        "to world 0.0 0.0 0.0",
+        "corner True True",
+        "viewport world 0.0 0.0 -5.0",
+        "behind True",
+        "light 3 RGBA(1.000, 0.000, 0.000, 1.000) Spot 40 Hard True",
+        "renderer True True True",
+        "material RGBA(0.000, 0.000, 0.500, 1.000) 0.75 2 True True False",
+        "tiling 3",
+        "shared: Default-Material can't be changed; assign a material first.",
+        "cursor Locked False",
+        "hsv RGBA(1.000, 0.000, 0.000, 1.000)",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    assert!(
+        t.iter().any(|l| l.starts_with("ray 0.0 0.0 1.0 from -9.")),
+        "{t:#?}"
+    );
+    let c = scene.world.get::<&crate::scene::Camera>(cam).unwrap();
+    assert_eq!((c.fov, c.far, c.culling_mask), (50.0, 500.0, !(1 << 4)));
+    let l = scene.world.get::<&crate::scene::Light>(lamp).unwrap();
+    assert_eq!(l.intensity, 3.0);
+    assert_eq!(l.kind, crate::scene::LightType::Spot);
+    let r = scene
+        .world
+        .get::<&crate::scene::MeshRenderer>(cube)
+        .unwrap();
+    assert!(!r.enabled && !r.receive_shadows && r.cast_shadows);
+    assert_eq!(r.instance(0).unwrap().metallic, 0.75);
+    assert_eq!(cursor.lock, CursorLockMode::Locked);
+}

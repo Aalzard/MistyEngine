@@ -6551,3 +6551,31 @@ regenerated.
   (`Vector3.`, `Input.`, enum values), component types inside `GetComponent<`, callback names.
   Toggle Comment uses `//` in C# and WGSL (it inserted Lua's `--`); the status bar names the
   language.
+
+## C# API: cameras, lights, renderers and materials (cloud branch claude/project-thread-vhqp4i)
+
+The first step of closing the gap between the C# and Lua APIs (the gap list is in the project
+thread). Not numbered as a round: round 92 lives on another computer.
+
+### Done
+- `Camera` (`Camera.main`, field of view, clip planes, orthographic and its size, enabled,
+  culling mask, background colour, depth, pixel size and aspect, `ScreenPointToRay`,
+  `ViewportPointToRay`, `WorldToScreenPoint`, `WorldToViewportPoint`, `ScreenToWorldPoint`,
+  `ViewportToWorldPoint`), `Light` (enabled, intensity, range, spot angle, colour, type,
+  shadows), `Renderer` / `MeshRenderer` (enabled, cast / receive shadows, `material` and
+  `sharedMaterial`) and `Material` (colour, tiling / offset, Get/SetColor, Get/SetFloat,
+  HasProperty, keywords), sharing the Lua binding's code (`material_api`, `camera_api`,
+  `cursor_api::set_lock`). `Color`, `Screen.width` / `height`, `Cursor.lockState` / `visible`.
+  Object fields accept the new component types.
+- Four native functions (`component_value`, `camera_point`, `material`, `global`).
+- **The .NET host is no longer Windows only**: hostfxr's strings are UTF-8 outside Windows
+  (`HostChar`). The C# tests now run on Linux (with the distro's .NET 8 SDK); before, a Linux
+  editor or player could not start C# scripts at all.
+
+### Tests
+New: `csharp_camera_light_renderer_material_screen_and_cursor`. The 16 C# tests pass on Linux.
+
+### Not done
+UI components, `AddComponent`, `PlayerPrefs`, SendMessage / Inspector button calls into C#,
+navigation, particles and 2D physics from C#; a Linux game build of a C# project (the runtime
+copy should now work there, not tried end to end).

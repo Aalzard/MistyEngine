@@ -86,6 +86,7 @@ struct TransformData {
 
 type V3 = [f32; 3];
 type Q = [f32; 4];
+type V4 = [f32; 4];
 
 /// Same field order as `Misty.Internal.NativeApi`.
 #[repr(C)]
@@ -131,6 +132,10 @@ pub(super) struct NativeApi {
     animator_param: extern "C" fn(u64, i32, *const u16, i32, i32, f32, *mut f32) -> i32,
     animator_play: extern "C" fn(u64, i32, *const u16, i32, i32, f32, f32) -> i32,
     request: extern "C" fn(i32, i64, *const u16, i32),
+    component_value: extern "C" fn(u64, i32, i32, i32, *mut V4) -> i32,
+    camera_point: extern "C" fn(u64, i32, *const V3, *mut V3, *mut V3) -> i32,
+    material: extern "C" fn(u64, i32, i32, *const u16, i32, *mut V4) -> i32,
+    global: extern "C" fn(i32, i32, *mut V4) -> u64,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -175,6 +180,10 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     animator_param,
     animator_play,
     request,
+    component_value,
+    camera_point,
+    material,
+    global,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -709,6 +718,9 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             }
             2 => world.get::<&AudioSource>(e).is_ok(),
             3 => world.get::<&Animator>(e).is_ok(),
+            4 => world.get::<&crate::scene::Camera>(e).is_ok(),
+            5 => world.get::<&crate::scene::Light>(e).is_ok(),
+            6 => world.get::<&crate::scene::MeshRenderer>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -1099,4 +1111,327 @@ extern "C" fn request(op: i32, index: i64, ptr: *const u16, len: i32) {
         _ => Request::LoadScene(scene),
     };
     with_world(|w| w.requests.push(r));
+}
+
+// ---- Camera, Light, Renderer, Material, Screen, Cursor ------------------------------------
+
+fn flag(on: bool) -> f32 {
+    f32::from(u8::from(on))
+}
+
+/// Camera (`kind` 4), Light (5) and Mesh Renderer (6) values. `v` is read when `set` is not 0
+/// and written otherwise. Returns 1, or 0 when the object has no such component (or value).
+extern "C" fn component_value(id: u64, kind: i32, which: i32, set: i32, v: *mut V4) -> i32 {
+    if v.is_null() {
+        return 0;
+    }
+    with_object(id, |w, e| {
+        // SAFETY: `v` points at four floats on the C# stack.
+        let v = unsafe { &mut *v };
+        let done = match kind {
+            4 => camera_value(w, e, which, set != 0, v),
+            5 => light_value(w, e, which, set != 0, v),
+            6 => renderer_value(w, e, which, set != 0, v),
+            _ => None,
+        };
+        i32::from(done.is_some())
+    })
+    .unwrap_or(0)
+}
+
+/// which: 0 fieldOfView, 1 nearClipPlane, 2 farClipPlane, 3 orthographic, 4 orthographicSize,
+/// 5 enabled, 6 cullingMask (the bits of the float), 7 backgroundColor, 8 depth,
+/// 9 pixel width, height and aspect (read only).
+fn camera_value(w: &mut World, e: Entity, which: i32, set: bool, v: &mut V4) -> Option<()> {
+    let screen = super::camera_api::screen(w);
+    let mut c = w.scene.world.get::<&mut crate::scene::Camera>(e).ok()?;
+    let x = v[0];
+    if set {
+        match which {
+            // NaN passes `clamp` and would poison the projection.
+            0 if x.is_finite() => c.fov = x.clamp(1.0, 179.0),
+            0 => {}
+            1 => c.near = x.max(0.001),
+            2 => c.far = x.max(0.002),
+            3 => c.orthographic = x != 0.0,
+            4 => c.ortho_size = x.max(0.001),
+            5 => c.enabled = x != 0.0,
+            6 => c.culling_mask = x.to_bits(),
+            7 => c.background = *v,
+            8 => c.depth = x,
+            _ => return None,
+        }
+    } else {
+        *v = match which {
+            0 => [c.fov, 0.0, 0.0, 0.0],
+            1 => [c.near, 0.0, 0.0, 0.0],
+            2 => [c.far, 0.0, 0.0, 0.0],
+            3 => [flag(c.orthographic), 0.0, 0.0, 0.0],
+            4 => [c.ortho_size, 0.0, 0.0, 0.0],
+            5 => [flag(c.enabled), 0.0, 0.0, 0.0],
+            6 => [f32::from_bits(c.culling_mask), 0.0, 0.0, 0.0],
+            7 => c.background,
+            8 => [c.depth, 0.0, 0.0, 0.0],
+            9 => {
+                let size = screen * glam::Vec2::new(c.viewport[2], c.viewport[3]);
+                [size.x, size.y, size.x / size.y.max(1e-4), 0.0]
+            }
+            _ => return None,
+        };
+    }
+    Some(())
+}
+
+/// which: 0 enabled, 1 intensity, 2 range, 3 spotAngle, 4 color, 5 type (0 Spot,
+/// 1 Directional, 2 Point, 3 Rectangle), 6 shadows (0 None, 1 Hard, 2 Soft).
+fn light_value(w: &mut World, e: Entity, which: i32, set: bool, v: &mut V4) -> Option<()> {
+    use crate::scene::{LightType, Shadows};
+    let mut l = w.scene.world.get::<&mut crate::scene::Light>(e).ok()?;
+    let x = v[0];
+    if set {
+        match which {
+            0 => l.enabled = x != 0.0,
+            1 => l.intensity = x.max(0.0),
+            2 => l.range = x.max(0.0),
+            3 => l.spot_angle = x.clamp(1.0, 179.0),
+            4 => l.color = [v[0], v[1], v[2]],
+            5 => {
+                l.kind = match x as i32 {
+                    0 => LightType::Spot,
+                    1 => LightType::Directional,
+                    3 => LightType::Rectangle,
+                    _ => LightType::Point,
+                }
+            }
+            6 => {
+                l.shadows = match x as i32 {
+                    0 => Shadows::None,
+                    1 => Shadows::Hard,
+                    _ => Shadows::Soft,
+                }
+            }
+            _ => return None,
+        }
+    } else {
+        *v = match which {
+            0 => [flag(l.enabled), 0.0, 0.0, 0.0],
+            1 => [l.intensity, 0.0, 0.0, 0.0],
+            2 => [l.range, 0.0, 0.0, 0.0],
+            3 => [l.spot_angle, 0.0, 0.0, 0.0],
+            4 => [l.color[0], l.color[1], l.color[2], 1.0],
+            5 => {
+                let kind = match l.kind {
+                    LightType::Spot => 0.0,
+                    LightType::Directional => 1.0,
+                    LightType::Point => 2.0,
+                    LightType::Rectangle => 3.0,
+                };
+                [kind, 0.0, 0.0, 0.0]
+            }
+            6 => {
+                let shadows = match l.shadows {
+                    Shadows::None => 0.0,
+                    Shadows::Hard => 1.0,
+                    Shadows::Soft => 2.0,
+                };
+                [shadows, 0.0, 0.0, 0.0]
+            }
+            _ => return None,
+        };
+    }
+    Some(())
+}
+
+/// which: 0 enabled, 1 casts shadows, 2 receiveShadows.
+fn renderer_value(w: &mut World, e: Entity, which: i32, set: bool, v: &mut V4) -> Option<()> {
+    let mut r = w
+        .scene
+        .world
+        .get::<&mut crate::scene::MeshRenderer>(e)
+        .ok()?;
+    let field = match which {
+        0 => &mut r.enabled,
+        1 => &mut r.cast_shadows,
+        2 => &mut r.receive_shadows,
+        _ => return None,
+    };
+    if set {
+        *field = v[0] != 0.0;
+    } else {
+        *v = [flag(*field), 0.0, 0.0, 0.0];
+    }
+    Some(())
+}
+
+/// Camera points. Screen points are pixels from the bottom-left, viewport points 0..1 from
+/// the bottom-left; `z` is the distance in front of the camera.
+/// op: 0 ScreenPointToRay (`out` origin, `out2` direction), 1 ViewportPointToRay,
+/// 2 WorldToScreenPoint, 3 WorldToViewportPoint, 4 ScreenToWorldPoint, 5 ViewportToWorldPoint.
+/// Returns 1, or 0 when the object has no Camera.
+extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *mut V3) -> i32 {
+    let Some(a) = read_v3(a) else {
+        return 0;
+    };
+    if out.is_null() {
+        return 0;
+    }
+    with_object(id, |w, e| {
+        let Some(cam) = super::camera_api::camera_of(w, e) else {
+            return 0;
+        };
+        let s = super::camera_api::screen(w);
+        let aspect = s.x / s.y;
+        // Normalised screen coordinates, y down (what `Camera` works in).
+        let uv = |p: Vec3, pixels: bool| {
+            if pixels {
+                glam::Vec2::new(p.x / s.x, 1.0 - p.y / s.y)
+            } else {
+                glam::Vec2::new(p.x, 1.0 - p.y)
+            }
+        };
+        let (first, second) = match op {
+            0 | 1 => cam.screen_ray(aspect, uv(a, op == 0)),
+            2 | 3 => {
+                let depth = (a - cam.position).dot(cam.forward());
+                let clip = cam.view_projection(aspect) * a.extend(1.0);
+                let ndc = if clip.w.abs() > 1e-6 {
+                    clip.truncate() / clip.w
+                } else {
+                    Vec3::ZERO
+                };
+                let (x, y) = (ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5);
+                let p = if op == 2 {
+                    Vec3::new(x * s.x, y * s.y, depth)
+                } else {
+                    Vec3::new(x, y, depth)
+                };
+                (p, Vec3::ZERO)
+            }
+            4 | 5 => {
+                let (origin, dir) = cam.screen_ray(aspect, uv(a, op == 4));
+                let along = dir.dot(cam.forward());
+                let start = (origin - cam.position).dot(cam.forward());
+                let t = if along.abs() > 1e-6 {
+                    (a.z - start) / along
+                } else {
+                    0.0
+                };
+                (origin + dir * t, Vec3::ZERO)
+            }
+            _ => return 0,
+        };
+        // SAFETY: `out` (checked above) and `out2` point at Vector3s on the C# stack.
+        unsafe {
+            out.write(first.to_array());
+            if !out2.is_null() {
+                out2.write(second.to_array());
+            }
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+/// A Mesh Renderer's material: its own copy (`shared` 0, made on first use) or the asset
+/// (`shared` 1), with the Standard shader's property names as in Lua.
+/// op: 0 GetColor, 1 SetColor, 2 GetFloat, 3 SetFloat, 4 HasProperty, 5 IsKeywordEnabled,
+/// 6 EnableKeyword, 7 DisableKeyword, 8 get mainTextureOffset, 9 set, 10 get
+/// mainTextureScale, 11 set. Returns 1 (for 4 and 5: the answer), 0 when the material has no
+/// such property, -1 when the object has no Mesh Renderer, -2 when Default-Material would be
+/// changed.
+extern "C" fn material(
+    id: u64,
+    shared: i32,
+    op: i32,
+    ptr: *const u16,
+    len: i32,
+    v: *mut V4,
+) -> i32 {
+    use super::material_api::{self as m, MaterialRef};
+    let name = text(ptr, len);
+    with_object(id, |w, e| {
+        let Ok(path) = m::renderer(w, e, |r| r.material_at(0).map(str::to_owned)) else {
+            return -1;
+        };
+        let target = if shared != 0 {
+            MaterialRef::Shared(path)
+        } else {
+            MaterialRef::Instance(e, 0)
+        };
+        // SAFETY: `v` is null or points at four floats on the C# stack.
+        let v = unsafe { v.as_mut() };
+        if matches!(op, 1 | 3 | 6 | 7 | 9 | 11) {
+            if target == MaterialRef::Shared(None) {
+                return -2;
+            }
+            let value = v.map(|v| *v).unwrap_or_default();
+            let done = m::write(w, &target, |mat| match op {
+                1 => m::set_color(mat, &name, value),
+                3 => m::set_float(mat, &name, value[0]),
+                6 => m::switch_keyword(mat, &name, true),
+                7 => m::switch_keyword(mat, &name, false),
+                9 => mat.offset = [value[0], value[1]],
+                _ => mat.tiling = [value[0], value[1]],
+            });
+            return if done.is_ok() { 1 } else { -1 };
+        }
+        let Ok(mat) = m::read(w, &target) else {
+            return -1;
+        };
+        let got = match op {
+            0 => m::get_color(&mat, &name),
+            2 => m::get_float(&mat, &name).map(|f| [f, 0.0, 0.0, 0.0]),
+            4 => return i32::from(m::has_property(&mat, &name)),
+            5 => return i32::from(m::keyword(&mat, &name)),
+            8 => Some([mat.offset[0], mat.offset[1], 0.0, 0.0]),
+            10 => Some([mat.tiling[0], mat.tiling[1], 0.0, 0.0]),
+            _ => None,
+        };
+        match (got, v) {
+            (Some(value), Some(v)) => {
+                *v = value;
+                1
+            }
+            _ => 0,
+        }
+    })
+    .unwrap_or(-1)
+}
+
+/// Things that belong to the game, not to one object.
+/// which: 0 `Camera.main` (returns its object, 0 for none), 1 the game image's width and
+/// height, 2 `Cursor.lockState` (0 None, 1 Locked, 2 Confined), 3 `Cursor.visible`.
+extern "C" fn global(which: i32, set: i32, v: *mut V4) -> u64 {
+    use super::CursorLockMode;
+    with_world(|w| {
+        if which == 0 {
+            return super::camera_api::main_camera(w).map_or(0, id_of);
+        }
+        // SAFETY: `v` is null or points at four floats on the C# stack.
+        let Some(v) = (unsafe { v.as_mut() }) else {
+            return 0;
+        };
+        match (which, set != 0) {
+            (1, false) => {
+                let s = super::camera_api::screen(w);
+                *v = [s.x, s.y, 0.0, 0.0];
+            }
+            (2, false) => {
+                let at = CursorLockMode::ALL.iter().position(|m| *m == w.cursor.lock);
+                *v = [at.unwrap_or(0) as f32, 0.0, 0.0, 0.0];
+            }
+            (2, true) => {
+                let mode = CursorLockMode::ALL
+                    .get(v[0] as usize)
+                    .copied()
+                    .unwrap_or(CursorLockMode::None);
+                super::cursor_api::set_lock(&mut w.cursor, mode);
+            }
+            (3, false) => *v = [flag(w.cursor.visible), 0.0, 0.0, 0.0],
+            (3, true) => w.cursor.visible = v[0] != 0.0,
+            _ => return 0,
+        }
+        1
+    })
+    .unwrap_or(0)
 }

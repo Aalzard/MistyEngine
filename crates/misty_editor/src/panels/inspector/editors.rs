@@ -1449,7 +1449,13 @@ pub fn script_field_ui(
 pub fn object_fits(scene: &misty_engine::scene::Scene, e: Entity, kind: &str) -> bool {
     match kind {
         "" | "GameObject" | "Transform" | "Component" | "Object" => true,
-        "Rigidbody" | "Animator" => scene.component_names(e).iter().any(|n| n == kind),
+        "Rigidbody" | "Animator" | "Camera" | "Light" => {
+            scene.component_names(e).iter().any(|n| n == kind)
+        }
+        "Renderer" | "MeshRenderer" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n == "Mesh Renderer"),
         "AudioSource" => scene.component_names(e).iter().any(|n| n == "Audio Source"),
         "Collider" => scene
             .component_names(e)

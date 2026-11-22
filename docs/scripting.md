@@ -1246,7 +1246,24 @@ IEnumerator Start()
   `activeSelf`, `activeInHierarchy`, `SetActive`, `transform`, `GetComponent<T>()`,
   `GetComponents<T>()`, `GetComponentInChildren<T>()`, `GetComponentInParent<T>()`,
   `TryGetComponent`, `GetComponent("Name")`. Components are your C# scripts, `Transform`,
-  `Rigidbody`, `Collider`, `AudioSource` and `Animator`.
+  `Rigidbody`, `Collider`, `AudioSource`, `Animator`, `Camera`, `Light` and `Renderer` /
+  `MeshRenderer`.
+- `Camera`: `Camera.main`, `fieldOfView`, `nearClipPlane`, `farClipPlane`, `orthographic`,
+  `orthographicSize`, `enabled`, `cullingMask`, `backgroundColor`, `depth`, `pixelWidth`,
+  `pixelHeight`, `aspect`, `ScreenPointToRay`, `ViewportPointToRay`, `WorldToScreenPoint`,
+  `WorldToViewportPoint`, `ScreenToWorldPoint`, `ViewportToWorldPoint` (screen points are
+  pixels from the bottom-left, like `Input.mousePosition`; `z` is the distance in front of the
+  camera).
+- `Light`: `enabled`, `intensity`, `range`, `spotAngle`, `color`, `type` (`LightType`),
+  `shadows` (`LightShadows`).
+- `Renderer` / `MeshRenderer`: `enabled`, `castShadows`, `receiveShadows`, `material` (this
+  object's own copy of its first material) and `sharedMaterial` (the asset). `Material`:
+  `color`, `mainTextureOffset`, `mainTextureScale`, `GetColor` / `SetColor`, `GetFloat` /
+  `SetFloat`, `HasProperty`, `EnableKeyword` / `DisableKeyword` / `IsKeywordEnabled`, with the
+  same property names as Lua (`_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`, …).
+  Changes last until Play mode ends.
+- `Color` (`r`, `g`, `b`, `a`, the named colours, `Lerp`, `HSVToRGB`), `Screen.width` /
+  `height`, `Cursor.lockState` (`CursorLockMode`) and `Cursor.visible`.
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
   `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
@@ -1281,11 +1298,10 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (UI, cameras, lights, particles, navigation, Character
-Controller, …), contact points and `OnCollisionStay`, 2D physics callbacks, `Instantiate` of a
-script (instantiate its `gameObject`), adding or removing scripts during Play, object-reference
-fields in the Properties panel and completion in the code editor. Each changed build stays
-loaded until the editor is closed.
+Not yet: the other engine components (UI, particles, navigation, Character Controller, 2D
+physics, …), contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
+or removing scripts or components during Play, materials after a renderer's first, and
+textures on materials. Each changed build stays loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

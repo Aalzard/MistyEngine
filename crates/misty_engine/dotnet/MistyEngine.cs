@@ -1047,6 +1047,299 @@ namespace Misty
             Play(2, stateName, layer, fixedTransitionDuration, normalizedTimeOffset);
     }
 
+    // ---- colour, cameras, lights, renderers and materials ------------------------------------
+
+    /// <summary>A colour: red, green, blue and alpha, each 0..1 (HDR colours go above 1).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Color : IEquatable<Color>
+    {
+        public float r, g, b, a;
+        public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; }
+
+        public static Color white => new Color(1, 1, 1);
+        public static Color black => new Color(0, 0, 0);
+        public static Color red => new Color(1, 0, 0);
+        public static Color green => new Color(0, 1, 0);
+        public static Color blue => new Color(0, 0, 1);
+        public static Color yellow => new Color(1, 0.92f, 0.016f);
+        public static Color cyan => new Color(0, 1, 1);
+        public static Color magenta => new Color(1, 0, 1);
+        public static Color gray => new Color(0.5f, 0.5f, 0.5f);
+        public static Color grey => gray;
+        public static Color clear => new Color(0, 0, 0, 0);
+
+        /// <summary>Perceived brightness (0..1 for colours in range).</summary>
+        public float grayscale => 0.299f * r + 0.587f * g + 0.114f * b;
+        public float maxColorComponent => Mathf.Max(r, Mathf.Max(g, b));
+
+        public static Color Lerp(Color a, Color b, float t) => LerpUnclamped(a, b, Mathf.Clamp01(t));
+        public static Color LerpUnclamped(Color a, Color b, float t) =>
+            new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+
+        /// <summary>A colour from hue, saturation and value, each 0..1.</summary>
+        public static Color HSVToRGB(float h, float s, float v)
+        {
+            h = Mathf.Repeat(h, 1f) * 6f;
+            int i = (int)Mathf.Floor(h);
+            float f = h - i, p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+            return i switch
+            {
+                0 => new Color(v, t, p),
+                1 => new Color(q, v, p),
+                2 => new Color(p, v, t),
+                3 => new Color(p, q, v),
+                4 => new Color(t, p, v),
+                _ => new Color(v, p, q),
+            };
+        }
+
+        public static Color operator +(Color a, Color b) => new Color(a.r + b.r, a.g + b.g, a.b + b.b, a.a + b.a);
+        public static Color operator -(Color a, Color b) => new Color(a.r - b.r, a.g - b.g, a.b - b.b, a.a - b.a);
+        public static Color operator *(Color a, Color b) => new Color(a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a);
+        public static Color operator *(Color a, float k) => new Color(a.r * k, a.g * k, a.b * k, a.a * k);
+        public static Color operator *(float k, Color a) => a * k;
+        public static Color operator /(Color a, float k) => new Color(a.r / k, a.g / k, a.b / k, a.a / k);
+        public static bool operator ==(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        public static bool operator !=(Color a, Color b) => !(a == b);
+        public bool Equals(Color other) => this == other;
+        public override bool Equals(object obj) => obj is Color c && this == c;
+        public override int GetHashCode() => HashCode.Combine(r, g, b, a);
+        public override string ToString() => $"RGBA({r:F3}, {g:F3}, {b:F3}, {a:F3})";
+    }
+
+    /// <summary>A component with an on/off checkbox.</summary>
+    public abstract unsafe class Behaviour : Component
+    {
+        internal readonly ulong id;
+        internal Behaviour(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        internal abstract int Kind { get; }
+        internal abstract string TypeName { get; }
+
+        internal Color Get(int which)
+        {
+            Color v = default;
+            if (Internal.Native.api.componentValue(id, Kind, which, 0, &v) == 0) throw Internal.Native.Missing(TypeName);
+            return v;
+        }
+
+        internal void Set(int which, Color v)
+        {
+            if (Internal.Native.api.componentValue(id, Kind, which, 1, &v) == 0) throw Internal.Native.Missing(TypeName);
+        }
+
+        internal float GetFloat(int which) => Get(which).r;
+        internal void SetFloat(int which, float v) => Set(which, new Color(v, 0, 0, 0));
+        internal bool GetBool(int which) => Get(which).r != 0;
+        internal void SetBool(int which, bool v) => Set(which, new Color(v ? 1 : 0, 0, 0, 0));
+    }
+
+    /// <summary>The object's Camera.</summary>
+    public sealed unsafe class Camera : Behaviour
+    {
+        internal Camera(ulong id) : base(id) { }
+        internal override int Kind => 4;
+        internal override string TypeName => "Camera";
+
+        /// <summary>The first enabled camera tagged MainCamera, or null.</summary>
+        public static Camera main
+        {
+            get
+            {
+                ulong id = Internal.Native.api.global(0, 0, null);
+                return id == 0 ? null : new Camera(id);
+            }
+        }
+
+        /// <summary>Vertical field of view in degrees.</summary>
+        public float fieldOfView { get => GetFloat(0); set => SetFloat(0, value); }
+        public float nearClipPlane { get => GetFloat(1); set => SetFloat(1, value); }
+        public float farClipPlane { get => GetFloat(2); set => SetFloat(2, value); }
+        public bool orthographic { get => GetBool(3); set => SetBool(3, value); }
+        /// <summary>Half the height of an orthographic camera's view, in world units.</summary>
+        public float orthographicSize { get => GetFloat(4); set => SetFloat(4, value); }
+        public bool enabled { get => GetBool(5); set => SetBool(5, value); }
+        /// <summary>Layer bits the camera renders (`~(1 &lt;&lt; layer)` hides one).</summary>
+        public int cullingMask
+        {
+            get => BitConverter.SingleToInt32Bits(GetFloat(6));
+            set => SetFloat(6, BitConverter.Int32BitsToSingle(value));
+        }
+        public Color backgroundColor { get => Get(7); set => Set(7, value); }
+        /// <summary>Draw order: cameras with a higher depth draw on top.</summary>
+        public float depth { get => GetFloat(8); set => SetFloat(8, value); }
+        public int pixelWidth => (int)Get(9).r;
+        public int pixelHeight => (int)Get(9).g;
+        /// <summary>Width divided by height.</summary>
+        public float aspect => Get(9).b;
+
+        Vector3 Point(int op, Vector3 p, out Vector3 second)
+        {
+            Vector3 a, b;
+            if (Internal.Native.api.cameraPoint(id, op, &p, &a, &b) == 0) throw Internal.Native.Missing("Camera");
+            second = b;
+            return a;
+        }
+
+        /// <summary>A ray from the camera through a screen point (pixels from the bottom-left,
+        /// like Input.mousePosition).</summary>
+        public Ray ScreenPointToRay(Vector3 position)
+        {
+            var origin = Point(0, position, out var direction);
+            return new Ray(origin, direction);
+        }
+        /// <summary>A ray through a viewport point (0..1 from the bottom-left).</summary>
+        public Ray ViewportPointToRay(Vector3 position)
+        {
+            var origin = Point(1, position, out var direction);
+            return new Ray(origin, direction);
+        }
+        /// <summary>World to screen pixels; z is the distance in front of the camera.</summary>
+        public Vector3 WorldToScreenPoint(Vector3 position) => Point(2, position, out _);
+        public Vector3 WorldToViewportPoint(Vector3 position) => Point(3, position, out _);
+        /// <summary>Screen pixels to world; z is the distance in front of the camera.</summary>
+        public Vector3 ScreenToWorldPoint(Vector3 position) => Point(4, position, out _);
+        public Vector3 ViewportToWorldPoint(Vector3 position) => Point(5, position, out _);
+    }
+
+    public enum LightType { Spot, Directional, Point, Rectangle }
+    public enum LightShadows { None, Hard, Soft }
+
+    /// <summary>The object's Light.</summary>
+    public sealed class Light : Behaviour
+    {
+        internal Light(ulong id) : base(id) { }
+        internal override int Kind => 5;
+        internal override string TypeName => "Light";
+
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public float intensity { get => GetFloat(1); set => SetFloat(1, value); }
+        /// <summary>How far a point or spot light reaches, in metres.</summary>
+        public float range { get => GetFloat(2); set => SetFloat(2, value); }
+        /// <summary>Full cone angle of a spot light in degrees.</summary>
+        public float spotAngle { get => GetFloat(3); set => SetFloat(3, value); }
+        public Color color { get => Get(4); set => Set(4, value); }
+        public LightType type { get => (LightType)(int)GetFloat(5); set => SetFloat(5, (int)value); }
+        public LightShadows shadows { get => (LightShadows)(int)GetFloat(6); set => SetFloat(6, (int)value); }
+    }
+
+    /// <summary>The object's Mesh Renderer: draws its mesh with its materials.</summary>
+    public unsafe class Renderer : Behaviour
+    {
+        internal Renderer(ulong id) : base(id) { }
+        internal override int Kind => 6;
+        internal override string TypeName => "MeshRenderer";
+
+        public bool enabled { get => GetBool(0); set => SetBool(0, value); }
+        public bool castShadows { get => GetBool(1); set => SetBool(1, value); }
+        public bool receiveShadows { get => GetBool(2); set => SetBool(2, value); }
+        /// <summary>This renderer's own copy of its first material, made on first use: changes
+        /// show on this object only, and last until Play mode ends.</summary>
+        public Material material => new Material(id, false);
+        /// <summary>The material asset itself: changes show on every object using it, and last
+        /// until Play mode ends.</summary>
+        public Material sharedMaterial => new Material(id, true);
+    }
+
+    public sealed class MeshRenderer : Renderer
+    {
+        internal MeshRenderer(ulong id) : base(id) { }
+    }
+
+    /// <summary>A material of a renderer, with the Standard shader's property names:
+    /// `_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`, `_BumpScale`, `_Cutoff`, …</summary>
+    public sealed unsafe class Material
+    {
+        readonly ulong id;
+        readonly bool shared;
+        internal Material(ulong id, bool shared) { this.id = id; this.shared = shared; }
+
+        int Call(int op, string name, Color* v)
+        {
+            name ??= "";
+            int r;
+            fixed (char* p = name) r = Internal.Native.api.material(id, shared ? 1 : 0, op, p, name.Length, v);
+            if (r == -1) throw Internal.Native.Missing("MeshRenderer");
+            if (r == -2) throw new InvalidOperationException("Default-Material can't be changed; assign a material first.");
+            return r;
+        }
+
+        Color Read(int op, string name)
+        {
+            Color v = default;
+            Call(op, name, &v);
+            return v;
+        }
+
+        public Color color { get => GetColor("_Color"); set => SetColor("_Color", value); }
+        public Vector2 mainTextureOffset
+        {
+            get { var v = Read(8, null); return new Vector2(v.r, v.g); }
+            set { var v = new Color(value.x, value.y, 0, 0); Call(9, null, &v); }
+        }
+        public Vector2 mainTextureScale
+        {
+            get { var v = Read(10, null); return new Vector2(v.r, v.g); }
+            set { var v = new Color(value.x, value.y, 0, 0); Call(11, null, &v); }
+        }
+
+        /// <summary>A colour property (black when the material has no such property).</summary>
+        public Color GetColor(string name) => Read(0, name);
+        public void SetColor(string name, Color value) => Call(1, name, &value);
+        /// <summary>A number property (0 when the material has no such property).</summary>
+        public float GetFloat(string name) => Read(2, name).r;
+        public void SetFloat(string name, float value)
+        {
+            var v = new Color(value, 0, 0, 0);
+            Call(3, name, &v);
+        }
+        public bool HasProperty(string name) => Call(4, name, null) == 1;
+        public bool IsKeywordEnabled(string keyword) => Call(5, keyword, null) == 1;
+        /// <summary>`_EMISSION` and the feature keywords are switches; the other keywords follow
+        /// the material's settings.</summary>
+        public void EnableKeyword(string keyword) => Call(6, keyword, null);
+        public void DisableKeyword(string keyword) => Call(7, keyword, null);
+    }
+
+    /// <summary>The game image.</summary>
+    public static unsafe class Screen
+    {
+        static Color Size()
+        {
+            Color v = default;
+            Internal.Native.api.global(1, 0, &v);
+            return v;
+        }
+
+        /// <summary>Width of the game image in pixels.</summary>
+        public static int width => (int)Size().r;
+        public static int height => (int)Size().g;
+    }
+
+    public enum CursorLockMode { None, Locked, Confined }
+
+    /// <summary>The mouse cursor: lock it for mouse look, hide or show it.</summary>
+    public static unsafe class Cursor
+    {
+        static float Get(int which)
+        {
+            Color v = default;
+            Internal.Native.api.global(which, 0, &v);
+            return v.r;
+        }
+
+        static void Set(int which, float value)
+        {
+            var v = new Color(value, 0, 0, 0);
+            Internal.Native.api.global(which, 1, &v);
+        }
+
+        /// <summary>Locked holds the cursor at the centre and hides it; Confined keeps it in
+        /// the window.</summary>
+        public static CursorLockMode lockState { get => (CursorLockMode)(int)Get(2); set => Set(2, (int)value); }
+        public static bool visible { get => Get(3) != 0; set => Set(3, value ? 1 : 0); }
+    }
+
     // ---- scenes and the application ----------------------------------------------------------
 
     public enum LoadSceneMode { Single, Additive }
@@ -1242,6 +1535,10 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, char*, int, int, float, float*, int> animatorParam;
         public delegate* unmanaged<ulong, int, char*, int, int, float, float, int> animatorPlay;
         public delegate* unmanaged<int, long, char*, int, void> request;
+        public delegate* unmanaged<ulong, int, int, int, Color*, int> componentValue;
+        public delegate* unmanaged<ulong, int, Vector3*, Vector3*, Vector3*, int> cameraPoint;
+        public delegate* unmanaged<ulong, int, int, char*, int, Color*, int> material;
+        public delegate* unmanaged<int, int, Color*, ulong> global;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -1841,18 +2138,23 @@ namespace Misty.Internal
         }
 
         /// <summary>The engine component of type `t` on `entity` (Rigidbody, Collider,
-        /// AudioSource, Animator), or null.</summary>
+        /// AudioSource, Animator, Camera, Light, Renderer), or null.</summary>
         static Component EngineComponent(Type t, ulong entity)
         {
             int kind = t == typeof(Rigidbody) ? 0 : t == typeof(Collider) ? 1
-                : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3 : -1;
+                : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3
+                : t == typeof(Camera) ? 4 : t == typeof(Light) ? 5
+                : t == typeof(Renderer) || t == typeof(MeshRenderer) ? 6 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
                 0 => new Rigidbody(entity),
                 1 => new Collider(entity),
                 2 => new AudioSource(entity),
-                _ => new Animator(entity),
+                3 => new Animator(entity),
+                4 => new Camera(entity),
+                5 => new Light(entity),
+                _ => new MeshRenderer(entity),
             };
         }
 

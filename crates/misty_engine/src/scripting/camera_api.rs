@@ -26,7 +26,7 @@ pub(super) fn screen(w: &World) -> Vec2 {
 }
 
 /// View camera of object `e`.
-fn camera_of(w: &World, e: Entity) -> Option<Camera> {
+pub(super) fn camera_of(w: &World, e: Entity) -> Option<Camera> {
     let c = w.scene.world.get::<&CameraComponent>(e).ok()?;
     let (_, rotation, position) = w.scene.world_matrix(e).to_scale_rotation_translation();
     let projection = if c.orthographic {
@@ -43,7 +43,7 @@ fn camera_of(w: &World, e: Entity) -> Option<Camera> {
     })
 }
 
-fn main_camera(w: &World) -> Option<Entity> {
+pub(super) fn main_camera(w: &World) -> Option<Entity> {
     w.scene.walk().into_iter().map(|(e, _)| e).find(|&e| {
         w.scene.active_in_hierarchy(e)
             && w.scene.game_object(e).tag == "MainCamera"

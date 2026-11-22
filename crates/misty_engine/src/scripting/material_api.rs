@@ -61,7 +61,7 @@ fn shared(w: &World, path: Option<&str>) -> Material {
         .unwrap_or_default()
 }
 
-fn renderer<R>(w: &World, e: Entity, f: impl FnOnce(&MeshRenderer) -> R) -> Result<R> {
+pub(super) fn renderer<R>(w: &World, e: Entity, f: impl FnOnce(&MeshRenderer) -> R) -> Result<R> {
     let r = w.scene.world.get::<&MeshRenderer>(e).map_err(|_| gone())?;
     Ok(f(&r))
 }
@@ -89,7 +89,7 @@ fn ensure_instance(w: &mut World, e: Entity, slot: usize) -> Result<()> {
     Ok(())
 }
 
-fn read(w: &World, m: &MaterialRef) -> Result<Material> {
+pub(super) fn read(w: &World, m: &MaterialRef) -> Result<Material> {
     match m {
         MaterialRef::Instance(e, slot) => renderer(w, *e, |r| {
             r.instance(*slot)
@@ -101,7 +101,7 @@ fn read(w: &World, m: &MaterialRef) -> Result<Material> {
     }
 }
 
-fn write(w: &mut World, m: &MaterialRef, f: impl FnOnce(&mut Material)) -> Result<()> {
+pub(super) fn write(w: &mut World, m: &MaterialRef, f: impl FnOnce(&mut Material)) -> Result<()> {
     match m {
         MaterialRef::Instance(e, slot) => {
             ensure_instance(w, *e, *slot)?;
@@ -167,7 +167,7 @@ fn set_emission_color(m: &mut Material, c: [f32; 4]) {
     m.emission_intensity = intensity;
 }
 
-fn get_color(m: &Material, name: &str) -> Option<[f32; 4]> {
+pub(super) fn get_color(m: &Material, name: &str) -> Option<[f32; 4]> {
     match name {
         "_Color" => Some(m.color),
         "_EmissionColor" => Some(emission_color(m)),
@@ -175,7 +175,7 @@ fn get_color(m: &Material, name: &str) -> Option<[f32; 4]> {
     }
 }
 
-fn set_color(m: &mut Material, name: &str, c: [f32; 4]) {
+pub(super) fn set_color(m: &mut Material, name: &str, c: [f32; 4]) {
     match name {
         "_Color" => m.color = c,
         "_EmissionColor" => set_emission_color(m, c),
@@ -183,7 +183,7 @@ fn set_color(m: &mut Material, name: &str, c: [f32; 4]) {
     }
 }
 
-fn get_float(m: &Material, name: &str) -> Option<f32> {
+pub(super) fn get_float(m: &Material, name: &str) -> Option<f32> {
     Some(match name {
         "_Metallic" => m.metallic,
         "_Glossiness" | "_GlossMapScale" => m.smoothness,
@@ -213,7 +213,7 @@ fn get_float(m: &Material, name: &str) -> Option<f32> {
     })
 }
 
-fn set_float(m: &mut Material, name: &str, v: f32) {
+pub(super) fn set_float(m: &mut Material, name: &str, v: f32) {
     match name {
         "_Metallic" => m.metallic = v.clamp(0.0, 1.0),
         "_Glossiness" | "_GlossMapScale" => m.smoothness = v.clamp(0.0, 1.0),
@@ -256,13 +256,13 @@ fn texture_slot<'a>(m: &'a mut Material, name: &str) -> Option<&'a mut Option<St
     })
 }
 
-fn has_property(m: &Material, name: &str) -> bool {
+pub(super) fn has_property(m: &Material, name: &str) -> bool {
     get_color(m, name).is_some()
         || get_float(m, name).is_some()
         || texture_slot(&mut m.clone(), name).is_some()
 }
 
-fn keyword(m: &Material, k: &str) -> bool {
+pub(super) fn keyword(m: &Material, k: &str) -> bool {
     match k {
         "_EMISSION" => m.emission_enabled,
         "_NORMALMAP" => m.normal_map.is_some(),
@@ -280,7 +280,7 @@ fn keyword(m: &Material, k: &str) -> bool {
 }
 
 /// Turn a switchable keyword on or off (`_EMISSION`, the Standard Lit v2 feature sections).
-fn switch_keyword(m: &mut Material, k: &str, on: bool) {
+pub(super) fn switch_keyword(m: &mut Material, k: &str, on: bool) {
     let f = &mut m.features;
     match k {
         "_EMISSION" => m.emission_enabled = on,
