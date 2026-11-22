@@ -104,6 +104,24 @@ fn bounds_in_image(l: &UiLayout, e: Entity) -> Option<(Vec2, Vec2)> {
     Some(((min + max) * 0.5, (max - min) * 0.5))
 }
 
+/// The reachable selectable nearest the top-left corner of the screen (top row first, then
+/// leftmost), where gamepad navigation starts when nothing is selected and the Event System
+/// has no First Selected.
+pub fn top_left(scene: &Scene, l: &UiLayout) -> Option<Entity> {
+    candidates(scene, l)
+        .into_iter()
+        .min_by(|a, b| {
+            // Rows: tops within a few pixels of each other count as the same row.
+            let (ta, tb) = (a.1.y - a.2.y, b.1.y - b.2.y);
+            if (ta - tb).abs() > 4.0 {
+                ta.total_cmp(&tb)
+            } else {
+                (a.1.x - a.2.x).total_cmp(&(b.1.x - b.2.x))
+            }
+        })
+        .map(|c| c.0)
+}
+
 /// The selectable a move in `dir` from `cur` selects (`None` = stay).
 pub fn find_selectable(scene: &Scene, l: &UiLayout, cur: Entity, dir: NavDir) -> Option<Entity> {
     let nav = navigation_of(scene, cur)?;
@@ -326,6 +344,19 @@ mod tests {
         // B02 too: the last one, B12.
         s.add(b[2], blocked);
         assert_eq!(right(&s), Some(b[5]));
+    }
+
+    #[test]
+    fn top_left_is_the_first_reachable_selectable_in_reading_order() {
+        let (mut s, b) = grid();
+        let first = |s: &Scene| top_left(s, &layout(s, Vec2::new(800.0, 600.0)));
+        assert_eq!(first(&s), Some(b[0]));
+        s.world.get::<&mut UiButton>(b[0]).unwrap().interactable = false;
+        assert_eq!(first(&s), Some(b[1]), "a disabled one is skipped");
+        for e in &b[1..3] {
+            nav(&mut s, *e, |n| n.mode = NavigationMode::None);
+        }
+        assert_eq!(first(&s), Some(b[3]), "then the next row");
     }
 
     #[test]

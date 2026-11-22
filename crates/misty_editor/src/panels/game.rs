@@ -42,17 +42,20 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         .game_draws
         .set_static_batching(state.runtime.is_some());
     let game = GameView::cached(&state.scene, &state.assets, &mut state.game_draws);
+    // Cameras with a partial Viewport Rect draw into their rects (split screen).
+    let split = misty_engine::split_screen::SplitScreen::active(&state.scene);
     // Window ▸ Analysis ▸ Frame Debugger: capture (and replay up to the selected event).
     crate::panels::frame_debugger::sync(state, ui.ctx());
     match (game, gpu) {
-        (Some(game), Some(gpu)) => {
+        (game, Some(gpu)) if game.is_some() || split => {
             let debug = state.frame_debugger.request(ui.ctx(), Vec::new());
             let debugging = debug.is_some();
             if let Some(mut request) = debug {
                 request.labels = state.game_draws.labels(&state.scene);
                 gpu.renderer.begin_capture(request);
             }
-            let frame = game.frame();
+            let frame = game.as_ref().map(|g| g.frame());
+            let effects = game.as_ref().map_or(&[][..], |g| &g.effects[..]);
             // Quality ▸ Render Scale changes the pixel size the game renders at.
             let ppp = ui.ctx().pixels_per_point() * misty_engine::quality::active().render_scale;
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
@@ -65,7 +68,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 &state.scene,
                 false,
             ));
-            let texture = gpu.render(ViewId::Game, size, &frame, &game.effects);
+            let texture = gpu.render(ViewId::Game, size, frame.as_ref(), effects);
+            if split {
+                gpu.render_split(&state.scene, &state.assets, frame.is_some());
+            }
             let render = gpu.renderer.stats();
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.

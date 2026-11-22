@@ -181,7 +181,8 @@ impl RenderTarget {
             out,
             COLOR_FORMAT,
             1,
-            sampled | wgpu::TextureUsages::COPY_SRC,
+            // COPY_DST: split-screen views are copied into their rects of the full image.
+            sampled | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
             &[DISPLAY_FORMAT],
         );
         let pre_finish = make("misty pre-finish", out, COLOR_FORMAT, 1, sampled, &[]);
@@ -369,6 +370,66 @@ impl RenderTarget {
             dst.as_image_copy(),
             self.output.size(),
         );
+    }
+
+    /// Copy this target's final image into `dst`'s final image with its top-left corner at
+    /// `at` (split-screen views), clipped to `dst`.
+    pub fn copy_output_into(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        dst: &RenderTarget,
+        at: (u32, u32),
+    ) {
+        let (dw, dh) = dst.output_size();
+        if at.0 >= dw || at.1 >= dh {
+            return;
+        }
+        let (sw, sh) = self.output_size();
+        let size = wgpu::Extent3d {
+            width: sw.min(dw - at.0),
+            height: sh.min(dh - at.1),
+            depth_or_array_layers: 1,
+        };
+        encoder.copy_texture_to_texture(
+            self.output.as_image_copy(),
+            wgpu::TexelCopyTextureInfo {
+                texture: &dst.output,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: at.0,
+                    y: at.1,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            size,
+        );
+    }
+
+    /// Fill the final image with `color` (linear RGBA): the background of a split screen
+    /// that has no full-screen camera.
+    pub fn clear_output(&self, encoder: &mut wgpu::CommandEncoder, color: [f64; 4]) {
+        let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty clear output"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.output_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: color[0],
+                        g: color[1],
+                        b: color[2],
+                        a: color[3],
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
     }
 
     /// Linear HDR scene colour of the last render (reflection probe captures).

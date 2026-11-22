@@ -46,7 +46,7 @@ fn persistent_calls(w: &World, e: Entity, event: &str) -> Vec<ButtonCall> {
 
 impl ScriptHost {
     /// Call `method` on `target`'s scripts that define it (no warning when none does).
-    fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
+    pub(super) fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
         for i in 0..self.instances.len() {
             let inst = &self.instances[i];
             if inst.entity != target || !self.runnable(inst) {
@@ -68,6 +68,13 @@ impl ScriptHost {
                 self.flush_spawned();
             }
         }
+    }
+
+    /// `OnSelect()` / `OnDeselect()` on the scripts of an object the UI selection moved to /
+    /// off.
+    pub(super) fn ui_selection_changed(&mut self, e: Entity, selected: bool) {
+        let method = if selected { "OnSelect" } else { "OnDeselect" };
+        self.call_if_defined(e, method, None);
     }
 
     pub(super) fn ui_event(&mut self, ev: UiEvent) {

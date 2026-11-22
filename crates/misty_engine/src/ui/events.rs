@@ -192,9 +192,12 @@ impl UiInteraction {
         self.forget_missing(scene);
         if !self.started {
             self.ensure_groups(scene, true);
-            self.selected = settings(scene)
-                .first_selected
-                .filter(|e| scene.contains(*e));
+            // A script may have picked one before the first frame (SetSelectedGameObject).
+            if self.selected.is_none() {
+                self.selected = settings(scene)
+                    .first_selected
+                    .filter(|e| scene.contains(*e));
+            }
         }
         let l = layout(scene, input.screen);
         let hit_at = input.position.and_then(|p| raycast_hit(&l, scene, p));
@@ -253,6 +256,19 @@ impl UiInteraction {
         self.scroll_rects(scene, &l, input.dt);
         self.caret_time += input.dt;
         self.diff_values(scene, &mut events);
+        events
+    }
+
+    /// Select `e` (`None` clears the selection), like `EventSystem.SetSelectedGameObject`:
+    /// any live object can be selected, and an Input Field being typed into stops editing
+    /// when the selection moves off it (its End Edit is returned).
+    pub fn select(&mut self, scene: &mut Scene, e: Option<Entity>) -> Vec<UiEvent> {
+        let mut events = Vec::new();
+        let e = e.filter(|x| scene.contains(*x));
+        if self.editing.as_ref().is_some_and(|ed| Some(ed.field) != e) {
+            self.end_edit(scene, &mut events);
+        }
+        self.selected = e;
         events
     }
 
@@ -653,7 +669,13 @@ impl UiInteraction {
         }
         for dir in moves {
             let Some(cur) = self.selected.filter(|e| l.node(*e).is_some()) else {
-                self.selected = es.first_selected.filter(|e| scene.contains(*e));
+                // Nothing selected (the pointer clicked empty space, or the menu just opened):
+                // the first move picks First Selected, or the top-left selectable when that
+                // isn't set or isn't showing, so a gamepad can always get into a menu.
+                self.selected = es
+                    .first_selected
+                    .filter(|e| scene.contains(*e) && scene.active_in_hierarchy(*e))
+                    .or_else(|| super::navigation::top_left(scene, l));
                 continue;
             };
             let v = dir.vec();

@@ -160,7 +160,7 @@ variables of type GameObject are object fields too.
 | Canvas (UI) | `GetComponent("Canvas")`: `renderMode` (`"ScreenSpaceOverlay"`, `"ScreenSpaceCamera"`, `"WorldSpace"`), `sortingOrder`, `planeDistance`, `enabled`, `gameObject` |
 | CanvasGroup (UI) | `GetComponent("CanvasGroup")`: `alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`, `enabled`, `gameObject` |
 | AspectRatioFitter (UI) | `GetComponent("AspectRatioFitter")`: `aspectMode` (`"None"`, `"WidthControlsHeight"`, `"HeightControlsWidth"`, `"FitInParent"`, `"EnvelopeParent"`), `aspectRatio`, `gameObject` |
-| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Properties panel |
+| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`, `Select()`; clicks call the On Click methods set in the Properties panel |
 | Toggle (UI) | `GetComponent("Toggle")`: `isOn`, `interactable`, `group` (ToggleGroup or nil), `onValueChanged` (bool) |
 | ToggleGroup (UI) | `allowSwitchOff`, `AnyTogglesOn()`, `SetAllTogglesOff()` |
 | Slider (UI) | `value` (clamped, rounded with whole numbers), `minValue`, `maxValue`, `wholeNumbers`, `normalizedValue`, `interactable`, `onValueChanged` (number) |
@@ -173,6 +173,7 @@ variables of type GameObject are object fields too.
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Scene Viewer focus (click it), gamepads always reach a playing game |
+| `EventSystem.current` | `currentSelectedGameObject`, `SetSelectedGameObject(go or nil)`, `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject` — the UI selection keyboard and gamepad navigation move (see UI navigation below) |
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
@@ -314,6 +315,42 @@ Sample: `Scenes/InputSystemDemo.scene` — the First Person Player with a Player
 (`FirstPersonController.lua` reads Move, Look, Jump, Sprint and Crouch when a Player Input is on its object),
 `PlayerActions.lua` (Send Messages: holding E / X rumbles the pad) and `RebindMenu.lua` (Tab / Start: rebinding
 saved to PlayerPrefs).
+
+### Local multiplayer and split screen
+
+A camera whose **Viewport Rect** covers only part of the screen renders into that part (split screen, a
+minimap). The full-screen image comes from the highest-Depth camera that covers the screen; with none, the
+screen starts black and only the viewport cameras draw, lowest Depth first. The UI draws over all of them.
+
+**Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
+Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns
+the **Player Prefab** and pairs its Player Input with that device; a player keeps its device when others join
+or leave. **Max Player Count** caps the players (0 = no limit). With **Split-Screen** on, each player's camera
+(the first Camera on the player object or under it) gets its part of the screen: one fills it, two sit side by
+side, three or four share a 2×2 grid, more a larger grid; **Fixed Screens** keeps at least that many parts.
+While joining is on, even a lone player keeps to its own devices (no control scheme auto-switch), so the
+others stay free to join with.
+
+Scripts on the manager's object hear `OnPlayerJoined(player)` (the new player's GameObject, after its scripts'
+`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). `GetComponent("PlayerInputManager")` or
+`PlayerInputManager.instance`: `playerCount`, `maxPlayerCount`, `joiningEnabled`, `EnableJoining()`,
+`DisableJoining()`, `JoinPlayer()` (spawns a player now with free devices; nil when full), `splitScreen`,
+`enabled`, `gameObject`.
+
+### On-screen controls (touch)
+
+Add **On-Screen Stick** or **On-Screen Button** (Add Component ▸ Input) to a UI object with an Image to make
+touch controls. Each names a **Control Path** it drives: a stick drives `<Gamepad>/leftStick`, `rightStick` or
+`dpad`; a button drives a gamepad button, trigger or d-pad direction (`<Gamepad>/buttonSouth`,
+`<Gamepad>/rightTrigger`, `<Gamepad>/dpad/up`) or a key (`<Keyboard>/space`). Fingers pressing them drive a
+virtual gamepad named "On-Screen Controls" (present while the scene has on-screen controls), so game code
+needs no changes: Input System actions bound to the gamepad, `Input.GetAxis`, `Input.GetKey("joystick button
+0")` and `Input.GetKey("space")` all see it. The left mouse button presses them too, for testing in the editor.
+
+Each finger keeps the control it landed on until it lifts, so one thumb can steer while the other jumps. A
+stick follows its finger up to **Movement Range** (canvas units) and springs back on release; its value is the
+offset over the range. With **Dynamic Origin** the stick first jumps to where the finger landed inside the
+object: put it on a large transparent Image covering the left half of the screen for a floating stick.
 
 ### Layers
 
@@ -492,7 +529,14 @@ Horizontal, Vertical, Explicit or None). The Event System reads Navigate / Submi
 its Actions Asset (the default UI actions when none is set: arrows, Return, Esc, the gamepad's stick, d-pad,
 South and East); with Active Input Handling set to the Input Manager it reads the arrow keys, Return / Space /
 Esc and the first joystick. Cancel closes an open dropdown, or calls `OnCancel()` on the selected object's
-scripts. Sample: `Assets/Scenes/UIShowcase.scene` with `Assets/Scripts/UIShowcase.lua` (a gamepad menu, a
+scripts. When nothing is selected, the first move selects the Event System's First Selected, or the top-left
+selectable on screen when that isn't set, so a gamepad can always get into a menu.
+
+Scripts move the selection with `EventSystem.current:SetSelectedGameObject(go)` (`nil` clears it) or a widget's
+`Select()` (Button, Toggle, Slider, Scrollbar, InputField, Dropdown), for example to select the first button
+when a pause menu opens. It takes effect in the next UI step (the same frame from `Start`), and
+`currentSelectedGameObject` returns it at once. Scripts on an object hear `OnSelect()` when the selection moves
+to it (pointer, navigation or script) and `OnDeselect()` when it leaves, before that step's clicks. Sample: `Assets/Scenes/UIShowcase.scene` with `Assets/Scripts/UIShowcase.lua` (a gamepad menu, a
 radial health ring driven by `fillAmount`, a World Space sign and a Screen Space - Camera HUD).
 
 ### Particle systems

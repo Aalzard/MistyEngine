@@ -392,6 +392,12 @@ impl UserData for LButton {
         f.add_field_method_get("gameObject", |_, b| Ok(LGameObject(b.0)));
         f.add_field_method_get("onClick", |_, b| Ok(super::ui_widgets_api::on_click(b.0)));
     }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, b, ()| {
+            super::ui_widgets_api::select(lua, b.0)
+        });
+    }
 }
 
 /// `GetComponent` for UI component names; `Ok(None)` = not a UI component (or not present).

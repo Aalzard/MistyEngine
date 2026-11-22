@@ -127,6 +127,11 @@ fn event(e: Entity, event: &'static str) -> LUiEvent {
 }
 
 /// `interactable`, `gameObject` and `onValueChanged`, shared by the selectable widgets.
+/// `Selectable.Select()`: make `e` the UI selection (from the next UI pass on).
+pub(super) fn select(lua: &Lua, e: Entity) -> Result<()> {
+    with_world(lua, |w| super::event_system_api::request_select(w, Some(e)))
+}
+
 macro_rules! selectable_fields {
     ($f:ident, $t:ty) => {
         $f.add_field_method_get("interactable", |lua, w| {
@@ -158,6 +163,10 @@ pub struct LScrollRect(pub Entity);
 pub struct LRawImage(pub Entity);
 
 impl UserData for LToggle {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, w, ()| select(lua, w.0));
+    }
+
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         selectable_fields!(f, UiToggle);
         f.add_field_method_get("isOn", |lua, t| get(lua, t.0, |c: &UiToggle| c.is_on));
@@ -204,6 +213,10 @@ impl UserData for LToggleGroup {
 }
 
 impl UserData for LSlider {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, w, ()| select(lua, w.0));
+    }
+
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         selectable_fields!(f, UiSlider);
         f.add_field_method_get("value", |lua, s| get(lua, s.0, |c: &UiSlider| c.value));
@@ -249,6 +262,10 @@ impl UserData for LSlider {
 }
 
 impl UserData for LScrollbar {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, w, ()| select(lua, w.0));
+    }
+
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         selectable_fields!(f, UiScrollbar);
         f.add_field_method_get("value", |lua, s| get(lua, s.0, |c: &UiScrollbar| c.value));
@@ -280,6 +297,10 @@ fn content_type_name(t: InputContentType) -> &'static str {
 }
 
 impl UserData for LInputField {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, w, ()| select(lua, w.0));
+    }
+
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         selectable_fields!(f, UiInputField);
         f.add_field_method_get("onEndEdit", |_, i| Ok(event(i.0, "onEndEdit")));
@@ -348,6 +369,7 @@ impl UserData for LDropdown {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Select", |lua, w, ()| select(lua, w.0));
         m.add_method("AddOptions", |lua, d, t: Vec<String>| {
             set(lua, d.0, |c: &mut UiDropdown| c.options.extend(t))
         });
