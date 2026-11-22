@@ -316,6 +316,27 @@ Sample: `Scenes/InputSystemDemo.scene` — the First Person Player with a Player
 `PlayerActions.lua` (Send Messages: holding E / X rumbles the pad) and `RebindMenu.lua` (Tab / Start: rebinding
 saved to PlayerPrefs).
 
+### Local multiplayer and split screen
+
+A camera whose **Viewport Rect** covers only part of the screen renders into that part (split screen, a
+minimap). The full-screen image comes from the highest-Depth camera that covers the screen; with none, the
+screen starts black and only the viewport cameras draw, lowest Depth first. The UI draws over all of them.
+
+**Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
+Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns
+the **Player Prefab** and pairs its Player Input with that device; a player keeps its device when others join
+or leave. **Max Player Count** caps the players (0 = no limit). With **Split-Screen** on, each player's camera
+(the first Camera on the player object or under it) gets its part of the screen: one fills it, two sit side by
+side, three or four share a 2×2 grid, more a larger grid; **Fixed Screens** keeps at least that many parts.
+While joining is on, even a lone player keeps to its own devices (no control scheme auto-switch), so the
+others stay free to join with.
+
+Scripts on the manager's object hear `OnPlayerJoined(player)` (the new player's GameObject, after its scripts'
+`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). `GetComponent("PlayerInputManager")` or
+`PlayerInputManager.instance`: `playerCount`, `maxPlayerCount`, `joiningEnabled`, `EnableJoining()`,
+`DisableJoining()`, `JoinPlayer()` (spawns a player now with free devices; nil when full), `splitScreen`,
+`enabled`, `gameObject`.
+
 ### On-screen controls (touch)
 
 Add **On-Screen Stick** or **On-Screen Button** (Add Component ▸ Input) to a UI object with an Image to make

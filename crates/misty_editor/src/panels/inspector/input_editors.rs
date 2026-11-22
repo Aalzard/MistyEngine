@@ -13,7 +13,12 @@ use crate::state::EditorState;
 use crate::theme;
 
 /// Names of the components handled here.
-pub const NAMES: [&str; 3] = ["Player Input", "On-Screen Stick", "On-Screen Button"];
+pub const NAMES: [&str; 4] = [
+    "Player Input",
+    "Player Input Manager",
+    "On-Screen Stick",
+    "On-Screen Button",
+];
 
 pub fn icon(name: &str) -> Option<&'static str> {
     NAMES.contains(&name).then_some(ICON)
@@ -30,6 +35,7 @@ fn load(state: &EditorState, rel: &str) -> Option<InputActionAsset> {
 
 pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool {
     match name {
+        "Player Input Manager" => return player_manager(ui, state, e),
         "On-Screen Stick" => return on_screen_stick(ui, state, e),
         "On-Screen Button" => return on_screen_button(ui, state, e),
         _ => {}
@@ -467,6 +473,110 @@ fn on_screen_button(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     });
     control_path(ui, e, &mut c.control_path, &BUTTON_PATHS);
     ui.weak("Needs a graphic (Image) to catch touches. The left mouse button works too.");
+    if c == before {
+        return false;
+    }
+    let _ = state.scene.world.insert_one(e, c);
+    true
+}
+
+fn player_manager(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    use misty_engine::input::actions::{PlayerInputManager, PlayerJoinBehavior};
+    let Ok(mut c) = state
+        .scene
+        .world
+        .get::<&PlayerInputManager>(e)
+        .map(|c| (*c).clone())
+    else {
+        return false;
+    };
+    let before = c.clone();
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Enabled",
+            "Off: nobody joins and camera rects are left alone.",
+        );
+        ui.checkbox(&mut c.enabled, "");
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Join Behavior",
+            "Button press: a button on a gamepad (or the keyboard) no player uses yet spawns a \
+             player for it. Manually: only scripts add players (JoinPlayer).",
+        );
+        egui::ComboBox::from_id_salt(("pim_join", e))
+            .selected_text(c.join_behavior.label())
+            .width(220.0)
+            .show_ui(ui, |ui| {
+                for b in PlayerJoinBehavior::ALL {
+                    ui.selectable_value(&mut c.join_behavior, b, b.label());
+                }
+            });
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Player Prefab",
+            "Spawned for each player who joins; give it a Player Input and a Camera.",
+        );
+        let current = c
+            .player_prefab
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).file_stem())
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "None (Prefab)".into());
+        let slot = egui::ComboBox::from_id_salt(("pim_prefab", e))
+            .selected_text(format!("⬢ {current}"))
+            .width(180.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut c.player_prefab, None, "None");
+                ui.weak("Drop a prefab from Asset Files here.");
+            })
+            .response;
+        if let Some(p) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
+            && p.0.ends_with(".prefab")
+        {
+            c.player_prefab = Some(p.0.clone());
+        }
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Joining Enabled",
+            "Players may join now (EnableJoining / DisableJoining).",
+        );
+        ui.checkbox(&mut c.joining_enabled, "");
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Max Player Count",
+            "Most players at once (0 = no limit).",
+        );
+        ui.add(egui::DragValue::new(&mut c.max_player_count).range(0..=16));
+    });
+    ui.horizontal(|ui| {
+        label(
+            ui,
+            "Split-Screen",
+            "Give each player's camera its own part of the screen: two side by side, more in a \
+             grid.",
+        );
+        ui.checkbox(&mut c.split_screen, "");
+    });
+    if c.split_screen {
+        ui.horizontal(|ui| {
+            label(
+                ui,
+                "Fixed Screens",
+                "Split into at least this many parts even with fewer players (0 = one per player).",
+            );
+            ui.add(egui::DragValue::new(&mut c.fixed_number_of_screens).range(0..=16));
+        });
+    }
+    ui.weak("Scripts on this object hear OnPlayerJoined(player) and OnPlayerLeft(player).");
     if c == before {
         return false;
     }

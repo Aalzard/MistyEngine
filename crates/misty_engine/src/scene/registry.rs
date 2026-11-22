@@ -473,6 +473,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Scripts>(),
             // Input System (input::actions).
             ComponentInfo::of::<crate::input::actions::PlayerInput>(),
+            ComponentInfo::of::<crate::input::actions::PlayerInputManager>(),
             ComponentInfo::of::<crate::input::OnScreenStick>(),
             ComponentInfo::of::<crate::input::OnScreenButton>(),
             // Netcode (network).

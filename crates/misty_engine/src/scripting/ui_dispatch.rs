@@ -46,7 +46,7 @@ fn persistent_calls(w: &World, e: Entity, event: &str) -> Vec<ButtonCall> {
 
 impl ScriptHost {
     /// Call `method` on `target`'s scripts that define it (no warning when none does).
-    fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
+    pub(super) fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
         for i in 0..self.instances.len() {
             let inst = &self.instances[i];
             if inst.entity != target || !self.runnable(inst) {

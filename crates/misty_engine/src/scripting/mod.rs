@@ -47,6 +47,7 @@ mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
+pub mod player_manager_api;
 pub mod recorder_api;
 pub mod render_settings_api;
 pub mod rigging_api;
@@ -298,6 +299,8 @@ pub struct World {
     pub ui_select_request: Option<Option<Entity>>,
     /// Fingers on On-Screen Sticks and Buttons (the virtual gamepad they drive).
     pub on_screen: crate::input::OnScreenControls,
+    /// Players the Player Input Manager has reported (joined / left).
+    pub player_manager: player_manager_api::PlayerManagerState,
 }
 
 impl World {
@@ -366,6 +369,7 @@ impl World {
             ui_selected: None,
             ui_select_request: None,
             on_screen: Default::default(),
+            player_manager: Default::default(),
         }
     }
 }
@@ -1408,6 +1412,10 @@ impl ScriptHost {
             profile_scope!("Input.Update", Category::Scripts);
             self.input_update(time.unscaled_delta)
         };
+        {
+            profile_scope!("PlayerInputManager", Category::Scripts);
+            self.player_manager_frame();
+        }
         if let Some(w) = self.lua.app_data_ref::<World>()
             && let Err(e) = api::refresh_time(&self.lua, &w)
         {
