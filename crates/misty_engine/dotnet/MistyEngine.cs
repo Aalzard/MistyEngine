@@ -1445,6 +1445,97 @@ namespace Misty
         public Rigidbody2D rigidbody => gameObject.GetComponentInParent<Rigidbody2D>();
     }
 
+    /// <summary>What a Physics2D ray hit; false (no collider) when it hit nothing.</summary>
+    public struct RaycastHit2D
+    {
+        internal Internal.HitData data;
+        internal float rayLength;
+        public Vector2 point => data.point;
+        public Vector2 normal => data.normal;
+        public float distance => data.distance;
+        /// <summary>Distance as a fraction of the ray length (0 for an infinite ray).</summary>
+        public float fraction => float.IsInfinity(rayLength) || rayLength <= 0 ? 0 : data.distance / rayLength;
+        public Collider2D collider => data.entity == 0 ? null : new Collider2D(data.entity);
+        public Rigidbody2D rigidbody => data.body == 0 ? null : new Rigidbody2D(data.body);
+        public Transform transform => data.entity == 0 ? null : new Transform(data.entity);
+        public static implicit operator bool(RaycastHit2D hit) => hit.data.entity != 0;
+    }
+
+    /// <summary>2D physics queries (the 2D world, not the 3D one).</summary>
+    public static unsafe class Physics2D
+    {
+        public const int DefaultRaycastLayers = ~(1 << 2);
+        public const int AllLayers = ~0;
+        public const int IgnoreRaycastLayer = 1 << 2;
+
+        static RaycastHit2D[] Rays(Vector2 origin, Vector2 direction, float distance, int layerMask)
+        {
+            var buf = new Internal.HitData[16];
+            Vector3 o = origin, d = direction;
+            while (true)
+            {
+                int n;
+                fixed (Internal.HitData* b = buf) n = Internal.Native.api.physics2d(0, &o, &d, distance, (uint)layerMask, b, null, buf.Length);
+                if (n > buf.Length) { buf = new Internal.HitData[n]; continue; }
+                var hits = new RaycastHit2D[n];
+                for (int i = 0; i < n; i++) hits[i] = new RaycastHit2D { data = buf[i], rayLength = distance };
+                return hits;
+            }
+        }
+
+        static Collider2D[] Overlap(int op, Vector2 a, Vector3 b, float num, int layerMask)
+        {
+            var buf = new ulong[32];
+            Vector3 p = a;
+            while (true)
+            {
+                int n;
+                fixed (ulong* ids = buf) n = Internal.Native.api.physics2d(op, &p, &b, num, (uint)layerMask, null, ids, buf.Length);
+                if (n > buf.Length) { buf = new ulong[n]; continue; }
+                var found = new Collider2D[n];
+                for (int i = 0; i < n; i++) found[i] = new Collider2D(buf[i]);
+                return found;
+            }
+        }
+
+        /// <summary>The nearest hit along the ray; test it like a bool.</summary>
+        public static RaycastHit2D Raycast(Vector2 origin, Vector2 direction, float distance = Mathf.Infinity, int layerMask = DefaultRaycastLayers)
+        {
+            var all = Rays(origin, direction, distance, layerMask);
+            return all.Length > 0 ? all[0] : default;
+        }
+        /// <summary>Every hit along the ray, nearest first.</summary>
+        public static RaycastHit2D[] RaycastAll(Vector2 origin, Vector2 direction, float distance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Rays(origin, direction, distance, layerMask);
+        public static RaycastHit2D Linecast(Vector2 start, Vector2 end, int layerMask = DefaultRaycastLayers) =>
+            Raycast(start, end - start, (end - start).magnitude, layerMask);
+        public static RaycastHit2D[] LinecastAll(Vector2 start, Vector2 end, int layerMask = DefaultRaycastLayers) =>
+            Rays(start, end - start, (end - start).magnitude, layerMask);
+
+        public static Collider2D OverlapCircle(Vector2 point, float radius, int layerMask = AllLayers)
+        {
+            var all = Overlap(1, point, default, radius, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapCircleAll(Vector2 point, float radius, int layerMask = AllLayers) =>
+            Overlap(1, point, default, radius, layerMask);
+        /// <summary>`angle` in degrees.</summary>
+        public static Collider2D OverlapBox(Vector2 point, Vector2 size, float angle, int layerMask = AllLayers)
+        {
+            var all = Overlap(2, point, new Vector3(size.x, size.y, 0), angle, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapBoxAll(Vector2 point, Vector2 size, float angle, int layerMask = AllLayers) =>
+            Overlap(2, point, new Vector3(size.x, size.y, 0), angle, layerMask);
+        public static Collider2D OverlapPoint(Vector2 point, int layerMask = AllLayers)
+        {
+            var all = Overlap(3, point, default, 0, layerMask);
+            return all.Length > 0 ? all[0] : null;
+        }
+        public static Collider2D[] OverlapPointAll(Vector2 point, int layerMask = AllLayers) =>
+            Overlap(3, point, default, 0, layerMask);
+    }
+
     // ---- navigation and particles -----------------------------------------------------------
 
     public enum NavMeshPathStatus { PathComplete, PathPartial, PathInvalid }
@@ -1968,6 +2059,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, char*, int, int> componentOp;
         public delegate* unmanaged<long, int, int> sceneOp;
         public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
+        public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>

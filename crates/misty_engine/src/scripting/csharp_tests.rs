@@ -1648,3 +1648,81 @@ return A
     );
     assert_eq!(scripts, 4);
 }
+
+#[test]
+fn csharp_physics2d_raycasts_linecasts_and_overlaps() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Prober : MonoBehaviour
+{
+    void Start()
+    {
+        var hit = Physics2D.Raycast(new Vector2(0, 5), Vector2.down, 20f);
+        Debug.Log("ray " + (bool)hit + " " + hit.collider.name + " " + hit.point.y + " " + hit.normal.y
+            + " " + hit.distance + " " + (hit.rigidbody == null) + " " + hit.fraction);
+        var miss = Physics2D.Raycast(new Vector2(30, 5), Vector2.down, 20f);
+        Debug.Log("miss " + (bool)miss + " " + (miss.collider == null));
+        Debug.Log("all " + Physics2D.RaycastAll(new Vector2(0, 5), Vector2.down).Length);
+        Debug.Log("line " + Physics2D.Linecast(new Vector2(0, 5), new Vector2(0, 0)).collider?.name);
+        Debug.Log("circle " + Physics2D.OverlapCircle(new Vector2(0, 0), 1f)?.name
+            + " " + Physics2D.OverlapCircleAll(new Vector2(0, -1.5f), 1f).Length);
+        Debug.Log("box " + Physics2D.OverlapBox(new Vector2(0, -3), new Vector2(2, 2), 45f)?.name);
+        Debug.Log("point " + Physics2D.OverlapPoint(new Vector2(5, -3))?.name
+            + " " + (Physics2D.OverlapPoint(new Vector2(5, 5)) == null));
+    }
+}
+"#;
+    let root = project(&[("Prober.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(
+        ground,
+        crate::scene::Transform::from_position(Vec3::new(0.0, -3.0, 0.0)),
+    );
+    scene.add(
+        ground,
+        crate::scene::BoxCollider2D {
+            size: glam::Vec2::new(20.0, 2.0),
+            ..Default::default()
+        },
+    );
+    let ball = scene.spawn("Ball", None);
+    scene.add(
+        ball,
+        crate::scene::CircleCollider2D {
+            radius: 0.5,
+            ..Default::default()
+        },
+    );
+    let probe = scene.spawn("Probe", None);
+    scene.set_transform(
+        probe,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 50.0, 0.0)),
+    );
+    attach(&mut scene, probe, "Prober.cs");
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    let logs = host.take_logs();
+    assert!(logs.iter().all(|(k, _)| *k != LogKind::Error), "{logs:#?}");
+    let lines: Vec<String> = logs.into_iter().map(|(_, t)| t).collect();
+    assert_eq!(
+        lines,
+        [
+            "ray True Ball 0.5 1 4.5 True 0.225",
+            "miss False True",
+            "all 2",
+            "line Ball",
+            "circle Ball 2",
+            "box Ground",
+            "point Ground True",
+        ],
+        "{lines:?}"
+    );
+    host.shutdown(&mut scene);
+}

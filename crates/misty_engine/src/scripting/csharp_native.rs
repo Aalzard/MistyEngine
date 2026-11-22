@@ -144,6 +144,8 @@ pub(super) struct NativeApi {
     component_op: extern "C" fn(u64, i32, *const u16, i32) -> i32,
     scene_op: extern "C" fn(i64, i32) -> i32,
     message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
+    physics2d:
+        extern "C" fn(i32, *const V3, *const V3, f32, u32, *mut HitData, *mut u64, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -200,6 +202,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     component_op,
     scene_op,
     message,
+    physics2d,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -1962,6 +1965,60 @@ extern "C" fn message(
     };
     with_object(id, |w, e| {
         i32::from(super::messages::queue_for_lua(w, e, method, arg))
+    })
+    .unwrap_or(0)
+}
+
+/// Physics2D queries: op 0 every ray hit from `a` along `b` up to `num` (written to `hits`),
+/// 1 colliders in the circle at `a` of radius `num`, 2 in the box at `a` of size `b` turned
+/// `num` degrees, 3 at the point `a` (object ids written to `ids`). Writes up to `cap` and
+/// returns how many there are.
+#[allow(clippy::too_many_arguments)]
+extern "C" fn physics2d(
+    op: i32,
+    a: *const V3,
+    b: *const V3,
+    num: f32,
+    mask: u32,
+    hits: *mut HitData,
+    ids: *mut u64,
+    cap: i32,
+) -> i32 {
+    use glam::Vec2;
+    let Some(a) = read_v3(a) else { return 0 };
+    let b = read_v3(b).unwrap_or(Vec3::ZERO);
+    let (a, b) = (Vec2::new(a.x, a.y), Vec2::new(b.x, b.y));
+    let cap = cap.max(0) as usize;
+    with_world(|w| {
+        if op == 0 {
+            let found = w.physics2d.raycast_all(a, b, num, mask);
+            if !hits.is_null() {
+                for (i, h) in found.iter().take(cap).enumerate() {
+                    let data = HitData {
+                        point: [h.point.x, h.point.y, 0.0],
+                        normal: [h.normal.x, h.normal.y, 0.0],
+                        distance: h.distance,
+                        entity: id_of(h.entity),
+                        body: h.body.map_or(0, id_of),
+                    };
+                    // SAFETY: `hits` holds `cap` HitData on the C# side.
+                    unsafe { hits.add(i).write(data) };
+                }
+            }
+            return found.len() as i32;
+        }
+        let found = match op {
+            1 => w.physics2d.overlap_circle_all(a, num, mask),
+            2 => w.physics2d.overlap_box_all(a, b, num, mask),
+            _ => w.physics2d.overlap_point_all(a, mask),
+        };
+        if !ids.is_null() {
+            for (i, e) in found.iter().take(cap).enumerate() {
+                // SAFETY: `ids` holds `cap` ids on the C# side.
+                unsafe { ids.add(i).write(id_of(*e)) };
+            }
+        }
+        found.len() as i32
     })
     .unwrap_or(0)
 }

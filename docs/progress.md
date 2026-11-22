@@ -6617,6 +6617,8 @@ thread). Not numbered as a round: round 92 lives on another computer.
   itself fails with a Console message instead of recursing. Builds pack the clips it names.
   Not yet: a Create menu entry and an Inspector editor for the clip list (edit the JSON), and
   live edits of the base controller don't reach overrides while playing.
+- **Physics2D queries from C#**: `Raycast`, `RaycastAll`, `Linecast(All)`, `OverlapCircle(All)`,
+  `OverlapBox(All)`, `OverlapPoint(All)` and `RaycastHit2D` (one native `physics2d` entry).
 
 ### Tests
 New: `csharp_camera_light_renderer_material_screen_and_cursor`,
@@ -6627,7 +6629,8 @@ New: `csharp_camera_light_renderer_material_screen_and_cursor`,
 `lua_load_scene_async_waits_for_activation_and_completes`,
 `csharp_load_scene_async_yields_and_keeps_dont_destroy_objects`,
 `csharp_and_lua_send_broadcast_and_upwards_messages`, `csharp_and_lua_add_scripts_while_playing`, `overrides_swap_motions_in_states_trees_and_synced_layers`,
-`animators_play_the_override_clips_and_loops_fail_cleanly`. The 20 C# tests and the 144 scripting tests
+`animators_play_the_override_clips_and_loops_fail_cleanly`,
+`csharp_physics2d_raycasts_linecasts_and_overlaps`. The 20 C# tests and the 144 scripting tests
 pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 
 ### Not done

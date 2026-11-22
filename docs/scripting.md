@@ -1295,6 +1295,10 @@ IEnumerator Start()
   its Awake and OnEnable run right after the calling method, Start before the next Update.
 - `DontDestroyOnLoad(obj)`: the object's root and its scripts (with their fields) survive
   single scene loads, like Lua's.
+- `Physics2D`: `Raycast` / `RaycastAll` / `Linecast` / `LinecastAll` returning
+  `RaycastHit2D` (`point`, `normal`, `distance`, `fraction`, `collider`, `rigidbody`,
+  `transform`; test it like a bool), `OverlapCircle(All)`, `OverlapBox(All)` (angle in degrees),
+  `OverlapPoint(All)`, `DefaultRaycastLayers` / `AllLayers`.
 - `SendMessage`, `BroadcastMessage`, `SendMessageUpwards` (with `SendMessageOptions`) on
   `GameObject` and `Component`: C# scripts are called at once; Lua scripts on the same objects
   right after the calling method returns (a value Lua can't take, like an object, reaches C#
