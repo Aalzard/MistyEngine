@@ -291,6 +291,116 @@ fn lua_overhead_bench() {
     }
 }
 
+/// The same work as the Lua cases of the same names, as C# scripts.
+const CS_CASES: &[(&str, usize, &str)] = &[
+    (
+        "empty",
+        5000,
+        r#"
+using Misty;
+public class Bench : MonoBehaviour
+{
+    void Update() { }
+}
+"#,
+    ),
+    (
+        "fields",
+        5000,
+        r#"
+using Misty;
+public class Bench : MonoBehaviour
+{
+    public float speed = 2f;
+    public int hp = 100;
+    float t;
+    void Update()
+    {
+        t += speed * Time.deltaTime;
+        if (t > 1f) { t = 0f; hp -= 1; }
+        if (hp <= 0) hp = 100;
+    }
+}
+"#,
+    ),
+    (
+        "ships",
+        5000,
+        r#"
+using Misty;
+public class Bench : MonoBehaviour
+{
+    float vx = 1f, vz = 0f;
+    void Update()
+    {
+        float dt = Time.deltaTime;
+        Vector3 p = transform.position;
+        vx += -p.x * 0.1f * dt;
+        vz += -p.z * 0.1f * dt;
+        Vector3 np = new Vector3(p.x + vx * dt, p.y, p.z + vz * dt);
+        transform.position = np;
+        transform.LookAt(new Vector3(np.x + vx, np.y, np.z + vz));
+    }
+}
+"#,
+    ),
+    (
+        "three_callbacks",
+        5000,
+        r#"
+using Misty;
+public class Bench : MonoBehaviour
+{
+    int n;
+    void Update() { n++; }
+    void FixedUpdate() { n++; }
+    void LateUpdate() { n++; }
+}
+"#,
+    ),
+];
+
+/// `cargo test --release -p misty_engine --lib csharp_overhead_bench -- --ignored --nocapture`
+/// (needs the .NET SDK; `MISTY_LUA_BENCH` picks cases here too).
+#[test]
+#[ignore = "bench"]
+fn csharp_overhead_bench() {
+    if !super::csharp::dotnet_available() {
+        eprintln!("no .NET runtime installed: skipped");
+        return;
+    }
+    let only = std::env::var("MISTY_LUA_BENCH").unwrap_or_default();
+    let frames = std::env::var("MISTY_LUA_BENCH_FRAMES")
+        .ok()
+        .and_then(|f| f.parse().ok())
+        .unwrap_or(120);
+    for (name, n, source) in CS_CASES {
+        if !only.is_empty() && !only.split(',').any(|o| o == *name) {
+            continue;
+        }
+        let root = std::env::temp_dir().join(format!("misty_cs_bench_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        std::fs::write(root.join("Assets/Scripts/Bench.cs"), source).unwrap();
+        let mut scene = Scene::new("b");
+        for i in 0..*n {
+            let e = scene.spawn(&format!("Obj{i}"), None);
+            let a = i as f32 * 0.01;
+            let r = 10.0 + (i % 100) as f32;
+            scene.set_transform(
+                e,
+                Transform::from_position(Vec3::new(a.cos() * r, 0.0, a.sin() * r)),
+            );
+            script(&mut scene, e, "Bench.cs");
+        }
+        // Past the JIT's first, slow versions of the methods.
+        let ms = time_scene(scene, root, 60, frames);
+        eprintln!(
+            "C# {name:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
+            ms * 1e6 / *n as f64
+        );
+    }
+}
+
 const IDLE: &str = r#"
 local S = { n = 0 }
 function S:Update() self.n = self.n + 1 end

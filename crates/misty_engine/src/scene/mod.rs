@@ -811,6 +811,13 @@ impl Scene {
 
     /// Place `e` at a world-space position (keeps its local rotation/scale).
     pub fn set_world_position(&mut self, e: Entity, p: Vec3) {
+        // A root's position is its world position: one look at the object.
+        if let Ok((t, node)) = self.world.query_one_mut::<(&mut Transform, &Node)>(e)
+            && node.parent.is_none()
+        {
+            t.position = p;
+            return;
+        }
         let parent_world = self
             .parent(e)
             .map(|p| self.world_matrix(p))
@@ -854,6 +861,12 @@ impl Scene {
 
     /// Set the world-space rotation (keeps position and scale).
     pub fn set_world_rotation(&mut self, e: Entity, q: glam::Quat) {
+        if let Ok((t, node)) = self.world.query_one_mut::<(&mut Transform, &Node)>(e)
+            && node.parent.is_none()
+        {
+            t.set_rotation(q);
+            return;
+        }
         let parent = self
             .parent(e)
             .map(|p| self.world_rotation(p))

@@ -498,6 +498,17 @@ impl Physics {
                 p = b.prev.0.lerp(p, alpha);
                 r = b.prev.1.slerp(r, alpha);
             }
+            // A root that is already there (a body at rest): nothing to write, and no
+            // Euler angles to work out for the Inspector.
+            if let Ok((t, node)) = scene
+                .world
+                .query_one_mut::<(&crate::scene::Transform, &crate::scene::Node)>(*e)
+                && node.parent.is_none()
+                && t.position == p
+                && t.rotation == r.normalize()
+            {
+                continue;
+            }
             scene.set_world_position(*e, p);
             scene.set_world_rotation(*e, r);
         }
@@ -829,6 +840,8 @@ pub fn collider_matrix(scene: &Scene, e: Entity, center: Vec3) -> Mat4 {
 
 #[cfg(test)]
 mod active_tests;
+#[cfg(test)]
+mod busy_bench;
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]

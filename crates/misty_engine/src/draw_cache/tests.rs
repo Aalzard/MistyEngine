@@ -201,3 +201,53 @@ fn kept_entries_never_hide_a_later_change() {
     let st = check(&mut cache, &s, &m);
     assert_eq!((st.rebuilt, st.kept), (0, 2));
 }
+
+/// What gathering the draw list costs per frame in a busy scene (ignored: a benchmark, the
+/// part of rendering that needs no GPU).
+/// `cargo test --release -p misty_engine --lib draw_cache_busy_bench -- --ignored --nocapture`
+#[test]
+#[ignore = "bench"]
+fn draw_cache_busy_bench() {
+    let mut s = Scene::new("b");
+    let m = Colors::default();
+    let n = 5000;
+    let mut movers = Vec::new();
+    for i in 0..n {
+        let x = i as f32;
+        cube(&mut s, &format!("Still{i}"), None, x, "A.mat");
+        movers.push(cube(&mut s, &format!("Mover{i}"), None, x, "B.mat"));
+    }
+    let mut cache = DrawCache::new();
+    cache.update(&s, &m, u32::MAX, |_| false);
+    let median = |mut v: Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let frames = std::env::var("MISTY_DRAW_BENCH_FRAMES")
+        .ok()
+        .and_then(|f| f.parse().ok())
+        .unwrap_or(120);
+    let mut time = |s: &mut Scene, moving: bool| {
+        let mut ms = Vec::new();
+        for f in 0..frames {
+            if moving {
+                for (i, &e) in movers.iter().enumerate() {
+                    let mut t = s.transform(e);
+                    t.position.y = (f + i) as f32 * 0.01;
+                    s.set_transform(e, t);
+                }
+            }
+            let at = std::time::Instant::now();
+            let draws = cache.update(s, &m, u32::MAX, |_| false);
+            ms.push(at.elapsed().as_secs_f64() * 1000.0);
+            assert!(!draws.is_empty());
+        }
+        median(ms)
+    };
+    let still = time(&mut s, false);
+    let moving = time(&mut s, true);
+    eprintln!(
+        "draw list of {} cubes: {still:7.3} ms/frame when nothing moves, {moving:7.3} ms/frame when {n} move",
+        2 * n
+    );
+}
