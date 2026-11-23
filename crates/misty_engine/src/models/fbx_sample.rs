@@ -43,7 +43,9 @@ pub fn tentacle_fbx() -> Vec<u8> {
         let r = radius(y);
         for s in 0..=SIDES {
             let a = TAU * s as f64 / SIDES as f64;
-            let (c, sn) = (a.cos(), a.sin());
+            // libm, not the platform's maths library: the file must come out byte for byte the
+            // same on Windows, Linux and macOS (`sample_fbx_assets_are_up_to_date`).
+            let (c, sn) = (libm::cos(a), libm::sin(a));
             positions.push([r * c, y, r * sn]);
             let l = (c * c + 0.08 * 0.08 + sn * sn).sqrt();
             normals_cp.push([c / l, 0.08 / l, sn / l]);
@@ -83,7 +85,7 @@ pub fn tentacle_fbx() -> Vec<u8> {
     let mesh = doc.model("TentacleMesh", "Mesh", 0, [0.0; 3], [0.0; 3], [1.0; 3]);
     let geometry = doc.geometry("Tentacle", &file_positions, &polygons, &normals, &uvs, &[]);
     doc.connect(geometry, mesh);
-    let skin_color = [0.62f64, 0.16, 0.36].map(|c| c.powf(1.0 / 2.2));
+    let skin_color = [0.62f64, 0.16, 0.36].map(|c| libm::pow(c, 1.0 / 2.2));
     let material = doc.material("TentacleSkin", skin_color, 20.0, [0.0; 3]);
     doc.connect(material, mesh);
 
@@ -127,7 +129,7 @@ pub fn tentacle_fbx() -> Vec<u8> {
             let y = p[1];
             let [c, s] = radial[v];
             let k = if which == 0 {
-                0.16 * (-((y - 1.0) / 0.28).powi(2)).exp()
+                0.16 * libm::exp(-((y - 1.0) / 0.28) * ((y - 1.0) / 0.28))
             } else {
                 let t = ((y - 1.0) / (HEIGHT as f64 - 1.0)).clamp(0.0, 1.0);
                 -0.75 * radius(y) * t * t * (3.0 - 2.0 * t)
