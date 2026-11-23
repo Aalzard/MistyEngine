@@ -1470,6 +1470,10 @@ pub fn object_fits(scene: &misty_engine::scene::Scene, e: Entity, kind: &str) ->
             .iter()
             .any(|n| n == "Mesh Renderer"),
         "AudioSource" => scene.component_names(e).iter().any(|n| n == "Audio Source"),
+        "CharacterController" => scene
+            .component_names(e)
+            .iter()
+            .any(|n| n == "Character Controller"),
         "Collider" => scene
             .component_names(e)
             .iter()

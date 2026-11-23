@@ -145,6 +145,112 @@ fn slopes_steeper_than_the_slope_limit_are_not_climbed() {
 }
 
 #[test]
+fn tobler_factor_peaks_on_gentle_descents() {
+    assert!((tobler_factor(0.0) - 1.0).abs() < 1e-5);
+    let best = tobler_factor(-0.05);
+    assert!(best > 1.18 && best < 1.20, "gentle descent boost: {best}");
+    assert!(tobler_factor(0.1) < 0.75, "10% uphill slows down");
+    assert!(
+        tobler_factor(0.3) < tobler_factor(0.1),
+        "steeper uphill is slower"
+    );
+    assert!(
+        tobler_factor(-0.4) < tobler_factor(-0.2),
+        "steep descents are careful"
+    );
+    assert!(
+        tobler_factor(-0.4) < 0.5,
+        "steep descent: {}",
+        tobler_factor(-0.4)
+    );
+    assert!(tobler_factor(10.0) >= 0.05, "never stops completely");
+}
+
+#[test]
+fn slope_scaling_follows_the_walking_direction() {
+    // Ground rising towards +X at 20°.
+    let a = 20f32.to_radians();
+    let n = Vec3::new(-a.sin(), a.cos(), 0.0);
+    let up = slope_scaled(Vec3::new(1.0, -0.2, 0.0), n, 1.0);
+    let down = slope_scaled(Vec3::new(-1.0, -0.2, 0.0), n, 1.0);
+    let across = slope_scaled(Vec3::new(0.0, -0.2, 1.0), n, 1.0);
+    assert!(up.x < 0.5, "uphill is slower: {up}");
+    assert!(
+        -down.x > up.x && -down.x < 1.0,
+        "a 36% descent is faster than the climb: {down}"
+    );
+    assert!(
+        (across.z - tobler_factor(0.0)).abs() < 1e-4,
+        "walking across the slope: {across}"
+    );
+    assert_eq!(up.y, -0.2, "vertical motion (gravity) is untouched");
+    assert_eq!(slope_scaled(Vec3::X, n, 0.0), Vec3::X, "off by default");
+    let half = slope_scaled(Vec3::X, n, 0.5).x;
+    assert!(
+        (half - (1.0 + up.x) / 2.0).abs() < 1e-4,
+        "strength blends: {half}"
+    );
+}
+
+/// Walking up and down a real ramp: the controller's speed follows the incline only with
+/// Slope Speed on, and it reports the ramp's normal while standing on it.
+#[test]
+fn slope_speed_slows_controllers_on_ramps() {
+    let run = |slope_speed: f32, dir: f32| {
+        let mut scene = Scene::new("t");
+        // A 15° ramp rising towards +X, wide and long, centred on the origin.
+        let a = 15f32.to_radians();
+        solid(
+            &mut scene,
+            "Ramp",
+            Vec3::ZERO,
+            Vec3::new(40.0, 0.5, 10.0),
+            15.0,
+        );
+        let e = scene.spawn("Player", None);
+        let surface = 0.25 / a.cos();
+        scene.set_transform(
+            e,
+            Transform::from_position(Vec3::new(0.0, surface + 1.1, 0.0)),
+        );
+        scene.add(
+            e,
+            CharacterController {
+                slope_speed,
+                ..Default::default()
+            },
+        );
+        let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+        walk(&mut physics, &mut scene, e, Vec3::ZERO, 0.5);
+        let start = scene.world_position(e).x;
+        walk(
+            &mut physics,
+            &mut scene,
+            e,
+            Vec3::new(1.4 * dir, 0.0, 0.0),
+            2.0,
+        );
+        let normal = physics.character_ground_normal(e);
+        ((scene.world_position(e).x - start).abs(), normal, a)
+    };
+    let (flat_up, ..) = run(0.0, 1.0);
+    let (slow_up, normal, a) = run(1.0, 1.0);
+    let (slow_down, ..) = run(1.0, -1.0);
+    assert!(
+        (normal.y - a.cos()).abs() < 0.02 && normal.x < -0.2,
+        "ramp normal: {normal}"
+    );
+    assert!(
+        slow_up < flat_up * 0.6,
+        "uphill {slow_up} vs ignoring the slope {flat_up}"
+    );
+    assert!(
+        slow_down > slow_up * 1.3,
+        "a 27% descent beats the climb: {slow_down} vs {slow_up}"
+    );
+}
+
+#[test]
 fn dynamic_bodies_land_on_a_controller() {
     let (mut scene, e) = world(0.0);
     let crate_e = solid(

@@ -265,6 +265,13 @@ impl UserData for LCharacterController {
         f.add_field_method_get("velocity", |lua, c| {
             with_world(lua, |w| LVec3(w.physics.character_velocity(c.0)))
         });
+        f.add_field_method_get("groundNormal", |lua, c| {
+            with_world(lua, |w| LVec3(w.physics.character_ground_normal(c.0)))
+        });
+        f.add_field_method_get("slopeSpeed", |lua, c| settings(lua, c.0, |s| s.slope_speed));
+        f.add_field_method_set("slopeSpeed", |lua, c, v: f32| {
+            resize(lua, c.0, |s| s.slope_speed = v.clamp(0.0, 1.0))
+        });
         f.add_field_method_get("height", |lua, c| settings(lua, c.0, |s| s.height));
         f.add_field_method_set("height", |lua, c, v: f32| {
             resize(lua, c.0, |s| s.height = v.max(0.01))

@@ -163,6 +163,7 @@ fn controller(ui: &mut Ui, c: &mut CharacterController) -> bool {
             0.0,
             1e4,
         );
+        ch |= number(ui, "Slope Speed", &mut c.slope_speed, 0.01, 0.0, 1.0);
         ch
     });
     ch |= vec3(ui, "Center", &mut c.center);
