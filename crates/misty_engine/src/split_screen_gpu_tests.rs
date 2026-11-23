@@ -483,3 +483,130 @@ fn write_split_screen_project() {
     );
     s.save(&root.join("Assets/Scenes/Split.scene")).unwrap();
 }
+
+/// 10,000 cubes with a shadowed sun at 1920 × 1080 and High quality: one full-screen camera,
+/// then two and four split-screen players (ignored; run in release):
+/// `cargo test --release -p misty_engine --lib split_screen_benchmark -- --ignored --nocapture`
+#[test]
+#[ignore = "benchmark: renders a busy scene for a few hundred frames"]
+fn split_screen_benchmark() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mats = materials();
+    let make = |players: usize| {
+        let mut s = arena();
+        for i in 0..10_000 {
+            let (x, z) = ((i % 100) as f32 - 50.0, (i / 100) as f32 - 50.0);
+            let mat = ["red", "blue", "green"][i % 3];
+            block(
+                &mut s,
+                Vec3::new(x * 1.6, 0.4, z * 1.6),
+                Vec3::splat(0.8),
+                mat,
+            );
+        }
+        let rects: Vec<[f32; 4]> = match players {
+            1 => vec![[0.0, 0.0, 1.0, 1.0]],
+            2 => vec![[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]],
+            _ => vec![
+                [0.0, 0.5, 0.5, 0.5],
+                [0.5, 0.5, 0.5, 0.5],
+                [0.0, 0.0, 0.5, 0.5],
+                [0.5, 0.0, 0.5, 0.5],
+            ],
+        };
+        for (k, r) in rects.into_iter().enumerate() {
+            let a = k as f32 * 1.7;
+            camera(
+                &mut s,
+                "P",
+                Vec3::new(a.sin() * 40.0, 12.0, -a.cos() * 40.0),
+                Vec3::ZERO,
+                r,
+            );
+        }
+        s
+    };
+    let quality = QualityLevel::high();
+    let size = (1920, 1080);
+    // MISTY_SPLIT_PROFILE=1: the main thread's slowest scopes of each case.
+    let profile = std::env::var("MISTY_SPLIT_PROFILE").is_ok_and(|v| v == "1");
+    crate::profiler::set_enabled(profile);
+    for players in [1, 2, 4] {
+        let scene = make(players);
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(&device, &quality);
+        let main = r.create_view_target(&device, size.0, size.1);
+        let mut split = SplitScreen::new();
+        split.set_static_batching(true);
+        let mut cache = DrawCache::new();
+        cache.set_static_batching(true);
+        let (mut cpu, mut total, mut gpu) = (0.0f32, 0.0f32, 0.0f32);
+        let frames = 120;
+        for i in 0..frames + 20 {
+            let start = std::time::Instant::now();
+            let game = GameView::cached(&scene, &mats, &mut cache);
+            if let Some(game) = &game {
+                r.render_with_effects(&device, &queue, &main, &game.frame(), &game.effects);
+            }
+            split.render(
+                &mut r,
+                &device,
+                &queue,
+                &main,
+                &scene,
+                &mats,
+                game.is_some(),
+                None,
+            );
+            let submitted = start.elapsed().as_secs_f32() * 1000.0;
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            if profile {
+                crate::profiler::end_frame();
+            }
+            if i == 20 {
+                crate::profiler::clear();
+            }
+            if i >= 20 {
+                cpu += submitted;
+                total += start.elapsed().as_secs_f32() * 1000.0;
+                gpu += r.gpu_ms().unwrap_or(0.0);
+            }
+        }
+        let n = frames as f32;
+        let s = r.stats();
+        println!(
+            "{players} player(s): frame {:.2} ms (CPU until submitted {:.2} ms, last view GPU {:.2} ms) | last view: batches {}, visible {}, culled {}, shadow casters {}",
+            total / n,
+            cpu / n,
+            gpu / n,
+            s.batches,
+            s.visible,
+            s.culled,
+            s.shadow_casters
+        );
+        if profile {
+            let mut by: std::collections::BTreeMap<(u16, String), f32> = Default::default();
+            crate::profiler::with_frames(|frames| {
+                for fr in frames {
+                    for smp in &fr.samples {
+                        *by.entry((smp.depth, smp.name.to_string())).or_default() +=
+                            smp.duration_ms;
+                    }
+                }
+            });
+            let mut v: Vec<_> = by.into_iter().collect();
+            v.sort_by(|a, b| b.1.total_cmp(&a.1));
+            for ((depth, name), ms) in v.into_iter().take(30) {
+                println!(
+                    "  {:>7.3} ms  {}{name}",
+                    ms / n,
+                    "  ".repeat(depth as usize)
+                );
+            }
+        }
+    }
+    crate::profiler::set_enabled(false);
+}

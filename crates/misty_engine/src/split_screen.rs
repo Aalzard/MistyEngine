@@ -16,21 +16,36 @@ use crate::render::{RenderTarget, Renderer};
 use crate::render_scene::{GameView, MaterialSource, viewport_cameras, viewport_pixels};
 use crate::scene::Scene;
 
-/// One viewport camera's draws and target, kept between frames.
+/// One viewport camera's target, kept between frames.
 struct View {
-    cache: DrawCache,
     target: Option<RenderTarget>,
 }
+
+/// Cameras that see the same objects (same Culling Mask and occlusion culling) share one
+/// draw list: the scene is walked once per frame for all of them, not once per player.
+type DrawKey = (u32, bool);
 
 /// The viewport cameras' views (lives with the host's renderer).
 #[derive(Default)]
 pub struct SplitScreen {
     views: HashMap<Entity, View>,
+    caches: HashMap<DrawKey, DrawCache>,
+    /// Static objects drawn as merged batches (the host's setting: on while playing).
+    static_batching: bool,
 }
 
 impl SplitScreen {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Merge static objects into batches in the views' draw lists (on in the player and
+    /// while playing in the editor, like the full-screen camera's list).
+    pub fn set_static_batching(&mut self, on: bool) {
+        self.static_batching = on;
+        for c in self.caches.values_mut() {
+            c.set_static_batching(on);
+        }
     }
 
     /// Does `scene` have cameras with a partial Viewport Rect?
@@ -56,6 +71,9 @@ impl SplitScreen {
     ) -> usize {
         let cams = viewport_cameras(scene);
         self.views.retain(|e, _| cams.contains(e));
+        // Draw lists made this frame, by what their cameras see.
+        let mut drawn_lists: HashMap<DrawKey, std::sync::Arc<Vec<crate::render::MeshDraw>>> =
+            HashMap::new();
         if cams.is_empty() {
             return 0;
         }
@@ -79,13 +97,31 @@ impl SplitScreen {
             let Some((x, y, w, h)) = viewport_pixels(vp, main.output_size()) else {
                 continue;
             };
-            let view = self.views.entry(e).or_insert_with(|| View {
-                cache: DrawCache::new(),
-                target: None,
-            });
-            let Some(game) = GameView::cached_for(scene, materials, &mut view.cache, e) else {
+            let Some(key) = scene
+                .world
+                .get::<&crate::scene::Camera>(e)
+                .ok()
+                .map(|c| (c.culling_mask, c.occlusion_culling))
+            else {
                 continue;
             };
+            let static_batching = self.static_batching;
+            let cache = self.caches.entry(key).or_insert_with(|| {
+                let mut c = DrawCache::new();
+                c.set_static_batching(static_batching);
+                c
+            });
+            let Some(game) = GameView::cached_for_with(
+                scene,
+                materials,
+                cache,
+                e,
+                drawn_lists.get(&key).cloned(),
+            ) else {
+                continue;
+            };
+            drawn_lists.insert(key, game.meshes.clone());
+            let view = self.views.entry(e).or_insert_with(|| View { target: None });
             if !view
                 .target
                 .as_ref()

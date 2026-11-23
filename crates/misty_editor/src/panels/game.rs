@@ -70,6 +70,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             ));
             let texture = gpu.render(ViewId::Game, size, frame.as_ref(), effects);
             if split {
+                gpu.split.set_static_batching(state.runtime.is_some());
                 gpu.render_split(&state.scene, &state.assets, frame.is_some());
             }
             let render = gpu.renderer.stats();
