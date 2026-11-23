@@ -269,6 +269,7 @@ fn touches(list: &[(u64, Vec2, Vec2, TouchPhase)]) -> Input {
                 position: *p,
                 delta: *d,
                 phase: *phase,
+                ..Default::default()
             })
             .collect(),
         ..Default::default()

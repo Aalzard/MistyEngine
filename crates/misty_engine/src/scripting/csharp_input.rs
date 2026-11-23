@@ -36,6 +36,9 @@ pub(crate) enum PendingArg {
     Context { set: usize, event: ActionEvent },
     /// A `BaseEventData` (`OnSelect`, `OnDeselect`, `OnCancel`).
     EventData(Option<Entity>),
+    /// A rebinding operation that ended (`csharp_rebinding.rs`): the path it picked, or None
+    /// when canceled.
+    Rebind { id: u64, path: Option<String> },
 }
 
 thread_local! {
@@ -302,7 +305,8 @@ fn button_bits(held: bool, pressed: bool, released: bool) -> i64 {
 /// 77 binding display string, 78 active control, 79 enabled, 80 control schemes, 81 / 82 save /
 /// load binding overrides, 83 remove overrides, 84 apply override; Gamepad 90 current, 91 count,
 /// 92 `arg`-th slot, 93 sticks and triggers, 94 button, 95 name, 96 motor speeds; 100 a
-/// Keyboard (`arg` 0) or Mouse (1) control; 120 the pending argument; 199 the last error.
+/// Keyboard (`arg` 0) or Mouse (1) control; 120 the pending argument; 199 the last error;
+/// bindings 85 / 86 and rebinding 130 ..= 139 (`csharp_rebinding.rs`).
 pub(crate) extern "C" fn input_system(
     op: i32,
     id: u64,
@@ -348,6 +352,8 @@ fn run(
         90..=96 => gamepad(w, op, id, arg, v, buf, len),
         100 => device_control(w, arg, v, &text(buf, len)),
         120 => pending(v, buf, len),
+        85 | 86 => rebinding::bindings(w, op, id, arg, v, buf, len),
+        130..=139 => rebinding::rebinding(w, op, id, arg, v, &text(buf, len)),
         _ => fail(format!("unknown input op {op}")),
     }
 }
@@ -401,7 +407,8 @@ fn event_system(w: &mut World, op: i32, id: u64, arg: i64) -> i64 {
 
 // ---- touches ---------------------------------------------------------------------------------
 
-/// `v`: finger id, position x, y, delta x, y (pixels, from the bottom-left, y up), phase.
+/// `v`: finger id, position x, y, delta x, y (pixels, from the bottom-left, y up), phase,
+/// tap count.
 fn touch(w: &mut World, op: i32, arg: i64, v: &mut [f64; 16]) -> i64 {
     match op {
         10 => w.input.touches.len() as i64,
@@ -429,6 +436,7 @@ fn touch(w: &mut World, op: i32, arg: i64, v: &mut [f64; 16]) -> i64 {
                 f64::from(-t.delta.y) + 0.0,
                 phase,
             ]);
+            v[6] = f64::from(t.tap_count);
             1
         }
         12 => flag(w.input_system.touch_seen || !w.input.touches.is_empty()),
@@ -889,7 +897,8 @@ fn device_control(w: &mut World, device: i64, v: &mut [f64; 16], name: &str) -> 
 // ---- the pending argument --------------------------------------------------------------------
 
 /// The argument of the running call into C#: its kind (0 none, 1 PlayerInput, 2 InputValue,
-/// 3 CallbackContext, 4 BaseEventData) with its parts in `v` (objects as raw bits) and `buf`.
+/// 3 CallbackContext, 4 BaseEventData, 5 a finished rebinding operation) with its parts in
+/// `v` (objects as raw bits) and `buf`.
 fn pending(v: &mut [f64; 16], buf: *mut u16, len: i32) -> i64 {
     let arg = PENDING.with(|p| p.borrow().clone());
     match arg {
@@ -932,9 +941,19 @@ fn pending(v: &mut [f64; 16], buf: *mut u16, len: i32) -> i64 {
             v[0] = entity_slot(e);
             4
         }
+        Some(PendingArg::Rebind { id, path }) => {
+            v[0] = id as f64;
+            v[1] = f64::from(u8::from(path.is_some()));
+            let path = path.unwrap_or_default();
+            v[15] = write_text(buf, len, &path).min(i64::from(len.max(0))) as f64;
+            5
+        }
     }
 }
 
 #[cfg(test)]
 #[path = "csharp_input_tests.rs"]
 mod tests;
+
+#[path = "csharp_rebinding.rs"]
+mod rebinding;

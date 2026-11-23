@@ -2186,6 +2186,9 @@ namespace Misty
         /// <summary>Movement since the last frame, in pixels (y up).</summary>
         public Vector2 deltaPosition { get; set; }
         public TouchPhase phase { get; set; }
+        /// <summary>Taps in a row at this spot: 2 on the second tap of a double tap; 0 once
+        /// lifted when the touch was held too long or moved too far to be a tap.</summary>
+        public int tapCount { get; set; }
         public override string ToString() => $"Touch {fingerId} {phase} {position}";
     }
 
@@ -2530,6 +2533,8 @@ namespace Misty
         public Vector2Control delta => new Vector2Control(path + "/delta", touch.deltaPosition);
         public TouchPhaseControl phase => new TouchPhaseControl(path + "/phase", touch.phase);
         public bool isInProgress => Down;
+        /// <summary>Taps in a row (see `Touch.tapCount`).</summary>
+        public IntegerControl tapCount => new IntegerControl(path + "/tapCount", exists ? touch.tapCount : 0);
     }
 
     /// <summary>The touch screen, or null until it has been touched.</summary>
@@ -2793,6 +2798,26 @@ namespace Misty
             v[0] = 1;
             InputBridge.Check(Internal.Native.api.inputSystem(83, (ulong)set, Packed, v, null, 0));
         }
+
+        /// <summary>The bindings, numbered like `GetBindingDisplayString` and
+        /// `ApplyBindingOverride` count them (a composite, then its parts).</summary>
+        public InputBinding[] bindings => InputBinding.Of(this);
+
+        /// <summary>The index of the first binding in control scheme group `group` and / or
+        /// with (effective) path `path`, skipping composites themselves; -1 when none.</summary>
+        public int GetBindingIndex(string group = null, string path = null)
+        {
+            var list = bindings;
+            for (int i = 0; i < list.Length; i++)
+                if (!list[i].isComposite && list[i].Matches(group, path)) return i;
+            return -1;
+        }
+
+        /// <summary>Listen for the next control pressed and bind binding `bindingIndex` to it
+        /// (-1: the first binding in the control scheme in use). Call `Start()` on the result;
+        /// the action is disabled until the operation ends.</summary>
+        public InputActionRebindingExtensions.RebindingOperation PerformInteractiveRebinding(int bindingIndex = -1) =>
+            InputActionRebindingExtensions.RebindingOperation.Create(this, bindingIndex);
 
         /// <summary>Phase changes, as C# events (`action.performed += OnJump`).</summary>
         public event Action<CallbackContext> started
@@ -3120,6 +3145,7 @@ namespace Misty
                 rawPosition = position,
                 deltaPosition = new Vector2((float)v[3], (float)v[4]),
                 phase = (TouchPhase)(int)v[5],
+                tapCount = (int)v[6],
             };
         }
 
@@ -3180,6 +3206,7 @@ namespace Misty
                         new Vector2((float)v[4], (float)v[5]), v[6] != 0, (float)v[9], v[7], v[8], control, interaction);
                 }
                 case 4: return new BaseEventData();
+                case 5: return new string(buf, 0, (int)Math.Clamp(v[15], 0, 512));
                 default: return null;
             }
         }
@@ -4651,6 +4678,220 @@ namespace Misty
             ulong hi = (uint)BitConverter.SingleToInt32Bits(v.y);
             ulong bone = lo | (hi << 32);
             return bone == 0 ? null : new Transform(bone);
+        }
+    }
+}
+
+namespace Misty
+{
+    // Input System bindings and interactive rebinding (`csharp_rebinding.rs`).
+
+    /// <summary>A binding of an action (`action.bindings[i]`).</summary>
+    public struct InputBinding
+    {
+        /// <summary>The composite's name ("WASD") or the part's ("up"); "" for a plain binding.</summary>
+        public string name { get; internal set; }
+        /// <summary>The authored path (`&lt;Keyboard&gt;/space`; "" for a composite).</summary>
+        public string path { get; internal set; }
+        /// <summary>The override (rebind), or null when there is none.</summary>
+        public string overridePath { get; internal set; }
+        public string effectivePath => overridePath ?? path;
+        /// <summary>Control scheme groups, `;`-separated ("Keyboard&amp;Mouse").</summary>
+        public string groups { get; internal set; }
+        /// <summary>The stable id the saved overrides refer to.</summary>
+        public string id { get; internal set; }
+        public bool isComposite { get; internal set; }
+        public bool isPartOfComposite { get; internal set; }
+        public bool hasOverrides => overridePath != null;
+        /// <summary>The action's name.</summary>
+        public string action { get; internal set; }
+
+        internal bool Matches(string group, string p)
+        {
+            if (!string.IsNullOrEmpty(group))
+            {
+                bool found = false;
+                foreach (var g in (groups ?? "").Split(';'))
+                    if (g.Trim() == group) found = true;
+                if (!found) return false;
+            }
+            return string.IsNullOrEmpty(p)
+                || string.Equals(effectivePath, p, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(path, p, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static unsafe InputBinding[] Of(InputAction a)
+        {
+            long packed = ((long)a.map << 32) | (long)(uint)a.action;
+            int n = (int)InputBridge.Check(InputBridge.Call(85, (ulong)a.set, packed));
+            var list = new InputBinding[n];
+            string actionName = a.name;
+            double* v = stackalloc double[16];
+            char* buf = stackalloc char[2048];
+            for (int i = 0; i < n; i++)
+            {
+                v[0] = i;
+                long bits = InputBridge.Check(Internal.Native.api.inputSystem(86, (ulong)a.set, packed, v, buf, 2048));
+                var parts = new string(buf, 0, (int)Math.Clamp(v[15], 0, 2048)).Split('\n');
+                list[i] = new InputBinding
+                {
+                    name = parts.Length > 0 ? parts[0] : "",
+                    path = parts.Length > 1 ? parts[1] : "",
+                    overridePath = (bits & 4) != 0 && parts.Length > 2 ? parts[2] : null,
+                    groups = parts.Length > 3 ? parts[3] : "",
+                    id = parts.Length > 4 ? parts[4] : "",
+                    isComposite = (bits & 1) != 0,
+                    isPartOfComposite = (bits & 2) != 0,
+                    action = actionName,
+                };
+            }
+            return list;
+        }
+
+        public override string ToString() =>
+            isComposite ? $"{name}:{action}" : $"{effectivePath}{(string.IsNullOrEmpty(groups) ? "" : $"[{groups}]")}";
+    }
+
+    /// <summary>Interactive rebinding (`action.PerformInteractiveRebinding()`).</summary>
+    public static class InputActionRebindingExtensions
+    {
+        /// <summary>A rebinding in progress: configure it (`WithControlsExcluding`,
+        /// `WithCancelingThrough`, `OnComplete`, …), then `Start()` it. It listens for the next
+        /// key, mouse button, gamepad button, trigger or stick direction (a whole stick for a
+        /// stick binding) and binds it as an override; Escape cancels unless changed.</summary>
+        public sealed unsafe class RebindingOperation : IDisposable
+        {
+            ulong id;
+            int lastBinding = -1;
+            Action<RebindingOperation> onComplete, onCancel;
+            // Action<string>, not Action<object>: InputEvents.Run would take an Action<object>
+            // for an Action<PlayerInput> (delegate variance).
+            readonly Action<string> completeListener, cancelListener;
+
+            RebindingOperation(InputAction action, ulong id)
+            {
+                this.action = action;
+                this.id = id;
+                RememberBinding();
+                completeListener = path => Finish(path ?? "");
+                cancelListener = _ => Finish(null);
+                InputEvents.Add(Key, 140, completeListener);
+                InputEvents.Add(Key, 141, cancelListener);
+            }
+
+            ulong Key => (1UL << 62) | id;
+
+            internal static RebindingOperation Create(InputAction action, int bindingIndex)
+            {
+                double* v = stackalloc double[16];
+                v[0] = bindingIndex;
+                long packed = ((long)action.map << 32) | (long)(uint)action.action;
+                long id = Internal.Native.api.inputSystem(130, (ulong)action.set, packed, v, null, 0);
+                if (id < 0) throw new InvalidOperationException(InputBridge.LastError());
+                return new RebindingOperation(action, (ulong)id);
+            }
+
+            public InputAction action { get; }
+            /// <summary>Listening (or finished after listening).</summary>
+            public bool started { get; private set; }
+            public bool completed { get; private set; }
+            public bool canceled { get; private set; }
+            /// <summary>The control that was picked (null until completed).</summary>
+            public InputControl selectedControl { get; private set; }
+            /// <summary>The binding being rebound.</summary>
+            public int bindingIndex
+            {
+                get
+                {
+                    RememberBinding();
+                    return lastBinding;
+                }
+            }
+
+            void Op(int op, string text = null, double value = 0)
+            {
+                if (id == 0) throw new InvalidOperationException("The rebinding operation is over (completed, canceled or disposed)");
+                double* v = stackalloc double[16];
+                v[0] = value;
+                InputBridge.Check(InputBridge.WithText(op, id, 0, text ?? "", v));
+            }
+
+            /// <summary>Never pick controls whose path contains `path` ("&lt;Mouse&gt;", "Mouse",
+            /// "&lt;Keyboard&gt;/escape").</summary>
+            public RebindingOperation WithControlsExcluding(string path) { Op(131, path); return this; }
+            /// <summary>Pressing this control cancels (default `&lt;Keyboard&gt;/escape`).</summary>
+            public RebindingOperation WithCancelingThrough(string path) { Op(132, path); return this; }
+            public RebindingOperation WithTargetBinding(int bindingIndex) { Op(133, null, bindingIndex); RememberBinding(); return this; }
+            /// <summary>Rebind the binding of control scheme group `group` ("Gamepad") and only
+            /// listen to that scheme's devices.</summary>
+            public RebindingOperation WithBindingGroup(string group) { Op(134, group); RememberBinding(); return this; }
+            /// <summary>After a match, keep listening `seconds` for another control (the last one wins).</summary>
+            public RebindingOperation OnMatchWaitForAnother(float seconds) { Op(135, null, seconds); return this; }
+            public RebindingOperation OnComplete(Action<RebindingOperation> callback) { onComplete = callback; return this; }
+            public RebindingOperation OnCancel(Action<RebindingOperation> callback) { onCancel = callback; return this; }
+
+            /// <summary>Start listening (from the next frame). The action is disabled until the
+            /// operation ends, and comes back once the picked control is released.</summary>
+            public RebindingOperation Start()
+            {
+                if (started) return this;
+                Op(136);
+                started = true;
+                return this;
+            }
+
+            /// <summary>Stop listening; `OnCancel` runs when it was started.</summary>
+            public void Cancel()
+            {
+                if (id == 0) return;
+                RememberBinding();
+                bool wasListening = InputBridge.Call(137, id) == 1;
+                if (wasListening) Finish(null);
+                else Release();
+            }
+
+            /// <summary>Stop and forget the operation (no callback).</summary>
+            public void Dispose()
+            {
+                if (id == 0) return;
+                RememberBinding();
+                InputBridge.Call(138, id);
+                Release();
+            }
+
+            void RememberBinding()
+            {
+                if (id == 0) return;
+                double* v = stackalloc double[16];
+                if (Internal.Native.api.inputSystem(139, id, 0, v, null, 0) == 1) lastBinding = (int)v[0];
+            }
+
+            void Release()
+            {
+                if (id == 0) return;
+                InputEvents.Remove(Key, 140, completeListener);
+                InputEvents.Remove(Key, 141, cancelListener);
+                id = 0;
+            }
+
+            void Finish(string path)
+            {
+                if (completed || canceled) return;
+                Release();
+                if (path != null)
+                {
+                    completed = true;
+                    selectedControl = new InputControl(path);
+                    onComplete?.Invoke(this);
+                }
+                else
+                {
+                    canceled = true;
+                    onCancel?.Invoke(this);
+                }
+            }
+
+            public override string ToString() => $"Rebind {action} #{lastBinding}";
         }
     }
 }
