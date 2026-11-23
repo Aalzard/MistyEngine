@@ -95,6 +95,12 @@ pub(super) fn make_vectors_raw(lua: &Lua) {
     }
 }
 
+/// Whether direct Lua stack calls that can allocate are fine on this state (the game's: no
+/// memory limit, see [`make_vectors_raw`]).
+pub(super) fn raw_stack_ok(lua: &Lua) -> bool {
+    lua.app_data_ref::<Vec3Meta>().is_some_and(|m| m.1.get())
+}
+
 /// A Vector3 table `{ x, y, z }` with metatable `meta`, built on the Lua stack.
 fn raw_vec3(lua: &Lua, meta: &Table, v: Vec3) -> Result<Value> {
     lua.exec_raw_lua(|raw| {
@@ -972,6 +978,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::physics2d_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
+    super::transform_group_api::register(lua)?;
     super::weather_api::register(lua)?;
     super::behaviour_tree_api::register(lua)?;
 

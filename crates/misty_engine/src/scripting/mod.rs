@@ -64,6 +64,7 @@ pub mod syntax;
 pub mod terrain_api;
 pub mod tilemap_api;
 pub mod timeline_api;
+pub mod transform_group_api;
 pub mod ui_api;
 mod ui_dispatch;
 pub mod ui_widgets_api;

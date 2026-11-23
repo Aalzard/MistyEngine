@@ -2,7 +2,8 @@
 //!
 //! `cargo test --release -p misty_engine --lib lua_overhead_bench -- --ignored --nocapture`
 //!
-//! `MISTY_LUA_BENCH=empty,fields` runs only those cases, `MISTY_LUA_BENCH_FRAMES=600` times more
+//! `ships_group` is the "ships" case with one script moving all ships through a
+//! `TransformGroup`. `MISTY_LUA_BENCH=empty,fields` runs only those cases, `MISTY_LUA_BENCH_FRAMES=600` times more
 //! frames (for a profiler).
 //!
 //! `events_bench` (same command, other name) times what happens around the scripts in a busy
@@ -216,6 +217,51 @@ fn time_scene(mut scene: Scene, root: std::path::PathBuf, warm_up: usize, frames
     v[v.len() / 2]
 }
 
+/// The work of the "ships" case done by one script for all ships through a `TransformGroup`.
+const FLEET: &str = r#"
+local Fleet = {}
+function Fleet:Start()
+    self.group = TransformGroup.new(GameObject.FindGameObjectsWithTag("Player"))
+    self.vx, self.vz, self.dir = {}, {}, {}
+    for i = 1, self.group.count do self.vx[i] = 1; self.vz[i] = 0 end
+end
+function Fleet:Update()
+    local dt = Time.deltaTime
+    local p = self.group:GetPositions(self.p)
+    self.p = p
+    local vx, vz, dir = self.vx, self.vz, self.dir
+    for i = 1, self.group.count do
+        local k = i * 3
+        local x, z = p[k - 2], p[k]
+        local ax, az = vx[i] - x * 0.1 * dt, vz[i] - z * 0.1 * dt
+        vx[i], vz[i] = ax, az
+        p[k - 2], p[k] = x + ax * dt, z + az * dt
+        dir[k - 2], dir[k - 1], dir[k] = ax, 0, az
+    end
+    self.group:SetPositions(p)
+    self.group:LookAlong(dir)
+end
+return Fleet
+"#;
+
+/// Median frame time in ms of `n` ships moved by one script.
+fn time_fleet(n: usize, frames: usize) -> f64 {
+    let mut scene = Scene::new("b");
+    for i in 0..n {
+        let e = scene.spawn(&format!("Obj{i}"), None);
+        let a = i as f32 * 0.01;
+        let r = 10.0 + (i % 100) as f32;
+        scene.set_transform(
+            e,
+            Transform::from_position(Vec3::new(a.cos() * r, 0.0, a.sin() * r)),
+        );
+        scene.game_object_mut(e).tag = "Player".into();
+    }
+    let fleet = scene.spawn("Fleet", None);
+    script(&mut scene, fleet, "Fleet.lua");
+    time_scene(scene, project_of(&[("Fleet.lua", FLEET)]), 10, frames)
+}
+
 #[test]
 #[ignore = "bench"]
 fn lua_overhead_bench() {
@@ -232,6 +278,15 @@ fn lua_overhead_bench() {
         eprintln!(
             "{name:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
             ms * 1e6 / *n as f64
+        );
+    }
+    if only.is_empty() || only.split(',').any(|o| o == "ships_group") {
+        let n = 5000;
+        let ms = time_fleet(n, frames);
+        eprintln!(
+            "{:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
+            "ships_group",
+            ms * 1e6 / n as f64
         );
     }
 }

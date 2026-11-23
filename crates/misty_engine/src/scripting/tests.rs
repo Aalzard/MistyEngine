@@ -1027,3 +1027,137 @@ fn inspecting_a_script_stops_endless_top_level_loops_and_runaway_memory() {
     // Ordinary scripts still inspect.
     assert!(inspect_script("return { speed = 2 }", "Ok.lua").is_ok());
 }
+
+/// A `TransformGroup` reads and writes world positions and rotations of many objects as flat
+/// lists: roots, objects under a parent and objects with a body alike.
+#[test]
+fn a_transform_group_moves_many_objects_at_once() {
+    let mover = r#"
+local M = {}
+function M:Start()
+    self.group = TransformGroup.new({ GameObject.Find("A"), GameObject.Find("Child") })
+    Debug.Log("place", self.group:Add(GameObject.Find("Body").transform), self.group.count, #self.group)
+    local p = self.group:GetPositions()
+    Debug.Log("at", #p, p[1], p[2], p[3], p[4], p[5], p[6])
+    for i = 1, #p, 3 do p[i + 1] = p[i + 1] + 10 end
+    self.group:SetPositions(p)
+    Debug.Log("same list", self.group:GetPositions(p) == p, p[5])
+    self.group:LookAlong({ 1, 0, 0, 0, 0, 0, 0, 0, -1 })
+    local r = self.group:GetRotations()
+    Debug.Log("rotations", #r, string.format("%.3f %.3f", math.abs(r[2]), math.abs(r[4])))
+    r[5], r[6], r[7], r[8] = 0, 2, 0, 0
+    self.group:SetRotations(r)
+    -- Not numbers, not finite, too short: those objects stay.
+    self.group:SetPositions({ 0 / 0, 0, 0, "x", 0, 0 })
+    Debug.Log("get", self.group:Get(1).name, self.group:Get(4), self.group:Get(0))
+end
+return M
+"#;
+    let root = project(&[("M.lua", mover)]);
+    let mut scene = Scene::new("t");
+    let a = scene.spawn("A", None);
+    scene.set_transform(a, Transform::from_position(Vec3::new(1.0, 2.0, 3.0)));
+    let parent = scene.spawn("Parent", None);
+    scene.set_transform(parent, Transform::from_position(Vec3::new(100.0, 0.0, 0.0)));
+    let child = scene.spawn("Child", Some(parent));
+    scene.set_transform(child, Transform::from_position(Vec3::new(5.0, 0.0, 0.0)));
+    let body = scene.spawn("Body", None);
+    scene.add(body, BoxCollider::default());
+    scene.add(
+        body,
+        Rigidbody {
+            use_gravity: false,
+            ..Default::default()
+        },
+    );
+    let m = scene.spawn("M", None);
+    attach(&mut scene, m, "M.lua", &[]);
+    let logs = run(&mut scene, root, 3, Input::default());
+    let has = |t: &str| logs.iter().any(|(_, l)| l == t);
+    assert!(
+        logs.iter().all(|(k, _)| *k != LogKind::Error),
+        "no errors: {logs:?}"
+    );
+    assert!(has("place 3 3 3"), "{logs:?}");
+    assert!(has("at 9 1 2 3 105 0 0"), "{logs:?}");
+    assert!(has("same list true 10"), "{logs:?}");
+    assert!(has("rotations 12 0.707 0.707"), "{logs:?}");
+    assert!(has("get A nil nil"), "{logs:?}");
+
+    assert_eq!(scene.world_position(a), Vec3::new(1.0, 12.0, 3.0));
+    assert_eq!(scene.world_position(child), Vec3::new(105.0, 10.0, 0.0));
+    assert_eq!(scene.transform(child).position, Vec3::new(5.0, 10.0, 0.0));
+    let facing = |e| scene.world_rotation(e) * Vec3::Z;
+    assert!(facing(a).abs_diff_eq(Vec3::X, 1e-5), "{}", facing(a));
+    assert!(
+        facing(child).abs_diff_eq(Vec3::NEG_Z, 1e-5),
+        "set as a quaternion, normalized"
+    );
+    assert!(facing(body).abs_diff_eq(Vec3::NEG_Z, 1e-5));
+    let y = scene.world_position(body).y;
+    assert!(
+        (y - 10.0).abs() < 1e-3,
+        "the body went along and did not snap back (y = {y})"
+    );
+}
+
+/// Destroyed objects keep their place in a group until `Prune`, which says which places the
+/// last objects moved into.
+#[test]
+fn a_transform_group_keeps_places_until_pruned() {
+    let keeper = r#"
+local K = { frame = 0 }
+function K:Start()
+    self.group = TransformGroup.new()
+    for _, n in ipairs({ "A", "B", "C", "D", "E" }) do self.group:Add(GameObject.Find(n)) end
+    self.names = { "A", "B", "C", "D", "E" }
+    Destroy(GameObject.Find("B"))
+    Destroy(GameObject.Find("E"))
+end
+function K:Update()
+    self.frame = self.frame + 1
+    if self.frame ~= 2 then return end
+    local p = self.group:GetPositions({ 7, 7, 7, 7, 7, 7 })
+    Debug.Log("dead left alone", p[4], p[5], p[6], p[7], #p)
+    for i = 1, 15 do p[i] = 50 end
+    self.group:SetPositions(p)
+    Debug.Log("dead is nil", self.group:Get(2))
+    local freed = self.group:Prune()
+    for _, i in ipairs(freed) do
+        self.names[i] = self.names[#self.names]
+        self.names[#self.names] = nil
+    end
+    local now = {}
+    for i = 1, self.group.count do now[i] = self.group:Get(i).name end
+    Debug.Log("freed", table.concat(freed, ","), table.concat(now, ","), table.concat(self.names, ","))
+    self.group:RemoveAt(1)
+    Debug.Log("after RemoveAt", self.group.count, self.group:Get(1).name, pcall(self.group.RemoveAt, self.group, 3))
+    Debug.Log("not an object", pcall(self.group.Add, self.group, 5))
+    self.group:Clear()
+    Debug.Log("cleared", self.group.count, #self.group:GetPositions())
+end
+return K
+"#;
+    let root = project(&[("K.lua", keeper)]);
+    let mut scene = Scene::new("t");
+    for (i, name) in ["A", "B", "C", "D", "E"].into_iter().enumerate() {
+        let e = scene.spawn(name, None);
+        scene.set_transform(e, Transform::from_position(Vec3::splat(i as f32)));
+    }
+    let k = scene.spawn("K", None);
+    attach(&mut scene, k, "K.lua", &[]);
+    let logs = run(&mut scene, root, 4, Input::default());
+    let has = |t: &str| logs.iter().any(|(_, l)| l.starts_with(t));
+    assert!(
+        logs.iter().all(|(k, _)| *k != LogKind::Error),
+        "no errors: {logs:?}"
+    );
+    assert!(has("dead left alone 7 7 7 2 12"), "{logs:?}");
+    assert!(has("dead is nil nil"), "{logs:?}");
+    assert!(has("freed 5,2 A,D,C A,D,C"), "{logs:?}");
+    assert!(has("after RemoveAt 2 C false"), "{logs:?}");
+    assert!(has("not an object false"), "{logs:?}");
+    assert!(has("cleared 0 0"), "{logs:?}");
+    let a = scene.find_by_name("A").unwrap();
+    assert_eq!(scene.world_position(a), Vec3::splat(50.0));
+}
