@@ -61,6 +61,7 @@ mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
 mod os_drop;
+mod override_controllers;
 mod packages;
 mod panels;
 mod particle_preview;
