@@ -6712,3 +6712,37 @@ From GitHub issue #3 (human-scale locomotion and slope-dependent speed).
 - Not done: the sample First Person Player still has Slope Speed off (its scene files are part
   of the open sample-generator decision); a real-world scale toggle in the Scene window is an
   idea under discussion; C# `OnControllerColliderHit`.
+
+## Hill Run — a C# sample game as a bug hunt (branch csharp-sample-game)
+
+A small two-player split-screen game in `SampleProject/Assets/HillRun`, written only in
+C# (see `docs/hill-run.md`): Player Input Manager joining (keyboard and gamepad), split-screen
+cameras, Character Controller walking on a ramp, steps and a too-steep ramp, jumping, trigger
+pickups with per-player scores, a start menu, pause menu and win screen driven through the Event
+System with an `OnSelect` highlight, an Animator (Idle / Walk / Run on Speed) with foot IK in
+`OnAnimatorIK`. Generator `crates/misty_editor/src/sample_hill_run.rs`; its play tests load the
+scene through the runtime and inject keys and a fake gamepad.
+
+### Bugs found and fixed
+- **`Time.timeScale` couldn't be set from scripts** (C# had no setter, a Lua assignment was
+  overwritten the next frame), so the usual pause menu (`Time.timeScale = 0`) didn't pause
+  anything. Now C# (`Time.timeScale = x`, a new native call appended to the table) and Lua set
+  it: it reads back at once, and from the next frame deltaTime, game time, physics, animation,
+  particles and audio timing follow it while `unscaledDeltaTime` goes on (the script host keeps
+  its own scaled clock; the caller's clock only gives real time). Tests:
+  `csharp_time_scale_set_by_a_script_pauses_the_game`,
+  `lua_time_scale_set_by_a_script_pauses_the_game`, `hill_run_pause_stops_time_…`.
+- **`CharacterController.Move` stalled on flat ground now and then** when the motion also
+  pushed down (the usual `vy = -2` while grounded): rapier's controller hit the floor it already
+  touched at distance 0 and spent its iterations without moving, so a walking character stopped
+  for a frame every second or so (velocity 0, the Animator dropping back to Walk / Idle) and
+  slowly crept upwards and sideways. A grounded move that pushes down now walks first and then
+  goes down. Test: `move_pressing_into_the_ground_walks_every_frame` (and the Hill Run animator
+  test checks every frame's step).
+
+### Notes
+- The C# host keeps its scripts in the assembly's statics: two games of one project can't run
+  at once in a process (fine for the editor and the player; the Hill Run tests take a lock).
+- Not checked here: real rendering of the split screen and the UI, a built player running the
+  game (the packaging test for C# passes, and the generator test checks the build packs
+  everything the game loads).
