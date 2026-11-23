@@ -317,6 +317,57 @@ pub struct World {
     pub on_screen: crate::input::OnScreenControls,
     /// Players the Player Input Manager has reported (joined / left).
     pub player_manager: player_manager_api::PlayerManagerState,
+    /// `Time.timeScale` as scripts set it, and the game clock it drives.
+    pub clock: ScaledClock,
+}
+
+/// `Time.timeScale` set by a script (`Time.timeScale = 0` pauses the game): from then on the
+/// frame's delta and game time follow it instead of the scale the caller's clock was made with.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScaledClock {
+    /// The scale scripts set last (`None` until one does).
+    pub scale: Option<f32>,
+    /// The frame the game time was last advanced on, and that time.
+    frame: u64,
+    time: f64,
+    /// `Time.timeScale` as last written into Lua's `Time` table: a Lua script that set it
+    /// shows as a difference.
+    lua: Option<f32>,
+}
+
+impl World {
+    /// `Time.timeScale = scale` from a script: `Time.timeScale` reads it at once; deltaTime
+    /// and game time follow it from the next frame on, as in the familiar engine.
+    pub fn set_time_scale(&mut self, scale: f32) {
+        if !scale.is_finite() {
+            return;
+        }
+        let scale = scale.clamp(0.0, 100.0);
+        if self.clock.scale.is_none() {
+            self.clock.frame = self.time.frame;
+            self.clock.time = self.time.time;
+        }
+        self.clock.scale = Some(scale);
+        self.time.time_scale = scale;
+    }
+
+    /// `t` with the scale a script set: delta and game time follow it (the caller's clock
+    /// only gives the real time that passed).
+    pub fn scaled_time(&mut self, t: &Time) -> Time {
+        let Some(scale) = self.clock.scale else {
+            return *t;
+        };
+        if t.frame != self.clock.frame {
+            self.clock.frame = t.frame;
+            self.clock.time += f64::from(t.unscaled_delta * scale);
+        }
+        Time {
+            delta: t.unscaled_delta * scale,
+            time: self.clock.time,
+            time_scale: scale,
+            ..*t
+        }
+    }
 }
 
 impl World {
@@ -391,6 +442,7 @@ impl World {
             ui_select_request: None,
             on_screen: Default::default(),
             player_manager: Default::default(),
+            clock: Default::default(),
         }
     }
 }
@@ -1452,7 +1504,31 @@ impl ScriptHost {
         arm_deadline(&self.lua, false);
     }
 
+    /// This frame's clock as scripts see it: the caller's, or one following the
+    /// `Time.timeScale` a script set (C# sets it at once; a Lua script's change of
+    /// `Time.timeScale` is picked up here). The runtime asks before anything uses the delta.
+    pub fn frame_time(&self, time: &Time) -> Time {
+        let lua_scale = self
+            .lua
+            .globals()
+            .get::<Table>("Time")
+            .and_then(|t| t.get::<f32>("timeScale"))
+            .ok();
+        let Some(mut w) = self.lua.app_data_mut::<World>() else {
+            return *time;
+        };
+        if let (Some(v), Some(shown)) = (lua_scale, w.clock.lua)
+            && v != shown
+        {
+            w.set_time_scale(v);
+            w.clock.lua = Some(v);
+        }
+        w.scaled_time(time)
+    }
+
     fn update_frame(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        let scaled = self.frame_time(time);
+        let time = &scaled;
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
@@ -1485,11 +1561,14 @@ impl ScriptHost {
             profile_scope!("PlayerInputManager", Category::Scripts);
             self.player_manager_frame();
         }
-        if let Some(w) = self.lua.app_data_ref::<World>()
-            && let Err(e) = api::refresh_time(&self.lua, &w)
-        {
-            drop(w);
-            self.log(LogKind::Error, format!("Time: {e}"));
+        if let Some(mut w) = self.lua.app_data_mut::<World>() {
+            match api::refresh_time(&self.lua, &w) {
+                Ok(()) => w.clock.lua = Some(w.time.time_scale),
+                Err(e) => {
+                    drop(w);
+                    self.log(LogKind::Error, format!("Time: {e}"));
+                }
+            }
         }
         {
             let mut w = self
