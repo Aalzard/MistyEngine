@@ -23,6 +23,7 @@ use super::{Instance, LogKind, ScriptHost};
 /// instance. Plain Lua functions, so a method lookup costs no call into Rust.
 const INSTANCE_META: &str = r#"
 local get, set, raw = ...
+local type, rawget = type, rawget
 return function(class, id, slot)
     return function(_, k)
         if k == "enabled" then return get(id, slot) end
@@ -194,6 +195,7 @@ impl ScriptHost {
         }
         // Give up on the rest instead of hanging; later changes are looked at as usual.
         self.seen_activity = self.with_world(|w| w.scene.activity());
+        self.flags_stale = true;
         self.log(
             LogKind::Error,
             "OnEnable / OnDisable kept switching objects on and off; stopped".into(),

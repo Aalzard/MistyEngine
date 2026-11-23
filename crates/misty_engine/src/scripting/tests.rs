@@ -361,6 +361,109 @@ return L
     assert!(logs.iter().any(|(_, t)| t == "frame 4"), "{logs:?}");
 }
 
+/// The loop guard reaches coroutines too (each Lua coroutine has its own hook, and the
+/// watchdog only knows the main thread): made with `wrap`, with `create`, and one made
+/// inside another. All in one frame: after the first is stopped the others get 200 ms each.
+#[test]
+fn an_endless_loop_in_a_coroutine_is_stopped() {
+    let looper = r#"
+local L = { kind = "wrap" }
+local function spin() while true do end end
+function L:Update()
+    if Time.frameCount ~= 2 then return end
+    if self.kind == "wrap" then
+        coroutine.wrap(spin)()
+    elseif self.kind == "create" then
+        local ok, err = coroutine.resume(coroutine.create(spin))
+        Debug.Log("create", ok, err)
+    else
+        local outer = coroutine.create(function()
+            local ok, err = coroutine.resume(coroutine.create(spin))
+            Debug.Log("nested", ok, err)
+        end)
+        coroutine.resume(outer)
+    end
+    Debug.Log("after", self.kind)
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    for kind in ["wrap", "create", "nested"] {
+        let e = scene.spawn(kind, None);
+        attach(
+            &mut scene,
+            e,
+            "Looper.lua",
+            &[("kind", ScriptValue::Text(kind.into()))],
+        );
+    }
+    let start = std::time::Instant::now();
+    let logs = run(&mut scene, root, 3, Input::default());
+    assert!(
+        start.elapsed() < crate::scripting::FRAME_LIMIT * 3,
+        "{:?}",
+        start.elapsed()
+    );
+    // `wrap` raises the error in Update; `resume` hands it to the script.
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
+    for kind in ["create", "nested"] {
+        assert!(
+            logs.iter().any(|(_, t)| t.starts_with(&format!("{kind} false"))
+                && t.contains("endless loop")),
+            "{kind}: {logs:?}"
+        );
+        assert!(
+            logs.iter().any(|(_, t)| *t == format!("after {kind}")),
+            "{kind}: {logs:?}"
+        );
+    }
+}
+
+/// The guard's hook slows every Lua instruction down, so the main thread only has it while a
+/// script is past its time limit: not in a normal frame, not after making coroutines, and
+/// not any more in the frames after a script was stopped.
+#[test]
+fn the_loop_guard_hook_is_only_installed_while_a_script_is_stopped() {
+    let looper = r#"
+local L = {}
+function L:Update()
+    local co = coroutine.wrap(function() coroutine.yield(1) end)
+    co()
+    if Time.frameCount == 2 then while true do end end
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Looper", None);
+    attach(&mut scene, e, "Looper.lua", &[]);
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let hooked = |host: &ScriptHost| {
+        // SAFETY: reads the hook mask of the state this is called on, between frames.
+        host.lua
+            .exec_raw_lua(|raw| unsafe { mlua::ffi::lua_gethookmask(raw.state()) != 0 })
+    };
+    assert!(!hooked(&host), "no hook before the first frame");
+    let mut time = Time::default();
+    for frame in 1..=3 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        assert!(!hooked(&host), "no hook after frame {frame}");
+    }
+    let logs = host.take_logs();
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
+}
+
 #[test]
 fn a_nan_field_of_view_is_refused() {
     let probe = r#"
