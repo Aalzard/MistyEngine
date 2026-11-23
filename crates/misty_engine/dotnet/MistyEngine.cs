@@ -515,6 +515,13 @@ namespace Misty
         public static Vector2 mouseDelta => Internal.Native.InputVector(2);
         public static bool anyKey => Internal.Native.InputFlag(0);
         public static bool anyKeyDown => Internal.Native.InputFlag(1);
+        /// <summary>Fingers on the touch screen this frame (lifted ones count for one frame).</summary>
+        public static int touchCount => (int)InputBridge.Call(10);
+        /// <summary>Touch `index` (0 .. touchCount - 1), positions from the bottom-left.</summary>
+        public static Touch GetTouch(int index) => InputBridge.GetTouch(index);
+        public static Touch[] touches => InputBridge.Touches();
+        /// <summary>A touch screen has been used this session.</summary>
+        public static bool touchSupported => InputBridge.Call(12) == 1;
     }
 
     // ---- objects -------------------------------------------------------------------------------
@@ -1250,6 +1257,11 @@ namespace Misty
         /// <summary>Screen pixels to world; z is the distance in front of the camera.</summary>
         public Vector3 ScreenToWorldPoint(Vector3 position) => Point(4, position, out _);
         public Vector3 ViewportToWorldPoint(Vector3 position) => Point(5, position, out _);
+        /// <summary>The part of the screen the camera draws to, 0..1 from the bottom-left
+        /// (split screen, picture in picture).</summary>
+        public Rect rect { get => InputBridge.CameraRect(id, 15); set => InputBridge.SetCameraRect(id, value); }
+        /// <summary>`rect` in pixels.</summary>
+        public Rect pixelRect => InputBridge.CameraRect(id, 17);
     }
 
     public enum LightType { Spot, Directional, Point, Rectangle }
@@ -1989,6 +2001,1192 @@ namespace Misty
         /// <summary>Stop the pending Invoke / InvokeRepeating calls of this script.</summary>
         public void CancelInvoke() => Internal.Coroutines.StopInvokes(this);
     }
+
+    // ---- Event System, touches, Input System (csharp_input.rs) ----------------------------------
+
+    /// <summary>A rectangle: x and y from the bottom-left, width and height (a Camera's rect is
+    /// 0..1 of the screen).</summary>
+    public struct Rect : IEquatable<Rect>
+    {
+        public float x, y, width, height;
+
+        public Rect(float x, float y, float width, float height)
+        {
+            this.x = x; this.y = y; this.width = width; this.height = height;
+        }
+
+        public Rect(Vector2 position, Vector2 size) : this(position.x, position.y, size.x, size.y) { }
+
+        public static Rect zero => new Rect(0, 0, 0, 0);
+        public static Rect MinMaxRect(float xmin, float ymin, float xmax, float ymax) =>
+            new Rect(xmin, ymin, xmax - xmin, ymax - ymin);
+
+        public Vector2 position { get => new Vector2(x, y); set { x = value.x; y = value.y; } }
+        public Vector2 size { get => new Vector2(width, height); set { width = value.x; height = value.y; } }
+        public Vector2 center
+        {
+            get => new Vector2(x + width / 2f, y + height / 2f);
+            set { x = value.x - width / 2f; y = value.y - height / 2f; }
+        }
+        public Vector2 min => new Vector2(xMin, yMin);
+        public Vector2 max => new Vector2(xMax, yMax);
+        public float xMin { get => x; set { float m = xMax; x = value; width = m - x; } }
+        public float yMin { get => y; set { float m = yMax; y = value; height = m - y; } }
+        public float xMax { get => x + width; set => width = value - x; }
+        public float yMax { get => y + height; set => height = value - y; }
+
+        public bool Contains(Vector2 point) =>
+            point.x >= xMin && point.x < xMax && point.y >= yMin && point.y < yMax;
+        public bool Contains(Vector3 point) => Contains(new Vector2(point.x, point.y));
+        public bool Overlaps(Rect other) =>
+            other.xMax > xMin && other.xMin < xMax && other.yMax > yMin && other.yMin < yMax;
+
+        public static bool operator ==(Rect a, Rect b) =>
+            a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+        public static bool operator !=(Rect a, Rect b) => !(a == b);
+        public bool Equals(Rect other) => this == other;
+        public override bool Equals(object obj) => obj is Rect r && this == r;
+        public override int GetHashCode() => HashCode.Combine(x, y, width, height);
+        public override string ToString() => $"(x:{x:F2}, y:{y:F2}, width:{width:F2}, height:{height:F2})";
+    }
+
+    /// <summary>Data of a UI event (`OnSelect(BaseEventData)`, `OnDeselect`, `OnCancel`).</summary>
+    public class BaseEventData
+    {
+        internal BaseEventData() { }
+        /// <summary>The object the Event System has selected.</summary>
+        public GameObject selectedObject
+        {
+            get => EventSystem.current.currentSelectedGameObject;
+            set => EventSystem.current.SetSelectedGameObject(value);
+        }
+        public bool used { get; private set; }
+        public void Use() => used = true;
+        public void Reset() => used = false;
+    }
+
+    /// <summary>Scripts hear `OnSelect(BaseEventData)` (or `OnSelect()`) when the UI selection
+    /// moves to their object.</summary>
+    public interface ISelectHandler { void OnSelect(BaseEventData eventData); }
+    /// <summary>`OnDeselect(BaseEventData)` when the UI selection leaves the object.</summary>
+    public interface IDeselectHandler { void OnDeselect(BaseEventData eventData); }
+    /// <summary>`OnCancel(BaseEventData)` on the selected object when Cancel is pressed.</summary>
+    public interface ICancelHandler { void OnCancel(BaseEventData eventData); }
+
+    /// <summary>The UI selection that keyboard and gamepad navigation move, and the scene's
+    /// Event System settings. A selection set by a script takes effect before the next frame's
+    /// Update, but `currentSelectedGameObject` returns it at once.</summary>
+    public sealed class EventSystem
+    {
+        static readonly EventSystem instance = new EventSystem();
+        EventSystem() { }
+
+        public static EventSystem current => instance;
+
+        public GameObject currentSelectedGameObject => InputBridge.Wrap(InputBridge.Call(0));
+        /// <summary>Select `selected` (null clears the selection); its scripts hear OnSelect and
+        /// the old one's OnDeselect.</summary>
+        public void SetSelectedGameObject(GameObject selected) => InputBridge.Call(1, InputBridge.Id(selected));
+        public void SetSelectedGameObject(GameObject selected, BaseEventData pointer) => SetSelectedGameObject(selected);
+        /// <summary>The object selected when the scene starts.</summary>
+        public GameObject firstSelectedGameObject
+        {
+            get => InputBridge.Wrap(InputBridge.Call(2));
+            set => InputBridge.Call(3, InputBridge.Id(value));
+        }
+        /// <summary>Whether keyboard and gamepad navigation (and Submit / Cancel) reach the UI.</summary>
+        public bool sendNavigationEvents
+        {
+            get => InputBridge.Call(4) == 1;
+            set => InputBridge.Call(5, 0, value ? 1 : 0);
+        }
+        /// <summary>The object holding the scene's Event System, or null.</summary>
+        public GameObject gameObject => InputBridge.Wrap(InputBridge.Call(6));
+        public bool alreadySelecting => false;
+        public bool isFocused => true;
+        /// <summary>The mouse is over a UI element that blocks raycasts (a click there is the
+        /// UI's).</summary>
+        public bool IsPointerOverGameObject() => InputBridge.Call(7, 0, -1) == 1;
+        /// <summary>Touch `pointerId` (its fingerId) is over a UI element; -1 is the mouse.</summary>
+        public bool IsPointerOverGameObject(int pointerId) => InputBridge.Call(7, 0, pointerId) == 1;
+    }
+
+    /// <summary>`button.Select()` and the other selectables: make it the UI selection.</summary>
+    public static class SelectableExtensions
+    {
+        public static void Select(this Button b) => EventSystem.current.SetSelectedGameObject(b.gameObject);
+        public static void Select(this Toggle t) => EventSystem.current.SetSelectedGameObject(t.gameObject);
+        public static void Select(this Slider s) => EventSystem.current.SetSelectedGameObject(s.gameObject);
+        public static void Select(this InputField f) => EventSystem.current.SetSelectedGameObject(f.gameObject);
+    }
+
+    /// <summary>Where a finger is in its gesture.</summary>
+    public enum TouchPhase { Began, Moved, Stationary, Ended, Canceled }
+
+    /// <summary>One finger on the screen this frame (`Input.GetTouch`). Positions are pixels
+    /// from the bottom-left, like `Input.mousePosition`.</summary>
+    public struct Touch
+    {
+        public int fingerId { get; set; }
+        public Vector2 position { get; set; }
+        public Vector2 rawPosition { get; set; }
+        /// <summary>Movement since the last frame, in pixels (y up).</summary>
+        public Vector2 deltaPosition { get; set; }
+        public TouchPhase phase { get; set; }
+        public override string ToString() => $"Touch {fingerId} {phase} {position}";
+    }
+
+    // Input System controls: read-only snapshots of a control as of the moment they were read.
+
+    /// <summary>A control of a device (a key, a stick, a touch).</summary>
+    public class InputControl
+    {
+        internal InputControl(string path) { this.path = path ?? ""; }
+        /// <summary>`/Keyboard/space`, `/Gamepad/leftStick`.</summary>
+        public string path { get; }
+        public string name => path.Substring(path.LastIndexOf('/') + 1);
+        public string displayName => name;
+        public override string ToString() => path;
+    }
+
+    /// <summary>A one-dimensional control (a trigger, a stick's x).</summary>
+    public class AxisControl : InputControl
+    {
+        internal readonly float value;
+        internal AxisControl(string path, float value) : base(path) { this.value = value; }
+        public float ReadValue() => value;
+    }
+
+    /// <summary>A button (a key, a gamepad button, a trigger past its press point).</summary>
+    public sealed class ButtonControl : AxisControl
+    {
+        internal ButtonControl(string path, float value, bool held, bool pressed, bool released) : base(path, value)
+        {
+            isPressed = held; wasPressedThisFrame = pressed; wasReleasedThisFrame = released;
+        }
+        internal ButtonControl(string path, long bits) : this(path, (bits & 1) != 0 ? 1f : 0f, (bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0) { }
+        public bool isPressed { get; }
+        public bool wasPressedThisFrame { get; }
+        public bool wasReleasedThisFrame { get; }
+    }
+
+    /// <summary>A whole-number control (a touch's id).</summary>
+    public sealed class IntegerControl : InputControl
+    {
+        readonly int value;
+        internal IntegerControl(string path, int value) : base(path) { this.value = value; }
+        public int ReadValue() => value;
+    }
+
+    /// <summary>A touch's phase.</summary>
+    public sealed class TouchPhaseControl : InputControl
+    {
+        readonly TouchPhase value;
+        internal TouchPhaseControl(string path, TouchPhase value) : base(path) { this.value = value; }
+        public TouchPhase ReadValue() => value;
+    }
+
+    /// <summary>A two-dimensional control (a stick, the d-pad, the mouse position).</summary>
+    public class Vector2Control : InputControl
+    {
+        readonly Vector2 value;
+        internal Vector2Control(string path, Vector2 value) : base(path) { this.value = value; }
+        public Vector2 ReadValue() => value;
+        public AxisControl x => new AxisControl(path + "/x", value.x);
+        public AxisControl y => new AxisControl(path + "/y", value.y);
+        /// <summary>The direction buttons (held past half way).</summary>
+        public ButtonControl up => Dir(path + "/up", value.y);
+        public ButtonControl down => Dir(path + "/down", -value.y);
+        public ButtonControl left => Dir(path + "/left", -value.x);
+        public ButtonControl right => Dir(path + "/right", value.x);
+        static ButtonControl Dir(string p, float v) => new ButtonControl(p, Math.Max(v, 0f), v >= 0.5f, false, false);
+    }
+
+    /// <summary>An input device (`Gamepad`, `Keyboard`, `Mouse`, `Touchscreen`).</summary>
+    public abstract class InputDevice
+    {
+        internal abstract string DeviceKey { get; }
+        public abstract string name { get; }
+        public string displayName => name;
+        public override bool Equals(object obj) => obj is InputDevice d && d.DeviceKey == DeviceKey;
+        public override int GetHashCode() => DeviceKey.GetHashCode();
+        public static bool operator ==(InputDevice a, InputDevice b) => a is null ? b is null : a.Equals(b);
+        public static bool operator !=(InputDevice a, InputDevice b) => !(a == b);
+        public override string ToString() => name;
+    }
+
+    /// <summary>Gamepad buttons, with Xbox and PlayStation names.</summary>
+    public enum GamepadButton
+    {
+        DpadUp = 0, DpadDown = 1, DpadLeft = 2, DpadRight = 3,
+        North = 4, East = 5, South = 6, West = 7,
+        LeftStick = 8, RightStick = 9, LeftShoulder = 10, RightShoulder = 11,
+        Start = 12, Select = 13, LeftTrigger = 32, RightTrigger = 33,
+        Y = North, B = East, A = South, X = West,
+        Triangle = North, Circle = East, Cross = South, Square = West,
+    }
+
+    /// <summary>A gamepad (`Gamepad.current`, `Gamepad.all`, `playerInput.GetDevice&lt;Gamepad&gt;()`).
+    /// Sticks read +1 up.</summary>
+    public sealed unsafe class Gamepad : InputDevice
+    {
+        internal readonly int slot;
+        internal Gamepad(int slot) { this.slot = slot; }
+        internal override string DeviceKey => "Gamepad" + slot;
+
+        /// <summary>The gamepad used most recently, or null.</summary>
+        public static Gamepad current
+        {
+            get { long s = InputBridge.Call(90); return s < 0 ? null : new Gamepad((int)s); }
+        }
+        /// <summary>Every connected gamepad.</summary>
+        public static Gamepad[] all
+        {
+            get
+            {
+                int n = (int)InputBridge.Call(91);
+                var list = new List<Gamepad>();
+                for (int i = 0; i < n; i++)
+                {
+                    long s = InputBridge.Call(92, 0, i);
+                    if (s >= 0) list.Add(new Gamepad((int)s));
+                }
+                return list.ToArray();
+            }
+        }
+
+        public override string name => InputBridge.Text(95, (ulong)slot, 0);
+        /// <summary>The joystick slot (0-based).</summary>
+        public int index => slot;
+
+        Vector2 Axes(int at)
+        {
+            double* v = stackalloc double[16];
+            InputBridge.Check(Internal.Native.api.inputSystem(93, (ulong)slot, 0, v, null, 0));
+            return new Vector2((float)v[at], (float)v[at + 1]);
+        }
+
+        ButtonControl Button(string control, int index) =>
+            new ButtonControl("/Gamepad/" + control, InputBridge.Check(InputBridge.Call(94, (ulong)slot, index)));
+
+        ButtonControl Trigger(string control, float value) =>
+            new ButtonControl("/Gamepad/" + control, value, value >= 0.5f, false, false);
+
+        public Vector2Control leftStick => new Vector2Control("/Gamepad/leftStick", Axes(0));
+        public Vector2Control rightStick => new Vector2Control("/Gamepad/rightStick", Axes(2));
+        public Vector2Control dpad => new Vector2Control("/Gamepad/dpad", Axes(4));
+        /// <summary>0..1; isPressed past half way.</summary>
+        public ButtonControl leftTrigger => Trigger("leftTrigger", Axes(6).x);
+        public ButtonControl rightTrigger => Trigger("rightTrigger", Axes(6).y);
+        public ButtonControl buttonSouth => Button("buttonSouth", 0);
+        public ButtonControl buttonEast => Button("buttonEast", 1);
+        public ButtonControl buttonWest => Button("buttonWest", 2);
+        public ButtonControl buttonNorth => Button("buttonNorth", 3);
+        public ButtonControl leftShoulder => Button("leftShoulder", 4);
+        public ButtonControl rightShoulder => Button("rightShoulder", 5);
+        public ButtonControl selectButton => Button("select", 6);
+        public ButtonControl startButton => Button("start", 7);
+        public ButtonControl leftStickButton => Button("leftStickPress", 8);
+        public ButtonControl rightStickButton => Button("rightStickPress", 9);
+        public ButtonControl aButton => buttonSouth;
+        public ButtonControl bButton => buttonEast;
+        public ButtonControl xButton => buttonWest;
+        public ButtonControl yButton => buttonNorth;
+        public ButtonControl crossButton => buttonSouth;
+        public ButtonControl circleButton => buttonEast;
+        public ButtonControl squareButton => buttonWest;
+        public ButtonControl triangleButton => buttonNorth;
+
+        public ButtonControl this[GamepadButton button] => button switch
+        {
+            GamepadButton.DpadUp => Button("dpad/up", 11),
+            GamepadButton.DpadDown => Button("dpad/down", 12),
+            GamepadButton.DpadLeft => Button("dpad/left", 13),
+            GamepadButton.DpadRight => Button("dpad/right", 14),
+            GamepadButton.North => buttonNorth,
+            GamepadButton.East => buttonEast,
+            GamepadButton.South => buttonSouth,
+            GamepadButton.West => buttonWest,
+            GamepadButton.LeftStick => leftStickButton,
+            GamepadButton.RightStick => rightStickButton,
+            GamepadButton.LeftShoulder => leftShoulder,
+            GamepadButton.RightShoulder => rightShoulder,
+            GamepadButton.Start => startButton,
+            GamepadButton.Select => selectButton,
+            GamepadButton.LeftTrigger => leftTrigger,
+            GamepadButton.RightTrigger => rightTrigger,
+            _ => throw new ArgumentException($"no gamepad button {button}"),
+        };
+
+        /// <summary>Rumble: the low- and high-frequency motor, 0..1.</summary>
+        public void SetMotorSpeeds(float lowFrequency, float highFrequency)
+        {
+            double* v = stackalloc double[16];
+            v[0] = lowFrequency; v[1] = highFrequency;
+            Internal.Native.api.inputSystem(96, (ulong)slot, 0, v, null, 0);
+        }
+        public void ResetHaptics() => SetMotorSpeeds(0f, 0f);
+        public void PauseHaptics() => SetMotorSpeeds(0f, 0f);
+    }
+
+    /// <summary>Keyboard keys by their Input System names (`Keyboard.current[Key.Space]`).</summary>
+    public enum Key
+    {
+        None,
+        Space, Enter, Tab, Backquote, Quote, Semicolon, Comma, Period, Slash, Backslash,
+        LeftBracket, RightBracket, Minus, Equals,
+        A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+        Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0,
+        LeftShift, RightShift, LeftAlt, RightAlt, LeftCtrl, RightCtrl,
+        Escape, LeftArrow, RightArrow, UpArrow, DownArrow,
+        Backspace, PageDown, PageUp, Home, End, Insert, Delete,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    }
+
+    /// <summary>The keyboard: `Keyboard.current.spaceKey.wasPressedThisFrame`.</summary>
+    public sealed unsafe class Keyboard : InputDevice
+    {
+        static readonly Keyboard instance = new Keyboard();
+        Keyboard() { }
+        internal override string DeviceKey => "Keyboard";
+        public static Keyboard current => instance;
+        public override string name => "Keyboard";
+
+        internal static string ControlName(Key key)
+        {
+            string s = key.ToString();
+            if (s.StartsWith("Digit")) return s.Substring(5);
+            if (s.Length == 1 || (s[0] == 'F' && char.IsDigit(s[1]))) return s.ToLowerInvariant();
+            return char.ToLowerInvariant(s[0]) + s.Substring(1);
+        }
+
+        /// <summary>A key by its control name (`space`, `w`, `leftShift`, `1`, `f1`).</summary>
+        internal ButtonControl Control(string control) =>
+            new ButtonControl("/Keyboard/" + control, InputBridge.Control(0, control, out _));
+
+        public ButtonControl this[Key key] => Control(ControlName(key));
+        public ButtonControl anyKey => Control("anyKey");
+        public ButtonControl shiftKey => Control("shift");
+        public ButtonControl ctrlKey => Control("ctrl");
+        public ButtonControl altKey => Control("alt");
+        public ButtonControl spaceKey => Control("space");
+        public ButtonControl enterKey => Control("enter");
+        public ButtonControl tabKey => Control("tab");
+        public ButtonControl escapeKey => Control("escape");
+        public ButtonControl backspaceKey => Control("backspace");
+        public ButtonControl deleteKey => Control("delete");
+        public ButtonControl leftShiftKey => Control("leftShift");
+        public ButtonControl rightShiftKey => Control("rightShift");
+        public ButtonControl leftCtrlKey => Control("leftCtrl");
+        public ButtonControl rightCtrlKey => Control("rightCtrl");
+        public ButtonControl leftAltKey => Control("leftAlt");
+        public ButtonControl rightAltKey => Control("rightAlt");
+        public ButtonControl upArrowKey => Control("upArrow");
+        public ButtonControl downArrowKey => Control("downArrow");
+        public ButtonControl leftArrowKey => Control("leftArrow");
+        public ButtonControl rightArrowKey => Control("rightArrow");
+        public ButtonControl aKey => Control("a");
+        public ButtonControl bKey => Control("b");
+        public ButtonControl cKey => Control("c");
+        public ButtonControl dKey => Control("d");
+        public ButtonControl eKey => Control("e");
+        public ButtonControl fKey => Control("f");
+        public ButtonControl gKey => Control("g");
+        public ButtonControl hKey => Control("h");
+        public ButtonControl iKey => Control("i");
+        public ButtonControl jKey => Control("j");
+        public ButtonControl kKey => Control("k");
+        public ButtonControl lKey => Control("l");
+        public ButtonControl mKey => Control("m");
+        public ButtonControl nKey => Control("n");
+        public ButtonControl oKey => Control("o");
+        public ButtonControl pKey => Control("p");
+        public ButtonControl qKey => Control("q");
+        public ButtonControl rKey => Control("r");
+        public ButtonControl sKey => Control("s");
+        public ButtonControl tKey => Control("t");
+        public ButtonControl uKey => Control("u");
+        public ButtonControl vKey => Control("v");
+        public ButtonControl wKey => Control("w");
+        public ButtonControl xKey => Control("x");
+        public ButtonControl yKey => Control("y");
+        public ButtonControl zKey => Control("z");
+        public ButtonControl digit0Key => Control("0");
+        public ButtonControl digit1Key => Control("1");
+        public ButtonControl digit2Key => Control("2");
+        public ButtonControl digit3Key => Control("3");
+        public ButtonControl digit4Key => Control("4");
+        public ButtonControl digit5Key => Control("5");
+        public ButtonControl digit6Key => Control("6");
+        public ButtonControl digit7Key => Control("7");
+        public ButtonControl digit8Key => Control("8");
+        public ButtonControl digit9Key => Control("9");
+        public ButtonControl f1Key => Control("f1");
+        public ButtonControl f2Key => Control("f2");
+        public ButtonControl f3Key => Control("f3");
+        public ButtonControl f4Key => Control("f4");
+        public ButtonControl f5Key => Control("f5");
+        public ButtonControl f6Key => Control("f6");
+        public ButtonControl f7Key => Control("f7");
+        public ButtonControl f8Key => Control("f8");
+        public ButtonControl f9Key => Control("f9");
+        public ButtonControl f10Key => Control("f10");
+        public ButtonControl f11Key => Control("f11");
+        public ButtonControl f12Key => Control("f12");
+    }
+
+    /// <summary>The mouse: `Mouse.current.position.ReadValue()` (pixels from the bottom-left),
+    /// `delta`, `scroll`, `leftButton`.</summary>
+    public sealed unsafe class Mouse : InputDevice
+    {
+        static readonly Mouse instance = new Mouse();
+        Mouse() { }
+        internal override string DeviceKey => "Mouse";
+        public static Mouse current => instance;
+        public override string name => "Mouse";
+
+        ButtonControl Button(string control) =>
+            new ButtonControl("/Mouse/" + control, InputBridge.Control(1, control, out _));
+        Vector2Control Vector(string control)
+        {
+            InputBridge.Control(1, control, out var v);
+            return new Vector2Control("/Mouse/" + control, v);
+        }
+
+        public Vector2Control position => Vector("position");
+        /// <summary>Movement this frame in pixels, y up.</summary>
+        public Vector2Control delta => Vector("delta");
+        public Vector2Control scroll => Vector("scroll");
+        public ButtonControl leftButton => Button("leftButton");
+        public ButtonControl rightButton => Button("rightButton");
+        public ButtonControl middleButton => Button("middleButton");
+    }
+
+    /// <summary>A finger of the touch screen (`Touchscreen.current.primaryTouch`).</summary>
+    public sealed class TouchControl : InputControl
+    {
+        readonly Touch touch;
+        readonly bool exists;
+        internal TouchControl(string path, Touch touch, bool exists) : base(path) { this.touch = touch; this.exists = exists; }
+
+        bool Down => exists && touch.phase != TouchPhase.Ended && touch.phase != TouchPhase.Canceled;
+        public IntegerControl touchId => new IntegerControl(path + "/touchId", exists ? touch.fingerId : 0);
+        public ButtonControl press => new ButtonControl(path + "/press", Down ? 1f : 0f, Down,
+            exists && touch.phase == TouchPhase.Began, exists && !Down);
+        public Vector2Control position => new Vector2Control(path + "/position", touch.position);
+        public Vector2Control delta => new Vector2Control(path + "/delta", touch.deltaPosition);
+        public TouchPhaseControl phase => new TouchPhaseControl(path + "/phase", touch.phase);
+        public bool isInProgress => Down;
+    }
+
+    /// <summary>The touch screen, or null until it has been touched.</summary>
+    public sealed class Touchscreen : InputDevice
+    {
+        static readonly Touchscreen instance = new Touchscreen();
+        Touchscreen() { }
+        internal override string DeviceKey => "Touchscreen";
+        public override string name => "Touchscreen";
+        public static Touchscreen current => InputBridge.Call(12) == 1 ? instance : null;
+
+        /// <summary>The first finger down (with nothing pressed when there is none).</summary>
+        public TouchControl primaryTouch
+        {
+            get
+            {
+                var all = Input.touches;
+                foreach (var t in all)
+                    if (t.phase != TouchPhase.Ended && t.phase != TouchPhase.Canceled)
+                        return new TouchControl("/Touchscreen/primaryTouch", t, true);
+                return all.Length > 0
+                    ? new TouchControl("/Touchscreen/primaryTouch", all[0], true)
+                    : new TouchControl("/Touchscreen/primaryTouch", default, false);
+            }
+        }
+        public TouchControl[] touches
+        {
+            get
+            {
+                var all = Input.touches;
+                var list = new TouchControl[all.Length];
+                for (int i = 0; i < all.Length; i++) list[i] = new TouchControl($"/Touchscreen/touch{i}", all[i], true);
+                return list;
+            }
+        }
+    }
+
+    public enum InputActionType { Value, Button, PassThrough }
+    public enum InputActionPhase { Disabled, Waiting, Started, Performed, Canceled }
+
+    /// <summary>A control scheme of an Input Actions asset.</summary>
+    public struct InputControlScheme
+    {
+        internal InputControlScheme(string name) { this.name = name; }
+        public string name { get; }
+        public override string ToString() => name;
+    }
+
+    /// <summary>An Input Actions asset being played (`playerInput.actions`, or
+    /// `InputActionAsset.Load(path)`).</summary>
+    public sealed unsafe class InputActionAsset
+    {
+        internal readonly int set;
+        internal InputActionAsset(int set) { this.set = set; }
+
+        static InputActionAsset Open(int op, string path)
+        {
+            long s = InputBridge.WithText(op, 0, 0, path);
+            if (s < 0) throw new InvalidOperationException($"InputActionAsset {(op == 60 ? "Load" : "Instantiate")}: {InputBridge.LastError()}");
+            return new InputActionAsset((int)s);
+        }
+
+        /// <summary>The asset at `path` (Assets/…inputactions), shared by everyone who loads it.</summary>
+        public static InputActionAsset Load(string path) => Open(60, path);
+        /// <summary>A copy of the asset at `path` of its own (its own enabled state and values).</summary>
+        public static InputActionAsset Instantiate(string path) => Open(61, path);
+
+        public string name => InputBridge.Text(62, (ulong)set, 0);
+        public bool enabled => InputBridge.Call(79, (ulong)set) == 1;
+        public InputActionMap[] actionMaps
+        {
+            get
+            {
+                int n = (int)InputBridge.Check(InputBridge.Call(75, (ulong)set));
+                var maps = new InputActionMap[n];
+                for (int i = 0; i < n; i++) maps[i] = new InputActionMap(set, i);
+                return maps;
+            }
+        }
+        public InputControlScheme[] controlSchemes
+        {
+            get
+            {
+                string all = InputBridge.Text(80, (ulong)set, 0);
+                if (all.Length == 0) return Array.Empty<InputControlScheme>();
+                return Array.ConvertAll(all.Split('\n'), n => new InputControlScheme(n));
+            }
+        }
+
+        /// <summary>An action by name ("Jump") or "Map/Action"; null (or an exception) when none.</summary>
+        public InputAction FindAction(string actionNameOrId, bool throwIfNotFound = false)
+        {
+            long packed = InputBridge.WithText(63, (ulong)set, 0, actionNameOrId);
+            if (packed >= 0) return new InputAction(set, (int)(packed >> 32), (int)(packed & 0xffffffff));
+            if (throwIfNotFound) throw new ArgumentException($"No action '{actionNameOrId}' in '{name}'");
+            return null;
+        }
+
+        public InputActionMap FindActionMap(string nameOrId, bool throwIfNotFound = false)
+        {
+            long map = InputBridge.WithText(64, (ulong)set, 0, nameOrId);
+            if (map >= 0) return new InputActionMap(set, (int)map);
+            if (throwIfNotFound) throw new ArgumentException($"No action map '{nameOrId}' in '{name}'");
+            return null;
+        }
+
+        public InputAction this[string actionNameOrId] =>
+            FindAction(actionNameOrId) ?? throw new KeyNotFoundException($"Cannot find action '{actionNameOrId}'");
+
+        public void Enable() => InputBridge.Check(InputBridge.Call(65, (ulong)set, 1));
+        public void Disable() => InputBridge.Check(InputBridge.Call(65, (ulong)set, 0));
+
+        /// <summary>The binding overrides (rebinds) as JSON, for PlayerPrefs.</summary>
+        public string SaveBindingOverridesAsJson() => InputBridge.Text(81, (ulong)set, 0);
+        public void LoadBindingOverridesFromJson(string json, bool removeExisting = true)
+        {
+            if (removeExisting) RemoveAllBindingOverrides();
+            if (InputBridge.WithText(82, (ulong)set, 0, json) < 0)
+                throw new ArgumentException(InputBridge.LastError());
+        }
+        public void RemoveAllBindingOverrides()
+        {
+            double* v = stackalloc double[16];
+            InputBridge.Check(Internal.Native.api.inputSystem(83, (ulong)set, -1, v, null, 0));
+        }
+
+        public override bool Equals(object obj) => obj is InputActionAsset a && a.set == set;
+        public override int GetHashCode() => set;
+        public override string ToString() => name;
+    }
+
+    /// <summary>An action map of an Input Actions asset ("Player", "UI").</summary>
+    public sealed unsafe class InputActionMap
+    {
+        internal readonly int set, map;
+        internal InputActionMap(int set, int map) { this.set = set; this.map = map; }
+        long Packed => (long)map << 32;
+
+        public string name => InputBridge.Text(66, (ulong)set, Packed);
+        public bool enabled => InputBridge.Check(InputBridge.Call(67, (ulong)set, Packed)) == 1;
+        public InputActionAsset asset => new InputActionAsset(set);
+        public InputAction[] actions
+        {
+            get
+            {
+                int n = (int)InputBridge.Check(InputBridge.Call(76, (ulong)set, Packed));
+                var list = new InputAction[n];
+                for (int i = 0; i < n; i++) list[i] = new InputAction(set, map, i);
+                return list;
+            }
+        }
+
+        public InputAction FindAction(string nameOrId, bool throwIfNotFound = false)
+        {
+            long a = InputBridge.WithText(69, (ulong)set, Packed, nameOrId);
+            if (a >= 0) return new InputAction(set, map, (int)a);
+            if (throwIfNotFound) throw new ArgumentException($"No action '{nameOrId}' in map '{name}'");
+            return null;
+        }
+
+        public InputAction this[string actionNameOrId] =>
+            FindAction(actionNameOrId) ?? throw new KeyNotFoundException($"Cannot find action '{actionNameOrId}'");
+
+        void SetEnabled(bool on)
+        {
+            double* v = stackalloc double[16];
+            v[0] = on ? 1 : 0;
+            InputBridge.Check(Internal.Native.api.inputSystem(68, (ulong)set, Packed, v, null, 0));
+        }
+        public void Enable() => SetEnabled(true);
+        public void Disable() => SetEnabled(false);
+
+        public override bool Equals(object obj) => obj is InputActionMap m && m.set == set && m.map == map;
+        public override int GetHashCode() => HashCode.Combine(set, map);
+        public override string ToString() => name;
+    }
+
+    /// <summary>An action ("Move", "Jump"): poll it (`ReadValue&lt;Vector2&gt;()`,
+    /// `WasPressedThisFrame()`) or listen (`performed += ctx => …`).</summary>
+    public sealed unsafe class InputAction
+    {
+        internal readonly int set, map, action;
+        internal InputAction(int set, int map, int action) { this.set = set; this.map = map; this.action = action; }
+        long Packed => ((long)map << 32) | (long)(uint)action;
+        /// <summary>The key C# keeps this action's listeners under (`action_key` in csharp_input.rs).</summary>
+        internal ulong EventKey => (1UL << 63) | ((ulong)(uint)set << 40) | ((ulong)(uint)map << 20) | (ulong)(uint)action;
+
+        public string name => InputBridge.Text(70, (ulong)set, Packed);
+        public InputActionMap actionMap => new InputActionMap(set, map);
+        public InputActionType type => (InputActionType)InputBridge.Check(InputBridge.Call(74, (ulong)set, Packed));
+
+        long State => InputBridge.Check(InputBridge.Call(72, (ulong)set, Packed));
+        public InputActionPhase phase => (InputActionPhase)((State >> 8) & 0xff);
+        public bool enabled => (State & 16) != 0;
+        /// <summary>Performed this frame.</summary>
+        public bool triggered => (State & 8) != 0;
+        /// <summary>The path of the control driving the action ("" when none).</summary>
+        public string activeControlPath => InputBridge.Text(78, (ulong)set, Packed);
+
+        public bool IsPressed() => (State & 1) != 0;
+        public bool WasPressedThisFrame() => (State & 2) != 0;
+        public bool WasReleasedThisFrame() => (State & 4) != 0;
+        public bool WasPerformedThisFrame() => (State & 8) != 0;
+        public bool IsInProgress() => (State & 32) != 0;
+
+        /// <summary>The value now: float for buttons and axes, Vector2 for sticks and 2D
+        /// composites (also bool, int, double, Vector3).</summary>
+        public TValue ReadValue<TValue>() where TValue : struct
+        {
+            double* v = stackalloc double[16];
+            long vector = InputBridge.Check(Internal.Native.api.inputSystem(71, (ulong)set, Packed, v, null, 0));
+            return InputBridge.Convert<TValue>(new Vector2((float)v[0], (float)v[1]), vector == 1, (float)v[2], name);
+        }
+
+        public object ReadValueAsObject()
+        {
+            double* v = stackalloc double[16];
+            long vector = InputBridge.Check(Internal.Native.api.inputSystem(71, (ulong)set, Packed, v, null, 0));
+            return vector == 1 ? new Vector2((float)v[0], (float)v[1]) : (object)(float)v[0];
+        }
+
+        /// <summary>How far the control is actuated, 0..1 (a stick's length).</summary>
+        public float GetControlMagnitude()
+        {
+            double* v = stackalloc double[16];
+            InputBridge.Check(Internal.Native.api.inputSystem(71, (ulong)set, Packed, v, null, 0));
+            return (float)v[2];
+        }
+
+        void SetEnabled(bool on)
+        {
+            double* v = stackalloc double[16];
+            v[0] = on ? 1 : 0;
+            InputBridge.Check(Internal.Native.api.inputSystem(73, (ulong)set, Packed, v, null, 0));
+        }
+        public void Enable() => SetEnabled(true);
+        public void Disable() => SetEnabled(false);
+
+        /// <summary>The bindings as shown to players ("Space", "W/A/S/D"); `bindingIndex` -1 is
+        /// all of them.</summary>
+        public string GetBindingDisplayString(int bindingIndex = -1)
+        {
+            double* v = stackalloc double[16];
+            v[0] = bindingIndex;
+            return InputBridge.Text(77, (ulong)set, Packed, v);
+        }
+
+        /// <summary>Rebind binding `bindingIndex` to `path` ("&lt;Keyboard&gt;/space").</summary>
+        public void ApplyBindingOverride(int bindingIndex, string path)
+        {
+            double* v = stackalloc double[16];
+            v[0] = bindingIndex;
+            if (InputBridge.WithText(84, (ulong)set, Packed, path, v) < 0)
+                throw new ArgumentOutOfRangeException(nameof(bindingIndex), InputBridge.LastError());
+        }
+        public void ApplyBindingOverride(string path) => ApplyBindingOverride(0, path);
+        public void RemoveBindingOverride(int bindingIndex) => ApplyBindingOverride(bindingIndex, "");
+        public void RemoveAllBindingOverrides()
+        {
+            double* v = stackalloc double[16];
+            v[0] = 1;
+            InputBridge.Check(Internal.Native.api.inputSystem(83, (ulong)set, Packed, v, null, 0));
+        }
+
+        /// <summary>Phase changes, as C# events (`action.performed += OnJump`).</summary>
+        public event Action<CallbackContext> started
+        {
+            add => InputEvents.Add(EventKey, 110, value);
+            remove => InputEvents.Remove(EventKey, 110, value);
+        }
+        public event Action<CallbackContext> performed
+        {
+            add => InputEvents.Add(EventKey, 111, value);
+            remove => InputEvents.Remove(EventKey, 111, value);
+        }
+        public event Action<CallbackContext> canceled
+        {
+            add => InputEvents.Add(EventKey, 112, value);
+            remove => InputEvents.Remove(EventKey, 112, value);
+        }
+
+        public static bool operator ==(InputAction a, InputAction b) => a is null ? b is null : a.Equals(b);
+        public static bool operator !=(InputAction a, InputAction b) => !(a == b);
+        public override bool Equals(object obj) => obj is InputAction a && a.set == set && a.map == map && a.action == action;
+        public override int GetHashCode() => HashCode.Combine(set, map, action);
+        public override string ToString() => $"{actionMap.name}/{name}";
+
+        /// <summary>What a listener (or an Invoke Events method) gets about a phase change.</summary>
+        public struct CallbackContext
+        {
+            readonly Vector2 value;
+            readonly bool vector;
+            readonly float magnitude;
+            readonly string controlPath;
+            internal CallbackContext(InputAction action, InputActionPhase phase, Vector2 value, bool vector,
+                float magnitude, double time, double startTime, string controlPath, string interaction)
+            {
+                this.action = action; this.phase = phase; this.value = value; this.vector = vector;
+                this.magnitude = magnitude; this.time = time; this.startTime = startTime;
+                this.controlPath = controlPath ?? ""; this.interactionName = interaction ?? "";
+            }
+
+            public InputAction action { get; }
+            public InputActionPhase phase { get; }
+            public bool started => phase == InputActionPhase.Started;
+            public bool performed => phase == InputActionPhase.Performed;
+            public bool canceled => phase == InputActionPhase.Canceled;
+            /// <summary>Real seconds since Play when it happened.</summary>
+            public double time { get; }
+            public double startTime { get; }
+            public double duration => time - startTime;
+            /// <summary>The control that drove it.</summary>
+            public InputControl control => new InputControl(controlPath);
+            /// <summary>The interaction that drove it ("Hold", "Tap"; "" for the default).</summary>
+            public string interactionName { get; }
+
+            public TValue ReadValue<TValue>() where TValue : struct =>
+                InputBridge.Convert<TValue>(value, vector, magnitude, action?.name ?? "action");
+            public object ReadValueAsObject() => vector ? value : (object)value.x;
+            public bool ReadValueAsButton() => magnitude >= 0.5f;
+            public override string ToString() => $"{{ action={action} phase={phase} }}";
+        }
+    }
+
+    /// <summary>The value a Player Input message carries (`void OnMove(InputValue value)`).</summary>
+    public sealed class InputValue
+    {
+        readonly Vector2 value;
+        readonly bool vector;
+        internal InputValue(Vector2 value, bool vector) { this.value = value; this.vector = vector; }
+        public TValue Get<TValue>() where TValue : struct =>
+            InputBridge.Convert<TValue>(value, vector, vector ? value.magnitude : Math.Abs(value.x), "InputValue");
+        public object Get() => vector ? value : (object)value.x;
+        public bool isPressed => (vector ? value.magnitude : Math.Abs(value.x)) >= 0.5f;
+        public override string ToString() => vector ? value.ToString() : value.x.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>How Player Input reports actions.</summary>
+    public enum PlayerNotifications { SendMessages, BroadcastMessages, InvokeUnityEvents, InvokeCSharpEvents }
+
+    /// <summary>When the Player Input Manager lets players join.</summary>
+    public enum PlayerJoinBehavior { JoinPlayersWhenButtonIsPressed, JoinPlayersManually }
+
+    /// <summary>The object's Player Input: one player's actions, devices and camera.</summary>
+    public sealed unsafe class PlayerInput : Component
+    {
+        internal readonly ulong id;
+        internal PlayerInput(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        internal override bool Same(Object other) => other is PlayerInput p && p.id == id;
+
+        /// <summary>0-based in joining (Hierarchy) order; -1 while not playing.</summary>
+        public int playerIndex => (int)InputBridge.Call(41, id);
+        /// <summary>The player's camera: the first Camera on the object or under it (split
+        /// screen gives it its part of the screen).</summary>
+        public Camera camera
+        {
+            get { long c = InputBridge.Call(42, id); return c <= 0 ? null : new Camera((ulong)c); }
+        }
+        /// <summary>The Input Actions this player plays (its own copy).</summary>
+        public InputActionAsset actions => new InputActionAsset((int)InputBridge.Check(InputBridge.Call(45, id)));
+        public string currentControlScheme => InputBridge.Text(44, id, 0);
+        public InputActionMap currentActionMap
+        {
+            get
+            {
+                long set = InputBridge.Check(InputBridge.Call(45, id));
+                long map = InputBridge.Call(46, id);
+                return map < 0 ? null : new InputActionMap((int)set, (int)map);
+            }
+            set => SwitchCurrentActionMap(value?.name ?? "");
+        }
+        public bool inputIsActive => InputBridge.Check(InputBridge.Call(47, id)) == 1;
+        public PlayerNotifications notificationBehavior => (PlayerNotifications)InputBridge.Check(InputBridge.Call(55, id));
+
+        /// <summary>The devices paired with this player.</summary>
+        public InputDevice[] devices
+        {
+            get
+            {
+                string all = InputBridge.Text(43, id, 0);
+                var list = new List<InputDevice>();
+                foreach (var n in all.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (n == "Keyboard") list.Add(Keyboard.current);
+                    else if (n == "Mouse") list.Add(Mouse.current);
+                    else if (n == "Touchscreen") list.Add(Touchscreen.current ?? (InputDevice)Keyboard.current);
+                    else if (n.StartsWith("Gamepad "))
+                    {
+                        var digits = n.Substring(8).Split(' ')[0];
+                        if (int.TryParse(digits, out int k)) list.Add(new Gamepad(k - 1));
+                    }
+                }
+                return list.ToArray();
+            }
+        }
+
+        /// <summary>The player's first device of type TDevice (`GetDevice&lt;Gamepad&gt;()`), or null.</summary>
+        public TDevice GetDevice<TDevice>() where TDevice : InputDevice
+        {
+            if (typeof(TDevice) == typeof(Gamepad))
+            {
+                long s = InputBridge.Call(56, id);
+                return s < 0 ? null : new Gamepad((int)s) as TDevice;
+            }
+            foreach (var d in devices) if (d is TDevice t) return t;
+            return null;
+        }
+
+        public void SwitchCurrentActionMap(string mapNameOrId)
+        {
+            if (InputBridge.WithText(48, id, 0, mapNameOrId) < 0)
+                throw new ArgumentException(InputBridge.LastError());
+        }
+        public void SwitchCurrentControlScheme(string controlScheme, params InputDevice[] devices)
+        {
+            if (InputBridge.WithText(49, id, 0, controlScheme) < 0)
+                throw new ArgumentException(InputBridge.LastError());
+        }
+        public void ActivateInput() => InputBridge.Call(50, id);
+        public void DeactivateInput() => InputBridge.Call(51, id);
+
+        /// <summary>Every action of this player (Invoke C# Events style).</summary>
+        public event Action<InputAction.CallbackContext> onActionTriggered
+        {
+            add => InputEvents.Add(id, 120, value);
+            remove => InputEvents.Remove(id, 120, value);
+        }
+        public event Action<PlayerInput> onControlsChanged
+        {
+            add => InputEvents.Add(id, 121, value);
+            remove => InputEvents.Remove(id, 121, value);
+        }
+        public event Action<PlayerInput> onDeviceLost
+        {
+            add => InputEvents.Add(id, 122, value);
+            remove => InputEvents.Remove(id, 122, value);
+        }
+        public event Action<PlayerInput> onDeviceRegained
+        {
+            add => InputEvents.Add(id, 123, value);
+            remove => InputEvents.Remove(id, 123, value);
+        }
+
+        /// <summary>Every playing Player Input, in player order.</summary>
+        public static PlayerInput[] all
+        {
+            get
+            {
+                int n = (int)InputBridge.Call(52);
+                var list = new List<PlayerInput>();
+                for (int i = 0; i < n; i++)
+                {
+                    long e = InputBridge.Call(53, 0, i);
+                    if (e > 0) list.Add(new PlayerInput((ulong)e));
+                }
+                list.Sort((a, b) => a.playerIndex.CompareTo(b.playerIndex));
+                return list.ToArray();
+            }
+        }
+
+        public static PlayerInput GetPlayerByIndex(int playerIndex)
+        {
+            long e = InputBridge.Call(54, 0, playerIndex);
+            return e > 0 ? new PlayerInput((ulong)e) : null;
+        }
+    }
+
+    /// <summary>The Player Input Manager: local multiplayer. A button pressed on a device no
+    /// player uses spawns the Player Prefab paired with it; with splitScreen on each player's
+    /// camera gets its part of the screen. Its scripts hear `OnPlayerJoined(PlayerInput)` and
+    /// `OnPlayerLeft(PlayerInput)`.</summary>
+    public sealed class PlayerInputManager : Component
+    {
+        internal readonly ulong id;
+        internal PlayerInputManager(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+        internal override bool Same(Object other) => other is PlayerInputManager m && m.id == id;
+
+        /// <summary>The scene's running Player Input Manager, or null.</summary>
+        public static PlayerInputManager instance
+        {
+            get { long e = InputBridge.Call(20); return e > 0 ? new PlayerInputManager((ulong)e) : null; }
+        }
+
+        long Get(int op) => InputBridge.Check(InputBridge.Call(op, id));
+        void Set(int op, bool on) => InputBridge.Check(InputBridge.Call(op, id, on ? 1 : 0));
+
+        /// <summary>Players in the scene (active Player Input objects).</summary>
+        public int playerCount => (int)InputBridge.Call(21);
+        /// <summary>Most players at once; -1 for no limit.</summary>
+        public int maxPlayerCount { get { int n = (int)Get(22); return n == 0 ? -1 : n; } }
+        public bool joiningEnabled => Get(23) == 1;
+        public bool splitScreen { get => Get(25) == 1; set => Set(26, value); }
+        public bool enabled { get => Get(27) == 1; set => Set(28, value); }
+        public PlayerJoinBehavior joinBehavior
+        {
+            get => (PlayerJoinBehavior)Get(29);
+            set => Set(30, value == PlayerJoinBehavior.JoinPlayersManually);
+        }
+        /// <summary>Split into at least this many parts even with fewer players (-1: as many as
+        /// players).</summary>
+        public int fixedNumberOfSplitScreens { get { int n = (int)Get(31); return n == 0 ? -1 : n; } }
+
+        public void EnableJoining() => Set(24, true);
+        public void DisableJoining() => Set(24, false);
+
+        /// <summary>Spawn the Player Prefab now (paired with free devices): its Player Input,
+        /// or null when the manager is full. Its scripts get Awake right after the calling
+        /// method; the manager hears OnPlayerJoined at the next frame.</summary>
+        public PlayerInput JoinPlayer()
+        {
+            long e = InputBridge.Call(32, id);
+            if (e < 0) throw new InvalidOperationException(InputBridge.LastError());
+            return e == 0 ? null : new PlayerInput((ulong)e);
+        }
+
+        public event Action<PlayerInput> onPlayerJoined
+        {
+            add => InputEvents.Add(id, 130, value);
+            remove => InputEvents.Remove(id, 130, value);
+        }
+        public event Action<PlayerInput> onPlayerLeft
+        {
+            add => InputEvents.Add(id, 131, value);
+            remove => InputEvents.Remove(id, 131, value);
+        }
+    }
+
+    /// <summary>The engine side of the input classes (`csharp_input.rs`).</summary>
+    internal static unsafe class InputBridge
+    {
+        internal static long Call(int op, ulong id = 0, long arg = 0) =>
+            Internal.Native.api.inputSystem(op, id, arg, null, null, 0);
+
+        internal static long WithText(int op, ulong id, long arg, string text, double* v = null)
+        {
+            text ??= "";
+            fixed (char* p = text) return Internal.Native.api.inputSystem(op, id, arg, v, p, text.Length);
+        }
+
+        /// <summary>A text result (or an exception).</summary>
+        internal static string Text(int op, ulong id, long arg, double* v = null)
+        {
+            char* buf = stackalloc char[256];
+            long n = Internal.Native.api.inputSystem(op, id, arg, v, buf, 256);
+            if (n < 0) throw new InvalidOperationException(LastError());
+            if (n <= 256) return new string(buf, 0, (int)n);
+            var big = new char[n];
+            fixed (char* p = big)
+            {
+                n = Internal.Native.api.inputSystem(op, id, arg, v, p, big.Length);
+                return new string(p, 0, (int)Math.Clamp(n, 0, big.Length));
+            }
+        }
+
+        internal static string LastError()
+        {
+            char* buf = stackalloc char[512];
+            long n = Internal.Native.api.inputSystem(199, 0, 0, null, buf, 512);
+            return new string(buf, 0, (int)Math.Clamp(n, 0, 512));
+        }
+
+        internal static long Check(long r) => r == -1 ? throw new InvalidOperationException(LastError()) : r;
+
+        internal static ulong Id(GameObject go) => go != null ? go.ObjectId : 0;
+        internal static GameObject Wrap(long id) => id == 0 ? null : new GameObject((ulong)id);
+
+        /// <summary>A Keyboard (0) or Mouse (1) control: its button bits, and its value in `value`.</summary>
+        internal static long Control(int device, string control, out Vector2 value)
+        {
+            double* v = stackalloc double[16];
+            long bits = Check(WithText(100, 0, device, control, v));
+            value = new Vector2((float)v[0], (float)v[1]);
+            return bits;
+        }
+
+        internal static Touch GetTouch(int index)
+        {
+            double* v = stackalloc double[16];
+            if (Internal.Native.api.inputSystem(11, 0, index, v, null, 0) != 1)
+                throw new ArgumentException($"Index out of bounds: no touch {index}", nameof(index));
+            var position = new Vector2((float)v[1], (float)v[2]);
+            return new Touch
+            {
+                fingerId = (int)v[0],
+                position = position,
+                rawPosition = position,
+                deltaPosition = new Vector2((float)v[3], (float)v[4]),
+                phase = (TouchPhase)(int)v[5],
+            };
+        }
+
+        internal static Touch[] Touches()
+        {
+            int n = (int)Call(10);
+            var list = new Touch[Math.Max(n, 0)];
+            for (int i = 0; i < list.Length; i++) list[i] = GetTouch(i);
+            return list;
+        }
+
+        internal static Rect CameraRect(ulong camera, int op)
+        {
+            double* v = stackalloc double[16];
+            Check(Internal.Native.api.inputSystem(op, camera, 0, v, null, 0));
+            return new Rect((float)v[0], (float)v[1], (float)v[2], (float)v[3]);
+        }
+
+        internal static void SetCameraRect(ulong camera, Rect r)
+        {
+            double* v = stackalloc double[16];
+            v[0] = r.x; v[1] = r.y; v[2] = r.width; v[3] = r.height;
+            Check(Internal.Native.api.inputSystem(16, camera, 0, v, null, 0));
+        }
+
+        /// <summary>An action value as `TValue` (float, Vector2, bool, int, double, Vector3).</summary>
+        internal static TValue Convert<TValue>(Vector2 v, bool vector, float magnitude, string what) where TValue : struct
+        {
+            var t = typeof(TValue);
+            if (t == typeof(Vector2)) return (TValue)(object)v;
+            if (t == typeof(Vector3)) return (TValue)(object)new Vector3(v.x, v.y, 0f);
+            float f = vector ? magnitude : v.x;
+            if (t == typeof(float)) return (TValue)(object)f;
+            if (t == typeof(double)) return (TValue)(object)(double)f;
+            if (t == typeof(int)) return (TValue)(object)(int)Math.Round(f);
+            if (t == typeof(bool)) return (TValue)(object)(Math.Abs(f) >= 0.5f);
+            throw new InvalidOperationException($"Cannot read value of type '{t.Name}' from '{what}' (it is a {(vector ? "Vector2" : "float")})");
+        }
+
+        /// <summary>The argument of the engine's running call into C# (`CsArg::Engine`).</summary>
+        internal static object TakeArg()
+        {
+            double* v = stackalloc double[16];
+            char* buf = stackalloc char[512];
+            long kind = Internal.Native.api.inputSystem(120, 0, 0, v, buf, 512);
+            switch (kind)
+            {
+                case 1: return new PlayerInput(*(ulong*)v);
+                case 2: return new InputValue(new Vector2((float)v[0], (float)v[1]), v[2] != 0);
+                case 3:
+                {
+                    string text = new string(buf, 0, (int)Math.Clamp(v[15], 0, 512));
+                    int nl = text.IndexOf('\n');
+                    string control = nl < 0 ? text : text.Substring(0, nl);
+                    string interaction = nl < 0 ? "" : text.Substring(nl + 1);
+                    var action = new InputAction((int)v[0], (int)v[1], (int)v[2]);
+                    return new InputAction.CallbackContext(action, (InputActionPhase)(int)v[3],
+                        new Vector2((float)v[4], (float)v[5]), v[6] != 0, (float)v[9], v[7], v[8], control, interaction);
+                }
+                case 4: return new BaseEventData();
+                default: return null;
+            }
+        }
+
+        /// <summary>`GetComponent&lt;PlayerInput&gt;()` / `&lt;PlayerInputManager&gt;()`, or null.</summary>
+        internal static Component Component(Type t, ulong entity)
+        {
+            if (t == typeof(PlayerInput))
+                return Call(40, entity) == 1 ? new PlayerInput(entity) : null;
+            if (t == typeof(PlayerInputManager))
+                return Call(33, entity) == 1 ? new PlayerInputManager(entity) : null;
+            return null;
+        }
+    }
+
+    /// <summary>C# listeners of input events (`action.performed += …`, `onPlayerJoined`), by
+    /// key (an action or an object) and kind (110 started, 111 performed, 112 canceled, 120
+    /// onActionTriggered, 121 onControlsChanged, 122 onDeviceLost, 123 onDeviceRegained, 130
+    /// onPlayerJoined, 131 onPlayerLeft; the `EV_` constants in csharp_input.rs).</summary>
+    internal static class InputEvents
+    {
+        static readonly Dictionary<(ulong, int), List<Delegate>> listeners = new Dictionary<(ulong, int), List<Delegate>>();
+
+        internal static void Reset() => listeners.Clear();
+
+        internal static void Add(ulong key, int kind, Delegate call)
+        {
+            if (call == null) return;
+            if (!listeners.TryGetValue((key, kind), out var list)) listeners[(key, kind)] = list = new List<Delegate>();
+            list.Add(call);
+        }
+
+        internal static void Remove(ulong key, int kind, Delegate call)
+        {
+            if (call != null && listeners.TryGetValue((key, kind), out var list)) list.Remove(call);
+        }
+
+        /// <summary>Run the listeners; whether there were any.</summary>
+        internal static bool Run(ulong key, int kind, object arg)
+        {
+            if (!listeners.TryGetValue((key, kind), out var list) || list.Count == 0) return false;
+            foreach (var call in list.ToArray())
+            {
+                try
+                {
+                    switch (call)
+                    {
+                        case Action<InputAction.CallbackContext> c when arg is InputAction.CallbackContext ctx: c(ctx); break;
+                        case Action<PlayerInput> p: p(arg as PlayerInput); break;
+                        default: call.DynamicInvoke(arg); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Internal.Host.Report(call.Method.DeclaringType?.Name ?? "Input", "listener", ex);
+                }
+            }
+            return true;
+        }
+    }
 }
 
 namespace Misty.Internal
@@ -2060,6 +3258,7 @@ namespace Misty.Internal
         public delegate* unmanaged<long, int, int> sceneOp;
         public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
         public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
+        public delegate* unmanaged<int, ulong, long, double*, char*, int, long> inputSystem;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2451,6 +3650,7 @@ namespace Misty.Internal
             Native.api = *(NativeApi*)table;
             Coroutines.Clear();
             UiEvents.Reset();
+            InputEvents.Reset();
             AsyncOperation.Reset();
             types.Clear();
             byObject.Clear();
@@ -2607,13 +3807,14 @@ namespace Misty.Internal
         }
 
         /// <summary>A call argument from the engine: kind -1 none, 0 bool, 1 number, 2 whole
-        /// number, 3 text.</summary>
+        /// number, 3 text, 40 an object the engine hands over (csharp_input.rs).</summary>
         static object Arg(int kind, double num, char* text, int len) => kind switch
         {
             0 => num != 0,
             1 => num,
             2 => (long)num,
             3 => new string(text, 0, len),
+            40 => InputBridge.TakeArg(),
             _ => null,
         };
 
@@ -2737,6 +3938,7 @@ namespace Misty.Internal
         public static int UiEvent(ulong entity, int kind, int argKind, double num, char* text, int len)
         {
             if (pendingRefs.Count > 0) ResolvePending();
+            if (kind >= 100) return InputEvents.Run(entity, kind, Arg(argKind, num, text, len)) ? 1 : 0;
             return UiEvents.Run(entity, kind, Arg(argKind, num, text, len)) ? 1 : 0;
         }
 
@@ -2949,6 +4151,7 @@ namespace Misty.Internal
 
         static Component EngineComponent(Type t, ulong entity)
         {
+            if (InputBridge.Component(t, entity) is Component input) return input;
             int kind = t == typeof(Rigidbody) ? 0 : t == typeof(Collider) ? 1
                 : t == typeof(AudioSource) ? 2 : t == typeof(Animator) ? 3
                 : t == typeof(Camera) ? 4 : t == typeof(Light) ? 5

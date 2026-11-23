@@ -39,6 +39,9 @@ use crate::scene::ScriptValue;
 /// The engine's C# API, compiled into every script assembly.
 pub const API_SOURCE: &str = include_str!("../../dotnet/MistyEngine.cs");
 
+#[path = "csharp_input.rs"]
+pub(crate) mod input;
+
 /// Method ids, in the order of `Host.Methods` in MistyEngine.cs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
@@ -1261,6 +1264,9 @@ pub enum CsArg {
     Number(f64),
     Int(i64),
     Text(String),
+    /// An object C# reads back from the engine (`csharp_input.rs`: a `PlayerInput`, an
+    /// `InputValue`, a `CallbackContext`, a `BaseEventData`).
+    Engine,
 }
 
 impl CsArg {
@@ -1294,6 +1300,7 @@ fn arg_parts(arg: Option<&CsArg>) -> (i32, f64, Vec<u16>) {
         Some(CsArg::Number(n)) => (1, *n, Vec::new()),
         Some(CsArg::Int(i)) => (2, *i as f64, Vec::new()),
         Some(CsArg::Text(t)) => (3, 0.0, t.encode_utf16().collect()),
+        Some(CsArg::Engine) => (40, 0.0, Vec::new()),
     }
 }
 

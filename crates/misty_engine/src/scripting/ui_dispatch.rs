@@ -74,14 +74,16 @@ impl ScriptHost {
     /// off.
     pub(super) fn ui_selection_changed(&mut self, e: Entity, selected: bool) {
         let method = if selected { "OnSelect" } else { "OnDeselect" };
-        self.call_if_defined(e, method, None);
+        let data = super::csharp::input::PendingArg::EventData(None);
+        self.call_if_defined_with(e, method, None, data);
     }
 
     pub(super) fn ui_event(&mut self, ev: UiEvent) {
         let (e, event, label, arg) = match ev {
             // Scripts on the selected object hear Cancel as OnCancel().
             UiEvent::Cancel(e) => {
-                self.call_if_defined(e, "OnCancel", None);
+                let data = super::csharp::input::PendingArg::EventData(None);
+                self.call_if_defined_with(e, "OnCancel", None, data);
                 return;
             }
             UiEvent::Click(b) => (b, "onClick", "On Click", None),

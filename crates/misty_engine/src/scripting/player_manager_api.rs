@@ -33,7 +33,7 @@ pub fn manager(scene: &Scene) -> Option<(Entity, PlayerInputManager)> {
 }
 
 /// Active Player Input objects in Hierarchy order.
-fn player_objects(scene: &Scene) -> Vec<Entity> {
+pub(crate) fn player_objects(scene: &Scene) -> Vec<Entity> {
     if !scene.has_any::<PlayerInput>() {
         return Vec::new();
     }
@@ -46,7 +46,7 @@ fn player_objects(scene: &Scene) -> Vec<Entity> {
 }
 
 /// The camera of a player: the first Camera on the player object or under it.
-fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
+pub(crate) fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
     scene
         .walk()
         .into_iter()
@@ -56,7 +56,11 @@ fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
 }
 
 /// Spawn the manager's Player Prefab, paired with `device` when given.
-fn join(w: &mut World, m: &PlayerInputManager, device: Option<DeviceId>) -> Result<Entity> {
+pub(crate) fn join(
+    w: &mut World,
+    m: &PlayerInputManager,
+    device: Option<DeviceId>,
+) -> Result<Entity> {
     let Some(path) = m.player_prefab.clone().filter(|p| !p.trim().is_empty()) else {
         return Err(mlua::Error::runtime(
             "Player Input Manager: no Player Prefab assigned",
@@ -163,7 +167,9 @@ impl ScriptHost {
                 } else {
                     None
                 };
-                self.call_if_defined(me, method, arg);
+                let cs_arg = super::csharp::input::PendingArg::Player(p);
+                self.call_if_defined_with(me, method, arg, cs_arg);
+                self.cs_manager_event(me, p, method == "OnPlayerJoined");
             }
         }
     }

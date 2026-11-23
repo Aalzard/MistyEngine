@@ -32,6 +32,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "component_ops.rs",
     "csharp.rs",
     "csharp_fields.rs",
+    "csharp_input.rs",
     "csharp_native.rs",
     "cursor_api.rs",
     "event_system_api.rs",

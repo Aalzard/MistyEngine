@@ -38,7 +38,7 @@ impl Drop for Enter {
 }
 
 /// Run `f` on the world installed by [`Enter`] (None outside a C# call).
-fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
+pub(super) fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
     let p = WORLD.with(|c| c.get());
     if p.is_null() {
         return None;
@@ -56,7 +56,7 @@ fn with_object<R>(id: u64, f: impl FnOnce(&mut World, Entity) -> R) -> Option<R>
     with_world(|w| w.scene.contains(e).then(|| f(w, e))).flatten()
 }
 
-fn text(ptr: *const u16, len: i32) -> String {
+pub(super) fn text(ptr: *const u16, len: i32) -> String {
     if ptr.is_null() || len <= 0 {
         return String::new();
     }
@@ -64,7 +64,7 @@ fn text(ptr: *const u16, len: i32) -> String {
     String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len as usize) })
 }
 
-fn id_of(e: Entity) -> u64 {
+pub(super) fn id_of(e: Entity) -> u64 {
     e.to_bits().get()
 }
 
@@ -146,6 +146,9 @@ pub(super) struct NativeApi {
     message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
     physics2d:
         extern "C" fn(i32, *const V3, *const V3, f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    /// `csharp_input.rs`: EventSystem, touches, Camera.rect, Player Input (Manager), Input
+    /// Actions, Gamepad / Keyboard / Mouse.
+    input_system: extern "C" fn(i32, u64, i64, *mut f64, *mut u16, i32) -> i64,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -203,6 +206,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     scene_op,
     message,
     physics2d,
+    input_system: super::csharp::input::input_system,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
