@@ -27,6 +27,9 @@ use crate::scene::{Animator, Scene};
 
 pub use super::fsm::exit_time_reached;
 
+#[path = "animator_ik_pass.rs"]
+mod ik_pass;
+
 type Key = (Entity, Property);
 /// Sampled property values.
 type Pose = HashMap<Key, f32>;
@@ -476,6 +479,8 @@ pub struct AnimatorPlayer {
     moves: Vec<RootMove>,
     /// Instances moved onto a new controller version so far.
     rebinds: u64,
+    /// Goals of the IK pass (`OnAnimatorIK`), see `animator_ik_pass.rs`.
+    pub ik: crate::rigging::animator_ik::AnimatorIkState,
 }
 
 impl AnimatorPlayer {
@@ -497,6 +502,7 @@ impl AnimatorPlayer {
             script_moves: HashSet::new(),
             moves: Vec::new(),
             rebinds: 0,
+            ik: Default::default(),
         }
     }
 

@@ -5,7 +5,8 @@
 //! `Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnDisable`, `OnDestroy`
 //! (see `lifecycle`), `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
 //! `OnJointBreak(breakForce)` (then the joint component is removed),
-//! and the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
+//! the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`,
+//! and `OnAnimatorIK(layerIndex)` on Animators with IK Pass layers (`animator_ik_host`).
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
 //! `SceneManager.LoadScene(name or index)` and `Application.Quit()` are handled after the frame
@@ -21,6 +22,8 @@
 
 pub mod accessibility_api;
 pub mod animator_api;
+pub mod animator_ik_api;
+mod animator_ik_host;
 pub mod api;
 pub mod app_api;
 pub mod assets_api;
@@ -1162,6 +1165,8 @@ impl ScriptHost {
             }
             self.flush_spawned();
         }
+        // OnAnimatorIK and the IK goals, on the pose just written.
+        self.animator_ik_pass();
         // Timelines run last: like the reference engine, they override other animation.
         let unscaled = self.with_world(|w| w.time.unscaled_delta);
         let events = self.with_world(|w| {
@@ -1416,6 +1421,8 @@ impl ScriptHost {
                     v3(c.relative_velocity * sign),
                 ];
                 self.graphs.contact_with(&self.lua, me, &kind, &args);
+                // C#'s `Collision2D` reads its contact points from here (csharp_parity.rs).
+                let _contact = (!c.trigger).then(|| csharp_native::Contact2DScope::new(me, c));
                 for i in 0..self.instances.len() {
                     // Disabled scripts too, like 3D contacts.
                     if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
@@ -2424,12 +2431,14 @@ mod material_tests;
 #[cfg(test)]
 mod network_tests;
 #[cfg(test)]
+mod parity_tests;
+#[cfg(test)]
 mod scene_async_tests;
 #[cfg(test)]
 mod set_active_tests;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod ships_bench;
+#[cfg(test)]
+mod tests;
 #[cfg(test)]
 mod tilemap_tests;

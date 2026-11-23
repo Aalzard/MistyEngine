@@ -185,3 +185,21 @@ Each entry: **Name** — what it does — what changes on screen.
   gets a slight tint as a reminder that changes will be lost.
 - Exiting Play mode reverts every scene change made while playing.
 - Pause keeps Play mode but stops updates; Step advances one frame.
+
+## 11. Animation and physics details matched in scripts and inspectors (manual-based)
+
+- **Animator Override Controller** Inspector: a **Controller** slot (the base Animator Controller), then a two-column
+  list **Original | Override** with one row per clip the base controller plays; each Override cell is an object field
+  that accepts a clip (picker or drag from the Project window); an empty cell plays the original. We add an × per row,
+  **Clear All Overrides**, and an *Unused overrides* list for entries left from a previous base. Edits save at once
+  and undo like other asset edits; changes made in Play mode reach the running Animators.
+- **IK Pass** is a per-layer checkbox in the Animator window's layer settings (gear). With it on, scripts next to the
+  Animator get `OnAnimatorIK(int layerIndex)` during the animation update, where they call `SetIKPosition` /
+  `SetIKRotation` / weights (`AvatarIKGoal`), hints (`AvatarIKHint`), `SetLookAtPosition` / `SetLookAtWeight`;
+  goals reset every frame. The reference engine solves per layer on humanoid rigs only; we solve once on the final
+  pose and also accept generic rigs whose bones have standard names.
+- **Collision2D** carries the contact points of the physics step that sent the callback: `contactCount`,
+  `GetContact(i)`, `GetContacts(array/List)` and the allocating `contacts` array; `ContactPoint2D` has `point`,
+  `normal`, `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider` / `otherCollider`,
+  `rigidbody` / `otherRigidbody`. `OnCollisionExit2D` reports no touching points in the reference engine; we report one
+  point between the objects (as Lua always has).

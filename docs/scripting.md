@@ -34,7 +34,8 @@ sandboxed.
 `OnCollisionEnter(other)`, `OnCollisionStay(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`,
 `OnTriggerStay(other)`, `OnTriggerExit(other)` (`other` is a GameObject; Stay runs every physics step
 after the one they met in, while they still touch), `OnControllerColliderHit(hit)` (see Character Controller below),
-`OnAnimatorMove()` (root motion, see Driving an Animator below). Fields starting
+`OnAnimatorMove()` (root motion, see Driving an Animator below), `OnAnimatorIK(layerIndex)` (hand,
+foot and head goals, see IK pass below). Fields starting
 with `_` stay private. Callbacks are looked up when the script starts: a function added to
 the instance later (`self.Update = …`) is not called every frame.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
@@ -482,6 +483,42 @@ end
 Body layer, 1 / 2 enter the Emotes sub-state machine; the second character plays the wave retargeted
 through humanoid Avatars).
 
+#### IK pass (`OnAnimatorIK`)
+
+Tick **IK Pass** on a layer in the Animator window's Layers list (select the layer; the Base Layer
+has it too). Every frame, after the Animator wrote its pose (and `OnAnimatorMove`), the scripts on
+the Animator's object get `OnAnimatorIK(layerIndex)` once per IK Pass layer, and the goals they set
+are solved on the pose before Timelines, rigs and `LateUpdate`:
+
+```lua
+local Reach = {}
+function Reach:Start() self._anim = self.gameObject:GetComponent("Animator") end
+function Reach:OnAnimatorIK(layer)
+    local a = self._anim
+    a:SetIKPositionWeight(AvatarIKGoal.RightHand, 1)
+    a:SetIKPosition(AvatarIKGoal.RightHand, GameObject.Find("Handle").transform.position)
+    a:SetIKHintPositionWeight(AvatarIKHint.RightElbow, 0.5)
+    a:SetIKHintPosition(AvatarIKHint.RightElbow, self.transform.position + Vector3.new(1, 1, -1))
+    a:SetLookAtWeight(1, 0.2, 1, 0, 0.5)   -- weight, body, head, eyes, clamp
+    a:SetLookAtPosition(GameObject.Find("Target").transform.position)
+end
+return Reach
+```
+Goals: `AvatarIKGoal.LeftFoot / RightFoot / LeftHand / RightHand` (or the name as text); hints
+`AvatarIKHint.LeftKnee / RightKnee / LeftElbow / RightElbow`. Also `SetIKRotation(goal, euler)` /
+`SetIKRotationWeight`, `GetIKPosition` / `GetIKRotation` (the goal set this frame, else where the
+animation put the hand or foot), `GetIKPositionWeight` / `GetIKRotationWeight`,
+`GetIKHintPosition` / `GetIKHintPositionWeight` and `GetBoneTransform(HumanBodyBones.Head)`.
+Weights go back to 0 every frame, so set them in every call. Each limb is a Two Bone IK (upper →
+lower → hand / foot) bent towards its hint; look-at turns the spine and chest (body weight) and the
+head (head weight), at most `180° × (1 − clamp)` from where they look. Rotations are humanoid effector
+rotations: identity is the bone as in the Avatar's rest pose with the character unrotated.
+Bones come from the Animator's Avatar; without one they are found by name (Hips, Spine, Chest,
+Head, LeftArm / LeftForeArm / LeftHand, LeftUpLeg / LeftLeg / LeftFoot, mixamorig and Bip01
+prefixes, `_l` / `.R` suffixes…), and the pose at the first IK frame counts as the rest pose.
+Limits: the goals of all IK layers are solved once on the final pose (not per layer), eyes weight
+is ignored (no eye bones), and there is no foot pivot, body position or limb stretch.
+
 ### UI buttons
 
 Create a button with **Object ▸ UI ▸ Button** (a Canvas is added if the scene has none). In its Button
@@ -881,7 +918,10 @@ Sample: `Scenes/NavigationDemo.scene` with `Patrol.lua`, `Chaser.lua` and `Click
 | Image (UI) | also `sprite` (sprite reference or nil) |
 
 Callbacks: `OnCollisionEnter2D(c)`, `OnCollisionStay2D(c)`, `OnCollisionExit2D(c)` with `c.gameObject`, `c.collider`,
-`c.otherCollider`, `c.rigidbody`, `c.relativeVelocity`, `c.contacts[1].point/normal`, `c:GetContact(0)`;
+`c.otherCollider`, `c.rigidbody`, `c.otherRigidbody`, `c.relativeVelocity`, `c.contactCount`, `c.contacts` (every
+touching point of the physics step that sent the callback, 1-based: `point`, `normal` (pointing away from the other
+object), `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider`, `otherCollider`,
+`rigidbody`, `otherRigidbody`), `c:GetContact(0)` (0-based like the familiar engine) and `c:GetContacts(list)`;
 `OnTriggerEnter2D(other)`, `OnTriggerStay2D(other)`, `OnTriggerExit2D(other)` with the other GameObject.
 Rays that start inside a collider report it (Project Settings ▸ Physics 2D ▸ Queries Start In Colliders), so
 ground checks use a layer mask:
@@ -1322,8 +1362,12 @@ IEnumerator Start()
 - 2D physics: `Rigidbody2D` (`velocity`, `angularVelocity`, `position`, `rotation`,
   `gravityScale`, `mass`, `AddForce` / `AddTorque` with `ForceMode2D`, `MovePosition`,
   `MoveRotation`), `Collider2D.attachedRigidbody`, and the callbacks `OnCollisionEnter2D` /
-  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`) and
-  `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`,
+  `otherCollider`, `otherRigidbody`, `relativeVelocity`, `contactCount`, `contacts`,
+  `GetContact(i)`, `GetContacts(array or List)`; `ContactPoint2D`: `point`, `normal`,
+  `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider`,
+  `otherCollider`, `rigidbody`, `otherRigidbody`, the points of the step that sent the
+  callback) and `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
 - `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
   `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
   `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
@@ -1360,7 +1404,12 @@ IEnumerator Start()
   (`GetMask`, `NameToLayer`, `LayerToName`).
 - `AudioSource`: `Play`, `Stop`, `Pause`, `UnPause`, `isPlaying`, `volume`, `pitch`, `loop`,
   `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
-  `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
+  `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`, and in
+  `OnAnimatorIK(int layerIndex)` (layers with IK Pass): `SetIKPosition` / `SetIKRotation` /
+  `SetIKPositionWeight` / `SetIKRotationWeight` (`AvatarIKGoal`), the `Get…` versions,
+  `SetIKHintPosition` / `SetIKHintPositionWeight` (`AvatarIKHint`), `SetLookAtPosition`,
+  `SetLookAtWeight(weight, body, head, eyes, clamp)` and `GetBoneTransform(HumanBodyBones)`
+  (see IK pass above).
 - `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
   `LoadSceneAsync` / `UnloadSceneAsync` returning an `AsyncOperation` (`isDone`, `progress`,
   `allowSceneActivation`, the `completed` event; `yield return op` waits for it);

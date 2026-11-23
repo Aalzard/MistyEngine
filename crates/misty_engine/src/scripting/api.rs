@@ -906,6 +906,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::world_partition_api::register(lua)?;
     super::physics_api::register(lua)?;
     super::physics2d_api::register(lua)?;
+    super::animator_ik_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
     super::weather_api::register(lua)?;

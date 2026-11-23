@@ -194,6 +194,7 @@ fn synced_layer_follows_the_source_states_with_its_own_motions() {
             sync_motions: [("Idle".to_owned(), "p7.anim".to_owned())].into(),
             ..layer("Hurt", StateMachine::default())
         }],
+        ..Default::default()
     };
     let (mut s, e, mut p) = setup(c);
     p.update(&mut s, 0.0);
