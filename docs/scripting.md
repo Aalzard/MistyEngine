@@ -142,7 +142,7 @@ variables of type GameObject are object fields too.
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
 | `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
 | `LayerMask` | `GetMask("Default", "Player", …)`, `NameToLayer(name)` (-1 if unknown), `LayerToName(index)` |
-| CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center` (settable: the capsule is rebuilt, e.g. crouching), `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
+| CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `groundNormal`, `height`, `radius`, `center` (settable: the capsule is rebuilt, e.g. crouching), `slopeSpeed` (settable, 0–1), `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
 | WheelCollider | `motorTorque`, `brakeTorque`, `steerAngle`, `enabled` (settable), `rpm`, `isGrounded`, `radius`, `suspensionDistance` (read-only), `GetWorldPose()` (returns position and Euler angles), `GetGroundHit()` (WheelHit or nil) |
 | SplineContainer | `EvaluatePosition(t [, spline])`, `EvaluateTangent(t)`, `EvaluateUpVector(t)` (world space, t is 0–1 by distance, spline index from 1), `EvaluateCurvature(t)`, `CalculateLength()`, `GetNearestPoint(position)` (point and t), `KnotCount()`, `GetKnotPosition(i)`, `splineCount`, `closed` |
 | SplineAnimate | `Play()`, `Pause()`, `Restart()` (also lower-case), `normalizedTime` and `elapsedTime` (settable), `isPlaying`, `duration`, `speed`, `length`, `enabled` |
@@ -676,6 +676,14 @@ return Walker
 right after the callback that called `Move`; `hit` has `gameObject`, `collider`, `transform`, `rigidbody`, `point`,
 `normal`, `moveDirection`, `moveLength`, `controller`. Sample: `Scenes/PhysicsDemo.scene` with
 `Assets/Scripts/CharacterWalker.lua` and `Assets/Scripts/LaserPointer.lua`.
+
+**Slope Speed** (0–1, off by default) makes walking follow the ground's incline the way people hike, using
+Tobler's hiking function: slower uphill, about 19% faster down gentle 3° slopes, and slower, careful steps on
+steep descents. At 1 a 15° climb walks at about 40% of the flat speed and the same slope downhill at about
+55%; values in between blend towards the flat speed. It scales only the horizontal part of `Move` /
+`SimpleMove` while grounded, so jumping, falling and gravity are untouched, and scripts don't need to change.
+`groundNormal` is the normal of the ground under the capsule after the last move (up while airborne), handy
+for slope-aware animation or sliding.
 
 ### First Person Player
 
@@ -1290,8 +1298,8 @@ IEnumerator Start()
   `activeSelf`, `activeInHierarchy`, `SetActive`, `transform`, `GetComponent<T>()`,
   `GetComponents<T>()`, `GetComponentInChildren<T>()`, `GetComponentInParent<T>()`,
   `TryGetComponent`, `GetComponent("Name")`. Components are your C# scripts, `Transform`,
-  `Rigidbody`, `Collider`, `AudioSource`, `Animator`, `Camera`, `Light` and `Renderer` /
-  `MeshRenderer`.
+  `Rigidbody`, `Collider`, `AudioSource`, `Animator`, `Camera`, `Light`, `Renderer` /
+  `MeshRenderer` and `CharacterController`.
 - `Camera`: `Camera.main`, `fieldOfView`, `nearClipPlane`, `farClipPlane`, `orthographic`,
   `orthographicSize`, `enabled`, `cullingMask`, `backgroundColor`, `depth`, `pixelWidth`,
   `pixelHeight`, `aspect`, `ScreenPointToRay`, `ViewportPointToRay`, `WorldToScreenPoint`,
@@ -1350,6 +1358,9 @@ IEnumerator Start()
   only).
 - `PlayerPrefs`: `GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`,
   `HasKey`, `DeleteKey`, `DeleteAll`, `Save` (the same store as Lua's).
+- `CharacterController`: `Move(motion)` and `SimpleMove(speed)` (both return whether it's grounded),
+  `isGrounded`, `velocity`, `groundNormal`, `center`, `height`, `radius`, `slopeLimit`,
+  `stepOffset`, `skinWidth`, `minMoveDistance`, `slopeSpeed` (all settable except the first four).
 - `Rigidbody`: `velocity`, `angularVelocity`, `mass`, `isKinematic`, `useGravity`, `position`,
   `AddForce` / `AddRelativeForce` / `AddTorque` (with `ForceMode`), `MovePosition`,
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
@@ -1386,10 +1397,10 @@ IEnumerator Start()
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
-Not yet: the other engine components (Character Controller, Sprite Renderer, Timeline, the
-other UI widgets, …), contact points of 2D collisions, `Physics2D` queries, `SendMessage` from C#, contact points, `Instantiate` of a script (instantiate its `gameObject`), adding
-or removing scripts or components during Play, materials after a renderer's first, and
-textures on materials. Each changed build stays loaded until the editor is closed.
+Not yet: the other engine components (Sprite Renderer, Timeline, the other UI widgets, …),
+contact points, `OnControllerColliderHit`, `Instantiate` of a script (instantiate its
+`gameObject`), materials after a renderer's first, and textures on materials. Each changed
+build stays loaded until the editor is closed.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

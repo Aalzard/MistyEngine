@@ -626,6 +626,78 @@ public class Faller : MonoBehaviour
     }
 }
 
+/// C# drives a Character Controller: SimpleMove walks with gravity, settings read and write
+/// (Slope Speed included), and it reports the ground under it.
+#[test]
+fn csharp_character_controller_walks_and_reports_the_ground() {
+    if skip() {
+        return;
+    }
+    let src = r#"
+using Misty;
+public class Walker : MonoBehaviour
+{
+    CharacterController cc;
+    int frames;
+    void Start()
+    {
+        cc = GetComponent<CharacterController>();
+        cc.slopeSpeed = 0.75f;
+        cc.stepOffset = 0.4f;
+        Debug.Log("cc " + (cc != null) + " slope " + cc.slopeSpeed.ToString("F2")
+            + " step " + cc.stepOffset.ToString("F2") + " height " + cc.height.ToString("F1"));
+    }
+    void Update()
+    {
+        frames++;
+        bool grounded = cc.SimpleMove(new Vector3(2f, 0f, 0f));
+        if (frames == 90)
+            Debug.Log("grounded " + grounded + " " + cc.isGrounded + " normal " + cc.groundNormal.y.ToString("F1")
+                + " moving " + (cc.velocity.x > 1.5f) + " x " + (transform.position.x > 2f));
+    }
+}
+"#;
+    let root = project(&[("Walker.cs", src)]);
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    let mut t = crate::scene::Transform::from_position(Vec3::new(0.0, -0.5, 0.0));
+    t.scale = Vec3::new(40.0, 1.0, 40.0);
+    scene.set_transform(ground, t);
+    scene.add(ground, crate::scene::BoxCollider::default());
+    let player = scene.spawn("Player", None);
+    scene.set_transform(
+        player,
+        crate::scene::Transform::from_position(Vec3::new(0.0, 1.2, 0.0)),
+    );
+    scene.add(player, crate::scene::CharacterController::default());
+    attach(&mut scene, player, "Walker.cs");
+
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    for _ in 0..100 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+    }
+    host.shutdown(&mut scene);
+    let logs = host.take_logs();
+    let errors: Vec<_> = logs.iter().filter(|(k, _)| *k == LogKind::Error).collect();
+    assert!(errors.is_empty(), "errors: {errors:#?}");
+    let t = texts(&logs);
+    for want in [
+        "cc True slope 0.75 step 0.40 height 2.0",
+        "grounded True True normal 1.0 moving True x True",
+    ] {
+        assert!(t.contains(&want), "{want:?} missing in {t:#?}");
+    }
+    let saved = scene
+        .world
+        .get::<&crate::scene::CharacterController>(player)
+        .map(|c| c.slope_speed)
+        .unwrap();
+    assert_eq!(saved, 0.75, "the setting lands on the component");
+}
+
 #[test]
 fn csharp_scene_requests_and_missing_components() {
     if skip() {

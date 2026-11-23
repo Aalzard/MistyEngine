@@ -32,7 +32,7 @@ use crate::scene::{CharacterController, Interpolation, Rigidbody, Scene};
 use crate::settings::PhysicsSettings;
 use convert::{gv, parts, pose, rv};
 
-pub use character::ControllerHit;
+pub use character::{ControllerHit, slope_scaled, tobler_factor};
 pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
 pub use queries::RaycastHit;

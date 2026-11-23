@@ -176,6 +176,11 @@ pub struct CharacterController {
     pub skin_width: f32,
     /// Moves shorter than this are ignored.
     pub min_move_distance: f32,
+    /// How much walking speed follows the ground's incline (0 = not at all, 1 = like people
+    /// hiking): slower uphill, a little faster down gentle slopes, careful on steep descents.
+    /// Left out of files while 0, so scenes saved before it existed stay unchanged.
+    #[serde(skip_serializing_if = "super::audio_components::defaults::is_zero")]
+    pub slope_speed: f32,
     pub center: Vec3,
     pub radius: f32,
     pub height: f32,
@@ -188,6 +193,7 @@ impl Default for CharacterController {
             step_offset: 0.3,
             skin_width: 0.08,
             min_move_distance: 0.001,
+            slope_speed: 0.0,
             center: Vec3::ZERO,
             radius: 0.5,
             height: 2.0,
