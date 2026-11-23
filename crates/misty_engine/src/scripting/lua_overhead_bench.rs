@@ -360,6 +360,39 @@ public class Bench : MonoBehaviour
     ),
 ];
 
+/// The work of the "ships" case done by one C# script through a `TransformGroup`.
+const CS_FLEET: &str = r#"
+using Misty;
+public class Fleet : MonoBehaviour
+{
+    TransformGroup group;
+    Vector3[] p, dir;
+    float[] vx, vz;
+    void Start()
+    {
+        group = new TransformGroup(GameObject.FindGameObjectsWithTag("Player"));
+        int n = group.count;
+        p = new Vector3[n]; dir = new Vector3[n]; vx = new float[n]; vz = new float[n];
+        for (int i = 0; i < n; i++) vx[i] = 1f;
+    }
+    void Update()
+    {
+        float dt = Time.deltaTime;
+        group.GetPositions(p);
+        for (int i = 0; i < p.Length; i++)
+        {
+            vx[i] -= p[i].x * 0.1f * dt;
+            vz[i] -= p[i].z * 0.1f * dt;
+            p[i].x += vx[i] * dt;
+            p[i].z += vz[i] * dt;
+            dir[i] = new Vector3(vx[i], 0f, vz[i]);
+        }
+        group.SetPositions(p);
+        group.LookAlong(dir);
+    }
+}
+"#;
+
 /// `cargo test --release -p misty_engine --lib csharp_overhead_bench -- --ignored --nocapture`
 /// (needs the .NET SDK; `MISTY_LUA_BENCH` picks cases here too).
 #[test]
@@ -397,6 +430,31 @@ fn csharp_overhead_bench() {
         eprintln!(
             "C# {name:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
             ms * 1e6 / *n as f64
+        );
+    }
+    if only.is_empty() || only.split(',').any(|o| o == "ships_group") {
+        let n = 5000;
+        let root = std::env::temp_dir().join(format!("misty_cs_fleet_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        std::fs::write(root.join("Assets/Scripts/Fleet.cs"), CS_FLEET).unwrap();
+        let mut scene = Scene::new("b");
+        for i in 0..n {
+            let e = scene.spawn(&format!("Obj{i}"), None);
+            let a = i as f32 * 0.01;
+            let r = 10.0 + (i % 100) as f32;
+            scene.set_transform(
+                e,
+                Transform::from_position(Vec3::new(a.cos() * r, 0.0, a.sin() * r)),
+            );
+            scene.game_object_mut(e).tag = "Player".into();
+        }
+        let fleet = scene.spawn("Fleet", None);
+        script(&mut scene, fleet, "Fleet.cs");
+        let ms = time_scene(scene, root, 60, frames);
+        eprintln!(
+            "C# {:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
+            "ships_group",
+            ms * 1e6 / n as f64
         );
     }
 }

@@ -1800,3 +1800,93 @@ public class Cee : MonoBehaviour
     );
     assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1]);
 }
+
+/// `TransformGroup` from C#: positions and rotations of many objects as arrays, destroyed
+/// objects keeping their place until `Prune`.
+#[test]
+fn csharp_transform_group_moves_many_objects_at_once() {
+    if skip() {
+        return;
+    }
+    let mover = r#"
+using Misty;
+
+public class GroupMover : MonoBehaviour
+{
+    TransformGroup group;
+    int frame;
+
+    void Start()
+    {
+        group = new TransformGroup(new[] { GameObject.Find("A"), GameObject.Find("Child") });
+        Debug.Log("place " + group.Add(GameObject.Find("Gone").transform) + " " + group.count);
+        var p = new Vector3[group.count];
+        group.GetPositions(p);
+        Debug.Log("at " + p[0] + " " + p[1]);
+        for (int i = 0; i < p.Length; i++) p[i].y += 10f;
+        p[2].x = float.NaN;
+        group.SetPositions(p);
+        group.LookAlong(new[] { new Vector3(1f, 0f, 0f), Vector3.zero });
+        var r = new Quaternion[2];
+        group.GetRotations(r);
+        r[1] = new Quaternion(0f, 2f, 0f, 0f);
+        group.SetRotations(r);
+        Destroy(GameObject.Find("Gone"));
+    }
+
+    void Update()
+    {
+        if (++frame != 2) return;
+        var p = new Vector3[] { Vector3.one, Vector3.one, new Vector3(7f, 7f, 7f) };
+        group.GetPositions(p);
+        Debug.Log("dead left alone " + p[2] + " " + (group.Get(2) == null) + " " + group.Get(0).name);
+        int[] freed = group.Prune();
+        Debug.Log("pruned " + freed.Length + " " + freed[0] + " " + group.count);
+        group.RemoveAt(0);
+        Debug.Log("after RemoveAt " + group.count + " " + group.Get(0).name);
+        group.Clear();
+        group.SetPositions(p);
+        Debug.Log("cleared " + group.count);
+    }
+}
+"#;
+    let root = project(&[("GroupMover.cs", mover)]);
+    let mut scene = Scene::new("t");
+    let a = scene.spawn("A", None);
+    scene.set_transform(
+        a,
+        crate::scene::Transform::from_position(Vec3::new(1.0, 2.0, 3.0)),
+    );
+    let parent = scene.spawn("Parent", None);
+    scene.set_transform(
+        parent,
+        crate::scene::Transform::from_position(Vec3::new(100.0, 0.0, 0.0)),
+    );
+    let child = scene.spawn("Child", Some(parent));
+    scene.set_transform(
+        child,
+        crate::scene::Transform::from_position(Vec3::new(5.0, 0.0, 0.0)),
+    );
+    let gone = scene.spawn("Gone", None);
+    let m = scene.spawn("M", None);
+    attach(&mut scene, m, "GroupMover.cs");
+    let logs = run(&mut scene, &root, 4, |_| Input::default());
+    let t = texts(&logs);
+    let has = |start: &str| t.iter().any(|l| l.starts_with(start));
+    assert!(has("place 2 3"), "{t:?}");
+    assert!(has("at (1.00, 2.00, 3.00) (105.00, 0.00, 0.00)"), "{t:?}");
+    assert!(has("dead left alone (7.00, 7.00, 7.00) True A"), "{t:?}");
+    assert!(has("pruned 1 2 2"), "{t:?}");
+    assert!(has("after RemoveAt 1 Child"), "{t:?}");
+    assert!(has("cleared 0"), "{t:?}");
+    assert!(!scene.contains(gone));
+    assert_eq!(scene.world_position(a), Vec3::new(1.0, 12.0, 3.0));
+    assert_eq!(scene.world_position(child), Vec3::new(105.0, 10.0, 0.0));
+    let facing = |e| scene.world_rotation(e) * Vec3::Z;
+    assert!(facing(a).abs_diff_eq(Vec3::X, 1e-5), "{}", facing(a));
+    assert!(
+        facing(child).abs_diff_eq(Vec3::NEG_Z, 1e-5),
+        "{}",
+        facing(child)
+    );
+}

@@ -384,7 +384,7 @@ Create the prefab by dragging an object from the Scene Tree into Asset Files.
 A script on every object is fine for hundreds of objects. For thousands (a swarm, bullets,
 a crowd), let one script move them all: every `transform.position` is a trip into the engine,
 and a group does the whole crowd in two trips per frame. 5,000 objects that move and turn
-take about 1.4 ms per frame this way instead of 13 ms with a script each.
+take about 1.4 ms per frame this way instead of 13 ms with a Lua script each.
 
 ```lua
 local Swarm = { speed = 2 }
@@ -415,6 +415,33 @@ return Swarm
   `RemoveAt(i)` removes one place the same way.
 - The objects need no script of their own. Keep callbacks like `OnCollisionEnter` on a small
   script only where you need them.
+
+C# has the same class, with arrays instead of lists and places counted from 0 (5,000 objects:
+about 0.7 ms per frame instead of 5 ms with a script each):
+
+```csharp
+using Misty;
+public class Swarm : MonoBehaviour
+{
+    public float speed = 2f;
+    TransformGroup group;
+    Vector3[] p;
+    void Start()
+    {
+        group = new TransformGroup(GameObject.FindGameObjectsWithTag("Bee"));
+        p = new Vector3[group.count];
+    }
+    void Update()
+    {
+        group.GetPositions(p);
+        float step = speed * Time.deltaTime;
+        for (int i = 0; i < p.Length; i++) p[i].x += step;
+        group.SetPositions(p);
+    }
+}
+```
+`GetRotations` / `SetRotations` take a `Quaternion[]`, `LookAlong` a `Vector3[]`; `Add`,
+`Get`, `RemoveAt`, `Prune` (returns `int[]`), `Clear` and `count` work as in Lua.
 
 ### Loading addressable assets
 

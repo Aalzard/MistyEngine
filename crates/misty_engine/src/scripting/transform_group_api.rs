@@ -152,7 +152,7 @@ impl LTransformGroup {
         let values = read_numbers(lua, buf, self.0.len() * N)?;
         with_world(lua, |w| {
             // Bodies follow the objects a script moves; no world has any: nothing to ask.
-            let bodies = w.physics.body_count() + w.physics2d.body_count() > 0;
+            let bodies = any_bodies(w);
             for (&e, v) in self.0.iter().zip(values.chunks_exact(N)) {
                 if v.iter().all(|x| x.is_finite())
                     && set(w, e, std::array::from_fn(|i| v[i]))
@@ -181,7 +181,33 @@ fn with_transform<R>(
     }
 }
 
-fn set_rotation(w: &mut World, e: Entity, q: Quat) -> bool {
+/// World position of `e` (`None` when destroyed).
+pub(super) fn position(w: &mut World, e: Entity) -> Option<Vec3> {
+    with_transform(w, e, |t| t.position, |w| w.scene.world_position(e))
+}
+
+/// Move `e` to a world position; whether it is there to move.
+pub(super) fn set_position(w: &mut World, e: Entity, p: Vec3) -> bool {
+    with_transform(
+        w,
+        e,
+        |t| t.position = p,
+        |w| w.scene.set_world_position(e, p),
+    )
+    .is_some()
+}
+
+/// World rotation of `e` (`None` when destroyed).
+pub(super) fn rotation(w: &mut World, e: Entity) -> Option<Quat> {
+    with_transform(w, e, |t| t.rotation, |w| w.scene.world_rotation(e))
+}
+
+/// Turn `e` to a world rotation (any length but zero); whether it was turned.
+pub(super) fn set_rotation(w: &mut World, e: Entity, q: Quat) -> bool {
+    if q.length_squared() <= 1e-12 {
+        return false;
+    }
+    let q = q.normalize();
     with_transform(
         w,
         e,
@@ -189,6 +215,29 @@ fn set_rotation(w: &mut World, e: Entity, q: Quat) -> bool {
         |w| w.scene.set_world_rotation(e, q),
     )
     .is_some()
+}
+
+/// Turn `e` to face along `dir` (like `LookAt(position + dir)`); not for a zero direction.
+pub(super) fn look_along(w: &mut World, e: Entity, dir: Vec3) -> bool {
+    let dir = dir.normalize_or_zero();
+    if dir == Vec3::ZERO {
+        return false;
+    }
+    let up = if dir.y.abs() > 0.999 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    };
+    set_rotation(
+        w,
+        e,
+        glam::camera::lh::view::look_to_quat(dir, up).inverse(),
+    )
+}
+
+/// Whether moving objects has to tell a physics world (none has a body: nothing to ask).
+pub(super) fn any_bodies(w: &World) -> bool {
+    w.physics.body_count() + w.physics2d.body_count() > 0
 }
 
 impl UserData for LTransformGroup {
@@ -249,62 +298,27 @@ impl UserData for LTransformGroup {
         });
         // World positions as `x, y, z` per object.
         m.add_method("GetPositions", |lua, g, buf: Option<Table>| {
-            g.fill(lua, buf, |w, e| {
-                with_transform(
-                    w,
-                    e,
-                    |t| t.position.to_array(),
-                    |w| w.scene.world_position(e).to_array(),
-                )
-            })
+            g.fill(lua, buf, |w, e| position(w, e).map(|p| p.to_array()))
         });
         m.add_method("SetPositions", |lua, g, buf: Table| {
             g.apply(lua, &buf, |w, e, p: [f32; 3]| {
-                let p = Vec3::from_array(p);
-                with_transform(
-                    w,
-                    e,
-                    |t| t.position = p,
-                    |w| w.scene.set_world_position(e, p),
-                )
-                .is_some()
+                set_position(w, e, Vec3::from_array(p))
             })
         });
         // World rotations as a quaternion `x, y, z, w` per object.
         m.add_method("GetRotations", |lua, g, buf: Option<Table>| {
-            g.fill(lua, buf, |w, e| {
-                with_transform(
-                    w,
-                    e,
-                    |t| t.rotation.to_array(),
-                    |w| w.scene.world_rotation(e).to_array(),
-                )
-            })
+            g.fill(lua, buf, |w, e| rotation(w, e).map(|q| q.to_array()))
         });
         m.add_method("SetRotations", |lua, g, buf: Table| {
             g.apply(lua, &buf, |w, e, q: [f32; 4]| {
-                let q = Quat::from_array(q);
-                q.length_squared() > 1e-12 && set_rotation(w, e, q.normalize())
+                set_rotation(w, e, Quat::from_array(q))
             })
         });
         // `LookAlong(directions)`: turn every object to face its direction `x, y, z` (like
         // `transform:LookAt(position + direction)`); a zero direction leaves it as it is.
         m.add_method("LookAlong", |lua, g, buf: Table| {
             g.apply(lua, &buf, |w, e, d: [f32; 3]| {
-                let dir = Vec3::from_array(d).normalize_or_zero();
-                if dir == Vec3::ZERO {
-                    return false;
-                }
-                let up = if dir.y.abs() > 0.999 {
-                    Vec3::Z
-                } else {
-                    Vec3::Y
-                };
-                set_rotation(
-                    w,
-                    e,
-                    glam::camera::lh::view::look_to_quat(dir, up).inverse(),
-                )
+                look_along(w, e, Vec3::from_array(d))
             })
         });
     }

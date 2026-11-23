@@ -146,6 +146,7 @@ pub(super) struct NativeApi {
     message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
     physics2d:
         extern "C" fn(i32, *const V3, *const V3, f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -203,7 +204,72 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     scene_op,
     message,
     physics2d,
+    transform_group,
 };
+
+/// `TransformGroup` in C#: one call for `count` objects. `data` holds `width` floats per
+/// object: op 0 reads world positions (3), 1 writes them, 2 reads world rotations (4), 3 writes
+/// them, 4 turns the objects along directions (3), 5 writes 1 for a living object and 0 for a
+/// destroyed one (1). Reads leave the floats of destroyed objects alone; writes skip them and
+/// values that are not finite. Returns how many objects were read or written, -1 outside a
+/// call from the engine.
+extern "C" fn transform_group(op: i32, ids: *const u64, count: i32, data: *mut f32) -> i32 {
+    use super::transform_group_api as group;
+    let width = match op {
+        0 | 1 | 4 => 3,
+        2 | 3 => 4,
+        5 => 1,
+        _ => return -1,
+    };
+    if count <= 0 {
+        return 0;
+    }
+    if ids.is_null() || data.is_null() {
+        return -1;
+    }
+    // SAFETY: the C# side pins an id array of `count` entries and a value array of at least
+    // `count * width` floats for the length of this call.
+    let (ids, data) = unsafe {
+        (
+            std::slice::from_raw_parts(ids, count as usize),
+            std::slice::from_raw_parts_mut(data, count as usize * width),
+        )
+    };
+    with_world(|w| {
+        let bodies = group::any_bodies(w);
+        let mut done = 0;
+        for (&id, v) in ids.iter().zip(data.chunks_exact_mut(width)) {
+            let Some(e) = Entity::from_bits(id) else {
+                if op == 5 {
+                    v[0] = 0.0;
+                }
+                continue;
+            };
+            let ok = match op {
+                0 => group::position(w, e)
+                    .map(|p| v.copy_from_slice(&p.to_array()))
+                    .is_some(),
+                2 => group::rotation(w, e)
+                    .map(|q| v.copy_from_slice(&q.to_array()))
+                    .is_some(),
+                5 => {
+                    v[0] = f32::from(u8::from(w.scene.contains(e)));
+                    true
+                }
+                _ if !v.iter().all(|x| x.is_finite()) => false,
+                1 => group::set_position(w, e, Vec3::new(v[0], v[1], v[2])),
+                3 => group::set_rotation(w, e, Quat::from_xyzw(v[0], v[1], v[2], v[3])),
+                _ => group::look_along(w, e, Vec3::new(v[0], v[1], v[2])),
+            };
+            if ok && bodies && matches!(op, 1 | 3 | 4) {
+                super::api::sync_body(w, e);
+            }
+            done += i32::from(ok);
+        }
+        done
+    })
+    .unwrap_or(-1)
+}
 
 /// Same layout as `Misty.Internal.HitData`.
 #[repr(C)]

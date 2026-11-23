@@ -573,6 +573,98 @@ namespace Misty
         public static T[] FindObjectsOfType<T>() where T : MonoBehaviour => Internal.Host.FindAllOfType<T>();
     }
 
+    /// <summary>Moves many objects in one engine call: positions and rotations of the whole
+    /// group as arrays (object i owns element i). For thousands of objects driven by one
+    /// script instead of a script each. A destroyed object keeps its place (reads leave its
+    /// element alone, writes skip it) until <see cref="Prune"/>.</summary>
+    public sealed unsafe class TransformGroup
+    {
+        ulong[] ids = new ulong[16];
+        int n;
+
+        public TransformGroup() { }
+        public TransformGroup(GameObject[] objects)
+        {
+            foreach (var o in objects) if (o) Add(o);
+        }
+
+        public int count => n;
+
+        /// <summary>Adds an object; returns its place.</summary>
+        public int Add(GameObject o)
+        {
+            if (!o) throw new ArgumentException("TransformGroup.Add: the object is null or destroyed");
+            if (n == ids.Length) Array.Resize(ref ids, n * 2);
+            ids[n] = o.id;
+            return n++;
+        }
+        public int Add(Transform t) => Add(t ? t.gameObject : null);
+
+        /// <summary>The object at place i, or null when it was destroyed.</summary>
+        public GameObject Get(int i)
+        {
+            var o = new GameObject(ids[Check(i)]);
+            return o ? o : null;
+        }
+
+        /// <summary>Removes place i; the last object moves into it (do the same with your own arrays).</summary>
+        public void RemoveAt(int i)
+        {
+            ids[Check(i)] = ids[--n];
+        }
+
+        /// <summary>Drops destroyed objects. Returns the freed places in the order they were
+        /// filled, each by the object that was last at that moment.</summary>
+        public int[] Prune()
+        {
+            var alive = new float[n];
+            fixed (float* p = alive) Internal.Native.TransformGroup(5, ids, n, p);
+            var freed = new List<int>();
+            for (int i = n - 1; i >= 0; i--)
+            {
+                if (alive[i] != 0f) continue;
+                // From the end: the object moved into a freed place is known to be alive.
+                ids[i] = ids[--n];
+                freed.Add(i);
+            }
+            return freed.ToArray();
+        }
+
+        public void Clear() { n = 0; }
+
+        /// <summary>World positions into `positions` (as many as fit).</summary>
+        public void GetPositions(Vector3[] positions)
+        {
+            fixed (Vector3* p = positions) Internal.Native.TransformGroup(0, ids, Fit(positions.Length), (float*)p);
+        }
+        public void SetPositions(Vector3[] positions)
+        {
+            fixed (Vector3* p = positions) Internal.Native.TransformGroup(1, ids, Fit(positions.Length), (float*)p);
+        }
+        /// <summary>World rotations into `rotations` (as many as fit).</summary>
+        public void GetRotations(Quaternion[] rotations)
+        {
+            fixed (Quaternion* p = rotations) Internal.Native.TransformGroup(2, ids, Fit(rotations.Length), (float*)p);
+        }
+        public void SetRotations(Quaternion[] rotations)
+        {
+            fixed (Quaternion* p = rotations) Internal.Native.TransformGroup(3, ids, Fit(rotations.Length), (float*)p);
+        }
+        /// <summary>Turns every object to face its direction (like LookAt(position + direction));
+        /// a zero direction leaves it as it is.</summary>
+        public void LookAlong(Vector3[] directions)
+        {
+            fixed (Vector3* p = directions) Internal.Native.TransformGroup(4, ids, Fit(directions.Length), (float*)p);
+        }
+
+        int Fit(int length) => length < n ? length : n;
+        int Check(int i)
+        {
+            if (i < 0 || i >= n) throw new ArgumentOutOfRangeException(nameof(i), "TransformGroup has " + n + " objects");
+            return i;
+        }
+    }
+
     /// <summary>An object in the scene.</summary>
     public sealed class GameObject : Object
     {
@@ -2060,6 +2152,7 @@ namespace Misty.Internal
         public delegate* unmanaged<long, int, int> sceneOp;
         public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
         public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
+        public delegate* unmanaged<int, ulong*, int, float*, int> transformGroup;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2411,6 +2504,18 @@ namespace Misty.Internal
         internal static void LookAt(ulong id, Vector3 point)
         {
             if (api.lookAt(id, &point) == 0) throw Destroyed();
+        }
+
+        /// <summary>One TransformGroup call for `count` objects (ops in csharp_native.rs).</summary>
+        internal static int TransformGroup(int op, ulong[] ids, int count, float* data)
+        {
+            if (count <= 0) return 0;
+            fixed (ulong* p = ids)
+            {
+                int done = api.transformGroup(op, p, count, data);
+                if (done < 0) throw new InvalidOperationException("TransformGroup used outside a script callback");
+                return done;
+            }
         }
     }
 
