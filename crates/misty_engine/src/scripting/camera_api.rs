@@ -25,6 +25,33 @@ pub(super) fn screen(w: &World) -> Vec2 {
     }
 }
 
+/// Camera `e`'s part of the screen in pixels from the bottom-left: (corner, size). Its Viewport
+/// Rect times the screen (split screen, a minimap); the whole screen for an ordinary camera.
+/// Screen points of that camera are measured in this rect, like the familiar API.
+pub(super) fn pixel_rect(w: &World, e: Entity) -> (Vec2, Vec2) {
+    let s = screen(w);
+    let [x, y, vw, vh] = w
+        .scene
+        .world
+        .get::<&CameraComponent>(e)
+        .map_or([0.0, 0.0, 1.0, 1.0], |c| c.viewport);
+    let lo = Vec2::new(x, y).clamp(Vec2::ZERO, Vec2::ONE) * s;
+    let hi = Vec2::new(x + vw, y + vh).clamp(Vec2::ZERO, Vec2::ONE) * s;
+    (lo, (hi - lo).max(Vec2::ONE))
+}
+
+/// Normalised camera coordinates (0..1, y down: what [`Camera`] works in) of screen pixel
+/// `p` (from the bottom-left) for a camera drawing into `rect`.
+pub(super) fn screen_to_uv((corner, size): (Vec2, Vec2), p: Vec2) -> Vec2 {
+    let local = (p - corner) / size;
+    Vec2::new(local.x, 1.0 - local.y)
+}
+
+/// Screen pixel (from the bottom-left) of normalised camera coordinates `uv` (y down).
+pub(super) fn uv_to_screen((corner, size): (Vec2, Vec2), uv: Vec2) -> Vec2 {
+    corner + Vec2::new(uv.x, 1.0 - uv.y) * size
+}
+
 /// View camera of object `e`.
 pub(super) fn camera_of(w: &World, e: Entity) -> Option<Camera> {
     let c = w.scene.world.get::<&CameraComponent>(e).ok()?;
@@ -149,9 +176,9 @@ impl UserData for LCamera {
         // Ray through a screen point (pixels, origin bottom-left): { origin, direction }.
         m.add_method("ScreenPointToRay", |lua, c, p: LVec3| {
             let ray = with_world(lua, |w| {
-                let s = screen(w);
-                let uv = Vec2::new(p.0.x / s.x, 1.0 - p.0.y / s.y);
-                camera_of(w, c.0).map(|cam| cam.screen_ray(s.x / s.y, uv))
+                let rect = pixel_rect(w, c.0);
+                let uv = screen_to_uv(rect, p.0.truncate());
+                camera_of(w, c.0).map(|cam| cam.screen_ray(rect.1.x / rect.1.y, uv))
             })?;
             let Some((origin, direction)) = ray else {
                 return Ok(Value::Nil);
@@ -164,10 +191,10 @@ impl UserData for LCamera {
         // Screen pixels (origin bottom-left) and depth in front of the camera.
         m.add_method("WorldToScreenPoint", |lua, c, p: LVec3| {
             with_world(lua, |w| {
-                let s = screen(w);
+                let rect = pixel_rect(w, c.0);
                 let cam = camera_of(w, c.0)?;
-                let (uv, depth) = cam.world_to_screen(s.x / s.y, p.0)?;
-                Some(LVec3(Vec3::new(uv.x * s.x, (1.0 - uv.y) * s.y, depth)))
+                let (uv, depth) = cam.world_to_screen(rect.1.x / rect.1.y, p.0)?;
+                Some(LVec3(uv_to_screen(rect, uv).extend(depth)))
             })
         });
     }

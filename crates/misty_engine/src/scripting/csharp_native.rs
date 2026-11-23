@@ -1466,12 +1466,13 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
         let Some(cam) = super::camera_api::camera_of(w, e) else {
             return 0;
         };
-        let s = super::camera_api::screen(w);
-        let aspect = s.x / s.y;
-        // Normalised screen coordinates, y down (what `Camera` works in).
+        // Screen points are measured in the camera's own part of the screen (split screen).
+        let rect = super::camera_api::pixel_rect(w, e);
+        let aspect = rect.1.x / rect.1.y;
+        // Normalised camera coordinates, y down (what `Camera` works in).
         let uv = |p: Vec3, pixels: bool| {
             if pixels {
-                glam::Vec2::new(p.x / s.x, 1.0 - p.y / s.y)
+                super::camera_api::screen_to_uv(rect, p.truncate())
             } else {
                 glam::Vec2::new(p.x, 1.0 - p.y)
             }
@@ -1488,7 +1489,7 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
                 };
                 let (x, y) = (ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5);
                 let p = if op == 2 {
-                    Vec3::new(x * s.x, y * s.y, depth)
+                    (rect.0 + glam::Vec2::new(x, y) * rect.1).extend(depth)
                 } else {
                     Vec3::new(x, y, depth)
                 };

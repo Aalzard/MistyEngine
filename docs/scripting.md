@@ -321,6 +321,12 @@ saved to PlayerPrefs).
 A camera whose **Viewport Rect** covers only part of the screen renders into that part (split screen, a
 minimap). The full-screen image comes from the highest-Depth camera that covers the screen; with none, the
 screen starts black and only the viewport cameras draw, lowest Depth first. The UI draws over all of them.
+A camera's screen points (`ScreenPointToRay`, `WorldToScreenPoint`, `ScreenToWorldPoint`) are measured in
+its own part of the screen, so `cam:ScreenPointToRay(Input.mousePosition)` works for each player's camera.
+For a **per-player HUD**, give the player a Canvas set to Screen Space - Camera with the player's camera as
+Render Camera: when that camera draws only part of the screen, the canvas is laid out for that part (anchors,
+Canvas Scaler) and drawn into it, and clicks there reach it. World Space canvases (name tags, health bars) show in every
+player's view that sees them, hidden behind nearer objects of that view.
 
 **Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
 Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns
@@ -332,7 +338,8 @@ While joining is on, even a lone player keeps to its own devices (no control sch
 others stay free to join with.
 
 Scripts on the manager's object hear `OnPlayerJoined(player)` (the new player's GameObject, after its scripts'
-`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). `GetComponent("PlayerInputManager")` or
+`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). Inside `OnPlayerJoined`, `playerCount` counts up to
+that player, also when several join in one frame. `GetComponent("PlayerInputManager")` or
 `PlayerInputManager.instance`: `playerCount`, `maxPlayerCount`, `joiningEnabled`, `EnableJoining()`,
 `DisableJoining()`, `JoinPlayer()` (spawns a player now with free devices; nil when full), `splitScreen`,
 `enabled`, `gameObject`.
