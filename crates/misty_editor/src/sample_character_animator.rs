@@ -484,6 +484,7 @@ fn controller() -> AnimatorController {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     }
 }
 

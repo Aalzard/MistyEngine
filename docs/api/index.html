@@ -2081,6 +2081,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function · source: <code>animator_api.rs</code></div>
 <p class="notes">CrossFadeInFixedTime(state, seconds [, layer [, normalizedOffset]]).</p>
 </div>
+<div class="entry" data-key="animator:getbonetransform(bone) ">
+<div class="sig">animator:GetBoneTransform(bone)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">The Transform of a human bone (nil when the rig has none).</p>
+</div>
 <div class="entry" data-key="animator:getbool(name) read a bool parameter">
 <div class="sig">animator:GetBool(name)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
@@ -2095,6 +2100,31 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">animator:GetFloat(name)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
 <p>Read a float parameter</p>
+</div>
+<div class="entry" data-key="animator:getikhintposition(hint) ">
+<div class="sig">animator:GetIKHintPosition(hint)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikhintpositionweight(hint) ">
+<div class="sig">animator:GetIKHintPositionWeight(hint)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikposition(goal) ">
+<div class="sig">animator:GetIKPosition(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">The goal set this frame, or where the animation put the hand / foot.</p>
+</div>
+<div class="entry" data-key="animator:getikpositionweight(goal) ">
+<div class="sig">animator:GetIKPositionWeight(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikrotation(goal) ">
+<div class="sig">animator:GetIKRotation(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikrotationweight(goal) ">
+<div class="sig">animator:GetIKRotationWeight(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
 </div>
 <div class="entry" data-key="animator:getinteger(name) read an int parameter">
 <div class="sig">animator:GetInteger(name)</div>
@@ -2154,6 +2184,36 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p>Set a float parameter</p>
 <p class="notes">SetFloat(name, value [, dampTime, deltaTime]).</p>
 </div>
+<div class="entry" data-key="animator:setikhintposition(hint, position) ">
+<div class="sig">animator:SetIKHintPosition(hint, position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">Where the elbow / knee should point (with SetIKHintPositionWeight &gt; 0).</p>
+</div>
+<div class="entry" data-key="animator:setikhintpositionweight(hint, weight) ">
+<div class="sig">animator:SetIKHintPositionWeight(hint, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how much the hint turns the limb's bend.</p>
+</div>
+<div class="entry" data-key="animator:setikposition(goal, position) ">
+<div class="sig">animator:SetIKPosition(goal, position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">World position the hand / foot reaches for (with SetIKPositionWeight &gt; 0; call in OnAnimatorIK).</p>
+</div>
+<div class="entry" data-key="animator:setikpositionweight(goal, weight) ">
+<div class="sig">animator:SetIKPositionWeight(goal, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how far from the animated pose towards the goal position (reset to 0 every frame).</p>
+</div>
+<div class="entry" data-key="animator:setikrotation(goal, euler) ">
+<div class="sig">animator:SetIKRotation(goal, euler)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">Effector rotation (Euler degrees) the hand / foot turns to; identity = the Avatar's rest pose.</p>
+</div>
+<div class="entry" data-key="animator:setikrotationweight(goal, weight) ">
+<div class="sig">animator:SetIKRotationWeight(goal, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how far from the animated rotation towards the goal rotation (reset every frame).</p>
+</div>
 <div class="entry" data-key="animator:setinteger(name, value) set an int parameter">
 <div class="sig">animator:SetInteger(name, value)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
@@ -2162,6 +2222,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="entry" data-key="animator:setlayerweight(layer, weight) ">
 <div class="sig">animator:SetLayerWeight(layer, weight)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:setlookatposition(position) ">
+<div class="sig">animator:SetLookAtPosition(position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">World point the head (and with body weight the spine) turns towards.</p>
+</div>
+<div class="entry" data-key="animator:setlookatweight(weight, [body], [head], [eyes], [clamp]) ">
+<div class="sig">animator:SetLookAtWeight(weight, [body], [head], [eyes], [clamp])</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">SetLookAtWeight(weight [, bodyWeight = 0, headWeight = 1, eyesWeight = 0, clampWeight = 0.5]).</p>
 </div>
 <div class="entry" data-key="animator:settrigger(name) set a trigger">
 <div class="sig">animator:SetTrigger(name)</div>

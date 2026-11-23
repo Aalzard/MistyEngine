@@ -81,45 +81,58 @@ fn posed<R>(
 
 /// The IK methods of `Animator` (added to `LAnimator`'s methods).
 pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
-    m.add_method("SetIKPosition", |lua, a, (g, p): (Value, LVec3)| {
-        let g = goal_of(&g)?;
+    // World position the hand / foot reaches for (with SetIKPositionWeight > 0; call in OnAnimatorIK).
+    m.add_method(
+        "SetIKPosition",
+        |lua, a, (goal, position): (Value, LVec3)| {
+            let g = goal_of(&goal)?;
+            goals(lua, a.0, |x| {
+                let goal = x.goal_mut(g);
+                goal.position = position.0;
+                goal.position_set = true;
+            })
+        },
+    );
+    // Effector rotation (Euler degrees) the hand / foot turns to; identity = the Avatar's rest pose.
+    m.add_method("SetIKRotation", |lua, a, (goal, euler): (Value, LVec3)| {
+        let g = goal_of(&goal)?;
         goals(lua, a.0, |x| {
             let goal = x.goal_mut(g);
-            goal.position = p.0;
-            goal.position_set = true;
-        })
-    });
-    m.add_method("SetIKRotation", |lua, a, (g, r): (Value, LVec3)| {
-        let g = goal_of(&g)?;
-        goals(lua, a.0, |x| {
-            let goal = x.goal_mut(g);
-            goal.rotation = euler_to_quat(r.0);
+            goal.rotation = euler_to_quat(euler.0);
             goal.rotation_set = true;
         })
     });
-    m.add_method("SetIKPositionWeight", |lua, a, (g, v): (Value, f32)| {
-        let g = goal_of(&g)?;
-        goals(lua, a.0, |x| {
-            x.goal_mut(g).position_weight = v.clamp(0.0, 1.0)
-        })
-    });
-    m.add_method("SetIKRotationWeight", |lua, a, (g, v): (Value, f32)| {
-        let g = goal_of(&g)?;
-        goals(lua, a.0, |x| {
-            x.goal_mut(g).rotation_weight = v.clamp(0.0, 1.0)
-        })
-    });
-    m.add_method("GetIKPositionWeight", |lua, a, g: Value| {
-        let g = goal_of(&g)?;
+    // 0 … 1: how far from the animated pose towards the goal position (reset to 0 every frame).
+    m.add_method(
+        "SetIKPositionWeight",
+        |lua, a, (goal, weight): (Value, f32)| {
+            let g = goal_of(&goal)?;
+            goals(lua, a.0, |x| {
+                x.goal_mut(g).position_weight = weight.clamp(0.0, 1.0)
+            })
+        },
+    );
+    // 0 … 1: how far from the animated rotation towards the goal rotation (reset every frame).
+    m.add_method(
+        "SetIKRotationWeight",
+        |lua, a, (goal, weight): (Value, f32)| {
+            let g = goal_of(&goal)?;
+            goals(lua, a.0, |x| {
+                x.goal_mut(g).rotation_weight = weight.clamp(0.0, 1.0)
+            })
+        },
+    );
+    m.add_method("GetIKPositionWeight", |lua, a, goal: Value| {
+        let g = goal_of(&goal)?;
         goals(lua, a.0, |x| x.goal_mut(g).position_weight)
     });
-    m.add_method("GetIKRotationWeight", |lua, a, g: Value| {
-        let g = goal_of(&g)?;
+    m.add_method("GetIKRotationWeight", |lua, a, goal: Value| {
+        let g = goal_of(&goal)?;
         goals(lua, a.0, |x| x.goal_mut(g).rotation_weight)
     });
     // The goal set this frame, or where the animation put the hand / foot.
-    m.add_method("GetIKPosition", |lua, a, g: Value| {
-        let g = goal_of(&g)?;
+    m.add_method("GetIKPosition", |lua, a, goal: Value| {
+        let g = goal_of(&goal)?;
         let set = goals(lua, a.0, |x| {
             let goal = *x.goal_mut(g);
             goal.position_set.then_some(goal.position)
@@ -131,8 +144,8 @@ pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
             }),
         }
     });
-    m.add_method("GetIKRotation", |lua, a, g: Value| {
-        let g = goal_of(&g)?;
+    m.add_method("GetIKRotation", |lua, a, goal: Value| {
+        let g = goal_of(&goal)?;
         let set = goals(lua, a.0, |x| {
             let goal = *x.goal_mut(g);
             goal.rotation_set.then_some(goal.rotation)
@@ -145,24 +158,32 @@ pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
         };
         Ok(LVec3(quat_to_euler(q)))
     });
-    m.add_method("SetIKHintPosition", |lua, a, (h, p): (Value, LVec3)| {
-        let h = hint_of(&h)?;
-        goals(lua, a.0, |x| {
-            let hint = x.hint_mut(h);
-            hint.position = p.0;
-            hint.set = true;
-        })
-    });
-    m.add_method("SetIKHintPositionWeight", |lua, a, (h, v): (Value, f32)| {
-        let h = hint_of(&h)?;
-        goals(lua, a.0, |x| x.hint_mut(h).weight = v.clamp(0.0, 1.0))
-    });
-    m.add_method("GetIKHintPositionWeight", |lua, a, h: Value| {
-        let h = hint_of(&h)?;
+    // Where the elbow / knee should point (with SetIKHintPositionWeight > 0).
+    m.add_method(
+        "SetIKHintPosition",
+        |lua, a, (hint, position): (Value, LVec3)| {
+            let h = hint_of(&hint)?;
+            goals(lua, a.0, |x| {
+                let hint = x.hint_mut(h);
+                hint.position = position.0;
+                hint.set = true;
+            })
+        },
+    );
+    // 0 … 1: how much the hint turns the limb's bend.
+    m.add_method(
+        "SetIKHintPositionWeight",
+        |lua, a, (hint, weight): (Value, f32)| {
+            let h = hint_of(&hint)?;
+            goals(lua, a.0, |x| x.hint_mut(h).weight = weight.clamp(0.0, 1.0))
+        },
+    );
+    m.add_method("GetIKHintPositionWeight", |lua, a, hint: Value| {
+        let h = hint_of(&hint)?;
         goals(lua, a.0, |x| x.hint_mut(h).weight)
     });
-    m.add_method("GetIKHintPosition", |lua, a, h: Value| {
-        let h = hint_of(&h)?;
+    m.add_method("GetIKHintPosition", |lua, a, hint: Value| {
+        let h = hint_of(&hint)?;
         let set = goals(lua, a.0, |x| {
             let hint = *x.hint_mut(h);
             hint.set.then_some(hint.position)
@@ -174,15 +195,16 @@ pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
             }),
         }
     });
-    m.add_method("SetLookAtPosition", |lua, a, p: LVec3| {
-        goals(lua, a.0, |x| x.look_at.position = p.0)
+    // World point the head (and with body weight the spine) turns towards.
+    m.add_method("SetLookAtPosition", |lua, a, position: LVec3| {
+        goals(lua, a.0, |x| x.look_at.position = position.0)
     });
     // SetLookAtWeight(weight [, bodyWeight = 0, headWeight = 1, eyesWeight = 0, clampWeight = 0.5]).
     m.add_method(
         "SetLookAtWeight",
         |lua,
          a,
-         (w, body, head, eyes, clamp): (
+         (weight, body, head, eyes, clamp): (
             f32,
             Option<f32>,
             Option<f32>,
@@ -191,7 +213,7 @@ pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
         )| {
             goals(lua, a.0, |x| {
                 let la = &mut x.look_at;
-                la.weight = w.clamp(0.0, 1.0);
+                la.weight = weight.clamp(0.0, 1.0);
                 la.body_weight = body.unwrap_or(0.0).clamp(0.0, 1.0);
                 la.head_weight = head.unwrap_or(1.0).clamp(0.0, 1.0);
                 la.eyes_weight = eyes.unwrap_or(0.0).clamp(0.0, 1.0);
@@ -200,8 +222,8 @@ pub fn add_methods<M: UserDataMethods<LAnimator>>(m: &mut M) {
         },
     );
     // The Transform of a human bone (nil when the rig has none).
-    m.add_method("GetBoneTransform", |lua, a, b: Value| {
-        let b = bone_of(&b)?;
+    m.add_method("GetBoneTransform", |lua, a, bone: Value| {
+        let b = bone_of(&bone)?;
         posed(lua, a.0, |w, av| {
             ik::bone_entity(&w.scene, a.0, av, b).map(LTransform)
         })

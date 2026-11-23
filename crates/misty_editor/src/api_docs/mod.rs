@@ -22,6 +22,8 @@ macro_rules! sources {
 pub const SOURCES: &[(&str, &str)] = sources!(
     "accessibility_api.rs",
     "animator_api.rs",
+    "animator_ik_api.rs",
+    "animator_ik_host.rs",
     "api.rs",
     "app_api.rs",
     "assets_api.rs",
@@ -33,6 +35,7 @@ pub const SOURCES: &[(&str, &str)] = sources!(
     "csharp.rs",
     "csharp_fields.rs",
     "csharp_native.rs",
+    "csharp_parity.rs",
     "cursor_api.rs",
     "event_system_api.rs",
     "input_actions_api.rs",

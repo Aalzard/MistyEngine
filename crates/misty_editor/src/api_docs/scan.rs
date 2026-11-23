@@ -75,9 +75,20 @@ pub fn scan_file(file: &str, text: &str) -> Vec<Found> {
         &MEMBER,
         r#"\.add_(field_method_get|field_method_set|field_function_get|field_function_set|method|method_mut|function|function_mut|async_method|async_function)\(\s*"([A-Za-z_]\w*)""#,
     );
-    for cap in impl_re.captures_iter(text) {
-        let ty = &cap[1];
-        let start = cap.get(0).map_or(0, |m| m.end());
+    // Members can also be added by a helper in another file:
+    // `pub fn add_methods<M: UserDataMethods<LType>>(m: &mut M) { … }`.
+    static HELPER: OnceLock<Regex> = OnceLock::new();
+    let helper_re = re(
+        &HELPER,
+        r"(?m)^pub fn \w+<M: (?:mlua::)?UserDataMethods<(\w+)>>\(m: &mut M\)\s*\{",
+    );
+    let blocks: Vec<(String, usize)> = impl_re
+        .captures_iter(text)
+        .chain(helper_re.captures_iter(text))
+        .map(|cap| (cap[1].to_owned(), cap.get(0).map_or(0, |m| m.end())))
+        .collect();
+    for (ty, start) in blocks {
+        let ty = ty.as_str();
         let end = text[start..].find("\n}").map_or(text.len(), |i| start + i);
         let owner = globals_owner
             .get(ty)

@@ -328,7 +328,10 @@ fn csharp_on_animator_ik_moves_the_hand_to_its_goal() {
         (v - n * v.dot(n)).normalize()
     };
     let angle = side(elbow).angle_between(side(Vec3::new(-0.6, 1.2, -1.0)));
-    assert!(angle < 1e-2, "elbow towards the hint: {elbow} ({angle} rad off)");
+    assert!(
+        angle < 1e-2,
+        "elbow towards the hint: {elbow} ({angle} rad off)"
+    );
     let head = scene.find_by_name("Head").unwrap();
     let fwd = scene.world_rotation(head) * Vec3::Z;
     let want = (Vec3::new(1.0, 1.65, 1.0) - scene.world_position(head)).normalize();
