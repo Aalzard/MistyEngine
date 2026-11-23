@@ -483,6 +483,12 @@ end
 Body layer, 1 / 2 enter the Emotes sub-state machine; the second character plays the wave retargeted
 through humanoid Avatars).
 
+Characters that move alike can share one state machine through an **Animator Override Controller**
+(Project ▸ Create ▸ Animator Override Controller, with the base `.controller` selected): its Inspector
+lists every clip the base plays with an Override slot (pick a clip or drop one from the Project window;
+× plays the original), and an Animator takes the `.overrideController` as its controller. Edits save at
+once, undo, and reach running Animators in Play mode.
+
 #### IK pass (`OnAnimatorIK`)
 
 Tick **IK Pass** on a layer in the Animator window's Layers list (select the layer; the Base Layer
