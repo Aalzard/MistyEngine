@@ -127,6 +127,10 @@ pub struct Rebind {
     candidate: Option<(String, f64)>,
     was_enabled: bool,
     pub expect_vector: bool,
+    /// `WithBindingGroup`: the group, and the devices of its control scheme (only those are
+    /// listened to; empty = every device).
+    pub group: Option<String>,
+    pub devices: Vec<super::path::DeviceKind>,
 }
 
 /// Something scripts hear about after an Input System update.
@@ -821,6 +825,8 @@ impl InputSystem {
             candidate: None,
             was_enabled: false,
             expect_vector,
+            group: None,
+            devices: Vec::new(),
         });
         Ok(id)
     }
@@ -954,6 +960,7 @@ impl InputSystem {
                 !r.excluded
                     .iter()
                     .any(|x| !x.is_empty() && lower(c).contains(&lower(x)))
+                    && super::rebinding::listens_to(&r.devices, c)
             });
             let now = self.now;
             match (pick, r.candidate.clone()) {

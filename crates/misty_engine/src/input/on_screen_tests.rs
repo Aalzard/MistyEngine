@@ -47,6 +47,7 @@ fn touch(id: u64, x: f32, y: f32, phase: TouchPhase) -> Touch {
         position: Vec2::new(x, y),
         delta: Vec2::ZERO,
         phase,
+        ..Default::default()
     }
 }
 
