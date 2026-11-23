@@ -277,11 +277,13 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #CharacterController|SimpleMove|SimpleMove(speed)|Move at a speed with gravity; returns isGrounded
 #CharacterController|isGrounded|isGrounded|Touching the ground after the last move
 #CharacterController|velocity|velocity|Velocity of the last move
+#CharacterController|groundNormal|groundNormal|Normal of the ground under the capsule (up while airborne)
 #CharacterController|height|height|Capsule height
 #CharacterController|radius|radius|Capsule radius
 #CharacterController|center|center|Capsule centre
 #CharacterController|slopeLimit|slopeLimit|Steepest climbable slope
 #CharacterController|stepOffset|stepOffset|Highest climbable step
+#CharacterController|slopeSpeed|slopeSpeed|How much walking speed follows the incline (0–1, like people hiking)
 #SplineContainer|EvaluatePosition|EvaluatePosition(t)|World position at t (0–1 by distance); optional spline index
 #SplineContainer|EvaluateTangent|EvaluateTangent(t)|World tangent (velocity) at t
 #SplineContainer|EvaluateUpVector|EvaluateUpVector(t)|World up vector at t

@@ -363,3 +363,103 @@ fn rotated_and_scaled_rects_draw_and_hit_turned() {
         "400 px of 800 = half the clip width: {span}"
     );
 }
+
+/// Split screen: a Screen Space - Camera canvas whose Render Camera draws only the right half is
+/// that player's HUD. It is laid out for the half (400 × 600), drawn into it (not through
+/// another player's camera, not over the whole screen, not depth tested against the other
+/// view's depth), and clicks in that half reach it.
+#[test]
+fn camera_canvas_of_a_split_screen_camera_fills_its_half() {
+    let mut s = Scene::new("Split UI");
+    let p1 = camera(&mut s);
+    s.world.get::<&mut CameraComponent>(p1).unwrap().viewport = [0.0, 0.0, 0.5, 1.0];
+    let p2 = camera(&mut s);
+    {
+        let mut c = s.world.get::<&mut CameraComponent>(p2).unwrap();
+        c.viewport = [0.5, 0.0, 0.5, 1.0];
+        c.depth = 1.0;
+    }
+    let canvas = overlay(&mut s);
+    *s.world.get::<&mut Canvas>(canvas).unwrap() = Canvas {
+        render_mode: CanvasRenderMode::ScreenSpaceCamera,
+        world_camera: Some(p1),
+        plane_distance: 5.0,
+        ..Default::default()
+    };
+    // A 100 × 100 box in the HUD's top-right corner.
+    let corner = image(&mut s, canvas, {
+        let mut rt = RectTransform::sized(100.0, 100.0);
+        rt.anchor_min = Vec2::ONE;
+        rt.anchor_max = Vec2::ONE;
+        rt.pivot = Vec2::ONE;
+        rt
+    });
+    let l = layout(&s, SCREEN);
+    let p = l.placement(canvas).unwrap();
+    assert_eq!(p.size, Vec2::new(400.0, 600.0));
+    assert!(!p.depth);
+    assert_eq!(l.node(corner).unwrap().screen.min, Vec2::new(300.0, 0.0));
+    // The HUD's corners land on the left half's corners.
+    let t = |q: Vec2| p.to_target(q, SCREEN).unwrap();
+    assert!(
+        t(Vec2::ZERO).distance(Vec2::ZERO) < 1e-3,
+        "{}",
+        t(Vec2::ZERO)
+    );
+    assert!(t(p.size).distance(Vec2::new(400.0, 600.0)) < 1e-3);
+    // The corner box is hit at the middle top of the screen, not at the right edge.
+    assert_eq!(raycast(&l, &s, Vec2::new(350.0, 50.0)), Some(corner));
+    assert_eq!(raycast(&l, &s, Vec2::new(750.0, 50.0)), None);
+    let list = build(&l, &s, None, &UiFont::default(), &mut GlyphAtlas::new(64));
+    assert!(!list.batches[0].depth);
+    // P2's HUD: the right half.
+    s.world.get::<&mut Canvas>(canvas).unwrap().world_camera = Some(p2);
+    let l = layout(&s, SCREEN);
+    let p = l.placement(canvas).unwrap();
+    assert!(
+        p.to_target(Vec2::ZERO, SCREEN)
+            .unwrap()
+            .distance(Vec2::new(400.0, 0.0))
+            < 1e-3
+    );
+    assert_eq!(raycast(&l, &s, Vec2::new(750.0, 50.0)), Some(corner));
+}
+
+/// Split screen with no full-screen camera: a World Space canvas isn't drawn over the whole
+/// image through one player's camera; each split-screen camera's own view has it (and only
+/// it, not the screen-space canvases).
+#[test]
+fn world_canvases_belong_to_each_split_screen_view() {
+    use super::canvas::UiView;
+    use super::tree::layout_view;
+    let mut s = Scene::new("Split world UI");
+    let p1 = camera(&mut s);
+    s.world.get::<&mut CameraComponent>(p1).unwrap().viewport = [0.0, 0.0, 0.5, 1.0];
+    let hud = overlay(&mut s);
+    let tag = s.spawn("Tag", None);
+    s.add(tag, RectTransform::sized(100.0, 100.0));
+    s.add(
+        tag,
+        Canvas {
+            render_mode: CanvasRenderMode::WorldSpace,
+            ..Default::default()
+        },
+    );
+    s.set_transform(
+        tag,
+        Transform {
+            scale: Vec3::splat(0.01),
+            ..Default::default()
+        },
+    );
+    let l = layout_view(&s, &UiView::game(&s, SCREEN));
+    assert!(l.placement(tag).is_none(), "no full-screen camera sees it");
+    assert!(l.placement(hud).is_some());
+    let half = Vec2::new(400.0, 600.0);
+    let l = layout_view(&s, &UiView::split_view(&s, p1, half).unwrap());
+    assert!(l.placement(tag).is_some_and(|p| p.depth));
+    assert!(
+        l.placement(hud).is_none(),
+        "drawn once, over the whole image"
+    );
+}

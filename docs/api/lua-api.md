@@ -3058,6 +3058,12 @@ Capsule centre
 
 *property* · source: `physics_api.rs`
 
+### `characterController.groundNormal`
+
+*property* · source: `physics_api.rs`
+
+Normal of the ground under the capsule (up while airborne)
+
 ### `characterController.height`
 
 *property (read / write)* · source: `physics_api.rs`
@@ -3085,6 +3091,12 @@ Capsule radius
 *property* · source: `physics_api.rs`
 
 Steepest climbable slope
+
+### `characterController.slopeSpeed`
+
+*property (read / write)* · source: `physics_api.rs`
+
+How much walking speed follows the incline (0–1, like people hiking)
 
 ### `characterController.stepOffset`
 

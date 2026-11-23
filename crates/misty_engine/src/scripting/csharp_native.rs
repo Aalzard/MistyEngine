@@ -157,6 +157,8 @@ pub(super) struct NativeApi {
     // ---- csharp_parity.rs ----
     contacts: extern "C" fn(i32, *mut f32, i32, *mut u64) -> i32,
     animator_ik: extern "C" fn(u64, i32, i32, *mut V4) -> i32,
+    character_vec: extern "C" fn(u64, i32, *mut V3) -> i32,
+    character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -217,6 +219,8 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     input_system: super::csharp::input::input_system,
     contacts,
     animator_ik,
+    character_vec,
+    character_scalar,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -780,6 +784,7 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             33 => world.get::<&MeshCollider>(e).is_ok(),
             34 => world.get::<&crate::scene::BoxCollider2D>(e).is_ok(),
             35 => world.get::<&crate::scene::CircleCollider2D>(e).is_ok(),
+            7 => world.get::<&crate::scene::CharacterController>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -886,6 +891,120 @@ extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *
                 1 => f32::from(u8::from(b.is_kinematic)),
                 2 => f32::from(u8::from(b.use_gravity)),
                 _ => b.mass,
+            };
+            // SAFETY: `out` points at a float on the C# stack.
+            unsafe { out.write(v) };
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+// ---- character controller ------------------------------------------------------------------
+
+/// Seconds a controller move made from the current callback covers.
+fn move_dt(w: &World) -> f32 {
+    if w.time.delta > 0.0 {
+        w.time.delta
+    } else {
+        w.physics.fixed_dt
+    }
+}
+
+/// `op`: 0 Move(v), 1 SimpleMove(v) (both write isGrounded into `v.x` as 0 / 1), 2 get
+/// velocity, 3 get groundNormal, 4 get center, 5 set center. 1 done, 0 no object or no
+/// Character Controller.
+extern "C" fn character_vec(id: u64, op: i32, v: *mut V3) -> i32 {
+    if v.is_null() {
+        return 0;
+    }
+    // SAFETY: `v` points at a Vector3 on the C# stack.
+    let value = Vec3::from_array(unsafe { *v });
+    // SAFETY: as above.
+    let write = |out: Vec3| unsafe { v.write(out.to_array()) };
+    with_object(id, |w, e| {
+        if w.scene
+            .world
+            .get::<&crate::scene::CharacterController>(e)
+            .is_err()
+        {
+            return 0;
+        }
+        let dt = move_dt(w);
+        match op {
+            0 | 1 => {
+                let World { physics, scene, .. } = w;
+                let grounded = if op == 0 {
+                    physics.move_character(scene, e, value, dt)
+                } else {
+                    physics.simple_move(scene, e, value, dt)
+                };
+                write(Vec3::new(f32::from(u8::from(grounded)), 0.0, 0.0));
+            }
+            2 => write(w.physics.character_velocity(e)),
+            3 => write(w.physics.character_ground_normal(e)),
+            4 => {
+                let c = w
+                    .scene
+                    .world
+                    .get::<&crate::scene::CharacterController>(e)
+                    .map(|c| c.center);
+                write(c.unwrap_or_default());
+            }
+            _ => {
+                if let Ok(mut c) = w
+                    .scene
+                    .world
+                    .get::<&mut crate::scene::CharacterController>(e)
+                {
+                    c.center = value;
+                }
+                let World { physics, scene, .. } = w;
+                physics.set_controller_size(scene, e);
+            }
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+/// `which`: 0 isGrounded (read only), 1 height, 2 radius, 3 slopeLimit, 4 stepOffset,
+/// 5 skinWidth, 6 minMoveDistance, 7 slopeSpeed; `set` 0 reads into `out`, 1 writes `value`.
+/// 1 done, 0 no object or no Character Controller.
+extern "C" fn character_scalar(id: u64, which: i32, set: i32, value: f32, out: *mut f32) -> i32 {
+    with_object(id, |w, e| {
+        let grounded = f32::from(u8::from(w.physics.character_grounded(e)));
+        let Ok(mut c) = w
+            .scene
+            .world
+            .get::<&mut crate::scene::CharacterController>(e)
+        else {
+            return 0;
+        };
+        if set != 0 {
+            match which {
+                1 => c.height = value.max(0.01),
+                2 => c.radius = value.max(0.01),
+                3 => c.slope_limit = value.clamp(0.0, 180.0),
+                4 => c.step_offset = value.max(0.0),
+                5 => c.skin_width = value.max(1e-4),
+                6 => c.min_move_distance = value.max(0.0),
+                7 => c.slope_speed = value.clamp(0.0, 1.0),
+                _ => return 1,
+            }
+            drop(c);
+            let World { physics, scene, .. } = w;
+            physics.set_controller_size(scene, e);
+        } else if !out.is_null() {
+            let v = match which {
+                1 => c.height,
+                2 => c.radius,
+                3 => c.slope_limit,
+                4 => c.step_offset,
+                5 => c.skin_width,
+                6 => c.min_move_distance,
+                7 => c.slope_speed,
+                _ => grounded,
             };
             // SAFETY: `out` points at a float on the C# stack.
             unsafe { out.write(v) };
@@ -1361,12 +1480,13 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
         let Some(cam) = super::camera_api::camera_of(w, e) else {
             return 0;
         };
-        let s = super::camera_api::screen(w);
-        let aspect = s.x / s.y;
-        // Normalised screen coordinates, y down (what `Camera` works in).
+        // Screen points are measured in the camera's own part of the screen (split screen).
+        let rect = super::camera_api::pixel_rect(w, e);
+        let aspect = rect.1.x / rect.1.y;
+        // Normalised camera coordinates, y down (what `Camera` works in).
         let uv = |p: Vec3, pixels: bool| {
             if pixels {
-                glam::Vec2::new(p.x / s.x, 1.0 - p.y / s.y)
+                super::camera_api::screen_to_uv(rect, p.truncate())
             } else {
                 glam::Vec2::new(p.x, 1.0 - p.y)
             }
@@ -1383,7 +1503,7 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
                 };
                 let (x, y) = (ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5);
                 let p = if op == 2 {
-                    Vec3::new(x * s.x, y * s.y, depth)
+                    (rect.0 + glam::Vec2::new(x, y) * rect.1).extend(depth)
                 } else {
                     Vec3::new(x, y, depth)
                 };
