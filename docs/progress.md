@@ -6644,3 +6644,45 @@ pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 ### Not done
 Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).
+
+## C# input: Event System, touches, Input System and split screen
+
+C# scripts get the input Lua already had (PR #7 and before). All of it goes through one new
+native function (`inputSystem`, the last field of `NativeApi`; `scripting/csharp_input.rs`) with
+op codes.
+
+### Done
+- `EventSystem.current` (`currentSelectedGameObject`, `SetSelectedGameObject`,
+  `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject`, and `IsPointerOverGameObject`,
+  which Lua doesn't have), `button.Select()` and friends, `OnSelect` / `OnDeselect` / `OnCancel`
+  with no parameter or a `BaseEventData`, and the `ISelectHandler` / `IDeselectHandler` /
+  `ICancelHandler` interfaces.
+- Touches: `Input.touchCount`, `GetTouch`, `touches`, `touchSupported`, `Touch`, `TouchPhase`,
+  `Touchscreen.current` (y from the bottom-left, like Lua).
+- `Keyboard.current`, `Mouse.current`, `Gamepad.current` / `all` (with rumble), controls with
+  `isPressed` / `wasPressedThisFrame` / `ReadValue()`.
+- Input Actions: `InputActionAsset` (`Load`, `Instantiate`, `FindAction`, maps, binding
+  overrides), `InputActionMap`, `InputAction` (`ReadValue<T>`, polling, `started` /
+  `performed` / `canceled` C# events), `InputAction.CallbackContext`, `InputValue`.
+- `PlayerInput` (`playerIndex`, `camera`, `devices`, `GetDevice<Gamepad>()`, maps and schemes,
+  events, `all`, `GetPlayerByIndex`) and `PlayerInputManager` (`instance`, `playerCount`,
+  `splitScreen`, `joinBehavior`, `JoinPlayer`, `onPlayerJoined` / `onPlayerLeft`), `Camera.rect`
+  / `pixelRect`, `Rect`.
+- **Player Input messages now reach C#** (`OnMove(InputValue)`, `OnJump()`, `OnDeviceLost`,
+  Invoke Events methods with a `CallbackContext`) and **`OnPlayerJoined(PlayerInput)` gets its
+  player**: before, Player Input messages went to Lua scripts only and the manager's C# scripts
+  got no argument. Rich arguments travel as `CsArg::Engine` (kind 40): the engine leaves the
+  object in `csharp_input.rs` and C# reads it back. C# input events reuse the `Host.UiEvent`
+  entry with kinds from 110 up.
+
+### Tests
+New (`csharp_input_tests.rs`): `csharp_event_system_selection_and_on_select`,
+`csharp_touches_read_like_unity_from_the_bottom_left`,
+`csharp_player_input_manager_joins_players_with_split_screen_rects`,
+`csharp_player_input_messages_events_and_polling`,
+`csharp_invoke_events_context_shared_asset_and_devices`. All 162 scripting tests pass.
+
+### Not done
+Interactive rebinding (`PerformInteractiveRebinding`) from C#; this-frame edges for triggers and
+stick directions; `Touch.tapCount`; explicit interface implementations of `ISelectHandler`
+(the method must be public `OnSelect`); `PlayerInput.Instantiate`.

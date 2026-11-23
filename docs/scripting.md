@@ -1375,7 +1375,58 @@ IEnumerator Start()
 - `Input`: `GetKey` / `GetKeyDown` / `GetKeyUp` (`KeyCode` or an Input Manager key name such as
   `"left shift"`), `GetMouseButton` / `Down` / `Up`, `GetAxis` / `GetAxisRaw` and `GetButton` /
   `Down` / `Up` (the Input Manager's axes and buttons), `mousePosition`, `mouseScrollDelta`,
-  `mouseDelta`, `anyKey`, `anyKeyDown`.
+  `mouseDelta`, `anyKey`, `anyKeyDown`, and touches: `touchCount`, `GetTouch(i)`, `touches`,
+  `touchSupported`; a `Touch` has `fingerId`, `position` / `rawPosition` (pixels from the
+  bottom-left, like `mousePosition`), `deltaPosition` (y up) and `phase` (`TouchPhase.Began`,
+  `Moved`, `Stationary`, `Ended`, `Canceled`; a lifted finger is reported for one frame).
+- **Input System devices**: `Keyboard.current` (`spaceKey`, `wKey`, `leftShiftKey`, `digit1Key`,
+  `f1Key`, `anyKey`, `[Key.W]`, …), `Mouse.current` (`position`, `delta`, `scroll`,
+  `leftButton` / `rightButton` / `middleButton`), `Gamepad.current` / `Gamepad.all` (`leftStick`,
+  `rightStick`, `dpad`, `leftTrigger` / `rightTrigger`, `buttonSouth` … `buttonNorth` with
+  their `aButton` / `crossButton` names, shoulders, `startButton`, `selectButton`, stick presses,
+  `[GamepadButton.DpadUp]`, `SetMotorSpeeds`, `ResetHaptics`) and `Touchscreen.current` (null
+  until the screen is touched; `primaryTouch`, `touches`: `position`, `delta`, `press`, `phase`,
+  `touchId`, `isInProgress`). Buttons have `isPressed`, `wasPressedThisFrame`,
+  `wasReleasedThisFrame` and `ReadValue()`; sticks and positions `ReadValue()` (a `Vector2`, y
+  up), `x`, `y`. Triggers and stick directions report `isPressed` past half way but no
+  this-frame edges.
+- **Input Actions**: `playerInput.actions` or `InputActionAsset.Load(path)` (shared, like Lua's
+  `InputActions.Load`) / `Instantiate(path)`: `FindAction("Jump")` / `["Player/Jump"]`,
+  `FindActionMap`, `actionMaps`, `controlSchemes`, `Enable` / `Disable`,
+  `SaveBindingOverridesAsJson` / `LoadBindingOverridesFromJson` / `RemoveAllBindingOverrides`.
+  `InputActionMap`: `name`, `enabled`, `actions`, `FindAction`, `Enable` / `Disable`.
+  `InputAction`: `ReadValue<Vector2>()` / `<float>()` (also `bool`, `int`, `double`,
+  `Vector3`), `IsPressed`, `WasPressedThisFrame`, `WasReleasedThisFrame`,
+  `WasPerformedThisFrame`, `IsInProgress`, `triggered`, `phase` (`InputActionPhase`), `type`,
+  `enabled`, `Enable` / `Disable`, `GetBindingDisplayString`, `ApplyBindingOverride` /
+  `RemoveBindingOverride`, and the `started` / `performed` / `canceled` events
+  (`jump.performed += ctx => …`) with an `InputAction.CallbackContext` (`action`, `phase`,
+  `started` / `performed` / `canceled`, `ReadValue<T>()`, `ReadValueAsButton()`, `time`,
+  `startTime`, `duration`, `control.path`, `interactionName`).
+- **Player Input**: `GetComponent<PlayerInput>()`, `PlayerInput.all`,
+  `PlayerInput.GetPlayerByIndex(i)`: `playerIndex`, `camera` (the first Camera on the object or
+  under it), `devices`, `GetDevice<Gamepad>()`, `actions`, `currentControlScheme`,
+  `currentActionMap`, `inputIsActive`, `notificationBehavior`, `SwitchCurrentActionMap`,
+  `SwitchCurrentControlScheme`, `ActivateInput` / `DeactivateInput`, and the `onActionTriggered`,
+  `onControlsChanged`, `onDeviceLost`, `onDeviceRegained` events. With **Send Messages** /
+  **Broadcast Messages** C# scripts get `OnMove(InputValue value)` (`value.Get<Vector2>()`,
+  `value.isPressed`) or `OnJump()`, and `OnDeviceLost(PlayerInput)` and friends; with **Invoke
+  Events** the methods listed get an `InputAction.CallbackContext`.
+- **Player Input Manager** (local multiplayer, split screen): `PlayerInputManager.instance` or
+  `GetComponent<PlayerInputManager>()`: `playerCount`, `maxPlayerCount` (-1 for no limit),
+  `joiningEnabled`, `EnableJoining` / `DisableJoining`, `splitScreen`, `enabled`,
+  `joinBehavior` (`PlayerJoinBehavior`), `fixedNumberOfSplitScreens`, `JoinPlayer()` (the new
+  player's `PlayerInput`, null when full) and the `onPlayerJoined` / `onPlayerLeft` events;
+  scripts on the manager hear `OnPlayerJoined(PlayerInput player)` / `OnPlayerLeft(PlayerInput
+  player)` (a player that left was destroyed: it `== null`). `Camera.rect` (0..1 from the
+  bottom-left, settable) and `Camera.pixelRect` show each player's part of the screen.
+- **Event System**: `EventSystem.current` (`currentSelectedGameObject`,
+  `SetSelectedGameObject(go or null)`, `firstSelectedGameObject`, `sendNavigationEvents`,
+  `gameObject`, `IsPointerOverGameObject()` for the mouse or `(fingerId)` for a touch) and
+  `button.Select()` (also on `Toggle`, `Slider`, `InputField`). Scripts on the object the
+  selection moves to / off hear `OnSelect` / `OnDeselect` (and the selected one `OnCancel`),
+  with no parameter or a `BaseEventData` (`selectedObject`, `Use()`); `ISelectHandler`,
+  `IDeselectHandler` and `ICancelHandler` declare them.
 - Math: `Vector2`, `Vector3`, `Quaternion` (`Euler`, `AngleAxis`, `LookRotation`, `Slerp`,
   `Lerp`, `RotateTowards`, `FromToRotation`, `Inverse`, `Angle`), `Mathf` (with `SmoothDamp`,
   `MoveTowards`, `Repeat`, `PingPong`, `DeltaAngle`, …), `Random` (`Range`, `value`,
