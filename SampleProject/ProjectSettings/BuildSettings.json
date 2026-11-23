@@ -31,6 +31,10 @@
     {
       "path": "Assets/NodeGame/Scenes/NodeGameWin.scene",
       "enabled": true
+    },
+    {
+      "path": "Assets/HillRun/HillRun.scene",
+      "enabled": true
     }
   ],
   "product_name": "Misty Sample",

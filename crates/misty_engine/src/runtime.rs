@@ -240,6 +240,9 @@ impl Runtime {
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         crate::profile_scope!("PlayerLoop", Category::Others);
         let _root = crate::assets::scoped_root(&self.root);
+        // A script's Time.timeScale scales everything below (audio, particles, effects).
+        let scaled = self.host.frame_time(time);
+        let time = &scaled;
         // Shaders, waves and buoyancy follow the game clock.
         crate::clock::set_play_time(time.time);
         // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.

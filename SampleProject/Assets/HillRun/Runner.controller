@@ -1,0 +1,180 @@
+{
+  "parameters": [
+    {
+      "name": "Speed",
+      "type": "Float",
+      "default": 0.0
+    },
+    {
+      "name": "Grounded",
+      "type": "Bool",
+      "default": 1.0
+    }
+  ],
+  "states": [
+    {
+      "name": "Idle",
+      "motion": "Assets/HillRun/Runner Idle.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Walk",
+      "motion": "Assets/HillRun/Runner Walk.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        250.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Run",
+      "motion": "Assets/HillRun/Runner Run.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        500.0,
+        0.0
+      ]
+    }
+  ],
+  "default_state": "Idle",
+  "transitions": [
+    {
+      "from": {
+        "State": "Idle"
+      },
+      "to": {
+        "State": "Walk"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Greater",
+          "threshold": 0.2
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Walk"
+      },
+      "to": {
+        "State": "Idle"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Less",
+          "threshold": 0.2
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Walk"
+      },
+      "to": {
+        "State": "Run"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Greater",
+          "threshold": 3.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Run"
+      },
+      "to": {
+        "State": "Walk"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.15,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Speed",
+          "mode": "Less",
+          "threshold": 3.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    }
+  ],
+  "nodes": {
+    "entry": [
+      -250.0,
+      0.0
+    ],
+    "any_state": [
+      -250.0,
+      -80.0
+    ],
+    "exit": [
+      350.0,
+      0.0
+    ],
+    "up": [
+      350.0,
+      -80.0
+    ]
+  },
+  "base_ik_pass": true
+}

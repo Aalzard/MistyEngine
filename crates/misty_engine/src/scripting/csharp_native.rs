@@ -159,6 +159,7 @@ pub(super) struct NativeApi {
     animator_ik: extern "C" fn(u64, i32, i32, *mut V4) -> i32,
     character_vec: extern "C" fn(u64, i32, *mut V3) -> i32,
     character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
+    time_scale: extern "C" fn(f32),
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -221,6 +222,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     animator_ik,
     character_vec,
     character_scalar,
+    time_scale,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -966,6 +968,11 @@ extern "C" fn character_vec(id: u64, op: i32, v: *mut V3) -> i32 {
         1
     })
     .unwrap_or(0)
+}
+
+/// `Time.timeScale = value`.
+extern "C" fn time_scale(value: f32) {
+    let _ = with_world(|w| w.set_time_scale(value));
 }
 
 /// `which`: 0 isGrounded (read only), 1 height, 2 radius, 3 slopeLimit, 4 stepOffset,

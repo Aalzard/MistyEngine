@@ -1872,3 +1872,67 @@ public class Cee : MonoBehaviour
     );
     assert_eq!(counts, [3, 2, 2, 2, 1, 1, 1]);
 }
+
+const PAUSER: &str = r#"
+using Misty;
+
+public class Pauser : MonoBehaviour
+{
+    int n;
+
+    void Update()
+    {
+        n++;
+        Debug.Log($"{n} dt {Time.deltaTime:F4} real {Time.unscaledDeltaTime:F4} scale {Time.timeScale:F2} t {Time.time:F4}");
+        if (n == 2) { Time.timeScale = 0f; Debug.Log("set " + Time.timeScale); }
+        if (n == 4) Time.timeScale = 0.5f;
+    }
+}
+"#;
+
+/// `Time.timeScale = 0` pauses like a pause menu needs: deltaTime and game time stop from the
+/// next frame (unscaledDeltaTime goes on), falling bodies hang still, and 0.5 halves them.
+#[test]
+fn csharp_time_scale_set_by_a_script_pauses_the_game() {
+    if skip() {
+        return;
+    }
+    let root = project(&[("Pauser.cs", PAUSER)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Pauser", None);
+    attach(&mut scene, e, "Pauser.cs");
+    let ball = scene.spawn("Ball", None);
+    scene.set_transform(ball, crate::scene::Transform::from_position(Vec3::Y * 10.0));
+    scene.add(ball, crate::scene::SphereCollider::default());
+    scene.add(ball, crate::scene::Rigidbody::default());
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut logs = Vec::new();
+    let mut heights = Vec::new();
+    for _ in 0..5 {
+        time.advance(0.1);
+        host.update(&mut scene, &time, Input::default());
+        for (k, t) in host.take_logs() {
+            assert_ne!(k, LogKind::Error, "{t}");
+            logs.push(t);
+        }
+        heights.push(scene.world_position(ball).y);
+    }
+    host.shutdown(&mut scene);
+    assert_eq!(
+        logs,
+        [
+            "1 dt 0.1000 real 0.1000 scale 1.00 t 0.1000",
+            "2 dt 0.1000 real 0.1000 scale 1.00 t 0.2000",
+            "set 0",
+            "3 dt 0.0000 real 0.1000 scale 0.00 t 0.2000",
+            "4 dt 0.0000 real 0.1000 scale 0.00 t 0.2000",
+            "5 dt 0.0500 real 0.1000 scale 0.50 t 0.2500",
+        ]
+    );
+    assert!(heights[1] < heights[0], "falls first: {heights:?}");
+    assert_eq!(heights[2], heights[1], "paused: {heights:?}");
+    assert_eq!(heights[3], heights[1], "paused: {heights:?}");
+    assert!(heights[4] < heights[3], "falls again: {heights:?}");
+}

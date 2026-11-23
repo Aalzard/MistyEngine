@@ -459,7 +459,19 @@ namespace Misty
         public static float unscaledDeltaTime { get; internal set; }
         public static float time { get; internal set; }
         public static float fixedDeltaTime { get; internal set; } = 0.02f;
-        public static float timeScale { get; internal set; } = 1f;
+        internal static float scale = 1f;
+        /// <summary>How fast game time passes (0 pauses: deltaTime is 0, physics and animation
+        /// stop; unscaledDeltaTime keeps going). deltaTime follows a change from the next frame.</summary>
+        public static unsafe float timeScale
+        {
+            get => scale;
+            set
+            {
+                if (float.IsNaN(value)) return;
+                scale = Math.Clamp(value, 0f, 100f);
+                Internal.Native.api.timeScale(scale);
+            }
+        }
         public static int frameCount { get; internal set; }
     }
 
@@ -3344,6 +3356,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, int, float*, int> animatorIk;
         public delegate* unmanaged<ulong, int, Vector3*, int> characterVec;
         public delegate* unmanaged<ulong, int, int, float, float*, int> characterScalar;
+        public delegate* unmanaged<float, void> timeScale;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -4075,7 +4088,7 @@ namespace Misty.Internal
             Time.unscaledDeltaTime = unscaledDelta;
             Time.time = time;
             Time.fixedDeltaTime = fixedDelta;
-            Time.timeScale = timeScale;
+            Time.scale = timeScale;
             Time.frameCount = frame;
             for (int i = timed.Count - 1; i >= 0; i--)
             {

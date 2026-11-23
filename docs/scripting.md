@@ -172,7 +172,7 @@ variables of type GameObject are object fields too.
 | RawImage (UI) | `color`, `texture`, `enabled`, `gameObject` |
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
-| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
+| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only except `timeScale`: `Time.timeScale = 0` pauses the game, deltaTime, game time, physics and animation stop from the next frame while `unscaledDeltaTime` goes on; it starts at Edit ▸ Project Settings ▸ Time, like `fixedDeltaTime`) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Scene Viewer focus (click it), gamepads always reach a playing game |
 | `EventSystem.current` | `currentSelectedGameObject`, `SetSelectedGameObject(go or nil)`, `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject` — the UI selection keyboard and gamepad navigation move (see UI navigation below) |
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
@@ -1530,7 +1530,7 @@ IEnumerator Start()
   `Lerp`, `RotateTowards`, `FromToRotation`, `Inverse`, `Angle`), `Mathf` (with `SmoothDamp`,
   `MoveTowards`, `Repeat`, `PingPong`, `DeltaAngle`, …), `Random` (`Range`, `value`,
   `insideUnitSphere`, …).
-- `Time` (`deltaTime`, `unscaledDeltaTime`, `time`, `fixedDeltaTime`, `timeScale`,
+- `Time` (`deltaTime`, `unscaledDeltaTime`, `time`, `fixedDeltaTime`, `timeScale` (settable: 0 pauses),
   `frameCount`) and `Debug` (`Log`, `LogWarning`, `LogError`, `LogFormat`).
 
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`

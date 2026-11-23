@@ -124,6 +124,8 @@ mod sample_guides;
 #[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
+mod sample_hill_run;
+#[cfg(test)]
 mod sample_input;
 #[cfg(test)]
 mod sample_input_system;
