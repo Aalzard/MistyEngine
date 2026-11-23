@@ -88,6 +88,33 @@ function S:LateUpdate() self.n = self.n + 1 end
 return S
 "#,
     ),
+    // Looking components up every frame instead of keeping them from Start.
+    (
+        "get_component",
+        5000,
+        r#"
+local S = { n = 0 }
+function S:Update()
+    local t = self.gameObject:GetComponent("Transform")
+    local me = self.gameObject:GetComponent("Bench")
+    local none = self.gameObject:GetComponent("Rigidbody")
+    if t and me and not none then self.n = self.n + 1 end
+end
+return S
+"#,
+    ),
+    // One ray per object per frame (nothing to hit: the cost of asking).
+    (
+        "raycast",
+        5000,
+        r#"
+local S = { n = 0 }
+function S:Update()
+    if Physics.Raycast(self.transform.position, Vector3.down, 2) then self.n = self.n + 1 end
+end
+return S
+"#,
+    ),
     // Plain Lua work in one script: what the endless-loop guard costs.
     (
         "pure_lua",
