@@ -63,6 +63,9 @@ pub struct Physics2D {
     bodies: HashMap<Entity, Body>,
     /// Which object each collider belongs to.
     colliders: HashMap<rp::ColliderHandle, Entity>,
+    /// The colliders of each object (`colliders` the other way round): an object that goes
+    /// takes its own with it without a walk over every collider of the world.
+    colliders_of: HashMap<Entity, Vec<rp::ColliderHandle>>,
     settings: Physics2DSettings,
     /// Layer Collision Matrix (shared with 3D).
     layers: PhysicsSettings,
@@ -116,6 +119,7 @@ impl Physics2D {
             world,
             bodies: HashMap::new(),
             colliders: HashMap::new(),
+            colliders_of: HashMap::new(),
             settings: settings.clone(),
             layers: layers.clone(),
             fixed_dt: layers.fixed_timestep,
@@ -424,20 +428,30 @@ impl Physics2D {
             return;
         }
         if let Some(b) = self.bodies.remove(&e) {
+            // The body takes its colliders with it: its own and those of objects under it.
+            let attached: Vec<rp::ColliderHandle> = self
+                .world
+                .bodies
+                .get(b.handle)
+                .map(|body| body.colliders().to_vec())
+                .unwrap_or_default();
             self.world.remove_body_with_colliders(b.handle, true);
+            for h in attached {
+                if let Some(owner) = self.colliders.remove(&h)
+                    && let Some(list) = self.colliders_of.get_mut(&owner)
+                {
+                    list.retain(|x| *x != h);
+                    if list.is_empty() {
+                        self.colliders_of.remove(&owner);
+                    }
+                }
+            }
         }
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        // Its colliders on a body further up, or on none.
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
+            self.colliders.remove(&h);
         }
-        let world = &self.world;
-        self.colliders
-            .retain(|h, _| world.colliders.get(*h).is_some());
         self.contacts.forget(&self.colliders);
     }
 
@@ -578,13 +592,7 @@ impl Physics2D {
 
     /// Remove an object's colliders (its body stays).
     fn remove_colliders(&mut self, e: Entity) {
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
             self.colliders.remove(&h);
         }

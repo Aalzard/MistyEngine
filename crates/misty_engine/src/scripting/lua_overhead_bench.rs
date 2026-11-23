@@ -6,7 +6,8 @@
 //! frames (for a profiler).
 //!
 //! `events_bench` (same command, other name) times what happens around the scripts in a busy
-//! scene: objects spawned and destroyed every frame, and collision callbacks.
+//! scene: objects spawned and destroyed every frame, and collision callbacks
+//! (`MISTY_EVENTS_BENCH=prefab`: only the prefab spawner, for a profiler).
 use super::*;
 use crate::physics::Physics;
 use crate::scene::{BoxCollider, Rigidbody, ScriptRef, Transform};
@@ -266,6 +267,41 @@ fn bullets(idle: usize, frames: usize) -> f64 {
     time_scene(scene, root, 40, frames)
 }
 
+const PREFAB_SPAWNER: &str = r#"
+local S = { rate = 100, n = 0 }
+function S:Update()
+    -- Apart from each other: colliders in one spot would time the physics pair search.
+    self.n = self.n + 1
+    for i = 1, self.rate do
+        Instantiate("Assets/Prefabs/Bullet.prefab", Vector3.new(i * 3, 0, self.n * -3))
+    end
+end
+return S
+"#;
+
+/// Like [`bullets`], with the bullets instantiated from a prefab file by its path.
+fn prefab_bullets(idle: usize, frames: usize) -> f64 {
+    let root = project_of(&[
+        ("Idle.lua", IDLE),
+        ("Bullet.lua", BULLET),
+        ("Spawner.lua", PREFAB_SPAWNER),
+    ]);
+    let mut asset = Scene::new("p");
+    let bullet = asset.spawn("Shot", None);
+    asset.add(bullet, BoxCollider::default());
+    script(&mut asset, bullet, "Bullet.lua");
+    let tip = asset.spawn("Tip", Some(bullet));
+    asset.set_transform(tip, Transform::from_position(Vec3::new(0.0, 0.0, 0.5)));
+    crate::scene::prefab::Prefab::from_scene(&asset, bullet)
+        .save(&root.join("Assets/Prefabs/Bullet.prefab"))
+        .unwrap();
+    let mut scene = Scene::new("b");
+    crowd(&mut scene, idle);
+    let spawner = scene.spawn("Spawner", None);
+    script(&mut scene, spawner, "Spawner.lua");
+    time_scene(scene, root, 40, frames)
+}
+
 /// `n` boxes resting on a floor, each with a script (`file`), next to `idle` other scripted
 /// objects.
 fn resting_boxes(n: usize, idle: usize, file: &str, frames: usize) -> f64 {
@@ -296,10 +332,22 @@ fn resting_boxes(n: usize, idle: usize, file: &str, frames: usize) -> f64 {
 #[ignore = "bench"]
 fn events_bench() {
     let frames = 120;
+    // For a profiler: only the prefab spawner, for longer.
+    if std::env::var("MISTY_EVENTS_BENCH").is_ok_and(|v| v == "prefab") {
+        let ms = prefab_bullets(0, 1200);
+        eprintln!("prefab bullets: {ms:7.3} ms/frame");
+        return;
+    }
     for idle in [0, 5000] {
         let ms = bullets(idle, frames);
         eprintln!(
             "bullets (100 in, 100 out per frame, 2000 alive), {idle} idle scripts: {ms:7.3} ms/frame"
+        );
+    }
+    for idle in [0, 5000] {
+        let ms = prefab_bullets(idle, frames);
+        eprintln!(
+            "prefab bullets (100 in, 100 out per frame, 2000 alive), {idle} idle scripts: {ms:7.3} ms/frame"
         );
     }
     for idle in [0, 5000] {

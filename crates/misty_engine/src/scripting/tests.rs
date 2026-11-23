@@ -291,6 +291,83 @@ return Ball
     assert_eq!(scene.world_position(copy), Vec3::new(3.0, 0.0, 0.0));
 }
 
+/// A prefab instantiated by path is read once, and again when its file changes; every copy
+/// is named after the prefab, also next to earlier copies and an object of the same name.
+#[test]
+fn a_prefab_instantiated_by_path_is_read_again_when_its_file_changes() {
+    let spawner = r#"
+local Spawner = {}
+function Spawner:Update() Instantiate("Assets/Prefabs/Shot.prefab") end
+return Spawner
+"#;
+    let root = project(&[("Spawner.lua", spawner)]);
+    let file = root.join("Assets/Prefabs/Shot.prefab");
+    let write = |name: &str, at: std::time::SystemTime| {
+        let mut asset = Scene::new("asset");
+        let shot = asset.spawn(name, None);
+        asset.spawn("Tip", Some(shot));
+        crate::scene::prefab::Prefab::from_scene(&asset, shot)
+            .save(&file)
+            .unwrap();
+        // Its own time: two writes can land within one tick of the file system's clock.
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+    };
+    let t0 = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    write("Shot", t0);
+
+    let mut scene = Scene::new("t");
+    let s = scene.spawn("Spawner", None);
+    attach(&mut scene, s, "Spawner.lua", &[]);
+    scene.spawn("Shot", None);
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut frames = |host: &mut ScriptHost, scene: &mut Scene, n: usize| {
+        for _ in 0..n {
+            time.advance(1.0 / 60.0);
+            host.update(scene, &time, Input::default());
+        }
+    };
+    let named = |scene: &Scene, name: &str| {
+        scene
+            .walk()
+            .into_iter()
+            .filter(|(e, _)| scene.name(*e) == name)
+            .count()
+    };
+    frames(&mut host, &mut scene, 3);
+    assert_eq!(named(&scene, "Shot(Clone)"), 3);
+    assert_eq!(named(&scene, "Tip"), 3, "children come along");
+
+    write("Rocket", t0 + std::time::Duration::from_secs(30));
+    frames(&mut host, &mut scene, 2);
+    assert_eq!(named(&scene, "Shot(Clone)"), 3);
+    assert_eq!(
+        named(&scene, "Rocket(Clone)"),
+        2,
+        "the changed file is read"
+    );
+
+    std::fs::remove_file(&file).unwrap();
+    frames(&mut host, &mut scene, 1);
+    assert_eq!(
+        named(&scene, "Rocket(Clone)"),
+        2,
+        "a deleted prefab is gone"
+    );
+    let logs = host.take_logs();
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("Shot.prefab")),
+        "{logs:?}"
+    );
+}
+
 #[test]
 fn game_scripts_cannot_reach_files_processes_or_bytecode() {
     let probe = r#"

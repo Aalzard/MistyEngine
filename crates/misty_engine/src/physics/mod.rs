@@ -97,6 +97,9 @@ pub struct Physics {
     bodies: HashMap<Entity, Body>,
     /// Which object each collider belongs to.
     colliders: HashMap<rp::ColliderHandle, Entity>,
+    /// The colliders of each object (`colliders` the other way round): an object that goes
+    /// takes its own with it without a walk over every collider of the world.
+    colliders_of: HashMap<Entity, Vec<rp::ColliderHandle>>,
     accumulator: f32,
     pub fixed_dt: f32,
     /// Upper bound of fixed steps per frame, so a slow frame can't spiral.
@@ -204,6 +207,7 @@ impl Physics {
             world,
             bodies: HashMap::new(),
             colliders: HashMap::new(),
+            colliders_of: HashMap::new(),
             accumulator: 0.0,
             fixed_dt: settings.fixed_timestep,
             max_steps: settings.max_steps_per_frame,
@@ -619,31 +623,45 @@ impl Physics {
     pub fn remove(&mut self, e: Entity) {
         let owned = self.owners.remove(&e);
         if let Some(b) = self.bodies.remove(&e) {
+            // The body takes its colliders with it: its own and those of objects under it.
+            let attached: Vec<rp::ColliderHandle> = self
+                .world
+                .bodies
+                .get(b.handle)
+                .map(|body| body.colliders().to_vec())
+                .unwrap_or_default();
             self.world.remove_body_with_colliders(b.handle, true);
+            for h in attached {
+                self.forget_collider(h);
+            }
         }
         self.controllers.remove(&e);
         self.cloth.remove(e);
         self.remove_springs(e);
         self.remove_wheels(e);
         self.ragdolls.forget(e);
-        // Only bodies and colliders are in the walks below (they visit every collider).
         if !owned {
             return;
         }
-        let colliders = &self.world.colliders;
-        self.materials.retain(|h, _| colliders.get(*h).is_some());
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        // Its colliders on a body further up, or on none.
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
             self.colliders.remove(&h);
+            self.materials.remove(&h);
         }
-        self.colliders
-            .retain(|h, _| self.world.colliders.get(*h).is_some());
+    }
+
+    /// Collider `h` left the world with its body.
+    fn forget_collider(&mut self, h: rp::ColliderHandle) {
+        self.materials.remove(&h);
+        if let Some(owner) = self.colliders.remove(&h)
+            && let Some(list) = self.colliders_of.get_mut(&owner)
+        {
+            list.retain(|x| *x != h);
+            if list.is_empty() {
+                self.colliders_of.remove(&owner);
+            }
+        }
     }
 
     /// Objects switched off since the last step leave the world (with everything under the

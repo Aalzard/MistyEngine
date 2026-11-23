@@ -1186,6 +1186,35 @@ pub(super) fn instantiate_prefab_path(
     instantiate(w, Source::Prefab(path.to_owned()), position)
 }
 
+/// The prefabs a game instantiates by path: each file is read and parsed once, and again when
+/// it changes (a prefab edited while the game plays). A gun that fires a bullet prefab does not
+/// read its file for every shot.
+#[derive(Default)]
+pub struct PrefabCache {
+    loaded: std::collections::HashMap<String, (Option<std::time::SystemTime>, std::rc::Rc<Prefab>)>,
+}
+
+impl PrefabCache {
+    fn get(
+        &mut self,
+        root: &std::path::Path,
+        path: &str,
+    ) -> std::result::Result<std::rc::Rc<Prefab>, String> {
+        if let Some((stamp, prefab)) = self.loaded.get(path) {
+            let file = root.join(path);
+            if crate::vfs::modified(&file) == *stamp {
+                return Ok(prefab.clone());
+            }
+        }
+        let file = crate::vfs::project_file(root, path)?;
+        // The time first: a file written while it is read is read again next time.
+        let stamp = crate::vfs::modified(&file);
+        let prefab = std::rc::Rc::new(Prefab::load(&file)?);
+        self.loaded.insert(path.to_owned(), (stamp, prefab.clone()));
+        Ok(prefab)
+    }
+}
+
 pub(super) enum Source {
     /// Project-relative `.prefab` path.
     Prefab(String),
@@ -1197,10 +1226,12 @@ pub(super) enum Source {
 pub(super) fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
     let e = match source {
         Source::Prefab(path) => {
-            let file = crate::vfs::project_file(&w.root, &path).map_err(mlua::Error::runtime)?;
-            let prefab = Prefab::load(&file).map_err(mlua::Error::runtime)?;
+            let prefab = w
+                .prefabs
+                .get(&w.root, &path)
+                .map_err(mlua::Error::runtime)?;
             // Runtime copies are plain objects, not linked instances.
-            let e = w.scene.instantiate_prefab(&prefab, None, None);
+            let e = w.scene.instantiate_prefab_as(&prefab, prefab.name(), None);
             // Save games recreate it from its prefab.
             w.save.spawned.push((e, path));
             e

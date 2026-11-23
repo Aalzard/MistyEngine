@@ -289,6 +289,8 @@ pub struct World {
     pub cameras: crate::vcam::CameraRig,
     /// Save games: the scene's Save IDs at start, spawned prefabs, a pending `Load`.
     pub save: crate::save::SaveRuntime,
+    /// Prefabs scripts instantiated by path, read once (again when the file changes).
+    pub prefabs: api::PrefabCache,
     /// String Tables and the current locale (`Localization`, Localized Text).
     pub localization: crate::localization::Localizer,
     /// Video Players (`Play`, `Pause`, `time`, …).
@@ -361,6 +363,7 @@ impl World {
             dont_destroy: Vec::new(),
             scene_ops: Vec::new(),
             messages: Vec::new(),
+            prefabs: Default::default(),
             added_scripts: Vec::new(),
             destroy_scripts: Vec::new(),
             root: project_root.clone(),
