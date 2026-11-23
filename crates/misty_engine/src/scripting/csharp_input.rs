@@ -476,7 +476,7 @@ fn manager(w: &mut World, op: i32, id: u64, arg: i64) -> i64 {
         return bits(pm::manager(&w.scene).map(|(e, _)| e));
     }
     if op == 21 {
-        return pm::player_objects(&w.scene).len() as i64;
+        return pm::player_count(w) as i64;
     }
     let Some(e) = live(w, id) else {
         return fail("the Player Input Manager's object was destroyed");

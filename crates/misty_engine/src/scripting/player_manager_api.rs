@@ -58,6 +58,14 @@ pub(crate) fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
         .find(|e| scene.world.get::<&Camera>(*e).is_ok())
 }
 
+/// `playerCount` (Lua and C#): the players, or while `OnPlayerJoined` runs, the players up to
+/// and including the one being reported.
+pub(super) fn player_count(w: &World) -> usize {
+    w.player_manager
+        .reporting
+        .unwrap_or_else(|| player_objects(&w.scene).len())
+}
+
 /// Spawn the manager's Player Prefab, paired with `device` when given.
 pub(crate) fn join(
     w: &mut World,
@@ -197,13 +205,7 @@ fn set(lua: &Lua, e: Entity, f: impl FnOnce(&mut PlayerInputManager)) -> Result<
 
 impl UserData for LPlayerInputManager {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
-        f.add_field_method_get("playerCount", |lua, _| {
-            with_world(lua, |w| {
-                w.player_manager
-                    .reporting
-                    .unwrap_or_else(|| player_objects(&w.scene).len())
-            })
-        });
+        f.add_field_method_get("playerCount", |lua, _| with_world(lua, |w| player_count(w)));
         f.add_field_method_get("maxPlayerCount", |lua, m| {
             get(lua, m.0, |c| c.max_player_count)
         });
