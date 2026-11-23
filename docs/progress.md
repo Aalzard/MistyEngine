@@ -6644,3 +6644,29 @@ pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 ### Not done
 Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).
+
+## Split screen tested on a real GPU (branch split-screen-gpu)
+
+Split screen and the Player Input Manager (v0.5.0) had only run in the cloud without a GPU. Run
+on an RTX 4060 (Vulkan), headless and in the real player.
+
+- **New GPU tests** (`split_screen_gpu_tests.rs`, skipped without an adapter): two players side
+  by side with no full-screen camera, and a full-screen camera with a minimap in a corner. Each
+  camera's rect of the image is compared with that camera rendered alone at the rect's size, at
+  Low, Medium, High and Ultra (TAA, upscaling, MSAA, sun shadows). All match exactly (mean
+  difference 0.00): no state leaks between the views. `MISTY_SPLIT_SHOTS=1` writes the images
+  to `target/split_screen/`.
+- **Player run**: `write_split_screen_project` (ignored) writes a small project whose lobby script
+  joins two players with `JoinPlayer()`; the player's screenshot shows each half with its own
+  player.
+- **Bug: screen points ignored the camera's rect.** `ScreenPointToRay`, `WorldToScreenPoint`
+  and `ScreenToWorldPoint` (Lua and C#) used the whole screen and its aspect, so for a
+  split-screen camera rays and on-screen positions were wrong. They now work in the camera's
+  own pixel rect (`camera_api::pixel_rect`); viewport points use the rect's aspect.
+- **Bug: players joining in one frame both heard `playerCount` 2** in `OnPlayerJoined` (two
+  `JoinPlayer()` calls in `Start`, or two pads at once), so a lobby placing players by count put
+  both in the same spot. The count now goes 1, 2, … during the messages.
+- Tests: the two GPU tests, a Lua camera with a right-half rect, two players joining in one frame.
+- Not checked: the editor's Game view on the GPU by hand (it uses the same `SplitScreen::render`
+  as the player); Screen Space - Camera canvases tied to a split-screen camera still draw over
+  the whole screen.

@@ -152,6 +152,53 @@ return T
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// A split-screen camera (Viewport Rect on the right half) measures screen points in its own
+/// half: the point under it is the middle of that half, and a ray through that middle goes
+/// straight down its view axis.
+#[test]
+fn camera_screen_points_use_the_viewport_rect() {
+    let root = temp_root("nav_camera_rect");
+    let src = r#"
+local T = {}
+function T:Update()
+    local s = Camera.main:WorldToScreenPoint(Vector3.new(0, 0, 0))
+    local ray = Camera.main:ScreenPointToRay(Vector3.new(150, 50, 0))
+    local edge = Camera.main:ScreenPointToRay(Vector3.new(100, 50, 0))
+    Debug.Log(math.floor(s.x + 0.5), math.floor(s.y + 0.5),
+        math.floor(ray.direction.y * 100 + 0.5) / 100, tostring(edge.direction.x < -0.3))
+end
+return T
+"#;
+    std::fs::write(root.join("Assets/Scripts/T.lua"), src).unwrap();
+    let mut scene = Scene::new("T");
+    let cam = scene.spawn("Main Camera", None);
+    scene.game_object_mut(cam).tag = "MainCamera".into();
+    scene.set_transform(
+        cam,
+        Transform::from_position(Vec3::new(0.0, 10.0, 0.0)).with_euler(Vec3::new(90.0, 0.0, 0.0)),
+    );
+    scene.add(
+        cam,
+        Camera {
+            viewport: [0.5, 0.0, 0.5, 1.0],
+            ..Default::default()
+        },
+    );
+    with_script(&mut scene, cam);
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root.clone());
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    let input = Input {
+        screen_size: Vec2::new(200.0, 100.0),
+        ..Default::default()
+    };
+    host.update(&mut scene, &time, input);
+    let out = texts(&host);
+    assert_eq!(out, ["150 50 -1 true"], "{out:?}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 const LINK_SCRIPT: &str = r#"
 local T = {}
 function T:Start()

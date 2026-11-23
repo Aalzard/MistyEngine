@@ -107,6 +107,10 @@ impl SplitScreen {
 }
 
 #[cfg(test)]
+#[path = "split_screen_gpu_tests.rs"]
+mod gpu_tests;
+
+#[cfg(test)]
 mod tests {
     use crate::render_scene::{covers_screen, screen_camera, viewport_cameras, viewport_pixels};
     use crate::scene::{Camera, Scene};
