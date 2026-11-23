@@ -48,10 +48,8 @@ fn player_objects(scene: &Scene) -> Vec<Entity> {
 /// The camera of a player: the first Camera on the player object or under it.
 fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
     scene
-        .walk()
+        .walk_under(Some(player))
         .into_iter()
-        .map(|(e, _)| e)
-        .filter(|e| *e == player || scene.is_ancestor(player, *e))
         .find(|e| scene.world.get::<&Camera>(*e).is_ok())
 }
 

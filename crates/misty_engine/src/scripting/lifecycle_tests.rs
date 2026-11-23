@@ -1099,3 +1099,58 @@ return K
     assert_eq!(scene.scene_name(scene.active_scene()), "Next");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Several objects destroyed in one frame, in a scene where others stay: each gets OnDisable
+/// then OnDestroy in the order they were destroyed, a message from a later OnDestroy to an
+/// object destroyed before it reaches nothing, and the objects that stay (and one spawned
+/// afterwards) still get their messages and callbacks (the host finds an object's scripts
+/// through an index that removals rebuild).
+#[test]
+fn objects_destroyed_together_go_in_order_and_the_rest_keep_working() {
+    let teller = r#"
+local T = {}
+function T:Ping(from) Debug.Log(self.gameObject.name .. ":Ping:" .. from) end
+function T:OnDisable() Debug.Log(self.gameObject.name .. ":OnDisable") end
+function T:OnDestroy()
+    Debug.Log(self.gameObject.name .. ":OnDestroy")
+    -- A was destroyed before B: nothing hears this, and it is no error.
+    local a = GameObject.Find("A")
+    Debug.Log(self.gameObject.name .. ":sees A:" .. tostring(a ~= nil))
+end
+return T
+"#;
+    let boss = controller(
+        r#"
+    if f == 2 then
+        Destroy(GameObject.Find("A"))
+        Destroy(GameObject.Find("B"))
+    elseif f == 3 then
+        GameObject.Find("Stay"):SendMessage("Ping", "boss")
+        local late = Instantiate(GameObject.Find("Stay"))
+        late.name = "Late"
+    elseif f == 4 then
+        GameObject.Find("Late"):SendMessage("Ping", "boss")
+        GameObject.Find("Stay"):SendMessage("Ping", "again")
+    end"#,
+    );
+    let root = project(&[("Teller", teller), ("Boss", &boss)]);
+    let mut scene = Scene::new("t");
+    scripted(&mut scene, "Stay", "Teller", None);
+    scripted(&mut scene, "A", "Teller", None);
+    scripted(&mut scene, "B", "Teller", None);
+    scripted(&mut scene, "Boss", "Boss", None);
+    let mut game = Game::start(scene, root);
+    game.frames(5);
+    assert_eq!(
+        game.lines("A:"),
+        ["A:OnDisable", "A:OnDestroy", "A:sees A:true"]
+    );
+    assert_eq!(
+        game.lines("B:"),
+        ["B:OnDisable", "B:OnDestroy", "B:sees A:false"]
+    );
+    assert_eq!(game.lines("Stay:"), ["Stay:Ping:boss", "Stay:Ping:again"]);
+    assert_eq!(game.lines("Late:"), ["Late:Ping:boss"]);
+    assert!(game.scene.find_by_name("A").is_none());
+    assert!(game.scene.find_by_name("B").is_none());
+}

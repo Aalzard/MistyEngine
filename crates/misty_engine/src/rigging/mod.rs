@@ -199,10 +199,8 @@ fn builders(scene: &Scene, root: Option<Entity>) -> Vec<Entity> {
         return Vec::new();
     }
     scene
-        .walk()
+        .walk_under(root)
         .into_iter()
-        .map(|(e, _)| e)
-        .filter(|e| root.is_none_or(|r| *e == r || scene.is_ancestor(r, *e)))
         .filter(|e| scene.active_in_hierarchy(*e))
         .filter(|e| scene.world.get::<&RigBuilder>(*e).is_ok_and(|b| b.enabled))
         .collect()

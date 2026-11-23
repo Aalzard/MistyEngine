@@ -532,12 +532,19 @@ fn lacks_bit(name: &str) -> u8 {
 /// a protected table read plus a call, about twice the time of an empty `Update`.
 const INVOKE: &str = r#"
 local type = type
+-- Functions seen before (weak keys): a table lookup instead of a call of `type` per callback.
+local known = setmetatable({}, { __mode = "k" })
+local function callable(f)
+    if type(f) ~= "function" then return false end
+    known[f] = true
+    return true
+end
 return function(t, name)
     local f = t[name]
-    if type(f) == "function" then f(t) end
+    if f ~= nil and (known[f] or callable(f)) then f(t) end
 end, function(t, name, arg)
     local f = t[name]
-    if type(f) == "function" then f(t, arg) end
+    if f ~= nil and (known[f] or callable(f)) then f(t, arg) end
 end
 "#;
 
@@ -581,6 +588,10 @@ pub struct ScriptHost {
     root: PathBuf,
     classes: HashMap<String, Option<RegistryKey>>,
     instances: Vec<Instance>,
+    /// Where each object's scripts are in `instances`, for the first `indexed` of them (see
+    /// [`Self::instances_of`]).
+    by_entity: HashMap<Entity, Vec<usize>>,
+    indexed: usize,
     /// UI button hover/press state.
     ui: UiInteraction,
     /// Network class info cache and settle state.
@@ -673,6 +684,7 @@ impl ScriptHost {
         } {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
+        api::make_vectors_raw(&lua);
         lua.set_app_data(crate::asset_groups::AssetSystem::auto(&project_root));
         let world_scope = crate::profiler::Scope::begin_lazy(|| "Scripts.Start.World", None);
         let mut world = World::new(
@@ -695,6 +707,8 @@ impl ScriptHost {
             root: project_root,
             classes: HashMap::new(),
             instances: Vec::new(),
+            by_entity: HashMap::new(),
+            indexed: 0,
             ui: UiInteraction::default(),
             net: Default::default(),
             graphs: Default::default(),
@@ -985,6 +999,28 @@ impl ScriptHost {
         })
     }
 
+    /// The scripts of `e` as indices into `instances`, in order. Events for one object
+    /// (contacts, messages, animation events, destroying it) looked through every script of
+    /// the scene to find its own: a few thousand scripts made each event cost microseconds.
+    /// Scripts added later are indexed on the next call; a removal starts the index again
+    /// ([`Self::instances_moved`]).
+    fn instances_of(&mut self, e: Entity) -> Vec<usize> {
+        for i in self.indexed..self.instances.len() {
+            self.by_entity
+                .entry(self.instances[i].entity)
+                .or_default()
+                .push(i);
+        }
+        self.indexed = self.instances.len();
+        self.by_entity.get(&e).cloned().unwrap_or_default()
+    }
+
+    /// Instances were taken out of `instances` (the ones after them moved).
+    fn instances_moved(&mut self) {
+        self.by_entity.clear();
+        self.indexed = 0;
+    }
+
     /// [`Self::runnable`] for the frame passes, which ask it of every script: while no object
     /// was switched since the last look ([`Self::sync_enabled`]), the object's side of the
     /// answer is the instance's `enabled` flag (the look keeps the two the same), so the walk
@@ -1089,8 +1125,8 @@ impl ScriptHost {
     fn controller_hits(&mut self) {
         let hits = self.with_world(|w| w.physics.take_controller_hits());
         for hit in hits {
-            for i in 0..self.instances.len() {
-                if self.instances[i].entity == hit.controller && self.runnable(&self.instances[i]) {
+            for i in self.instances_of(hit.controller) {
+                if self.runnable(&self.instances[i]) {
                     let arg = physics_api::controller_hit_table(&self.lua, &hit)
                         .map(Value::Table)
                         .ok();
@@ -1219,8 +1255,8 @@ impl ScriptHost {
         let moves = self.with_world(|w| w.animator.take_moves());
         for m in moves {
             if m.by_script {
-                for i in 0..self.instances.len() {
-                    if self.instances[i].entity == m.entity && self.runnable(&self.instances[i]) {
+                for i in self.instances_of(m.entity) {
+                    if self.runnable(&self.instances[i]) {
                         self.call(i, "OnAnimatorMove", None);
                         self.flush_spawned();
                     }
@@ -1259,8 +1295,8 @@ impl ScriptHost {
         });
         self.root_motion(dt);
         for (e, function) in events {
-            for i in 0..self.instances.len() {
-                if self.instances[i].entity == e && self.runnable(&self.instances[i]) {
+            for i in self.instances_of(e) {
+                if self.runnable(&self.instances[i]) {
                     self.call(i, &function, None);
                 }
             }
@@ -1460,10 +1496,10 @@ impl ScriptHost {
     ) {
         for (me, other) in [(a, b), (b, a)] {
             self.graphs.contact(&self.lua, me, other, kind);
-            for i in 0..self.instances.len() {
+            for i in self.instances_of(me) {
                 // Disabled scripts hear contacts too (not Update), as in the familiar
                 // engine; switched-off objects don't.
-                if self.instances[i].entity == me && self.hears_contacts(&self.instances[i]) {
+                if self.hears_contacts(&self.instances[i]) {
                     let arg = self
                         .lua
                         .create_userdata(LGameObject(other))
@@ -1480,8 +1516,8 @@ impl ScriptHost {
     fn joint_breaks(&mut self) {
         let breaks = self.with_world(|w| w.physics.take_joint_breaks());
         for b in breaks {
-            for i in 0..self.instances.len() {
-                if self.instances[i].entity == b.entity && self.runnable(&self.instances[i]) {
+            for i in self.instances_of(b.entity) {
+                if self.runnable(&self.instances[i]) {
                     self.call(i, "OnJointBreak", Some(Value::Number(f64::from(b.force))));
                 }
             }
@@ -1520,9 +1556,9 @@ impl ScriptHost {
                     v3(c.relative_velocity * sign),
                 ];
                 self.graphs.contact_with(&self.lua, me, &kind, &args);
-                for i in 0..self.instances.len() {
+                for i in self.instances_of(me) {
                     // Disabled scripts too, like 3D contacts.
-                    if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
+                    if !self.hears_contacts(&self.instances[i]) {
                         continue;
                     }
                     // C# scripts get the other object (`Collision2D` / `Collider2D`).
@@ -1943,9 +1979,9 @@ impl ScriptHost {
         if found {
             self.flush_spawned();
         }
-        for i in 0..self.instances.len() {
+        for i in self.instances_of(target) {
             let inst = &self.instances[i];
-            if inst.entity != target || !self.runnable(inst) {
+            if !self.runnable(inst) {
                 continue;
             }
             if let Some(cs) = inst.cs {
@@ -2068,6 +2104,10 @@ impl ScriptHost {
     fn process_destroy(&mut self) {
         self.remove_destroyed_scripts();
         let queued = self.with_world(|w| std::mem::take(&mut w.destroy));
+        // The instances of the destroyed objects leave the list once, after the loop: taking
+        // them out per object went through every script of the scene for each one. Until
+        // then they are scripts of objects that are gone, which nothing calls.
+        let mut gone: HashSet<Entity> = HashSet::new();
         for e in queued {
             let subtree: Vec<Entity> = self.with_world(|w| {
                 if !w.scene.contains(e) {
@@ -2094,16 +2134,22 @@ impl ScriptHost {
                 w.behaviour.forget(&all);
                 all
             });
-            for i in &self.instances {
-                if let Some(cs) = i.cs.filter(|_| doomed.contains(&i.entity)) {
-                    self.csharp.release(cs);
+            for x in &doomed {
+                for i in self.instances_of(*x) {
+                    if let Some(cs) = self.instances[i].cs {
+                        self.csharp.release(cs);
+                    }
                 }
             }
-            self.instances.retain(|i| !doomed.contains(&i.entity));
             save_api::untrack(&self.lua, &doomed);
             unregister_script_instances(&self.lua, &doomed);
             ui_widgets_api::forget(&self.lua, &doomed);
             input_actions_api::forget(&self.lua, &doomed);
+            gone.extend(doomed);
+        }
+        if !gone.is_empty() {
+            self.instances.retain(|i| !gone.contains(&i.entity));
+            self.instances_moved();
         }
     }
 

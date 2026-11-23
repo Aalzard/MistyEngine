@@ -174,6 +174,7 @@ impl super::ScriptHost {
             };
             self.goodbye(&[i]);
             let inst = self.instances.remove(i);
+            self.instances_moved();
             let slot = inst.slot;
             match inst.cs {
                 Some(cs) => self.csharp.release(cs),

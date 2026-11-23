@@ -4,9 +4,12 @@
 //!
 //! `MISTY_LUA_BENCH=empty,fields` runs only those cases, `MISTY_LUA_BENCH_FRAMES=600` times more
 //! frames (for a profiler).
+//!
+//! `events_bench` (same command, other name) times what happens around the scripts in a busy
+//! scene: objects spawned and destroyed every frame, and collision callbacks.
 use super::*;
 use crate::physics::Physics;
-use crate::scene::{ScriptRef, Transform};
+use crate::scene::{BoxCollider, Rigidbody, ScriptRef, Transform};
 use glam::Vec3;
 use std::time::Instant;
 
@@ -103,10 +106,29 @@ return S
 ];
 
 fn project(script: &str) -> std::path::PathBuf {
+    project_of(&[("Bench.lua", script)])
+}
+
+fn project_of(scripts: &[(&str, &str)]) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("misty_lua_bench_{}", std::process::id()));
     std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
-    std::fs::write(root.join("Assets/Scripts/Bench.lua"), script).unwrap();
+    for (file, script) in scripts {
+        std::fs::write(root.join("Assets/Scripts").join(file), script).unwrap();
+    }
     root
+}
+
+fn script(scene: &mut Scene, e: Entity, file: &str) {
+    scene.add(
+        e,
+        Scripts {
+            list: vec![ScriptRef {
+                path: format!("Assets/Scripts/{file}"),
+                enabled: true,
+                fields: Default::default(),
+            }],
+        },
+    );
 }
 
 fn spawn(scene: &mut Scene, n: usize) {
@@ -136,10 +158,15 @@ fn spawn(scene: &mut Scene, n: usize) {
 fn time_case(n: usize, script: &str, frames: usize) -> f64 {
     let mut scene = Scene::new("b");
     spawn(&mut scene, n);
+    time_scene(scene, project(script), 10, frames)
+}
+
+/// Median frame time in ms of `scene` after `warm_up` frames.
+fn time_scene(mut scene: Scene, root: std::path::PathBuf, warm_up: usize, frames: usize) -> f64 {
     let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
-    let mut host = ScriptHost::start(&mut scene, physics, project(script));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
     let mut time = Time::default();
-    for _ in 0..10 {
+    for _ in 0..warm_up {
         time.advance(1.0 / 60.0);
         host.update(&mut scene, &time, Input::default());
     }
@@ -177,6 +204,109 @@ fn lua_overhead_bench() {
         eprintln!(
             "{name:>16}: {ms:7.3} ms/frame, {n} objects, {:6.0} ns each",
             ms * 1e6 / *n as f64
+        );
+    }
+}
+
+const IDLE: &str = r#"
+local S = { n = 0 }
+function S:Update() self.n = self.n + 1 end
+return S
+"#;
+
+/// A bullet lives 20 frames, then destroys itself (the template named "Bullet" stays).
+const BULLET: &str = r#"
+local B = { age = 0 }
+function B:Update()
+    self.age = self.age + 1
+    self.transform:Translate(0, 0, 0.1)
+    if self.age > 20 and self.gameObject.name ~= "Bullet" then Destroy(self.gameObject) end
+end
+return B
+"#;
+
+const SPAWNER: &str = r#"
+local S = { rate = 100 }
+function S:Start() self.template = GameObject.Find("Bullet") end
+function S:Update()
+    for i = 1, self.rate do Instantiate(self.template) end
+end
+return S
+"#;
+
+const TOUCH: &str = r#"
+local T = { hits = 0 }
+function T:OnCollisionStay(other) self.hits = self.hits + 1 end
+return T
+"#;
+
+/// `n` scripted objects that only count frames.
+fn crowd(scene: &mut Scene, n: usize) {
+    for i in 0..n {
+        let e = scene.spawn(&format!("Idle{i}"), None);
+        script(scene, e, "Idle.lua");
+    }
+}
+
+/// 100 bullets spawned and 100 destroyed per frame (2,000 alive), next to `idle` other
+/// scripted objects.
+fn bullets(idle: usize, frames: usize) -> f64 {
+    let mut scene = Scene::new("b");
+    crowd(&mut scene, idle);
+    let bullet = scene.spawn("Bullet", None);
+    script(&mut scene, bullet, "Bullet.lua");
+    let spawner = scene.spawn("Spawner", None);
+    script(&mut scene, spawner, "Spawner.lua");
+    let root = project_of(&[
+        ("Idle.lua", IDLE),
+        ("Bullet.lua", BULLET),
+        ("Spawner.lua", SPAWNER),
+    ]);
+    // Past the 20 frames a bullet lives: as many go as come.
+    time_scene(scene, root, 40, frames)
+}
+
+/// `n` boxes resting on a floor, each with a script (`file`), next to `idle` other scripted
+/// objects.
+fn resting_boxes(n: usize, idle: usize, file: &str, frames: usize) -> f64 {
+    let mut scene = Scene::new("b");
+    crowd(&mut scene, idle);
+    let floor = scene.spawn("Floor", None);
+    scene.set_transform(floor, Transform::from_position(Vec3::new(0.0, -0.5, 0.0)));
+    scene.add(
+        floor,
+        BoxCollider {
+            size: Vec3::new(1000.0, 1.0, 1000.0),
+            ..Default::default()
+        },
+    );
+    for i in 0..n {
+        let e = scene.spawn(&format!("Box{i}"), None);
+        let (x, z) = ((i % 32) as f32 * 2.0, (i / 32) as f32 * 2.0);
+        scene.set_transform(e, Transform::from_position(Vec3::new(x, 0.5, z)));
+        scene.add(e, BoxCollider::default());
+        scene.add(e, Rigidbody::default());
+        script(&mut scene, e, file);
+    }
+    let root = project_of(&[("Idle.lua", IDLE), ("Touch.lua", TOUCH)]);
+    time_scene(scene, root, 30, frames)
+}
+
+#[test]
+#[ignore = "bench"]
+fn events_bench() {
+    let frames = 120;
+    for idle in [0, 5000] {
+        let ms = bullets(idle, frames);
+        eprintln!(
+            "bullets (100 in, 100 out per frame, 2000 alive), {idle} idle scripts: {ms:7.3} ms/frame"
+        );
+    }
+    for idle in [0, 5000] {
+        let quiet = resting_boxes(500, idle, "Idle.lua", frames);
+        let stay = resting_boxes(500, idle, "Touch.lua", frames);
+        eprintln!(
+            "500 resting boxes, {idle} idle scripts: {quiet:7.3} ms/frame without OnCollisionStay, {stay:7.3} ms with"
         );
     }
 }

@@ -747,6 +747,18 @@ impl Scene {
         out
     }
 
+    /// `root` and the objects under it in Hierarchy order, or every object (`None`): what
+    /// [`Scene::walk`] lists, without walking the whole scene and asking each object for its
+    /// ancestors (that made everything done per spawned object cost the size of the scene).
+    /// Empty when `root` is gone.
+    pub fn walk_under(&self, root: Option<Entity>) -> Vec<Entity> {
+        match root {
+            Some(r) if self.contains(r) => self.subtree(r),
+            Some(_) => Vec::new(),
+            None => self.walk().into_iter().map(|(e, _)| e).collect(),
+        }
+    }
+
     /// Does any object have component `T`? (A query over that component's archetypes: lets
     /// per-frame lists skip walking the whole Hierarchy when nothing has it.)
     pub fn has_any<T: hecs::Component>(&self) -> bool {

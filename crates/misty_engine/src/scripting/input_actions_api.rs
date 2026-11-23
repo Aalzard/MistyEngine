@@ -1041,9 +1041,9 @@ impl ScriptHost {
     /// Call `method` with `arg` on every running script of `target` that defines it (no
     /// warning when none does, like a message nobody needs to receive).
     fn message(&mut self, target: Entity, method: &str, arg: Option<Value>) {
-        for i in 0..self.instances.len() {
+        for i in self.instances_of(target) {
             let inst: &Instance = &self.instances[i];
-            if inst.entity != target || !self.runnable(inst) {
+            if !self.runnable(inst) {
                 continue;
             }
             let defined = self
@@ -1060,14 +1060,7 @@ impl ScriptHost {
 
     fn message_tree(&mut self, root: Entity, broadcast: bool, method: &str, arg: Option<Value>) {
         let targets: Vec<Entity> = if broadcast {
-            self.with_world(|w| {
-                w.scene
-                    .walk()
-                    .into_iter()
-                    .map(|(e, _)| e)
-                    .filter(|e| w.scene.is_ancestor(root, *e))
-                    .collect()
-            })
+            self.with_world(|w| w.scene.walk_under(Some(root)))
         } else {
             vec![root]
         };
