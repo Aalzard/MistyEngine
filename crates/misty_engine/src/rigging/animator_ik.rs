@@ -7,11 +7,16 @@
 //!    they must be set again every frame) and bones IK moved last frame that nothing else moved
 //!    since go back to their pre-IK pose, so weights blend against the animation instead of
 //!    accumulating;
-//! 2. calls `OnAnimatorIK(layerIndex)` on the Animator object's scripts, once per IK layer;
-//!    they call `SetIKPosition` / `SetIKRotation` / weights, hints and `SetLookAt…`;
-//! 3. calls [`AnimatorIkState::solve`]: Two Bone IK per limb (upper → lower → hand / foot,
-//!    bent towards the elbow / knee hint), then the hand / foot rotation, then look-at on the
-//!    spine / chest (body weight) and head (head weight).
+//! 2. for each IK layer, bottom to top: puts the Animator's layers up to and including that
+//!    one on the rig (see `animation::animator_ik_pass`), clears the goals again
+//!    ([`AnimatorIkState::reset_goals`]), calls `OnAnimatorIK(layerIndex)` on the Animator
+//!    object's scripts (they call `SetIKPosition` / `SetIKRotation` / weights, hints and
+//!    `SetLookAt…`), then [`AnimatorIkState::solve_layer`]: Two Bone IK per limb (upper →
+//!    lower → hand / foot, bent towards the elbow / knee hint), then the hand / foot
+//!    rotation, then look-at on the spine / chest (body weight) and head (head weight), with
+//!    every goal weight scaled by the layer's weight and bones outside the layer's Avatar Mask
+//!    left as they were; the layers above then blend over that IK'd pose;
+//! 3. remembers the pre-IK and final pose of the moved bones ([`AnimatorIkState::remember`]).
 //!
 //! Bones come from the Animator's Avatar; without one they are found by name
 //! ([`Avatar::auto_map`], the pose at the first IK frame then counts as the rest pose).
@@ -21,8 +26,10 @@
 //! `goal rotation * rest rotation (in the Animator's space)`. Look-at turns the head's rest
 //! forward (the Animator's +Z at rest) towards the point.
 //!
-//! Limits: goals of all IK layers are solved once, on the final pose (not per layer); no eye
-//! bones (eyes weight is stored but unused); no foot pivot, body position or stretch.
+//! Limits: each IK layer is solved on the pose blended up to and including it (not on the
+//! layer's own pose before it is blended in); the layer weight scales the goal weights instead
+//! of blending an IK'd copy of the layer; no eye bones (eyes weight is stored but unused); no
+//! foot pivot, body position or stretch.
 
 use std::collections::HashMap;
 use std::f32::consts::PI;
@@ -33,7 +40,9 @@ use hecs::Entity;
 
 use super::solvers::{self, pos, rot};
 use crate::animation::binding;
+use crate::animation::clip::Property;
 use crate::animation::humanoid::{Avatar, HumanBone};
+use crate::animation::mask::AvatarMask;
 use crate::scene::{Scene, Transform};
 
 /// `AvatarIKGoal`, in the familiar engine's order.
@@ -365,21 +374,89 @@ impl AnimatorIkState {
     /// Solve `root`'s goals on the current pose.
     pub fn solve(&mut self, scene: &mut Scene, root: Entity, avatar: &Avatar) {
         let goals = self.goals(root);
-        let bones: Vec<Entity> = MOVED
+        let inputs = self.snapshot(scene, root, avatar);
+        solve_goals(scene, root, avatar, &goals);
+        self.remember(scene, root, inputs);
+    }
+
+    /// Clear `root`'s goals (between two IK layers' `OnAnimatorIK`).
+    pub fn reset_goals(&mut self, root: Entity) {
+        self.goals.insert(root, IkGoals::default());
+    }
+
+    /// The pose of every bone the pass can move (for [`remember`](Self::remember)).
+    pub fn snapshot(
+        &self,
+        scene: &Scene,
+        root: Entity,
+        avatar: &Avatar,
+    ) -> Vec<(Entity, Transform)> {
+        MOVED
             .iter()
             .filter_map(|b| bone_entity(scene, root, avatar, *b))
-            .collect();
-        let inputs: Vec<Transform> = bones.iter().map(|b| scene.transform(*b)).collect();
-        solve_goals(scene, root, avatar, &goals);
-        let list = bones
-            .iter()
-            .zip(inputs)
+            .map(|e| (e, scene.transform(e)))
+            .collect()
+    }
+
+    /// Remember the bones' pose before IK (`inputs`) and now, so the next
+    /// [`begin`](Self::begin) can undo this frame's IK.
+    pub fn remember(&mut self, scene: &Scene, root: Entity, inputs: Vec<(Entity, Transform)>) {
+        let list = inputs
+            .into_iter()
+            .filter(|(b, _)| scene.contains(*b))
             .map(|(b, input)| {
-                let output = scene.transform(*b);
-                (*b, Cached { input, output })
+                let output = scene.transform(b);
+                (b, Cached { input, output })
             })
             .collect();
         self.poses.insert(root, list);
+    }
+
+    /// Solve the goals one IK layer set on the current pose: every goal weight (hands, feet,
+    /// look-at) is scaled by the layer's `weight`, and bones `mask` leaves out keep their pose.
+    /// Returns the bones that moved.
+    pub fn solve_layer(
+        &mut self,
+        scene: &mut Scene,
+        root: Entity,
+        avatar: &Avatar,
+        mask: Option<&AvatarMask>,
+        weight: f32,
+    ) -> Vec<Entity> {
+        let w = if weight.is_finite() {
+            weight.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let bones: Vec<(Entity, String, Transform)> = MOVED
+            .iter()
+            .filter_map(|b| {
+                let e = bone_entity(scene, root, avatar, *b)?;
+                let path = avatar.bone(*b).map(|x| x.path.clone()).unwrap_or_default();
+                Some((e, path, scene.transform(e)))
+            })
+            .collect();
+        if w > 0.0 {
+            let mut goals = self.goals(root);
+            for g in &mut goals.goals {
+                g.position_weight = g.position_weight.clamp(0.0, 1.0) * w;
+                g.rotation_weight = g.rotation_weight.clamp(0.0, 1.0) * w;
+            }
+            goals.look_at.weight = goals.look_at.weight.clamp(0.0, 1.0) * w;
+            solve_goals(scene, root, avatar, &goals);
+        }
+        let mut moved = Vec::new();
+        for (e, path, before) in bones {
+            if same_pose(&scene.transform(e), &before) || moved.contains(&e) {
+                continue;
+            }
+            if mask.is_some_and(|m| !m.allows(&path, Property::Rotation(0))) {
+                scene.set_transform(e, before);
+            } else {
+                moved.push(e);
+            }
+        }
+        moved
     }
 }
 

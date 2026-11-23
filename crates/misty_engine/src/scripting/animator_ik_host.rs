@@ -1,5 +1,7 @@
 //! The IK pass of the frame: `OnAnimatorIK(layerIndex)` on the scripts of Animators whose
-//! controller has IK Pass layers, then the goals they set are solved (`rigging::animator_ik`).
+//! controller has IK Pass layers, once per IK layer bottom to top, each followed by solving
+//! the goals that call set on the pose blended up to that layer (`animation::animator_ik_pass`,
+//! `rigging::animator_ik`).
 
 use mlua::Value;
 
@@ -13,6 +15,11 @@ impl ScriptHost {
         for (e, layers) in passes {
             self.with_world(|w| w.animator.ik_begin(&mut w.scene, e));
             for layer in layers {
+                self.with_world(|w| {
+                    if w.scene.contains(e) {
+                        w.animator.ik_layer_begin(&mut w.scene, e, layer);
+                    }
+                });
                 for i in 0..self.instances.len() {
                     if self.instances[i].entity != e || !self.runnable(&self.instances[i]) {
                         continue;
@@ -35,10 +42,15 @@ impl ScriptHost {
                     }
                     self.flush_spawned();
                 }
+                self.with_world(|w| {
+                    if w.scene.contains(e) {
+                        w.animator.ik_layer_solve(&mut w.scene, e, layer);
+                    }
+                });
             }
             self.with_world(|w| {
                 if w.scene.contains(e) {
-                    w.animator.ik_solve(&mut w.scene, e);
+                    w.animator.ik_end(&mut w.scene, e);
                 }
             });
         }

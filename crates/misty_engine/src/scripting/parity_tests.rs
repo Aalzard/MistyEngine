@@ -381,3 +381,35 @@ fn lua_on_animator_ik_moves_the_hand_to_its_goal() {
     let want = crate::camera::euler_to_quat(Vec3::new(0.0, 40.0, 0.0));
     assert!(scene.world_rotation(right).angle_between(want) < 1e-3);
 }
+
+const LUA_TWO_LAYERS: &str = r#"
+local Reach = {}
+function Reach:Start() self.anim = self.gameObject:GetComponent("Animator") end
+function Reach:OnAnimatorIK(layer)
+    self.calls = (self.calls or 0) + 1
+    if self.calls <= 2 then
+        Debug.Log("ik", layer, self.anim:GetIKPositionWeight(AvatarIKGoal.LeftHand))
+    end
+    if layer == 0 then
+        self.anim:SetIKPosition(AvatarIKGoal.LeftHand, Vector3.new(-0.5, 1.8, -0.3))
+    else
+        self.anim:SetIKPosition(AvatarIKGoal.LeftHand, Vector3.new(-0.4, 1.2, 0.3))
+    end
+    self.anim:SetIKPositionWeight(AvatarIKGoal.LeftHand, 1)
+end
+return Reach
+"#;
+
+#[test]
+fn lua_on_animator_ik_runs_per_layer_with_fresh_goals() {
+    let root = project(&[("Reach.lua", LUA_TWO_LAYERS)]);
+    let (mut scene, _) = ik_scene(&root, "Reach.lua", true);
+    let logs = run(&mut scene, &root, Vec3::ZERO, 4);
+    // Goals start cleared for each layer's call; the upper layer's goal wins.
+    assert_eq!(logs, ["ik 0 0", "ik 1 0"]);
+    assert!(
+        hand(&scene).distance(TARGET) < 1e-3,
+        "hand at {}",
+        hand(&scene)
+    );
+}
