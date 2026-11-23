@@ -6672,6 +6672,11 @@ on an RTX 4060 (Vulkan), headless and in the real player.
   now laid out for that camera's part of the image and drawn flat into it (`canvas::split_area`,
   not depth tested: the target has no depth for that part); clicks map to it too. The test
   project's player prefab has a HUD; the screenshot shows each half with its own HUD.
+- **World Space canvases in split screen** were drawn once over the whole image through the
+  highest-Depth camera (a minimap camera above the main one took them too). The game UI view now
+  uses the camera that draws the full-screen image (`screen_camera`), and each split-screen view
+  draws the World Space canvases its camera sees into its own image, depth tested against that
+  view (`UiView::split_view`). The test project's players have a name tag.
 - Not checked: the editor's Game view on the GPU by hand (it uses the same `SplitScreen::render`
-  and UI code as the player). World Space canvases still show only through the highest-Depth
-  camera.
+  and UI code as the player). Clicks on World Space canvases inside a split-screen view don't
+  reach them yet.

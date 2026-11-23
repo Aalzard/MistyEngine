@@ -424,3 +424,42 @@ fn camera_canvas_of_a_split_screen_camera_fills_its_half() {
     );
     assert_eq!(raycast(&l, &s, Vec2::new(750.0, 50.0)), Some(corner));
 }
+
+/// Split screen with no full-screen camera: a World Space canvas isn't drawn over the whole
+/// image through one player's camera; each split-screen camera's own view has it (and only
+/// it, not the screen-space canvases).
+#[test]
+fn world_canvases_belong_to_each_split_screen_view() {
+    use super::canvas::UiView;
+    use super::tree::layout_view;
+    let mut s = Scene::new("Split world UI");
+    let p1 = camera(&mut s);
+    s.world.get::<&mut CameraComponent>(p1).unwrap().viewport = [0.0, 0.0, 0.5, 1.0];
+    let hud = overlay(&mut s);
+    let tag = s.spawn("Tag", None);
+    s.add(tag, RectTransform::sized(100.0, 100.0));
+    s.add(
+        tag,
+        Canvas {
+            render_mode: CanvasRenderMode::WorldSpace,
+            ..Default::default()
+        },
+    );
+    s.set_transform(
+        tag,
+        Transform {
+            scale: Vec3::splat(0.01),
+            ..Default::default()
+        },
+    );
+    let l = layout_view(&s, &UiView::game(&s, SCREEN));
+    assert!(l.placement(tag).is_none(), "no full-screen camera sees it");
+    assert!(l.placement(hud).is_some());
+    let half = Vec2::new(400.0, 600.0);
+    let l = layout_view(&s, &UiView::split_view(&s, p1, half).unwrap());
+    assert!(l.placement(tag).is_some_and(|p| p.depth));
+    assert!(
+        l.placement(hud).is_none(),
+        "drawn once, over the whole image"
+    );
+}

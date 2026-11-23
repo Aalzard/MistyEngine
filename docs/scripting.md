@@ -325,7 +325,8 @@ A camera's screen points (`ScreenPointToRay`, `WorldToScreenPoint`, `ScreenToWor
 its own part of the screen, so `cam:ScreenPointToRay(Input.mousePosition)` works for each player's camera.
 For a **per-player HUD**, give the player a Canvas set to Screen Space - Camera with the player's camera as
 Render Camera: when that camera draws only part of the screen, the canvas is laid out for that part (anchors,
-Canvas Scaler) and drawn into it, and clicks there reach it.
+Canvas Scaler) and drawn into it, and clicks there reach it. World Space canvases (name tags, health bars) show in every
+player's view that sees them, hidden behind nearer objects of that view.
 
 **Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
 Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns

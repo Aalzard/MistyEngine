@@ -184,7 +184,16 @@ fn split(
         if let Some(game) = &game {
             r.render_with_effects(device, queue, &main, &game.frame(), &game.effects);
         }
-        split.render(&mut r, device, queue, &main, scene, mats, game.is_some());
+        split.render(
+            &mut r,
+            device,
+            queue,
+            &main,
+            scene,
+            mats,
+            game.is_some(),
+            None,
+        );
     }
     (read_back(device, queue, &main), main)
 }
@@ -426,6 +435,26 @@ fn write_split_screen_project() {
         corner,
         UiImage {
             color: [1.0, 0.8, 0.0, 1.0],
+            ..Default::default()
+        },
+    );
+    // A name tag over the player: a World Space canvas, seen by both players' cameras.
+    let tag = asset.spawn("Tag", Some(player));
+    let mut t = Transform::from_position(Vec3::new(0.0, 2.4, 0.0));
+    t.scale = Vec3::splat(0.01);
+    asset.set_transform(tag, t);
+    asset.add(tag, RectTransform::sized(120.0, 30.0));
+    asset.add(
+        tag,
+        Canvas {
+            render_mode: CanvasRenderMode::WorldSpace,
+            ..Default::default()
+        },
+    );
+    asset.add(
+        tag,
+        UiImage {
+            color: [0.9, 0.1, 0.1, 1.0],
             ..Default::default()
         },
     );

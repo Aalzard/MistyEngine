@@ -412,6 +412,7 @@ impl Gfx {
                     scene,
                     materials,
                     frame.is_some(),
+                    Some(&mut self.ui),
                 );
             }
             misty_engine::profiler::set_render_stats(self.renderer.stats());

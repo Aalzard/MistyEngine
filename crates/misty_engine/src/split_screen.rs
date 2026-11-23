@@ -40,7 +40,8 @@ impl SplitScreen {
 
     /// Render each viewport camera of `scene` into its rect of `main`, lowest Depth first.
     /// `main_rendered` = the full-screen camera already drew `main` this frame (otherwise it is
-    /// cleared to black first). Returns how many views were drawn.
+    /// cleared to black first). With `ui`, each view also draws the World Space canvases its
+    /// camera sees. Returns how many views were drawn.
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
@@ -51,6 +52,7 @@ impl SplitScreen {
         scene: &Scene,
         materials: &dyn MaterialSource,
         main_rendered: bool,
+        mut ui: Option<&mut crate::render::ui::UiRenderer>,
     ) -> usize {
         let cams = viewport_cameras(scene);
         self.views.retain(|e, _| cams.contains(e));
@@ -95,6 +97,14 @@ impl SplitScreen {
                 continue;
             };
             renderer.render_with_effects(device, queue, target, &game.frame(), &game.effects);
+            // World Space canvases (name tags, health bars) as this camera sees them, depth
+            // tested against its own view.
+            if let Some(ui) = ui.as_deref_mut()
+                && let Some(view) =
+                    crate::ui::UiView::split_view(scene, e, glam::Vec2::new(w as f32, h as f32))
+            {
+                ui.render_view(device, queue, target, scene, None, &view);
+            }
             let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("split screen copy"),
             });

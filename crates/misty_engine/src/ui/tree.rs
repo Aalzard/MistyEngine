@@ -148,7 +148,9 @@ pub fn layout_view(scene: &Scene, view: &UiView) -> UiLayout {
             let nested = scene
                 .parent(e)
                 .is_some_and(|p| canvas_of(scene, p).is_some());
-            (!nested && c.enabled && scene.active_in_hierarchy(e)).then(|| (i, e, (*c).clone()))
+            let shown = !view.world_only || c.render_mode == CanvasRenderMode::WorldSpace;
+            (!nested && shown && c.enabled && scene.active_in_hierarchy(e))
+                .then(|| (i, e, (*c).clone()))
         })
         .collect();
     let anchors = driven_anchors(scene);

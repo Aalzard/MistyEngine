@@ -25,17 +25,38 @@ pub struct UiView {
     /// Editor Scene view: overlay canvases stand in the world at one unit per pixel, lower-left
     /// corner at the origin, facing −Z.
     pub overlay_in_world: bool,
+    /// Only World Space canvases (a split-screen camera's own view: its screen-space canvases
+    /// are drawn over the whole image).
+    pub world_only: bool,
 }
 
 impl UiView {
-    /// The game: overlays on a `screen`-sized image, the rest seen by the game camera.
+    /// The game: overlays on a `screen`-sized image, the rest seen by the camera that draws
+    /// the full-screen image (none in a split screen without one: each split-screen camera
+    /// sees the world canvases in its own view, [`UiView::split_view`]).
     pub fn game(scene: &Scene, screen: Vec2) -> Self {
+        let camera = crate::render_scene::screen_camera(scene)
+            .and_then(|e| crate::render_scene::camera_of(scene, e))
+            .map(|(c, _)| c);
         Self {
             screen,
             target: screen,
-            camera: crate::render_scene::game_camera(scene).map(|(c, _)| c),
+            camera,
             overlay_in_world: false,
+            world_only: false,
         }
+    }
+
+    /// The World Space canvases seen by split-screen camera `camera`, drawn into its own
+    /// `size` view image.
+    pub fn split_view(scene: &Scene, camera: Entity, size: Vec2) -> Option<Self> {
+        Some(Self {
+            screen: size,
+            target: size,
+            camera: Some(camera_of(scene, camera)?),
+            overlay_in_world: false,
+            world_only: true,
+        })
     }
 
     /// The editor's Scene view: everything in the world, seen by the scene camera.
@@ -45,6 +66,7 @@ impl UiView {
             target,
             camera: Some(camera),
             overlay_in_world: true,
+            world_only: false,
         }
     }
 
