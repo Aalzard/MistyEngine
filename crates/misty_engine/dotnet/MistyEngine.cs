@@ -1065,7 +1065,7 @@ namespace Misty
     }
 
     /// <summary>The object's Animator: parameters and states of its controller.</summary>
-    public sealed unsafe class Animator : Component
+    public sealed unsafe partial class Animator : Component
     {
         internal readonly ulong id;
         internal Animator(ulong id) { this.id = id; }
@@ -1447,10 +1447,10 @@ namespace Misty
     public sealed class CircleCollider2D : Collider2D { internal CircleCollider2D(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter2D / Stay2D / Exit2D callback hit.</summary>
-    public sealed class Collision2D
+    public sealed partial class Collision2D
     {
         readonly ulong id;
-        internal Collision2D(ulong id) { this.id = id; }
+        internal Collision2D(ulong id) { this.id = id; Capture(); }
         public GameObject gameObject => new GameObject(id);
         public Transform transform => new Transform(id);
         public Collider2D collider => new Collider2D(id);
@@ -3259,6 +3259,9 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
         public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
         public delegate* unmanaged<int, ulong, long, double*, char*, int, long> inputSystem;
+        // ---- csharp_parity.rs ----
+        public delegate* unmanaged<int, float*, int, ulong*, int> contacts;
+        public delegate* unmanaged<ulong, int, int, float*, int> animatorIk;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -3623,6 +3626,7 @@ namespace Misty.Internal
             "OnCollisionStay", "OnTriggerStay",
             "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
             "OnCollisionStay2D", "OnTriggerStay2D",
+            "OnAnimatorIK",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -3784,6 +3788,12 @@ namespace Misty.Internal
                     {
                         var a = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), script, m);
                         return other => a(new GameObject(other));
+                    }
+                    // OnAnimatorIK(int layerIndex): the layer index travels as `other`.
+                    if (p == typeof(int) && name == "OnAnimatorIK")
+                    {
+                        var a = (Action<int>)Delegate.CreateDelegate(typeof(Action<int>), script, m);
+                        return layer => a((int)layer);
                     }
                 }
             }
@@ -4416,6 +4426,175 @@ namespace Misty.Internal
                 c.done = true;
                 Host.Report(c.owner.GetType().Name, "coroutine", ex);
             }
+        }
+    }
+}
+
+// ---- 2D contact points and the Animator IK pass (csharp_parity.rs) ----------------------------
+
+namespace Misty
+{
+    /// <summary>One touching point of a 2D collision (`Collision2D.GetContact`).</summary>
+    public struct ContactPoint2D
+    {
+        internal ulong colliderId, otherColliderId;
+        /// <summary>World position of the point.</summary>
+        public Vector2 point { get; internal set; }
+        /// <summary>Surface normal, pointing away from the other collider (towards this one).</summary>
+        public Vector2 normal { get; internal set; }
+        /// <summary>Distance between the surfaces along the normal (negative: overlapping).</summary>
+        public float separation { get; internal set; }
+        /// <summary>Impulse the solver applied along the normal at this point in the step.</summary>
+        public float normalImpulse { get; internal set; }
+        /// <summary>Friction impulse the solver applied along the surface in the step.</summary>
+        public float tangentImpulse { get; internal set; }
+        /// <summary>Velocity of the other object relative to this one.</summary>
+        public Vector2 relativeVelocity { get; internal set; }
+        public bool enabled => colliderId != 0;
+        /// <summary>The other object's collider.</summary>
+        public Collider2D collider => colliderId == 0 ? null : new Collider2D(colliderId);
+        /// <summary>This object's collider.</summary>
+        public Collider2D otherCollider => otherColliderId == 0 ? null : new Collider2D(otherColliderId);
+        public Rigidbody2D rigidbody => collider?.attachedRigidbody;
+        public Rigidbody2D otherRigidbody => otherCollider?.attachedRigidbody;
+    }
+
+    public sealed unsafe partial class Collision2D
+    {
+        ContactPoint2D[] points = Array.Empty<ContactPoint2D>();
+        ulong me;
+
+        /// <summary>Copies the contact points of the step that fired the callback.</summary>
+        void Capture()
+        {
+            const int Floats = 7, Max = 8;
+            float* buf = stackalloc float[2 + Floats * Max];
+            ulong* ids = stackalloc ulong[2];
+            int n = Internal.Native.api.contacts(0, buf, 2 + Floats * Max, ids);
+            if (n < 0) return;
+            n = Math.Min(n, Max);
+            me = ids[0];
+            relativeVelocity = new Vector2(buf[0], buf[1]);
+            points = new ContactPoint2D[n];
+            for (int i = 0; i < n; i++)
+            {
+                float* p = buf + 2 + i * Floats;
+                points[i] = new ContactPoint2D
+                {
+                    colliderId = id,
+                    otherColliderId = me,
+                    point = new Vector2(p[0], p[1]),
+                    normal = new Vector2(p[2], p[3]),
+                    separation = p[4],
+                    normalImpulse = p[5],
+                    tangentImpulse = p[6],
+                    relativeVelocity = relativeVelocity,
+                };
+            }
+        }
+
+        /// <summary>Velocity of the other object relative to this one (before the step for Enter).</summary>
+        public Vector2 relativeVelocity { get; private set; }
+        /// <summary>This object's collider.</summary>
+        public Collider2D otherCollider => me == 0 ? null : new Collider2D(me);
+        public Rigidbody2D otherRigidbody => otherCollider?.attachedRigidbody;
+        public bool enabled => true;
+        public int contactCount => points.Length;
+        /// <summary>A copy of the contact points (allocates; prefer GetContact / GetContacts).</summary>
+        public ContactPoint2D[] contacts => (ContactPoint2D[])points.Clone();
+        public ContactPoint2D GetContact(int index)
+        {
+            if ((uint)index >= (uint)points.Length)
+                throw new IndexOutOfRangeException($"Contact index {index} is out of range (contactCount is {points.Length}).");
+            return points[index];
+        }
+        /// <summary>Fills `contacts` (as many as fit); returns how many were written.</summary>
+        public int GetContacts(ContactPoint2D[] contacts)
+        {
+            int n = Math.Min(contacts.Length, points.Length);
+            Array.Copy(points, contacts, n);
+            return n;
+        }
+        /// <summary>Replaces the list's contents with the contact points; returns the count.</summary>
+        public int GetContacts(List<ContactPoint2D> contacts)
+        {
+            contacts.Clear();
+            contacts.AddRange(points);
+            return points.Length;
+        }
+    }
+
+    public enum AvatarIKGoal { LeftFoot = 0, RightFoot = 1, LeftHand = 2, RightHand = 3 }
+    public enum AvatarIKHint { LeftKnee = 0, RightKnee = 1, LeftElbow = 2, RightElbow = 3 }
+
+    /// <summary>Human bones, numbered like the familiar engine (bones past RightToes are not mapped).</summary>
+    public enum HumanBodyBones
+    {
+        Hips = 0, LeftUpperLeg = 1, RightUpperLeg = 2, LeftLowerLeg = 3, RightLowerLeg = 4,
+        LeftFoot = 5, RightFoot = 6, Spine = 7, Chest = 8, Neck = 9, Head = 10,
+        LeftShoulder = 11, RightShoulder = 12, LeftUpperArm = 13, RightUpperArm = 14,
+        LeftLowerArm = 15, RightLowerArm = 16, LeftHand = 17, RightHand = 18,
+        LeftToes = 19, RightToes = 20, LeftEye = 21, RightEye = 22, Jaw = 23,
+        UpperChest = 54, LastBone = 55,
+    }
+
+    /// <summary>The IK pass: call these from `OnAnimatorIK(int layerIndex)` (a controller layer
+    /// needs IK Pass on). Goals reset every frame.</summary>
+    public sealed unsafe partial class Animator
+    {
+        /// <summary>Four floats for `animatorIk`: a position, rotation or weights.</summary>
+        struct F4 { public float x, y, z, w; public F4(float x, float y = 0, float z = 0, float w = 0) { this.x = x; this.y = y; this.z = z; this.w = w; } }
+
+        F4 Ik(int op, int index, F4 v = default)
+        {
+            if (Internal.Native.api.animatorIk(id, op, index, (float*)&v) == 0)
+            {
+                if (!Alive) throw Internal.Native.Missing("Animator");
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+            return v;
+        }
+
+        static F4 V(Vector3 p) => new F4(p.x, p.y, p.z);
+        static F4 V(Quaternion q) => new F4(q.x, q.y, q.z, q.w);
+        static F4 V(float f) => new F4(f);
+        static Vector3 P(F4 v) => new Vector3(v.x, v.y, v.z);
+        static Quaternion Q(F4 v) => new Quaternion(v.x, v.y, v.z, v.w);
+
+        public void SetIKPosition(AvatarIKGoal goal, Vector3 goalPosition) => Ik(0, (int)goal, V(goalPosition));
+        /// <summary>Humanoid effector rotation: identity is the bone as in the Avatar's rest pose
+        /// with the character unrotated.</summary>
+        public void SetIKRotation(AvatarIKGoal goal, Quaternion goalRotation) => Ik(1, (int)goal, V(goalRotation));
+        public void SetIKPositionWeight(AvatarIKGoal goal, float value) => Ik(2, (int)goal, V(value));
+        public void SetIKRotationWeight(AvatarIKGoal goal, float value) => Ik(3, (int)goal, V(value));
+        /// <summary>The goal set this frame, or where the animation put the hand / foot.</summary>
+        public Vector3 GetIKPosition(AvatarIKGoal goal) => P(Ik(4, (int)goal));
+        public Quaternion GetIKRotation(AvatarIKGoal goal) => Q(Ik(5, (int)goal));
+        public float GetIKPositionWeight(AvatarIKGoal goal) => Ik(6, (int)goal).x;
+        public float GetIKRotationWeight(AvatarIKGoal goal) => Ik(7, (int)goal).x;
+        public void SetIKHintPosition(AvatarIKHint hint, Vector3 hintPosition) => Ik(8, (int)hint, V(hintPosition));
+        public void SetIKHintPositionWeight(AvatarIKHint hint, float value) => Ik(9, (int)hint, V(value));
+        public Vector3 GetIKHintPosition(AvatarIKHint hint) => P(Ik(10, (int)hint));
+        public float GetIKHintPositionWeight(AvatarIKHint hint) => Ik(11, (int)hint).x;
+        public void SetLookAtPosition(Vector3 lookAtPosition) => Ik(12, 0, V(lookAtPosition));
+        public void SetLookAtWeight(float weight, float bodyWeight = 0f, float headWeight = 1f, float eyesWeight = 0f, float clampWeight = 0.5f)
+        {
+            Ik(13, 0, new F4(weight, bodyWeight, headWeight, eyesWeight));
+            Ik(14, 0, V(clampWeight));
+        }
+        /// <summary>The Transform of a human bone (from the Avatar, or found by name), or null.</summary>
+        public Transform GetBoneTransform(HumanBodyBones humanBoneId)
+        {
+            var v = new F4();
+            if (Internal.Native.api.animatorIk(id, 15, (int)humanBoneId, (float*)&v) == 0)
+            {
+                if (!Alive) throw Internal.Native.Missing("Animator");
+                return null;
+            }
+            ulong lo = (uint)BitConverter.SingleToInt32Bits(v.x);
+            ulong hi = (uint)BitConverter.SingleToInt32Bits(v.y);
+            ulong bone = lo | (hi << 32);
+            return bone == 0 ? null : new Transform(bone);
         }
     }
 }

@@ -22,7 +22,7 @@
 //! instead of compiling or looking for an installed .NET.
 //!
 //! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource and
-//! Animator, contact points, hot reload, and unloading old assemblies (each changed build stays
+//! Animator, 3D contact points, hot reload, and unloading old assemblies (each changed build stays
 //! loaded until the editor exits).
 
 use std::ffi::c_void;
@@ -66,9 +66,11 @@ pub(crate) enum Method {
     OnTriggerExit2D = 17,
     OnCollisionStay2D = 18,
     OnTriggerStay2D = 19,
+    /// Takes the layer index (`OnAnimatorIK(int layerIndex)`).
+    OnAnimatorIK = 20,
 }
 
-const METHOD_COUNT: usize = 20;
+const METHOD_COUNT: usize = 21;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -1022,6 +1024,7 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnTriggerExit2D" => Method::OnTriggerExit2D,
         "OnCollisionStay2D" => Method::OnCollisionStay2D,
         "OnTriggerStay2D" => Method::OnTriggerStay2D,
+        "OnAnimatorIK" => Method::OnAnimatorIK,
         _ => return None,
     })
 }
@@ -1176,6 +1179,17 @@ impl CsHost {
         // SAFETY: entry point of the loaded assembly, valid handle.
         let other = other.map_or(0, |e| e.to_bits().get());
         unsafe { (entry.call)(r.handle, m as i32, other) };
+    }
+
+    /// Call `m` on instance `r` with a number argument (`OnAnimatorIK(layerIndex)`).
+    pub fn call_arg(&self, w: &mut World, r: CsRef, m: Method, arg: u64) {
+        let Some(entry) = self.entry else { return };
+        if !r.defines(m) {
+            return;
+        }
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly, valid handle.
+        unsafe { (entry.call)(r.handle, m as i32, arg) };
     }
 
     /// Call the method `name` of instance `r` by name (SendMessage, Inspector event calls):

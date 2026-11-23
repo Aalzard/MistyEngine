@@ -539,18 +539,64 @@ pub fn collision_table(lua: &Lua, me: Entity, c: &Contact2D) -> Result<Table> {
     if has_body {
         t.set("rigidbody", LRigidbody2D(other))?;
     }
-    let contact = lua.create_table()?;
-    contact.set("point", v2(c.point))?;
-    contact.set("normal", v2(normal))?;
+    let me_body = with_world(lua, |w| w.physics2d.has_body(me))?;
+    if me_body {
+        t.set("otherRigidbody", LRigidbody2D(me))?;
+    }
+    // Every point of the step that fired the callback (one at the centres for contacts without
+    // touching points, e.g. a collider that was switched off).
     let list = lua.create_table()?;
-    list.set(1, contact)?;
+    let make = |p: Vec2, n: Vec2, sep: f32, ni: f32, ti: f32| -> Result<Table> {
+        let contact = lua.create_table()?;
+        contact.set("point", v2(p))?;
+        contact.set("normal", v2(n))?;
+        contact.set("separation", sep)?;
+        contact.set("normalImpulse", ni)?;
+        contact.set("tangentImpulse", ti)?;
+        contact.set("relativeVelocity", v2(c.relative_velocity * sign))?;
+        contact.set("collider", LGameObject(other))?;
+        contact.set("otherCollider", LGameObject(me))?;
+        if has_body {
+            contact.set("rigidbody", LRigidbody2D(other))?;
+        }
+        if me_body {
+            contact.set("otherRigidbody", LRigidbody2D(me))?;
+        }
+        contact.set("enabled", true)?;
+        Ok(contact)
+    };
+    let points = c.contact_points();
+    if points.is_empty() {
+        list.set(1, make(c.point, normal, 0.0, 0.0, 0.0)?)?;
+    }
+    for (i, p) in points.iter().enumerate() {
+        let contact = make(
+            p.point,
+            -p.normal * sign,
+            p.separation,
+            p.normal_impulse,
+            p.tangent_impulse * sign,
+        )?;
+        list.set(i + 1, contact)?;
+    }
+    let count = list.raw_len();
     t.set("contacts", list)?;
-    t.set("contactCount", 1)?;
+    t.set("contactCount", count)?;
     let get_contact = lua.create_function(|_, (t, i): (Table, i64)| match i.checked_add(1) {
         Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
         None => Ok(Value::Nil),
     })?;
     t.set("GetContact", get_contact)?;
+    // GetContacts(list): fills `list` (1-based) and returns the count, like Unity.
+    let get_contacts = lua.create_function(|_, (t, out): (Table, Table)| {
+        let contacts = t.get::<Table>("contacts")?;
+        let n = contacts.raw_len();
+        for i in 1..=n {
+            out.raw_set(i, contacts.raw_get::<Value>(i)?)?;
+        }
+        Ok(n)
+    })?;
+    t.set("GetContacts", get_contacts)?;
     Ok(t)
 }
 

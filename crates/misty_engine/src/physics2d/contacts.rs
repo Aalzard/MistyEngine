@@ -30,6 +30,36 @@ pub struct Contact2D {
     pub normal: Vec2,
     /// Velocity of `b` minus velocity of `a` (before the step for new contacts).
     pub relative_velocity: Vec2,
+    /// The touching points of the step that reported this contact (collisions only; the first
+    /// `point_count` entries are used). `point` / `normal` above are the first one's.
+    pub points: [ContactPoint2DData; MAX_CONTACT_POINTS_2D],
+    pub point_count: u8,
+}
+
+/// How many contact points a [`Contact2D`] keeps (two per manifold in 2D; more manifolds only
+/// for shapes made of several parts).
+pub const MAX_CONTACT_POINTS_2D: usize = 4;
+
+/// One touching point of a 2D collision (Unity's `ContactPoint2D` data).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ContactPoint2DData {
+    /// World position of the point (on one collider's surface; the same for both sides).
+    pub point: Vec2,
+    /// World normal pointing from `a` towards `b`.
+    pub normal: Vec2,
+    /// Distance between the surfaces along the normal (negative: overlapping).
+    pub separation: f32,
+    /// Impulse the solver applied along the normal at this point during the step.
+    pub normal_impulse: f32,
+    /// Friction impulse the solver applied along the surface at this point during the step.
+    pub tangent_impulse: f32,
+}
+
+impl Contact2D {
+    /// The used contact points.
+    pub fn contact_points(&self) -> &[ContactPoint2DData] {
+        &self.points[..usize::from(self.point_count).min(MAX_CONTACT_POINTS_2D)]
+    }
 }
 
 /// Collects rapier collision events during a step.
@@ -137,6 +167,8 @@ impl Tracker {
                                 point: Vec2::ZERO,
                                 normal: Vec2::ZERO,
                                 relative_velocity: Vec2::ZERO,
+                                points: Default::default(),
+                                point_count: 0,
                             });
                         }
                     } else if let Some(c) =
@@ -199,18 +231,35 @@ fn contact(
     );
     let mut point = (p1 + p2) * 0.5;
     let mut normal = (p2 - p1).normalize_or_zero();
+    let mut points = [ContactPoint2DData::default(); MAX_CONTACT_POINTS_2D];
+    let mut point_count = 0usize;
     if !trigger
         && let Some(pair) = world.contact_pair(h1, h2)
-        && let Some(m) = pair.manifolds().iter().find(|m| !m.points.is_empty())
         && let Some(c) = world.colliders.get(pair.collider1)
     {
         // Manifold data is expressed for the pair's own collider order.
         let flip = if pair.collider1 == h1 { 1.0 } else { -1.0 };
-        let local = m.points[0].local_p1;
-        point = gv(c.position().transform_point(local));
-        let n = gv(c.position().transform_vector(m.local_n1));
-        if n != Vec2::ZERO {
-            normal = n * flip;
+        for m in pair.manifolds().iter().filter(|m| !m.points.is_empty()) {
+            let n = gv(c.position().transform_vector(m.local_n1)) * flip;
+            for tp in &m.points {
+                if point_count == MAX_CONTACT_POINTS_2D {
+                    break;
+                }
+                points[point_count] = ContactPoint2DData {
+                    // On the surface of the pair's first collider (the same point for both
+                    // sides of the contact).
+                    point: gv(c.position().transform_point(tp.local_p1)),
+                    normal: if n != Vec2::ZERO { n } else { normal },
+                    separation: tp.dist,
+                    normal_impulse: tp.data.impulse,
+                    tangent_impulse: tp.data.tangent_impulse.x * flip,
+                };
+                point_count += 1;
+            }
+        }
+        if point_count > 0 {
+            point = points[0].point;
+            normal = points[0].normal;
         }
     }
     let relative_velocity = match (c1, c2) {
@@ -225,5 +274,7 @@ fn contact(
         point,
         normal,
         relative_velocity,
+        points,
+        point_count: point_count as u8,
     })
 }

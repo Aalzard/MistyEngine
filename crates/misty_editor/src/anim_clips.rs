@@ -15,6 +15,7 @@ pub enum ClipSnapshot {
     Mixer(String, misty_engine::audio::AudioMixer),
     Timeline(String, misty_engine::timeline::TimelineAsset),
     Mask(String, misty_engine::animation::AvatarMask),
+    Override(String, misty_engine::animation::OverrideController),
 }
 
 #[derive(Default)]
@@ -31,6 +32,8 @@ pub struct ClipStore {
     pub timelines: crate::timelines::TimelineStore,
     /// Avatar Masks being edited.
     pub masks: crate::avatar_masks::MaskStore,
+    /// Animator Override Controllers being edited.
+    pub overrides: crate::override_controllers::OverrideStore,
     /// Bumped every time a clip's file changes (a save, or a change on disk read back): Play
     /// mode hands the changed clips to the game (see `play::sync_controllers`).
     generation: u64,
@@ -45,6 +48,7 @@ impl ClipStore {
             mixers: crate::audio_mixers::MixerStore::new(root.clone()),
             timelines: crate::timelines::TimelineStore::new(root.clone()),
             masks: crate::avatar_masks::MaskStore::new(root.clone()),
+            overrides: crate::override_controllers::OverrideStore::new(root.clone()),
             root,
             ..Default::default()
         }
@@ -129,6 +133,7 @@ impl ClipStore {
             ClipSnapshot::Mixer(path, m) => return self.mixers.restore(path, m),
             ClipSnapshot::Timeline(path, t) => return self.timelines.restore(path, t),
             ClipSnapshot::Mask(path, m) => return self.masks.restore(path, m),
+            ClipSnapshot::Override(path, o) => return self.overrides.restore(path, o),
         };
         let old = self.clips.insert(path.clone(), clip).unwrap_or_default();
         self.dirty.insert(path.clone());
@@ -147,6 +152,7 @@ impl ClipStore {
     pub fn rename(&mut self, old: &str, new: &str) {
         self.controllers.rename(old, new);
         self.masks.rename(old, new);
+        self.overrides.rename(old, new);
         self.mixers.rename(old, new);
         self.timelines.rename(old, new);
         let keys: Vec<String> = self.clips.keys().cloned().collect();

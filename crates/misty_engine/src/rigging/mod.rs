@@ -10,6 +10,7 @@
 //! script wrote it), its pre-rig pose is restored before solving, so weights blend against the
 //! animated pose instead of accumulating frame after frame.
 
+pub mod animator_ik;
 pub mod components;
 mod solvers;
 #[cfg(test)]

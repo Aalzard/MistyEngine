@@ -12,6 +12,11 @@ use hecs::Entity;
 
 use super::{LogKind, World};
 
+#[path = "csharp_parity.rs"]
+mod parity;
+pub(super) use parity::Contact2DScope;
+use parity::{animator_ik, contacts};
+
 // ---- the world, for callbacks from C# ------------------------------------------------------
 
 thread_local! {
@@ -149,6 +154,9 @@ pub(super) struct NativeApi {
     /// `csharp_input.rs`: EventSystem, touches, Camera.rect, Player Input (Manager), Input
     /// Actions, Gamepad / Keyboard / Mouse.
     input_system: extern "C" fn(i32, u64, i64, *mut f64, *mut u16, i32) -> i64,
+    // ---- csharp_parity.rs ----
+    contacts: extern "C" fn(i32, *mut f32, i32, *mut u64) -> i32,
+    animator_ik: extern "C" fn(u64, i32, i32, *mut V4) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -207,6 +215,8 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     message,
     physics2d,
     input_system: super::csharp::input::input_system,
+    contacts,
+    animator_ik,
 };
 
 /// Same layout as `Misty.Internal.HitData`.

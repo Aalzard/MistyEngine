@@ -38,6 +38,7 @@ pub use bt_editors::offered as component_offered;
 pub use nav_editors::area_color32 as nav_area_color;
 mod net_editors;
 mod occlusion_editors;
+mod override_editor;
 mod overrides;
 pub(in crate::panels) mod particles;
 mod physics_editors;
@@ -723,6 +724,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::animation::is_controller(rel) {
         animator::controller_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::animation::is_override_controller(rel) {
+        override_editor::override_asset(ui, state, rel);
         return;
     }
     if misty_engine::animation::is_mask(rel) {
