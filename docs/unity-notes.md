@@ -196,8 +196,12 @@ Each entry: **Name** — what it does — what changes on screen.
 - **IK Pass** is a per-layer checkbox in the Animator window's layer settings (gear). With it on, scripts next to the
   Animator get `OnAnimatorIK(int layerIndex)` during the animation update, where they call `SetIKPosition` /
   `SetIKRotation` / weights (`AvatarIKGoal`), hints (`AvatarIKHint`), `SetLookAtPosition` / `SetLookAtWeight`;
-  goals reset every frame. The reference engine solves per layer on humanoid rigs only; we solve once on the final
-  pose and also accept generic rigs whose bones have standard names.
+  goals reset before every call. Like the reference engine we solve per layer, bottom to top: each layer's goals are
+  solved on the pose blended up to and including that layer, scaled by its weight and limited to its Avatar Mask,
+  and the layers above blend over the result. Differences: the reference engine applies IK to the layer's own pose
+  before blending it in and blends that IK'd pose by the layer weight; we solve on the running blended pose and
+  multiply the goal weights by the layer weight (weight 0.5 = halfway to the goal). We also accept generic rigs
+  whose bones have standard names (the reference engine needs a humanoid).
 - **Collision2D** carries the contact points of the physics step that sent the callback: `contactCount`,
   `GetContact(i)`, `GetContacts(array/List)` and the allocating `contacts` array; `ContactPoint2D` has `point`,
   `normal`, `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider` / `otherCollider`,

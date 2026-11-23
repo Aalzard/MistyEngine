@@ -493,8 +493,13 @@ once, undo, and reach running Animators in Play mode.
 
 Tick **IK Pass** on a layer in the Animator window's Layers list (select the layer; the Base Layer
 has it too). Every frame, after the Animator wrote its pose (and `OnAnimatorMove`), the scripts on
-the Animator's object get `OnAnimatorIK(layerIndex)` once per IK Pass layer, and the goals they set
-are solved on the pose before Timelines, rigs and `LateUpdate`:
+the Animator's object get `OnAnimatorIK(layerIndex)` once per IK Pass layer, bottom layer first,
+before Timelines, rigs and `LateUpdate`. Each call sees the pose blended up to and including its
+layer (`GetIKPosition` without a goal reports where that pose puts the hand), starts with no goals,
+and the goals it sets are solved right away on that pose: goal weights are multiplied by the layer's
+weight, and bones the layer's Avatar Mask leaves out don't move. The layers above then blend over the
+IK'd pose, so a higher IK layer's goal wins over a lower one's, and an override layer above that
+animates the arm replaces the arm IK of the layers below:
 
 ```lua
 local Reach = {}
@@ -522,8 +527,10 @@ rotations: identity is the bone as in the Avatar's rest pose with the character 
 Bones come from the Animator's Avatar; without one they are found by name (Hips, Spine, Chest,
 Head, LeftArm / LeftForeArm / LeftHand, LeftUpLeg / LeftLeg / LeftFoot, mixamorig and Bip01
 prefixes, `_l` / `.R` suffixes…), and the pose at the first IK frame counts as the rest pose.
-Limits: the goals of all IK layers are solved once on the final pose (not per layer), eyes weight
-is ignored (no eye bones), and there is no foot pivot, body position or limb stretch.
+Limits: a layer's goals are solved on the pose blended up to that layer, not on the layer's own pose
+before it is blended in; the layer weight scales the goal weights rather than blending an IK'd copy
+of the layer (so weight 0.5 brings a hand halfway to its goal); eyes weight is ignored (no eye
+bones), and there is no foot pivot, body position or limb stretch.
 
 ### UI buttons
 
