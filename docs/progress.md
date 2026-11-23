@@ -6712,3 +6712,40 @@ From GitHub issue #3 (human-scale locomotion and slope-dependent speed).
 - Not done: the sample First Person Player still has Slope Speed off (its scene files are part
   of the open sample-generator decision); a real-world scale toggle in the Scene window is an
   idea under discussion; C# `OnControllerColliderHit`.
+
+
+## Split screen tested on a real GPU (branch split-screen-gpu)
+
+Split screen and the Player Input Manager (v0.5.0) had only run in the cloud without a GPU. Run
+on an RTX 4060 (Vulkan), headless and in the real player.
+
+- **New GPU tests** (`split_screen_gpu_tests.rs`, skipped without an adapter): two players side
+  by side with no full-screen camera, and a full-screen camera with a minimap in a corner. Each
+  camera's rect of the image is compared with that camera rendered alone at the rect's size, at
+  Low, Medium, High and Ultra (TAA, upscaling, MSAA, sun shadows). All match exactly (mean
+  difference 0.00): no state leaks between the views. `MISTY_SPLIT_SHOTS=1` writes the images
+  to `target/split_screen/`.
+- **Player run**: `write_split_screen_project` (ignored) writes a small project whose lobby script
+  joins two players with `JoinPlayer()`; the player's screenshot shows each half with its own
+  player.
+- **Bug: screen points ignored the camera's rect.** `ScreenPointToRay`, `WorldToScreenPoint`
+  and `ScreenToWorldPoint` (Lua and C#) used the whole screen and its aspect, so for a
+  split-screen camera rays and on-screen positions were wrong. They now work in the camera's
+  own pixel rect (`camera_api::pixel_rect`); viewport points use the rect's aspect.
+- **Bug: players joining in one frame both heard `playerCount` 2** in `OnPlayerJoined` (two
+  `JoinPlayer()` calls in `Start`, or two pads at once), so a lobby placing players by count put
+  both in the same spot. The count now goes 1, 2, … during the messages.
+- Tests: the two GPU tests, a Lua camera with a right-half rect, two players joining in one frame.
+- **Per-player HUD**: a Screen Space - Camera canvas whose Render Camera has a partial Viewport
+  Rect was drawn through the highest-Depth camera (often another player's) or not at all. It is
+  now laid out for that camera's part of the image and drawn flat into it (`canvas::split_area`,
+  not depth tested: the target has no depth for that part); clicks map to it too. The test
+  project's player prefab has a HUD; the screenshot shows each half with its own HUD.
+- **World Space canvases in split screen** were drawn once over the whole image through the
+  highest-Depth camera (a minimap camera above the main one took them too). The game UI view now
+  uses the camera that draws the full-screen image (`screen_camera`), and each split-screen view
+  draws the World Space canvases its camera sees into its own image, depth tested against that
+  view (`UiView::split_view`). The test project's players have a name tag.
+- Not checked: the editor's Game view on the GPU by hand (it uses the same `SplitScreen::render`
+  and UI code as the player). Clicks on World Space canvases inside a split-screen view don't
+  reach them yet.

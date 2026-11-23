@@ -19,6 +19,9 @@ use crate::scene::{Camera, Scene};
 pub struct PlayerManagerState {
     /// Player Input objects as of the last frame (joined order).
     known: Vec<Entity>,
+    /// `playerCount` while `OnPlayerJoined` runs: the players up to and including the one
+    /// being reported (several joining in one frame hear 1, 2, … like they joined one by one).
+    reporting: Option<usize>,
 }
 
 /// The scene's running Player Input Manager (the first enabled, active one).
@@ -53,6 +56,14 @@ pub(crate) fn player_camera(scene: &Scene, player: Entity) -> Option<Entity> {
         .map(|(e, _)| e)
         .filter(|e| *e == player || scene.is_ancestor(player, *e))
         .find(|e| scene.world.get::<&Camera>(*e).is_ok())
+}
+
+/// `playerCount` (Lua and C#): the players, or while `OnPlayerJoined` runs, the players up to
+/// and including the one being reported.
+pub(super) fn player_count(w: &World) -> usize {
+    w.player_manager
+        .reporting
+        .unwrap_or_else(|| player_objects(&w.scene).len())
 }
 
 /// Spawn the manager's Player Prefab, paired with `device` when given.
@@ -156,8 +167,12 @@ impl ScriptHost {
         }
         // Scripts on the new players get Awake before the manager hears about them.
         self.flush_spawned();
+        let total = self.with_world(|w| w.player_manager.known.len());
+        let first = total.saturating_sub(joined.len());
         for (list, method) in [(joined, "OnPlayerJoined"), (left, "OnPlayerLeft")] {
-            for p in list {
+            for (i, p) in list.into_iter().enumerate() {
+                let reporting = (method == "OnPlayerJoined").then_some(first + i + 1);
+                self.with_world(|w| w.player_manager.reporting = reporting);
                 let alive = self.with_world(|w| w.scene.contains(p));
                 let arg = if alive {
                     self.lua
@@ -170,6 +185,7 @@ impl ScriptHost {
                 let cs_arg = super::csharp::input::PendingArg::Player(p);
                 self.call_if_defined_with(me, method, arg, cs_arg);
                 self.cs_manager_event(me, p, method == "OnPlayerJoined");
+                self.with_world(|w| w.player_manager.reporting = None);
             }
         }
     }
@@ -189,9 +205,7 @@ fn set(lua: &Lua, e: Entity, f: impl FnOnce(&mut PlayerInputManager)) -> Result<
 
 impl UserData for LPlayerInputManager {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
-        f.add_field_method_get("playerCount", |lua, _| {
-            with_world(lua, |w| player_objects(&w.scene).len())
-        });
+        f.add_field_method_get("playerCount", |lua, _| with_world(lua, |w| player_count(w)));
         f.add_field_method_get("maxPlayerCount", |lua, m| {
             get(lua, m.0, |c| c.max_player_count)
         });

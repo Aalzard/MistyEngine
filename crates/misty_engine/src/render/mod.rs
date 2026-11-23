@@ -4300,7 +4300,7 @@ mod benchmark;
 #[cfg(test)]
 mod flowers_gpu_tests;
 #[cfg(test)]
-mod golden_tests;
+pub(crate) mod golden_tests;
 #[cfg(test)]
 mod gpu_checks;
 #[cfg(test)]
