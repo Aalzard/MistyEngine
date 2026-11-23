@@ -299,7 +299,9 @@ fn mirrored_controllers_mirror_their_centre() {
 
 /// The usual script: `Move((direction * speed + up * vy) * dt)` every frame with `vy` held at
 /// -2 while grounded (so it keeps pressing into the ground), physics stepping at its own fixed
-/// rate. Every frame walks the full distance and stays grounded at the same height.
+/// rate. No frame drops its walk (rapier's single cast could stall at distance 0 on the floor
+/// it already touches), the total distance is right, and it stays grounded at the same height.
+/// Small per-frame differences (rapier's skin offset) are allowed.
 #[test]
 fn move_pressing_into_the_ground_walks_every_frame() {
     let (mut scene, e) = world(-15.0);
@@ -309,6 +311,7 @@ fn move_pressing_into_the_ground_walks_every_frame() {
     let mut vy = 0.0f32;
     let mut acc = 0.0;
     let mut stalls = Vec::new();
+    let mut total = 0.0f32;
     for i in 0..240 {
         if physics.character_grounded(e) && vy < 0.0 {
             vy = -2.0;
@@ -317,7 +320,8 @@ fn move_pressing_into_the_ground_walks_every_frame() {
         let before = scene.world_position(e);
         physics.move_character(&mut scene, e, Vec3::new(4.0, vy, 0.0) * DT, DT);
         let moved = scene.world_position(e).x - before.x;
-        if (moved - 4.0 * DT).abs() > 1e-3 {
+        total += moved;
+        if moved < 4.0 * DT * 0.5 {
             stalls.push((i, moved));
         }
         acc += DT;
@@ -327,7 +331,41 @@ fn move_pressing_into_the_ground_walks_every_frame() {
         }
     }
     assert!(stalls.is_empty(), "frames that didn't walk: {stalls:?}");
+    let expected = 240.0 * 4.0 * DT;
+    assert!(
+        (total - expected).abs() < expected * 0.02,
+        "walked {total} of {expected}"
+    );
     let y = scene.world_position(e).y;
     assert!((y - y0).abs() < 0.01, "stays at {y0}: {y}");
     assert!(physics.character_grounded(e));
+}
+
+/// The same pressing-into-the-ground script walks from flat ground up a 30° ramp (the stall
+/// fallback above must not stop it at the ramp's foot).
+#[test]
+fn move_pressing_into_the_ground_climbs_a_ramp() {
+    let (mut scene, e) = world(-2.0);
+    let len = 12.0;
+    let a = 30f32.to_radians();
+    let centre = Vec3::new(a.cos() * len / 2.0, a.sin() * len / 2.0 - 0.25, 0.0);
+    solid(&mut scene, "Ramp", centre, Vec3::new(len, 0.5, 4.0), 30.0);
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    walk(&mut physics, &mut scene, e, Vec3::ZERO, 0.5);
+    let mut vy = 0.0f32;
+    let mut acc = 0.0;
+    for _ in 0..240 {
+        if physics.character_grounded(e) && vy < 0.0 {
+            vy = -2.0;
+        }
+        vy -= 20.0 * DT;
+        physics.move_character(&mut scene, e, Vec3::new(3.0, vy, 0.0) * DT, DT);
+        acc += DT;
+        while acc >= 0.02 {
+            physics.step(&scene);
+            acc -= 0.02;
+        }
+    }
+    let y = scene.world_position(e).y;
+    assert!(y > 2.5, "walks up the 30° ramp: {y}");
 }
