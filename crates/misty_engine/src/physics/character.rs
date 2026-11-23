@@ -218,16 +218,42 @@ impl Physics {
             .exclude_sensors()
             .predicate(&test);
         let mut hits = Vec::new();
-        let moved = c.kcc().move_shape(
+        let kcc = c.kcc();
+        let queries = self.world.query_pipeline_with_filter(filter);
+        let start = pos + rot * c.center;
+        // A grounded move that also pushes down (`vy = -2` style gravity) walks first and then
+        // goes down: in one cast rapier's controller hits the floor it already touches at
+        // distance 0 and can use up its iterations without moving (a stalled frame).
+        let (walk, fall) = if c.grounded && motion.y < 0.0 {
+            (
+                Vec3::new(motion.x, 0.0, motion.z),
+                Vec3::new(0.0, motion.y, 0.0),
+            )
+        } else {
+            (motion, Vec3::ZERO)
+        };
+        let moved = kcc.move_shape(
             dt.max(1e-4),
-            &self.world.query_pipeline_with_filter(filter),
+            &queries,
             &*c.shape,
-            &pose(pos + rot * c.center, rot),
-            rv(motion),
+            &pose(start, rot),
+            rv(walk),
             |hit| hits.push(hit),
         );
-        let t = gv(moved.translation);
-        let grounded = moved.grounded;
+        let mut t = gv(moved.translation);
+        let mut grounded = moved.grounded;
+        if fall != Vec3::ZERO {
+            let down = kcc.move_shape(
+                dt.max(1e-4),
+                &queries,
+                &*c.shape,
+                &pose(start + t, rot),
+                rv(fall),
+                |hit| hits.push(hit),
+            );
+            t += gv(down.translation);
+            grounded = down.grounded;
+        }
         let handle = c.handle;
         let ground_normal = if grounded {
             // Straight down from the capsule's centre, a little past its feet and step reach.
