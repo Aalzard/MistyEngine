@@ -317,6 +317,8 @@ pub struct World {
     pub on_screen: crate::input::OnScreenControls,
     /// Players the Player Input Manager has reported (joined / left).
     pub player_manager: player_manager_api::PlayerManagerState,
+    /// Counts taps in a row for `Touch.tapCount` (`input/taps.rs`).
+    pub taps: crate::input::TapCounter,
 }
 
 impl World {
@@ -391,6 +393,7 @@ impl World {
             ui_select_request: None,
             on_screen: Default::default(),
             player_manager: Default::default(),
+            taps: Default::default(),
         }
     }
 }
@@ -1473,6 +1476,7 @@ impl ScriptHost {
             }
             // Axis smoothing runs on real time, so it works while the game is paused.
             w.axes.update(&input, time.unscaled_delta);
+            w.taps.apply(&mut input.touches, time.unscaled_delta);
             w.input = input;
         });
         // Scene operations carried out between frames finish (their `completed` callbacks).

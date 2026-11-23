@@ -536,6 +536,13 @@ impl UserData for LRebind {
             },
         );
         m.add_function(
+            "WithBindingGroup",
+            |lua, (r, group): (mlua::UserDataRef<LRebind>, String)| {
+                with_world(lua, |w| w.input_system.rebind_group(r.0, &group))?.map_err(err)?;
+                Ok(*r)
+            },
+        );
+        m.add_function(
             "OnMatchWaitForAnother",
             |lua, (r, secs): (mlua::UserDataRef<LRebind>, f64)| {
                 edit_rebind(lua, r.0, |x| x.wait = secs.max(0.0))?;
@@ -851,6 +858,7 @@ fn touch_table(lua: &Lua, t: &crate::input::Touch, screen_h: f32) -> Result<Tabl
     tt.set("delta", LVec3(Vec3::new(t.delta.x, -t.delta.y, 0.0)))?;
     tt.set("phase", t.phase.name())?;
     tt.set("isInProgress", t.phase.is_down())?;
+    tt.set("tapCount", t.tap_count)?;
     Ok(tt)
 }
 
@@ -1114,12 +1122,14 @@ impl ScriptHost {
                     self.player_note(e, "onDeviceRegained", "OnDeviceRegained")
                 }
                 SystemEvent::RebindComplete { id, path } => {
+                    self.cs_rebind_event(id, Some(path.clone()));
                     if let Err(e) = rebind_done(&self.lua, id, Some(path)) {
                         self.log(super::LogKind::Error, format!("OnComplete: {e}"));
                     }
                     self.flush_spawned();
                 }
                 SystemEvent::RebindCanceled { id } => {
+                    self.cs_rebind_event(id, None);
                     if let Err(e) = rebind_done(&self.lua, id, None) {
                         self.log(super::LogKind::Error, format!("OnCancel: {e}"));
                     }
@@ -1242,3 +1252,7 @@ impl ScriptHost {
 #[cfg(test)]
 #[path = "input_actions_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "input_rebind_tests.rs"]
+mod rebind_tests;

@@ -284,12 +284,16 @@ return Player
 | Actions | `action:ReadValue()` (number or Vector2), `IsPressed()`, `WasPressedThisFrame()`, `WasReleasedThisFrame()`, `WasPerformedThisFrame()`, `IsInProgress()`, `triggered`, `phase` ("Disabled", "Waiting", "Started", "Performed", "Canceled"), `activeControl` (path), `enabled`, `Enable()` / `Disable()`, `name`, `type`, `bindings` (`path`, `effectivePath`, `overridePath`, `groups`, `isComposite`, `isPartOfComposite`), `actionMap` |
 | Callbacks | `action.started` / `performed` / `canceled`: `AddListener(f)`, `RemoveListener(f)`, `RemoveAllListeners()`; `f(ctx)` with `ctx.action`, `ctx.phase`, `ctx.started` / `performed` / `canceled`, `ctx:ReadValue()`, `ctx:ReadValueAsButton()`, `ctx.time`, `ctx.startTime`, `ctx.duration`, `ctx.interaction`, `ctx.control` |
 | Player Input | `GetComponent("PlayerInput")`: `actions`, `currentActionMap` (also settable by name), `SwitchCurrentActionMap(name)`, `currentControlScheme`, `SwitchCurrentControlScheme(name)`, `playerIndex`, `devices`, `inputIsActive`, `ActivateInput()`, `DeactivateInput()`, `GetDevice("Gamepad")`, `notificationBehavior`, events `onActionTriggered`, `onControlsChanged`, `onDeviceLost`, `onDeviceRegained`; `PlayerInput.all`, `PlayerInput.GetPlayerByIndex(i)` |
-| Rebinding | `action:GetBindingDisplayString(index?)` ("W", "W/A/S/D", "Shift+B"), `ApplyBindingOverride(index, path)` / `(path)`, `RemoveBindingOverride(index)`, `RemoveAllBindingOverrides()`; `actions:SaveBindingOverridesAsJson()`, `LoadBindingOverridesFromJson(json)`, `RemoveAllBindingOverrides()`; `action:PerformInteractiveRebinding(index?)` then `:WithControlsExcluding(path)`, `:WithCancelingThrough(path)` (default `<Keyboard>/escape`), `:WithTargetBinding(i)`, `:OnMatchWaitForAnother(s)`, `:OnComplete(f)`, `:OnCancel(f)`, `:Start()`, `:Cancel()`, `:Dispose()`, `op.completed`, `op.canceled`, `op.selectedControl` |
-| Devices | `Gamepad.current` (last used), `Gamepad.all`: `name`, `leftStick`, `rightStick`, `dpad`, `leftTrigger`, `rightTrigger`, `buttonSouth.isPressed` / `wasPressedThisFrame` / `wasReleasedThisFrame` (and the other buttons), `SetMotorSpeeds(low, high)`, `ResetHaptics()`, `PauseHaptics()`; `Keyboard.current.spaceKey.isPressed`, `Mouse.current.delta`, `Mouse.current.leftButton.wasPressedThisFrame`; `Touchscreen.current.primaryTouch`, `.touches`; legacy `Input.touchCount`, `Input.GetTouch(i)` (`fingerId`, `position`, `deltaPosition`, `phase`), `Input.touches`, `Input.touchSupported` |
+| Rebinding | `action:GetBindingDisplayString(index?)` ("W", "W/A/S/D", "Shift+B"), `ApplyBindingOverride(index, path)` / `(path)`, `RemoveBindingOverride(index)`, `RemoveAllBindingOverrides()`; `actions:SaveBindingOverridesAsJson()`, `LoadBindingOverridesFromJson(json)`, `RemoveAllBindingOverrides()`; `action:PerformInteractiveRebinding(index?)` then `:WithControlsExcluding(path)`, `:WithCancelingThrough(path)` (default `<Keyboard>/escape`), `:WithTargetBinding(i)`, `:WithBindingGroup(group)`, `:OnMatchWaitForAnother(s)`, `:OnComplete(f)`, `:OnCancel(f)`, `:Start()`, `:Cancel()`, `:Dispose()`, `op.started`, `op.completed`, `op.canceled`, `op.selectedControl`, `op.bindingIndex` |
+| Devices | `Gamepad.current` (last used), `Gamepad.all`: `name`, `leftStick`, `rightStick`, `dpad`, `leftTrigger`, `rightTrigger`, `buttonSouth.isPressed` / `wasPressedThisFrame` / `wasReleasedThisFrame` (and the other buttons), `SetMotorSpeeds(low, high)`, `ResetHaptics()`, `PauseHaptics()`; `Keyboard.current.spaceKey.isPressed`, `Mouse.current.delta`, `Mouse.current.leftButton.wasPressedThisFrame`; `Touchscreen.current.primaryTouch`, `.touches`; legacy `Input.touchCount`, `Input.GetTouch(i)` (`fingerId`, `position`, `deltaPosition`, `phase`, `tapCount`), `Input.touches`, `Input.touchSupported` |
 
 Rebinding listens for the next key, mouse button, gamepad button, trigger or stick direction (a whole stick for
 Vector 2 bindings), skips `<Mouse>/position` and `<Mouse>/delta`, disables the action meanwhile and turns it back
-on once the chosen control is released. Overrides are kept by binding id; save them with PlayerPrefs:
+on once the chosen control is released. Bindings of a button action never take a stick as a whole and Vector 2
+bindings never take keys or buttons. `WithBindingGroup("Gamepad")` rebinds the action's binding in that control
+scheme group (when the index given isn't in it) and only listens to that scheme's devices; Escape still cancels.
+`WithControlsExcluding` matches parts of paths, so `"Mouse"` skips every mouse control. Overrides are kept by
+binding id; save them with PlayerPrefs:
 
 ```lua
 local saved = PlayerPrefs.GetString("rebinds", "")
@@ -303,6 +307,12 @@ jump:PerformInteractiveRebinding(0)
     end)
     :Start()
 ```
+
+**Taps**: every touch has a `tapCount` (Lua `t.tapCount`, C# `Touch.tapCount` and
+`Touchscreen.current.primaryTouch.tapCount.ReadValue()`). A tap is a touch lifted within 0.5 s of touching down
+that moved at most 25 pixels; a touch that lands within 0.5 s of the last tap and 25 pixels of where it was
+continues the series, so the second tap of a double tap has `tapCount` 2 from the frame it touches down. A
+touch held too long or dragged too far reports `tapCount` 0 on its `Ended` frame and starts a new series.
 
 An action enabled while its button is already held (say the map comes back on with the key still down) doesn't
 count that as a press. Gamepad rumble uses force feedback where the platform has it (Windows and Linux through
@@ -1450,7 +1460,7 @@ IEnumerator Start()
   `Down` / `Up` (the Input Manager's axes and buttons), `mousePosition`, `mouseScrollDelta`,
   `mouseDelta`, `anyKey`, `anyKeyDown`, and touches: `touchCount`, `GetTouch(i)`, `touches`,
   `touchSupported`; a `Touch` has `fingerId`, `position` / `rawPosition` (pixels from the
-  bottom-left, like `mousePosition`), `deltaPosition` (y up) and `phase` (`TouchPhase.Began`,
+  bottom-left, like `mousePosition`), `deltaPosition` (y up), `tapCount` and `phase` (`TouchPhase.Began`,
   `Moved`, `Stationary`, `Ended`, `Canceled`; a lifted finger is reported for one frame).
 - **Input System devices**: `Keyboard.current` (`spaceKey`, `wKey`, `leftShiftKey`, `digit1Key`,
   `f1Key`, `anyKey`, `[Key.W]`, …), `Mouse.current` (`position`, `delta`, `scroll`,
@@ -1459,7 +1469,7 @@ IEnumerator Start()
   their `aButton` / `crossButton` names, shoulders, `startButton`, `selectButton`, stick presses,
   `[GamepadButton.DpadUp]`, `SetMotorSpeeds`, `ResetHaptics`) and `Touchscreen.current` (null
   until the screen is touched; `primaryTouch`, `touches`: `position`, `delta`, `press`, `phase`,
-  `touchId`, `isInProgress`). Buttons have `isPressed`, `wasPressedThisFrame`,
+  `touchId`, `tapCount`, `isInProgress`). Buttons have `isPressed`, `wasPressedThisFrame`,
   `wasReleasedThisFrame` and `ReadValue()`; sticks and positions `ReadValue()` (a `Vector2`, y
   up), `x`, `y`. Triggers and stick directions report `isPressed` past half way but no
   this-frame edges.
@@ -1472,7 +1482,16 @@ IEnumerator Start()
   `Vector3`), `IsPressed`, `WasPressedThisFrame`, `WasReleasedThisFrame`,
   `WasPerformedThisFrame`, `IsInProgress`, `triggered`, `phase` (`InputActionPhase`), `type`,
   `enabled`, `Enable` / `Disable`, `GetBindingDisplayString`, `ApplyBindingOverride` /
-  `RemoveBindingOverride`, and the `started` / `performed` / `canceled` events
+  `RemoveBindingOverride`, `RemoveAllBindingOverrides`, `bindings` (`InputBinding`: `name`, `path`,
+  `overridePath` (null without one), `effectivePath`, `groups`, `id`, `isComposite`,
+  `isPartOfComposite`, `hasOverrides`), `GetBindingIndex(group, path)`, interactive rebinding
+  (`var op = jump.PerformInteractiveRebinding(0).WithControlsExcluding("Mouse")
+  .WithCancelingThrough("<Keyboard>/escape").OnComplete(o => { PlayerPrefs.SetString("rebinds",
+  actions.SaveBindingOverridesAsJson()); o.Dispose(); }).Start();` returns an
+  `InputActionRebindingExtensions.RebindingOperation` with `WithTargetBinding`, `WithBindingGroup`,
+  `OnMatchWaitForAnother`, `OnCancel`, `Cancel`, `Dispose`, `started`, `completed`, `canceled`,
+  `selectedControl`, `bindingIndex`, `action`; it works like Lua's, see Rebinding above), and the
+  `started` / `performed` / `canceled` events
   (`jump.performed += ctx => …`) with an `InputAction.CallbackContext` (`action`, `phase`,
   `started` / `performed` / `canceled`, `ReadValue<T>()`, `ReadValueAsButton()`, `time`,
   `startTime`, `duration`, `control.path`, `interactionName`).
