@@ -6667,6 +6667,11 @@ on an RTX 4060 (Vulkan), headless and in the real player.
   `JoinPlayer()` calls in `Start`, or two pads at once), so a lobby placing players by count put
   both in the same spot. The count now goes 1, 2, … during the messages.
 - Tests: the two GPU tests, a Lua camera with a right-half rect, two players joining in one frame.
+- **Per-player HUD**: a Screen Space - Camera canvas whose Render Camera has a partial Viewport
+  Rect was drawn through the highest-Depth camera (often another player's) or not at all. It is
+  now laid out for that camera's part of the image and drawn flat into it (`canvas::split_area`,
+  not depth tested: the target has no depth for that part); clicks map to it too. The test
+  project's player prefab has a HUD; the screenshot shows each half with its own HUD.
 - Not checked: the editor's Game view on the GPU by hand (it uses the same `SplitScreen::render`
-  as the player); Screen Space - Camera canvases tied to a split-screen camera still draw over
-  the whole screen.
+  and UI code as the player). World Space canvases still show only through the highest-Depth
+  camera.

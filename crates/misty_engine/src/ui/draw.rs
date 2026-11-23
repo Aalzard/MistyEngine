@@ -70,6 +70,8 @@ pub struct Space {
     pub screen: Vec2,
     /// Canvas pixels → clip space for world / camera canvases.
     pub to_clip: Option<Mat4>,
+    /// Hidden behind nearer scene depth (see [`super::canvas::CanvasPlacement::depth`]).
+    pub depth: bool,
     /// The object's rotation / scale in canvas pixels.
     pub xf: Affine2,
     pub alpha: f32,
@@ -81,6 +83,7 @@ impl Space {
         Self {
             screen,
             to_clip: None,
+            depth: false,
             xf: Affine2::IDENTITY,
             alpha: 1.0,
         }
@@ -194,7 +197,7 @@ impl UiDrawList {
             v(b, tb, cc[3], bottom),
             v(Vec2::new(a.x, b.y), Vec2::new(ta.x, tb.y), cc[2], bottom),
         ];
-        self.push(&corners, q.texture, space.to_clip.is_some());
+        self.push(&corners, q.texture, space.depth);
     }
 
     /// A convex polygon (canvas pixels with a uv each) as a triangle fan, cut to `clip`.
@@ -224,7 +227,7 @@ impl UiDrawList {
         for i in 1..pts.len() - 1 {
             verts.extend([v(pts[0]), v(pts[i]), v(pts[i + 1])]);
         }
-        self.push(&verts, texture, space.to_clip.is_some());
+        self.push(&verts, texture, space.depth);
     }
 
     /// A textured rectangle (screen pixels, y down) with the texture's full area.
@@ -284,7 +287,8 @@ struct Ctx<'a> {
     /// Text component → (its Input Field, the field's settings), for caret drawing.
     fields: HashMap<Entity, (Entity, UiInputField)>,
     /// Canvas-to-clip matrix of each world / camera canvas.
-    to_clip: HashMap<Entity, Mat4>,
+    /// Each world / camera canvas's clip transform and whether it is depth tested.
+    to_clip: HashMap<Entity, (Mat4, bool)>,
 }
 
 /// One of the glyph atlases ran out of room.
@@ -350,7 +354,7 @@ pub fn build_with(
         to_clip: layout
             .canvases
             .iter()
-            .filter_map(|c| Some((c.canvas, c.to_clip?)))
+            .filter_map(|c| Some((c.canvas, (c.to_clip?, c.depth))))
             .collect(),
     };
     match ctx.try_build(layout, font, atlas, sdf_atlas) {
@@ -380,9 +384,11 @@ impl Ctx<'_> {
             if self.visuals.hidden.contains(&node.entity) || node.alpha <= 0.0 {
                 continue;
             }
+            let clip = self.to_clip.get(&node.canvas).copied();
             let space = Space {
                 screen: self.screen,
-                to_clip: self.to_clip.get(&node.canvas).copied(),
+                to_clip: clip.map(|c| c.0),
+                depth: clip.is_some_and(|c| c.1),
                 xf: node.xf,
                 alpha: node.alpha,
             };

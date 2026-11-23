@@ -9,7 +9,7 @@ use glam::{Affine2, EulerRot, Vec2};
 use hecs::Entity;
 
 use super::auto_layout;
-use super::canvas::{CanvasPlacement, UiView, place, world_canvas_size};
+use super::canvas::{CanvasPlacement, UiView, place, split_area, world_canvas_size};
 use super::driven::driven_anchors;
 use super::layout::{Rect, scale_factor};
 use crate::scene::{
@@ -167,8 +167,10 @@ pub fn layout_view(scene: &Scene, view: &UiView) -> UiLayout {
                 .map_or(1.0, |s| s.dynamic_pixels_per_unit.max(0.01));
             (ppu, Rect::from_size(world_canvas_size(rt.as_ref())))
         } else {
-            let scale = scale_factor(scaler.as_ref(), screen);
-            (scale, Rect::from_size(screen / scale))
+            // A camera canvas of a split-screen camera fills that camera's part only.
+            let area = split_area(scene, view, &c).map_or(screen, |(_, size)| size);
+            let scale = scale_factor(scaler.as_ref(), area);
+            (scale, Rect::from_size(area / scale))
         };
         let size_px = rect.size() * scale;
         let Some(p) = place(scene, view, canvas, &c, size_px, scale) else {

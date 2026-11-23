@@ -361,7 +361,8 @@ return Lobby
 #[ignore = "writes a project for a by-hand player run"]
 fn write_split_screen_project() {
     use crate::input::actions::{InputActionAsset, PlayerInput, PlayerInputManager};
-    use crate::scene::{ScriptRef, Scripts};
+    use crate::scene::{Canvas, CanvasRenderMode, RectTransform, ScriptRef, Scripts, UiImage};
+    use glam::Vec2;
     let root = PathBuf::from(std::env::var("MISTY_SPLIT_PROJECT").expect("MISTY_SPLIT_PROJECT"));
     std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
     std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
@@ -388,6 +389,46 @@ fn write_split_screen_project() {
     t.rotation = Quat::from_euler(EulerRot::YXZ, 0.0, 0.25, 0.0);
     asset.set_transform(cam, t);
     asset.add(cam, Camera::default());
+    // The player's HUD: a Screen Space - Camera canvas on its own camera, with a bar along the
+    // top of its part of the screen and a box in the top-left corner.
+    let hud = asset.spawn("HUD", Some(player));
+    asset.add(hud, RectTransform::stretched());
+    asset.add(
+        hud,
+        Canvas {
+            render_mode: CanvasRenderMode::ScreenSpaceCamera,
+            world_camera: Some(cam),
+            plane_distance: 1.0,
+            ..Default::default()
+        },
+    );
+    let bar = asset.spawn("Bar", Some(hud));
+    let mut rt = RectTransform::stretched();
+    rt.anchor_min = Vec2::new(0.0, 1.0);
+    rt.pivot = Vec2::new(0.5, 1.0);
+    rt.size_delta = Vec2::new(0.0, 40.0);
+    asset.add(bar, rt);
+    asset.add(
+        bar,
+        UiImage {
+            color: [0.1, 0.1, 0.1, 0.8],
+            ..Default::default()
+        },
+    );
+    let corner = asset.spawn("Corner", Some(hud));
+    let mut rt = RectTransform::sized(80.0, 80.0);
+    rt.anchor_min = Vec2::new(0.0, 1.0);
+    rt.anchor_max = Vec2::new(0.0, 1.0);
+    rt.pivot = Vec2::new(0.0, 1.0);
+    rt.anchored_position = Vec2::new(20.0, -60.0);
+    asset.add(corner, rt);
+    asset.add(
+        corner,
+        UiImage {
+            color: [1.0, 0.8, 0.0, 1.0],
+            ..Default::default()
+        },
+    );
     crate::scene::prefab::Prefab::from_scene(&asset, player)
         .save(&root.join("Assets/Prefabs/Player.prefab"))
         .unwrap();
