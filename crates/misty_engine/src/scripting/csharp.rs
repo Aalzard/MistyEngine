@@ -21,8 +21,8 @@
 //! and copies the runtime next to the executable ([`bundle_runtime`]); the player loads both
 //! instead of compiling or looking for an installed .NET.
 //!
-//! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource and
-//! Animator, contact points, hot reload, and unloading old assemblies (each changed build stays
+//! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource,
+//! Animator and CharacterController, contact points, hot reload, and unloading old assemblies (each changed build stays
 //! loaded until the editor exits).
 
 use std::ffi::c_void;
