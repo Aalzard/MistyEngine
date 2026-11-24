@@ -1057,6 +1057,59 @@ namespace Misty
         public float time { get => Get(4); set => Set(4, value); }
     }
 
+    /// <summary>The object's Character Controller: a capsule moved with Move / SimpleMove that
+    /// slides along walls and climbs steps and slopes.</summary>
+    public sealed unsafe class CharacterController : Component
+    {
+        internal readonly ulong id;
+        internal CharacterController(ulong id) { this.id = id; }
+        internal override ulong EntityId => id;
+
+        Vector3 Vec(int op, Vector3 v = default)
+        {
+            if (Internal.Native.api.characterVec(id, op, &v) == 0) throw Internal.Native.Missing("CharacterController");
+            return v;
+        }
+
+        float Get(int which)
+        {
+            float v;
+            if (Internal.Native.api.characterScalar(id, which, 0, 0, &v) == 0) throw Internal.Native.Missing("CharacterController");
+            return v;
+        }
+
+        void Set(int which, float v)
+        {
+            if (Internal.Native.api.characterScalar(id, which, 1, v, null) == 0) throw Internal.Native.Missing("CharacterController");
+        }
+
+        /// <summary>Move by `motion` (world space, no gravity added) with collisions. Returns
+        /// whether the controller is grounded afterwards.</summary>
+        public bool Move(Vector3 motion) => Vec(0, motion).x != 0;
+        /// <summary>Walk at `speed` units per second (Y ignored) with gravity. Returns whether
+        /// the controller is grounded.</summary>
+        public bool SimpleMove(Vector3 speed) => Vec(1, speed).x != 0;
+        /// <summary>Touching the ground after the last move.</summary>
+        public bool isGrounded => Get(0) != 0;
+        /// <summary>The last move's displacement per second.</summary>
+        public Vector3 velocity => Vec(2);
+        /// <summary>Normal of the ground under the controller after the last move (up while
+        /// airborne).</summary>
+        public Vector3 groundNormal => Vec(3);
+        public Vector3 center { get => Vec(4); set => Vec(5, value); }
+        public float height { get => Get(1); set => Set(1, value); }
+        public float radius { get => Get(2); set => Set(2, value); }
+        /// <summary>Steepest slope (degrees) the controller walks up.</summary>
+        public float slopeLimit { get => Get(3); set => Set(3, value); }
+        public float stepOffset { get => Get(4); set => Set(4, value); }
+        public float skinWidth { get => Get(5); set => Set(5, value); }
+        public float minMoveDistance { get => Get(6); set => Set(6, value); }
+        /// <summary>How much walking speed follows the ground's incline (0 = not at all, 1 =
+        /// like people hiking): slower uphill, a little faster down gentle slopes, careful on
+        /// steep descents.</summary>
+        public float slopeSpeed { get => Get(7); set => Set(7, value); }
+    }
+
     /// <summary>The object's Animator: parameters and states of its controller.</summary>
     public sealed unsafe class Animator : Component
     {
@@ -2060,6 +2113,8 @@ namespace Misty.Internal
         public delegate* unmanaged<long, int, int> sceneOp;
         public delegate* unmanaged<ulong, char*, int, int, double, char*, int, int> message;
         public delegate* unmanaged<int, Vector3*, Vector3*, float, uint, HitData*, ulong*, int, int> physics2d;
+        public delegate* unmanaged<ulong, int, Vector3*, int> characterVec;
+        public delegate* unmanaged<ulong, int, int, float, float*, int> characterScalar;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -2959,7 +3014,7 @@ namespace Misty.Internal
                 : t == typeof(NavMeshAgent) ? 22 : t == typeof(ParticleSystem) ? 23
                 : t == typeof(BoxCollider) ? 30 : t == typeof(SphereCollider) ? 31
                 : t == typeof(CapsuleCollider) ? 32 : t == typeof(MeshCollider) ? 33
-                : t == typeof(BoxCollider2D) ? 34 : t == typeof(CircleCollider2D) ? 35 : -1;
+                : t == typeof(BoxCollider2D) ? 34 : t == typeof(CircleCollider2D) ? 35 : t == typeof(CharacterController) ? 7 : -1;
             if (kind < 0 || Native.api.hasComponent(entity, kind) == 0) return null;
             return kind switch
             {
@@ -2985,7 +3040,8 @@ namespace Misty.Internal
                 32 => new CapsuleCollider(entity),
                 33 => new MeshCollider(entity),
                 34 => new BoxCollider2D(entity),
-                _ => new CircleCollider2D(entity),
+                35 => new CircleCollider2D(entity),
+                _ => new CharacterController(entity),
             };
         }
 

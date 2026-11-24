@@ -6644,3 +6644,29 @@ pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 ### Not done
 Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).
+
+## Round 92 — slope-aware walking and C# Character Controller (branch r92-slopes)
+
+From GitHub issue #3 (human-scale locomotion and slope-dependent speed).
+
+- **Slope Speed** on the Character Controller (0–1, off by default; Inspector, Lua and C#
+  `slopeSpeed`): grounded moves scale their horizontal part by Tobler's hiking function
+  (`6·e^(-3.5·|grade + 0.05|)` km/h, normalised to flat ground), blended by the strength. Slower
+  uphill, ~1.19× on a gentle 3° descent, slower again on steep descents. Grade is measured along
+  the walking direction from the ground normal, so walking across a slope keeps flat speed.
+  Gravity, jumps and falls are untouched; existing scripts need no change.
+- **groundNormal** (Lua and C#): after each grounded move a ray from the capsule centre finds the
+  ground under it (up while airborne, or when the hit is a wall).
+- **C# CharacterController**: `GetComponent<CharacterController>()`, object fields of that type,
+  `Move` / `SimpleMove` (return grounded), `isGrounded`, `velocity`, `groundNormal`, `center`,
+  `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `slopeSpeed`
+  (two new native calls, `character_vec` and `character_scalar`). The Code Editor's C#
+  completion picks it up from the API source.
+- Docs: scripting guide (Slope Speed, C# API list, updated "Not yet"), Lua completion entries,
+  regenerated `docs/api`.
+- Tests: Tobler factor shape, direction-aware scaling and blending, a 15° ramp walked up and
+  down with and without Slope Speed (plus the reported normal), and a C# script walking with
+  `SimpleMove` and changing settings.
+- Not done: the sample First Person Player still has Slope Speed off (its scene files are part
+  of the open sample-generator decision); a real-world scale toggle in the Scene window is an
+  idea under discussion; C# `OnControllerColliderHit`.
