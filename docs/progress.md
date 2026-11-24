@@ -6783,3 +6783,20 @@ scene through the runtime and inject keys and a fake gamepad.
 - Not checked here: real rendering of the split screen and the UI, a built player running the
   game (the packaging test for C# passes, and the generator test checks the build packs
   everything the game loads).
+
+## Split screen speed (branch split-perf, on top of split-screen-gpu)
+
+Profiled on the RTX 4060 with a new ignored benchmark (`split_screen_benchmark`: 10,000 cubes,
+shadowed sun, 1920 × 1080, High; `MISTY_SPLIT_PROFILE=1` prints the slowest scopes). Frames are
+CPU-bound and each view repeated the whole scene walk.
+
+- **Players share one draw list**: split-screen cameras with the same Culling Mask and occlusion
+  setting use one `DrawCache`, walked once per frame (`GameView::cached_for_with`). Gather per
+  extra view: 0.87 ms → 0.
+- **Static batching in split views**: their draw lists never merged static objects (only the
+  full-screen camera's did). `SplitScreen::set_static_batching`, on in the player and while
+  playing in the editor.
+- Frame time: 1 player 8.1 ms (same), 2 players 12.0 → 10.7 ms, 4 players 21.7 → 18.3 ms.
+- Still per view (needed for each camera): culling and shadow lists (~2.4 ms), draw prep (~0.9
+  ms) and the renderer's per-draw asset checks (~0.65 ms, `Render.PrepareAssets`), which could be
+  skipped when the same draw list was already prepared this frame.
