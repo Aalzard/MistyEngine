@@ -2428,8 +2428,8 @@ mod scene_async_tests;
 #[cfg(test)]
 mod set_active_tests;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod ships_bench;
+#[cfg(test)]
+mod tests;
 #[cfg(test)]
 mod tilemap_tests;
