@@ -80,6 +80,7 @@ impl Physics2D {
             None => self.world.insert_collider(b.position(world).build(), None),
         };
         self.colliders.insert(h, e);
+        self.colliders_of.entry(e).or_default().push(h);
         self.owners.insert(e);
     }
 

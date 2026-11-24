@@ -1051,9 +1051,9 @@ impl ScriptHost {
     /// warning when none does, like a message nobody needs to receive); C# scripts get
     /// `cs_arg` (an `InputValue`, a `PlayerInput`, a `CallbackContext`).
     fn message(&mut self, target: Entity, method: &str, arg: Option<Value>, cs_arg: &PendingArg) {
-        for i in 0..self.instances.len() {
+        for i in self.instances_of(target) {
             let inst: &Instance = &self.instances[i];
-            if inst.entity != target || !self.runnable(inst) {
+            if !self.runnable(inst) {
                 continue;
             }
             if let Some(cs) = inst.cs {
@@ -1083,14 +1083,7 @@ impl ScriptHost {
         cs_arg: &PendingArg,
     ) {
         let targets: Vec<Entity> = if broadcast {
-            self.with_world(|w| {
-                w.scene
-                    .walk()
-                    .into_iter()
-                    .map(|(e, _)| e)
-                    .filter(|e| w.scene.is_ancestor(root, *e))
-                    .collect()
-            })
+            self.with_world(|w| w.scene.walk_under(Some(root)))
         } else {
             vec![root]
         };

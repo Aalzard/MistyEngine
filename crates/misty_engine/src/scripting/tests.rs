@@ -333,6 +333,83 @@ return Ball
     assert_eq!(scene.world_position(copy), Vec3::new(3.0, 0.0, 0.0));
 }
 
+/// A prefab instantiated by path is read once, and again when its file changes; every copy
+/// is named after the prefab, also next to earlier copies and an object of the same name.
+#[test]
+fn a_prefab_instantiated_by_path_is_read_again_when_its_file_changes() {
+    let spawner = r#"
+local Spawner = {}
+function Spawner:Update() Instantiate("Assets/Prefabs/Shot.prefab") end
+return Spawner
+"#;
+    let root = project(&[("Spawner.lua", spawner)]);
+    let file = root.join("Assets/Prefabs/Shot.prefab");
+    let write = |name: &str, at: std::time::SystemTime| {
+        let mut asset = Scene::new("asset");
+        let shot = asset.spawn(name, None);
+        asset.spawn("Tip", Some(shot));
+        crate::scene::prefab::Prefab::from_scene(&asset, shot)
+            .save(&file)
+            .unwrap();
+        // Its own time: two writes can land within one tick of the file system's clock.
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+    };
+    let t0 = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    write("Shot", t0);
+
+    let mut scene = Scene::new("t");
+    let s = scene.spawn("Spawner", None);
+    attach(&mut scene, s, "Spawner.lua", &[]);
+    scene.spawn("Shot", None);
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    let mut frames = |host: &mut ScriptHost, scene: &mut Scene, n: usize| {
+        for _ in 0..n {
+            time.advance(1.0 / 60.0);
+            host.update(scene, &time, Input::default());
+        }
+    };
+    let named = |scene: &Scene, name: &str| {
+        scene
+            .walk()
+            .into_iter()
+            .filter(|(e, _)| scene.name(*e) == name)
+            .count()
+    };
+    frames(&mut host, &mut scene, 3);
+    assert_eq!(named(&scene, "Shot(Clone)"), 3);
+    assert_eq!(named(&scene, "Tip"), 3, "children come along");
+
+    write("Rocket", t0 + std::time::Duration::from_secs(30));
+    frames(&mut host, &mut scene, 2);
+    assert_eq!(named(&scene, "Shot(Clone)"), 3);
+    assert_eq!(
+        named(&scene, "Rocket(Clone)"),
+        2,
+        "the changed file is read"
+    );
+
+    std::fs::remove_file(&file).unwrap();
+    frames(&mut host, &mut scene, 1);
+    assert_eq!(
+        named(&scene, "Rocket(Clone)"),
+        2,
+        "a deleted prefab is gone"
+    );
+    let logs = host.take_logs();
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("Shot.prefab")),
+        "{logs:?}"
+    );
+}
+
 #[test]
 fn game_scripts_cannot_reach_files_processes_or_bytecode() {
     let probe = r#"
@@ -401,6 +478,109 @@ return L
     );
     // Later frames run normally.
     assert!(logs.iter().any(|(_, t)| t == "frame 4"), "{logs:?}");
+}
+
+/// The loop guard reaches coroutines too (each Lua coroutine has its own hook, and the
+/// watchdog only knows the main thread): made with `wrap`, with `create`, and one made
+/// inside another. All in one frame: after the first is stopped the others get 200 ms each.
+#[test]
+fn an_endless_loop_in_a_coroutine_is_stopped() {
+    let looper = r#"
+local L = { kind = "wrap" }
+local function spin() while true do end end
+function L:Update()
+    if Time.frameCount ~= 2 then return end
+    if self.kind == "wrap" then
+        coroutine.wrap(spin)()
+    elseif self.kind == "create" then
+        local ok, err = coroutine.resume(coroutine.create(spin))
+        Debug.Log("create", ok, err)
+    else
+        local outer = coroutine.create(function()
+            local ok, err = coroutine.resume(coroutine.create(spin))
+            Debug.Log("nested", ok, err)
+        end)
+        coroutine.resume(outer)
+    end
+    Debug.Log("after", self.kind)
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    for kind in ["wrap", "create", "nested"] {
+        let e = scene.spawn(kind, None);
+        attach(
+            &mut scene,
+            e,
+            "Looper.lua",
+            &[("kind", ScriptValue::Text(kind.into()))],
+        );
+    }
+    let start = std::time::Instant::now();
+    let logs = run(&mut scene, root, 3, Input::default());
+    assert!(
+        start.elapsed() < crate::scripting::FRAME_LIMIT * 3,
+        "{:?}",
+        start.elapsed()
+    );
+    // `wrap` raises the error in Update; `resume` hands it to the script.
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
+    for kind in ["create", "nested"] {
+        assert!(
+            logs.iter().any(|(_, t)| t.starts_with(&format!("{kind} false"))
+                && t.contains("endless loop")),
+            "{kind}: {logs:?}"
+        );
+        assert!(
+            logs.iter().any(|(_, t)| *t == format!("after {kind}")),
+            "{kind}: {logs:?}"
+        );
+    }
+}
+
+/// The guard's hook slows every Lua instruction down, so the main thread only has it while a
+/// script is past its time limit: not in a normal frame, not after making coroutines, and
+/// not any more in the frames after a script was stopped.
+#[test]
+fn the_loop_guard_hook_is_only_installed_while_a_script_is_stopped() {
+    let looper = r#"
+local L = {}
+function L:Update()
+    local co = coroutine.wrap(function() coroutine.yield(1) end)
+    co()
+    if Time.frameCount == 2 then while true do end end
+end
+return L
+"#;
+    let root = project(&[("Looper.lua", looper)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Looper", None);
+    attach(&mut scene, e, "Looper.lua", &[]);
+    let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let hooked = |host: &ScriptHost| {
+        // SAFETY: reads the hook mask of the state this is called on, between frames.
+        host.lua
+            .exec_raw_lua(|raw| unsafe { mlua::ffi::lua_gethookmask(raw.state()) != 0 })
+    };
+    assert!(!hooked(&host), "no hook before the first frame");
+    let mut time = Time::default();
+    for frame in 1..=3 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        assert!(!hooked(&host), "no hook after frame {frame}");
+    }
+    let logs = host.take_logs();
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("endless loop")),
+        "{logs:?}"
+    );
 }
 
 #[test]
@@ -888,4 +1068,138 @@ fn inspecting_a_script_stops_endless_top_level_loops_and_runaway_memory() {
     assert!(!err.is_empty());
     // Ordinary scripts still inspect.
     assert!(inspect_script("return { speed = 2 }", "Ok.lua").is_ok());
+}
+
+/// A `TransformGroup` reads and writes world positions and rotations of many objects as flat
+/// lists: roots, objects under a parent and objects with a body alike.
+#[test]
+fn a_transform_group_moves_many_objects_at_once() {
+    let mover = r#"
+local M = {}
+function M:Start()
+    self.group = TransformGroup.new({ GameObject.Find("A"), GameObject.Find("Child") })
+    Debug.Log("place", self.group:Add(GameObject.Find("Body").transform), self.group.count, #self.group)
+    local p = self.group:GetPositions()
+    Debug.Log("at", #p, p[1], p[2], p[3], p[4], p[5], p[6])
+    for i = 1, #p, 3 do p[i + 1] = p[i + 1] + 10 end
+    self.group:SetPositions(p)
+    Debug.Log("same list", self.group:GetPositions(p) == p, p[5])
+    self.group:LookAlong({ 1, 0, 0, 0, 0, 0, 0, 0, -1 })
+    local r = self.group:GetRotations()
+    Debug.Log("rotations", #r, string.format("%.3f %.3f", math.abs(r[2]), math.abs(r[4])))
+    r[5], r[6], r[7], r[8] = 0, 2, 0, 0
+    self.group:SetRotations(r)
+    -- Not numbers, not finite, too short: those objects stay.
+    self.group:SetPositions({ 0 / 0, 0, 0, "x", 0, 0 })
+    Debug.Log("get", self.group:Get(1).name, self.group:Get(4), self.group:Get(0))
+end
+return M
+"#;
+    let root = project(&[("M.lua", mover)]);
+    let mut scene = Scene::new("t");
+    let a = scene.spawn("A", None);
+    scene.set_transform(a, Transform::from_position(Vec3::new(1.0, 2.0, 3.0)));
+    let parent = scene.spawn("Parent", None);
+    scene.set_transform(parent, Transform::from_position(Vec3::new(100.0, 0.0, 0.0)));
+    let child = scene.spawn("Child", Some(parent));
+    scene.set_transform(child, Transform::from_position(Vec3::new(5.0, 0.0, 0.0)));
+    let body = scene.spawn("Body", None);
+    scene.add(body, BoxCollider::default());
+    scene.add(
+        body,
+        Rigidbody {
+            use_gravity: false,
+            ..Default::default()
+        },
+    );
+    let m = scene.spawn("M", None);
+    attach(&mut scene, m, "M.lua", &[]);
+    let logs = run(&mut scene, root, 3, Input::default());
+    let has = |t: &str| logs.iter().any(|(_, l)| l == t);
+    assert!(
+        logs.iter().all(|(k, _)| *k != LogKind::Error),
+        "no errors: {logs:?}"
+    );
+    assert!(has("place 3 3 3"), "{logs:?}");
+    assert!(has("at 9 1 2 3 105 0 0"), "{logs:?}");
+    assert!(has("same list true 10"), "{logs:?}");
+    assert!(has("rotations 12 0.707 0.707"), "{logs:?}");
+    assert!(has("get A nil nil"), "{logs:?}");
+
+    assert_eq!(scene.world_position(a), Vec3::new(1.0, 12.0, 3.0));
+    assert_eq!(scene.world_position(child), Vec3::new(105.0, 10.0, 0.0));
+    assert_eq!(scene.transform(child).position, Vec3::new(5.0, 10.0, 0.0));
+    let facing = |e| scene.world_rotation(e) * Vec3::Z;
+    assert!(facing(a).abs_diff_eq(Vec3::X, 1e-5), "{}", facing(a));
+    assert!(
+        facing(child).abs_diff_eq(Vec3::NEG_Z, 1e-5),
+        "set as a quaternion, normalized"
+    );
+    assert!(facing(body).abs_diff_eq(Vec3::NEG_Z, 1e-5));
+    let y = scene.world_position(body).y;
+    assert!(
+        (y - 10.0).abs() < 1e-3,
+        "the body went along and did not snap back (y = {y})"
+    );
+}
+
+/// Destroyed objects keep their place in a group until `Prune`, which says which places the
+/// last objects moved into.
+#[test]
+fn a_transform_group_keeps_places_until_pruned() {
+    let keeper = r#"
+local K = { frame = 0 }
+function K:Start()
+    self.group = TransformGroup.new()
+    for _, n in ipairs({ "A", "B", "C", "D", "E" }) do self.group:Add(GameObject.Find(n)) end
+    self.names = { "A", "B", "C", "D", "E" }
+    Destroy(GameObject.Find("B"))
+    Destroy(GameObject.Find("E"))
+end
+function K:Update()
+    self.frame = self.frame + 1
+    if self.frame ~= 2 then return end
+    local p = self.group:GetPositions({ 7, 7, 7, 7, 7, 7 })
+    Debug.Log("dead left alone", p[4], p[5], p[6], p[7], #p)
+    for i = 1, 15 do p[i] = 50 end
+    self.group:SetPositions(p)
+    Debug.Log("dead is nil", self.group:Get(2))
+    local freed = self.group:Prune()
+    for _, i in ipairs(freed) do
+        self.names[i] = self.names[#self.names]
+        self.names[#self.names] = nil
+    end
+    local now = {}
+    for i = 1, self.group.count do now[i] = self.group:Get(i).name end
+    Debug.Log("freed", table.concat(freed, ","), table.concat(now, ","), table.concat(self.names, ","))
+    self.group:RemoveAt(1)
+    Debug.Log("after RemoveAt", self.group.count, self.group:Get(1).name, pcall(self.group.RemoveAt, self.group, 3))
+    Debug.Log("not an object", pcall(self.group.Add, self.group, 5))
+    self.group:Clear()
+    Debug.Log("cleared", self.group.count, #self.group:GetPositions())
+end
+return K
+"#;
+    let root = project(&[("K.lua", keeper)]);
+    let mut scene = Scene::new("t");
+    for (i, name) in ["A", "B", "C", "D", "E"].into_iter().enumerate() {
+        let e = scene.spawn(name, None);
+        scene.set_transform(e, Transform::from_position(Vec3::splat(i as f32)));
+    }
+    let k = scene.spawn("K", None);
+    attach(&mut scene, k, "K.lua", &[]);
+    let logs = run(&mut scene, root, 4, Input::default());
+    let has = |t: &str| logs.iter().any(|(_, l)| l.starts_with(t));
+    assert!(
+        logs.iter().all(|(k, _)| *k != LogKind::Error),
+        "no errors: {logs:?}"
+    );
+    assert!(has("dead left alone 7 7 7 2 12"), "{logs:?}");
+    assert!(has("dead is nil nil"), "{logs:?}");
+    assert!(has("freed 5,2 A,D,C A,D,C"), "{logs:?}");
+    assert!(has("after RemoveAt 2 C false"), "{logs:?}");
+    assert!(has("not an object false"), "{logs:?}");
+    assert!(has("cleared 0 0"), "{logs:?}");
+    let a = scene.find_by_name("A").unwrap();
+    assert_eq!(scene.world_position(a), Vec3::splat(50.0));
 }

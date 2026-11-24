@@ -22,8 +22,13 @@ use super::api::{LVec3, with_world};
 use super::{LogKind, World};
 use crate::save::{self, CaptureInput};
 
-/// Named registry list of `{ e = entity bits, key = script key, t = instance table }`.
+/// Named registry table `{ [entity bits] = { { key = script key, t = instance table, n = order }, ... } }`
+/// (and the next `n` under "next"). By object, so forgetting a destroyed one is one write: as
+/// one list it was rebuilt, entry by entry, for every destroyed object.
 const INSTANCES: &str = "misty.save.instances";
+
+/// Key of the order counter in [`INSTANCES`].
+const NEXT: &str = "next";
 
 fn instances(lua: &Lua) -> Result<Table> {
     match lua.named_registry_value::<Option<Table>>(INSTANCES)? {
@@ -38,41 +43,54 @@ fn instances(lua: &Lua) -> Result<Table> {
 
 /// Remember a script instance so `Save` can call its `OnSave`.
 pub fn track(lua: &Lua, e: Entity, key: &str, table: &Table) -> Result<()> {
-    let list = instances(lua)?;
+    let all = instances(lua)?;
+    let n: i64 = all.raw_get::<Option<i64>>(NEXT)?.unwrap_or(0);
+    all.raw_set(NEXT, n + 1)?;
+    let bits = e.to_bits().get() as i64;
+    let mine = match all.raw_get::<Option<Table>>(bits)? {
+        Some(t) => t,
+        None => {
+            let t = lua.create_table()?;
+            all.raw_set(bits, &t)?;
+            t
+        }
+    };
     let item = lua.create_table()?;
-    item.set("e", e.to_bits().get() as i64)?;
     item.set("key", key)?;
     item.set("t", table)?;
-    list.push(item)
+    item.set("n", n)?;
+    mine.push(item)
 }
 
 /// Forget the instances of destroyed objects.
 pub fn untrack(lua: &Lua, doomed: &[Entity]) {
-    let Ok(list) = instances(lua) else { return };
-    let bits: Vec<i64> = doomed.iter().map(|e| e.to_bits().get() as i64).collect();
-    let Ok(new) = lua.create_table() else { return };
-    for item in list.sequence_values::<Table>().flatten() {
-        let e: i64 = item.get("e").unwrap_or(0);
-        if !bits.contains(&e) {
-            let _ = new.push(item);
-        }
+    let Ok(all) = instances(lua) else { return };
+    for e in doomed {
+        let _ = all.raw_set(e.to_bits().get() as i64, Value::Nil);
     }
-    let _ = lua.set_named_registry_value(INSTANCES, new);
 }
 
-/// Every tracked instance: object, script key, table.
+/// Every tracked instance in the order they were made: object, script key, table.
 pub fn tracked(lua: &Lua) -> Vec<(Entity, String, Table)> {
-    let Ok(list) = instances(lua) else {
+    let Ok(all) = instances(lua) else {
         return Vec::new();
     };
-    list.sequence_values::<Table>()
-        .flatten()
-        .filter_map(|item| {
-            let bits: i64 = item.get("e").ok()?;
-            let e = Entity::from_bits(bits as u64)?;
-            Some((e, item.get("key").ok()?, item.get("t").ok()?))
-        })
-        .collect()
+    let mut out: Vec<(i64, Entity, String, Table)> = Vec::new();
+    for (bits, mine) in all.pairs::<Value, Value>().flatten() {
+        let (Value::Integer(bits), Value::Table(mine)) = (bits, mine) else {
+            continue;
+        };
+        let Some(e) = Entity::from_bits(bits as u64) else {
+            continue;
+        };
+        for item in mine.sequence_values::<Table>().flatten() {
+            if let (Ok(n), Ok(key), Ok(t)) = (item.get("n"), item.get("key"), item.get("t")) {
+                out.push((n, e, key, t));
+            }
+        }
+    }
+    out.sort_by_key(|(n, ..)| *n);
+    out.into_iter().map(|(_, e, key, t)| (e, key, t)).collect()
 }
 
 fn log(lua: &Lua, kind: LogKind, text: String) {

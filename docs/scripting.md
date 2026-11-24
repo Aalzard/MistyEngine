@@ -397,6 +397,70 @@ return Spawner
 ```
 Create the prefab by dragging an object from the Scene Tree into Asset Files.
 
+### Many objects from one script (`TransformGroup`)
+
+A script on every object is fine for hundreds of objects. For thousands (a swarm, bullets,
+a crowd), let one script move them all: every `transform.position` is a trip into the engine,
+and a group does the whole crowd in two trips per frame. 5,000 objects that move and turn
+take about 1.4 ms per frame this way instead of 13 ms with a Lua script each.
+
+```lua
+local Swarm = { speed = 2 }
+function Swarm:Start()
+    self.group = TransformGroup.new(GameObject.FindGameObjectsWithTag("Bee"))
+end
+function Swarm:Update()
+    local p = self.group:GetPositions(self.p)   -- x1, y1, z1, x2, y2, z2, ...
+    self.p = p                                  -- the same list every frame: no garbage
+    local step = self.speed * Time.deltaTime
+    for i = 1, #p, 3 do p[i] = p[i] + step end
+    self.group:SetPositions(p)
+end
+return Swarm
+```
+
+- Object `i` (from 1) owns numbers `3i-2 .. 3i` of a position or direction list and
+  `4i-3 .. 4i` of a rotation list (a quaternion `x, y, z, w`). Keep your own per-object
+  values (speed, health) in lists with the same order.
+- `GetPositions([list])` / `SetPositions(list)`, `GetRotations([list])` /
+  `SetRotations(list)`, `LookAlong(directions)` (face a direction, like `LookAt`). All in
+  world space; objects with a Rigidbody are moved like `transform.position = …` does.
+- `Add(object)` returns the place, `Get(i)` the GameObject, `count` / `#group` the size.
+- A destroyed object keeps its place: its numbers are left alone and writes to it are
+  skipped. `Prune()` drops them and returns the freed places; each was filled by the object
+  that was last at that moment, so do the same with your lists:
+  `for _, i in ipairs(group:Prune()) do hp[i] = hp[#hp]; hp[#hp] = nil end`.
+  `RemoveAt(i)` removes one place the same way.
+- The objects need no script of their own. Keep callbacks like `OnCollisionEnter` on a small
+  script only where you need them.
+
+C# has the same class, with arrays instead of lists and places counted from 0 (5,000 objects:
+about 0.7 ms per frame instead of 5 ms with a script each):
+
+```csharp
+using Misty;
+public class Swarm : MonoBehaviour
+{
+    public float speed = 2f;
+    TransformGroup group;
+    Vector3[] p;
+    void Start()
+    {
+        group = new TransformGroup(GameObject.FindGameObjectsWithTag("Bee"));
+        p = new Vector3[group.count];
+    }
+    void Update()
+    {
+        group.GetPositions(p);
+        float step = speed * Time.deltaTime;
+        for (int i = 0; i < p.Length; i++) p[i].x += step;
+        group.SetPositions(p);
+    }
+}
+```
+`GetRotations` / `SetRotations` take a `Quaternion[]`, `LookAlong` a `Vector3[]`; `Add`,
+`Get`, `RemoveAt`, `Prune` (returns `int[]`), `Clear` and `count` work as in Lua.
+
 ### Loading addressable assets
 
 ```lua

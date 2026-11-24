@@ -747,6 +747,18 @@ impl Scene {
         out
     }
 
+    /// `root` and the objects under it in Hierarchy order, or every object (`None`): what
+    /// [`Scene::walk`] lists, without walking the whole scene and asking each object for its
+    /// ancestors (that made everything done per spawned object cost the size of the scene).
+    /// Empty when `root` is gone.
+    pub fn walk_under(&self, root: Option<Entity>) -> Vec<Entity> {
+        match root {
+            Some(r) if self.contains(r) => self.subtree(r),
+            Some(_) => Vec::new(),
+            None => self.walk().into_iter().map(|(e, _)| e).collect(),
+        }
+    }
+
     /// Does any object have component `T`? (A query over that component's archetypes: lets
     /// per-frame lists skip walking the whole Hierarchy when nothing has it.)
     pub fn has_any<T: hecs::Component>(&self) -> bool {
@@ -799,6 +811,13 @@ impl Scene {
 
     /// Place `e` at a world-space position (keeps its local rotation/scale).
     pub fn set_world_position(&mut self, e: Entity, p: Vec3) {
+        // A root's position is its world position: one look at the object.
+        if let Ok((t, node)) = self.world.query_one_mut::<(&mut Transform, &Node)>(e)
+            && node.parent.is_none()
+        {
+            t.position = p;
+            return;
+        }
         let parent_world = self
             .parent(e)
             .map(|p| self.world_matrix(p))
@@ -842,6 +861,12 @@ impl Scene {
 
     /// Set the world-space rotation (keeps position and scale).
     pub fn set_world_rotation(&mut self, e: Entity, q: glam::Quat) {
+        if let Ok((t, node)) = self.world.query_one_mut::<(&mut Transform, &Node)>(e)
+            && node.parent.is_none()
+        {
+            t.set_rotation(q);
+            return;
+        }
         let parent = self
             .parent(e)
             .map(|p| self.world_rotation(p))

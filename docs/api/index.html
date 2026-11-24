@@ -83,6 +83,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#sendmessageoptions">SendMessageOptions</a></li>
 <li><a href="#terrain">Terrain</a></li>
 <li><a href="#time">Time</a></li>
+<li><a href="#transformgroup">TransformGroup</a></li>
 <li><a href="#vector2">Vector2</a></li>
 <li><a href="#vector3">Vector3</a></li>
 <li><a href="#water">Water</a></li>
@@ -152,6 +153,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#type-togglegroup">ToggleGroup (object)</a></li>
 <li><a href="#type-touchscreen">Touchscreen (object)</a></li>
 <li><a href="#type-transform">Transform (object)</a></li>
+<li><a href="#type-transformgroup">TransformGroup (object)</a></li>
 <li><a href="#type-uievent">UiEvent (object)</a></li>
 <li><a href="#type-vector3">Vector3 (object)</a></li>
 <li><a href="#type-videoplayer">VideoPlayer (object)</a></li>
@@ -1610,6 +1612,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Time.unscaledDeltaTime</div>
 <div class="meta">property · source: <code>api.rs</code></div>
 <p>Frame time ignoring timeScale</p>
+</div>
+</section>
+<section id="transformgroup">
+<h2>TransformGroup</h2>
+<p>Move many objects from one script: positions and rotations as flat lists of numbers</p>
+<div class="entry" data-key="transformgroup.new([objects]) a new group, with the gameobjects or transforms of a list already in it">
+<div class="sig">TransformGroup.new([objects])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>A new group, with the GameObjects or Transforms of a list already in it</p>
+<p class="notes"><code>TransformGroup.new([objects])</code>: a group, with the objects of a list already in it.</p>
 </div>
 </section>
 <section id="vector2">
@@ -4512,6 +4524,71 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">transform.up</div>
 <div class="meta">property</div>
 <p>Green axis in world space</p>
+</div>
+</section>
+<section id="type-transformgroup">
+<h2>TransformGroup (object)</h2>
+<div class="entry" data-key="transformgroup:add(object) add a gameobject or transform; returns its place (from 1)">
+<div class="sig">transformGroup:Add(object)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Add a GameObject or Transform; returns its place (from 1)</p>
+<p class="notes"><code>Add(object)</code>: its place in the group (from 1).</p>
+</div>
+<div class="entry" data-key="transformgroup:clear() empty the group">
+<div class="sig">transformGroup:Clear()</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Empty the group</p>
+</div>
+<div class="entry" data-key="transformgroup:get(i) the gameobject at place i (nil when destroyed)">
+<div class="sig">transformGroup:Get(i)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>The GameObject at place i (nil when destroyed)</p>
+<p class="notes"><code>Get(i)</code>: the object at place <code>i</code> (nil outside the group or when destroyed).</p>
+</div>
+<div class="entry" data-key="transformgroup:getpositions([list]) world positions as x, y, z per object, into the list (reuse it every frame)">
+<div class="sig">transformGroup:GetPositions([list])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>World positions as x, y, z per object, into the list (reuse it every frame)</p>
+<p class="notes">World positions as <code>x, y, z</code> per object.</p>
+</div>
+<div class="entry" data-key="transformgroup:getrotations([list]) world rotations as a quaternion x, y, z, w per object">
+<div class="sig">transformGroup:GetRotations([list])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>World rotations as a quaternion x, y, z, w per object</p>
+<p class="notes">World rotations as a quaternion <code>x, y, z, w</code> per object.</p>
+</div>
+<div class="entry" data-key="transformgroup:lookalong(directions) turn every object to face its direction x, y, z (zero: unchanged)">
+<div class="sig">transformGroup:LookAlong(directions)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Turn every object to face its direction x, y, z (zero: unchanged)</p>
+<p class="notes"><code>LookAlong(directions)</code>: turn every object to face its direction <code>x, y, z</code> (like <code>transform:LookAt(position + direction)</code>); a zero direction leaves it as it is.</p>
+</div>
+<div class="entry" data-key="transformgroup:prune() drop destroyed objects; returns the freed places, each filled by the then-last object">
+<div class="sig">transformGroup:Prune()</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Drop destroyed objects; returns the freed places, each filled by the then-last object</p>
+<p class="notes"><code>Prune()</code>: drop destroyed objects. Returns the freed places in the order they were filled, each by the object that was last at that moment: <code>for _, i in ipairs(group:Prune()) do mine[i] = mine[#mine]; mine[#mine] = nil end</code>.</p>
+</div>
+<div class="entry" data-key="transformgroup:removeat(i) remove place i; the last object moves into it">
+<div class="sig">transformGroup:RemoveAt(i)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Remove place i; the last object moves into it</p>
+<p class="notes"><code>RemoveAt(i)</code>: the last object takes place <code>i</code> (do the same with your own lists).</p>
+</div>
+<div class="entry" data-key="transformgroup:setpositions(list) set world positions from x, y, z per object">
+<div class="sig">transformGroup:SetPositions(list)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Set world positions from x, y, z per object</p>
+</div>
+<div class="entry" data-key="transformgroup:setrotations(list) set world rotations from a quaternion x, y, z, w per object">
+<div class="sig">transformGroup:SetRotations(list)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Set world rotations from a quaternion x, y, z, w per object</p>
+</div>
+<div class="entry" data-key="transformgroup.count how many objects are in the group (also #group)">
+<div class="sig">transformGroup.count</div>
+<div class="meta">property · source: <code>transform_group_api.rs</code></div>
+<p>How many objects are in the group (also #group)</p>
 </div>
 </section>
 <section id="type-uievent">

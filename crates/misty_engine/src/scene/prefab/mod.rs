@@ -163,6 +163,11 @@ impl Prefab {
         Some(ids::name_of(&self.objects[i]).to_owned())
     }
 
+    /// The root object's name.
+    pub fn name(&self) -> &str {
+        ids::name_of(&self.objects[0])
+    }
+
     /// Objects as (name, depth) in Hierarchy order, for a read-only summary.
     pub fn outline(&self) -> Vec<(String, usize)> {
         let mut depth: Vec<usize> = Vec::with_capacity(self.objects.len());
@@ -308,14 +313,26 @@ impl Scene {
         parent: Option<Entity>,
     ) -> Entity {
         let name = self.unique_name(&prefab.outline()[0].0, parent);
-        let mut report = LoadReport::default();
-        let root = self.spawn_entries(prefab.objects.clone(), parent, &mut report)[0];
-        self.game_object_mut(root).name = name;
-        // Every instance is its own object for save games.
-        crate::save::fresh_ids_in(self, root);
+        let root = self.instantiate_prefab_as(prefab, &name, parent);
         if let Some(path) = asset_path {
             let _ = self.world.insert_one(root, PrefabLink::new(path));
         }
+        root
+    }
+
+    /// An unlinked copy of `prefab` under `parent`, its root named `name` as given (no look
+    /// through the siblings for a free name: what a running game spawns by the hundred).
+    pub fn instantiate_prefab_as(
+        &mut self,
+        prefab: &Prefab,
+        name: &str,
+        parent: Option<Entity>,
+    ) -> Entity {
+        let mut report = LoadReport::default();
+        let root = self.spawn_entries(prefab.objects.clone(), parent, &mut report)[0];
+        self.game_object_mut(root).name = name.to_owned();
+        // Every instance is its own object for save games.
+        crate::save::fresh_ids_in(self, root);
         root
     }
 

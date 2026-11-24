@@ -223,10 +223,8 @@ impl DirectorPlayer {
     /// Start every enabled director with Play On Awake (below `under`, or in the whole scene).
     pub fn play_on_awake(&mut self, scene: &Scene, under: Option<Entity>) {
         let starters: Vec<Entity> = scene
-            .walk()
+            .walk_under(under)
             .into_iter()
-            .map(|(e, _)| e)
-            .filter(|e| under.is_none_or(|r| scene.is_ancestor(r, *e)))
             .filter(|e| {
                 director(scene, *e)
                     .is_some_and(|d| d.enabled && d.play_on_awake && d.playable.is_some())

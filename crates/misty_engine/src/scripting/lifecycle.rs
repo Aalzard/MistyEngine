@@ -20,15 +20,16 @@ use super::{Instance, LogKind, ScriptHost};
 /// Builds the `__index` / `__newindex` pair of a script instance: `enabled` reads and sets the
 /// script component's checkbox (through `Scene::set_script_enabled`, so OnEnable / OnDisable
 /// follow after the callback, like SetActive), anything else reads the class and writes the
-/// instance. Plain Lua functions, so a method lookup costs no call into Rust.
+/// instance. Plain Lua functions, so a method lookup costs no call into Rust (`fields` holds
+/// the `ObjectField(...)` markers: a table lookup, no call at all).
 const INSTANCE_META: &str = r#"
-local get, set, raw = ...
+local get, set, raw, fields = ...
 return function(class, id, slot)
     return function(_, k)
         if k == "enabled" then return get(id, slot) end
         local v = class[k]
         -- An ObjectField(...) declaration not set in Properties is nil.
-        if type(v) == "table" and rawget(v, "__misty_object_field") then return nil end
+        if fields[v] then return nil end
         return v
     end, function(t, k, v)
         if k == "enabled" then set(id, slot, v) else raw(t, k, v) end
@@ -72,7 +73,8 @@ pub(super) fn instance_meta(
                 })?
             })?;
             let raw = lua.create_function(|_, (t, k, v): (Table, Value, Value)| t.raw_set(k, v))?;
-            let make: Function = lua.load(INSTANCE_META).call((get, set, raw))?;
+            let fields = super::api::object_fields(lua)?;
+            let make: Function = lua.load(INSTANCE_META).call((get, set, raw, fields))?;
             lua.set_named_registry_value(INSTANCE_META_KEY, make.clone())?;
             make
         }
@@ -194,6 +196,7 @@ impl ScriptHost {
         }
         // Give up on the rest instead of hanging; later changes are looked at as usual.
         self.seen_activity = self.with_world(|w| w.scene.activity());
+        self.flags_stale = true;
         self.log(
             LogKind::Error,
             "OnEnable / OnDisable kept switching objects on and off; stopped".into(),
@@ -206,10 +209,13 @@ impl ScriptHost {
         if subtree.is_empty() {
             return;
         }
-        let set: std::collections::HashSet<Entity> = subtree.iter().copied().collect();
-        let mine: Vec<usize> = (0..self.instances.len())
-            .filter(|i| set.contains(&self.instances[*i].entity))
-            .collect();
+        // In instance order, as when every script was asked whether it is one of them.
+        let mut mine: Vec<usize> = Vec::new();
+        for e in subtree {
+            mine.extend(self.instances_of(*e));
+        }
+        mine.sort_unstable();
+        mine.dedup();
         self.goodbye(&mine);
     }
 
@@ -279,8 +285,8 @@ impl ScriptHost {
                 StopAction::Disable => self.with_world(|w| w.scene.set_active(e, false)),
                 StopAction::Destroy => self.with_world(|w| w.destroy.push(e)),
                 StopAction::Callback => {
-                    for i in 0..self.instances.len() {
-                        if self.instances[i].entity == e && self.runnable(&self.instances[i]) {
+                    for i in self.instances_of(e) {
+                        if self.runnable(&self.instances[i]) {
                             self.call(i, "OnParticleSystemStopped", None);
                             self.flush_spawned();
                         }
