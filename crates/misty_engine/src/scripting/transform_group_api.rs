@@ -153,11 +153,8 @@ impl LTransformGroup {
         with_world(lua, |w| {
             // Bodies follow the objects a script moves; no world has any: nothing to ask.
             let bodies = any_bodies(w);
-            for (&e, v) in self.0.iter().zip(values.chunks_exact(N)) {
-                if v.iter().all(|x| x.is_finite())
-                    && set(w, e, std::array::from_fn(|i| v[i]))
-                    && bodies
-                {
+            for (&e, v) in self.0.iter().zip(values.as_chunks::<N>().0) {
+                if v.iter().all(|x| x.is_finite()) && set(w, e, *v) && bodies {
                     sync_body(w, e);
                 }
             }
