@@ -121,7 +121,7 @@ fn knee(length: f32, at: f32, bend: f32, rest: f32) -> Vec<(f32, f32)> {
     k
 }
 
-fn idle() -> AnimationClip {
+pub(crate) fn idle() -> AnimationClip {
     clip(
         2.0,
         true,
@@ -137,7 +137,7 @@ fn idle() -> AnimationClip {
 /// A stepping cycle: thighs swing ±`swing`, knees bend, arms swing ±`arms`, root travels `dx`,
 /// `dz` over the clip. `back` steps backwards (thigh phases swapped).
 #[allow(clippy::too_many_arguments)]
-fn stride(
+pub(crate) fn stride(
     length: f32,
     swing: f32,
     bend: f32,
@@ -484,6 +484,7 @@ fn controller() -> AnimatorController {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     }
 }
 
@@ -576,7 +577,7 @@ fn text(s: &mut EditorState, name: &str, y: f32, size: f32, body: &str) {
 }
 
 /// A bone (empty object) at `pos` under `parent`.
-fn bone(
+pub(crate) fn bone(
     scene: &mut Scene,
     name: &str,
     parent: misty_engine::hecs::Entity,
@@ -588,7 +589,7 @@ fn bone(
 }
 
 /// A visible box for a bone: a child "<bone> Mesh" at `offset` with `size`.
-fn limb(
+pub(crate) fn limb(
     scene: &mut Scene,
     parent: misty_engine::hecs::Entity,
     offset: Vec3,

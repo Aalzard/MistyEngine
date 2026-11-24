@@ -10,8 +10,8 @@
 use glam::Vec3;
 use hecs::Entity;
 use mlua::{
-    FromLua, Lua, MetaMethod, Result, Table, UserData, UserDataFields, UserDataMethods, Value,
-    Variadic,
+    FromLua, IntoLua, Lua, MetaMethod, Result, Table, UserData, UserDataFields, UserDataMethods,
+    Value, Variadic, ffi,
 };
 
 use super::particles_api::LParticleSystem;
@@ -80,8 +80,55 @@ local function make(x, y, z) return new((x or 0) + 0.0, (y or 0) + 0.0, (z or 0)
 return V, make
 "#;
 
-/// The Vector3 metatable of a Lua state (set by [`register`]).
-struct Vec3Meta(Table);
+/// The Vector3 metatable of a Lua state (set by [`register`]), and whether Rust makes its
+/// vectors with direct stack calls ([`raw_vec3`]).
+struct Vec3Meta(Table, std::cell::Cell<bool>);
+
+/// Let Rust make this state's Vector3 values with direct Lua stack calls: every vector the
+/// API returns (`transform.position`, `rigidbody.velocity`, ...) is a new table, and through
+/// the safe table calls making one cost about as much again as the table itself. Only for
+/// states without a memory limit (the game's): the direct calls are not protected against
+/// Lua's out-of-memory error.
+pub(super) fn make_vectors_raw(lua: &Lua) {
+    if let Some(m) = lua.app_data_ref::<Vec3Meta>() {
+        m.1.set(true);
+    }
+}
+
+/// Whether direct Lua stack calls that can allocate are fine on this state (the game's: no
+/// memory limit, see [`make_vectors_raw`]).
+pub(super) fn raw_stack_ok(lua: &Lua) -> bool {
+    lua.app_data_ref::<Vec3Meta>().is_some_and(|m| m.1.get())
+}
+
+/// A Vector3 table `{ x, y, z }` with metatable `meta`, built on the Lua stack.
+fn raw_vec3(lua: &Lua, meta: &Table, v: Vec3) -> Result<Value> {
+    lua.exec_raw_lua(|raw| {
+        let s = raw.state();
+        // SAFETY: four free stack slots are asked for and at most three are used; the stack
+        // is left as it was found. `lua_setfield` on a new table without a metatable runs no
+        // Lua code. Only an allocation failure can raise an error here, and the states this
+        // runs on have no memory limit (see `make_vectors_raw`).
+        unsafe {
+            if ffi::lua_checkstack(s, 4) == 0 {
+                return Err(mlua::Error::runtime("stack overflow"));
+            }
+            ffi::lua_createtable(s, 0, 3);
+            for (key, n) in [(c"x", v.x), (c"y", v.y), (c"z", v.z)] {
+                ffi::lua_pushnumber(s, f64::from(n));
+                ffi::lua_setfield(s, -2, key.as_ptr());
+            }
+            if let Err(e) = meta.push_into_stack(raw) {
+                ffi::lua_pop(s, 1);
+                return Err(e);
+            }
+            ffi::lua_setmetatable(s, -2);
+            let t = Table::from_stack(-1, raw);
+            ffi::lua_pop(s, 1);
+            t.map(Value::Table)
+        }
+    })
+}
 
 /// `t` is a Vector3 (has the Vector3 metatable).
 fn is_vec3_table(lua: &Lua, t: &Table) -> bool {
@@ -113,11 +160,17 @@ pub fn vec3_in(v: &Value) -> Option<Vec3> {
 
 impl mlua::IntoLua for LVec3 {
     fn into_lua(self, lua: &Lua) -> Result<Value> {
+        let meta = lua.app_data_ref::<Vec3Meta>();
+        if let Some(m) = &meta
+            && m.1.get()
+        {
+            return raw_vec3(lua, &m.0, self.0);
+        }
         let t = lua.create_table_with_capacity(0, 3)?;
         t.raw_set("x", self.0.x)?;
         t.raw_set("y", self.0.y)?;
         t.raw_set("z", self.0.z)?;
-        if let Some(m) = lua.app_data_ref::<Vec3Meta>() {
+        if let Some(m) = meta {
             t.set_metatable(Some(m.0.clone()))?;
         }
         Ok(Value::Table(t))
@@ -838,6 +891,22 @@ fn log(lua: &Lua, kind: LogKind, args: Variadic<Value>) -> Result<()> {
 /// Key of the marker table `ObjectField(kind)` makes (its value is the kind).
 pub const OBJECT_FIELD_KEY: &str = "__misty_object_field";
 
+/// The marker tables `ObjectField(...)` made in this state, as the keys of a weak table: a
+/// script instance asks it on every read of a class default (a table lookup; it was a call
+/// of `type` and one of `rawget`).
+pub(super) fn object_fields(lua: &Lua) -> Result<Table> {
+    const KEY: &str = "misty.object_fields";
+    if let Some(t) = lua.named_registry_value::<Option<Table>>(KEY)? {
+        return Ok(t);
+    }
+    let t = lua.create_table()?;
+    let meta = lua.create_table()?;
+    meta.set("__mode", "k")?;
+    t.set_metatable(Some(meta))?;
+    lua.set_named_registry_value(KEY, &t)?;
+    Ok(t)
+}
+
 /// Register the global API tables in `lua`.
 pub fn register(lua: &Lua) -> Result<()> {
     let g = lua.globals();
@@ -853,6 +922,7 @@ pub fn register(lua: &Lua) -> Result<()> {
                 OBJECT_FIELD_KEY,
                 kind.unwrap_or_else(|| "GameObject".into()),
             )?;
+            object_fields(lua)?.raw_set(&t, true)?;
             Ok(t)
         })?,
     )?;
@@ -860,7 +930,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     // Vector3 (tables with a shared metatable, see VECTOR3_LUA)
     let (meta, make): (Table, mlua::Function) =
         lua.load(VECTOR3_LUA).set_name("=Vector3").call(())?;
-    lua.set_app_data(Vec3Meta(meta));
+    lua.set_app_data(Vec3Meta(meta, std::cell::Cell::new(false)));
     let v3 = lua.create_table()?;
     v3.set("new", make)?;
     for (name, v) in [
@@ -906,8 +976,10 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::world_partition_api::register(lua)?;
     super::physics_api::register(lua)?;
     super::physics2d_api::register(lua)?;
+    super::animator_ik_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
+    super::transform_group_api::register(lua)?;
     super::weather_api::register(lua)?;
     super::behaviour_tree_api::register(lua)?;
 
@@ -1122,6 +1194,35 @@ pub(super) fn instantiate_prefab_path(
     instantiate(w, Source::Prefab(path.to_owned()), position)
 }
 
+/// The prefabs a game instantiates by path: each file is read and parsed once, and again when
+/// it changes (a prefab edited while the game plays). A gun that fires a bullet prefab does not
+/// read its file for every shot.
+#[derive(Default)]
+pub struct PrefabCache {
+    loaded: std::collections::HashMap<String, (Option<std::time::SystemTime>, std::rc::Rc<Prefab>)>,
+}
+
+impl PrefabCache {
+    fn get(
+        &mut self,
+        root: &std::path::Path,
+        path: &str,
+    ) -> std::result::Result<std::rc::Rc<Prefab>, String> {
+        if let Some((stamp, prefab)) = self.loaded.get(path) {
+            let file = root.join(path);
+            if crate::vfs::modified(&file) == *stamp {
+                return Ok(prefab.clone());
+            }
+        }
+        let file = crate::vfs::project_file(root, path)?;
+        // The time first: a file written while it is read is read again next time.
+        let stamp = crate::vfs::modified(&file);
+        let prefab = std::rc::Rc::new(Prefab::load(&file)?);
+        self.loaded.insert(path.to_owned(), (stamp, prefab.clone()));
+        Ok(prefab)
+    }
+}
+
 pub(super) enum Source {
     /// Project-relative `.prefab` path.
     Prefab(String),
@@ -1133,10 +1234,12 @@ pub(super) enum Source {
 pub(super) fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
     let e = match source {
         Source::Prefab(path) => {
-            let file = crate::vfs::project_file(&w.root, &path).map_err(mlua::Error::runtime)?;
-            let prefab = Prefab::load(&file).map_err(mlua::Error::runtime)?;
+            let prefab = w
+                .prefabs
+                .get(&w.root, &path)
+                .map_err(mlua::Error::runtime)?;
             // Runtime copies are plain objects, not linked instances.
-            let e = w.scene.instantiate_prefab(&prefab, None, None);
+            let e = w.scene.instantiate_prefab_as(&prefab, prefab.name(), None);
             // Save games recreate it from its prefab.
             w.save.spawned.push((e, path));
             e

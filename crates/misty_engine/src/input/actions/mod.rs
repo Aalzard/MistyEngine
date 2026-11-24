@@ -14,6 +14,7 @@ pub mod path;
 pub mod player_input;
 pub mod player_manager;
 pub mod processors;
+pub mod rebinding;
 pub mod state;
 pub mod system;
 pub mod ui_module;

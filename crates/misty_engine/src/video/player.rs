@@ -94,15 +94,26 @@ impl VideoPlayback {
         audio: &mut Audio,
         root: Option<Entity>,
     ) -> Vec<VideoEvent> {
-        let awake: Vec<Entity> = scene
-            .world
-            .query::<(Entity, &VideoPlayer)>()
-            .iter()
-            .filter(|(e, v)| {
-                v.enabled && v.play_on_awake && root.is_none_or(|r| scene.is_ancestor(r, *e))
-            })
-            .map(|(e, _)| e)
-            .collect();
+        let awake: Vec<Entity> = match root {
+            // Spawned objects: only theirs (not every player in the scene per spawn).
+            Some(_) => scene
+                .walk_under(root)
+                .into_iter()
+                .filter(|e| {
+                    scene
+                        .world
+                        .get::<&VideoPlayer>(*e)
+                        .is_ok_and(|v| v.enabled && v.play_on_awake)
+                })
+                .collect(),
+            None => scene
+                .world
+                .query::<(Entity, &VideoPlayer)>()
+                .iter()
+                .filter(|(_, v)| v.enabled && v.play_on_awake)
+                .map(|(e, _)| e)
+                .collect(),
+        };
         let mut events = Vec::new();
         for e in awake {
             if scene.active_in_hierarchy(e) && !self.players.contains_key(&e) {

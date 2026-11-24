@@ -439,6 +439,18 @@ impl GameView {
         cache: &mut DrawCache,
         camera: Entity,
     ) -> Option<Self> {
+        Self::cached_for_with(scene, materials, cache, camera, None)
+    }
+
+    /// [`GameView::cached_for`] with the draw list `cache` already made this frame (`meshes`,
+    /// for another camera with the same Culling Mask): the scene isn't walked again.
+    pub fn cached_for_with(
+        scene: &Scene,
+        materials: &dyn MaterialSource,
+        cache: &mut DrawCache,
+        camera: Entity,
+        meshes: Option<Arc<Vec<MeshDraw>>>,
+    ) -> Option<Self> {
         crate::profile_scope!("Render.GatherScene", crate::profiler::Category::Rendering);
         let (camera, settings) = camera_of(scene, camera)?;
         let lights = lights(scene);
@@ -448,7 +460,7 @@ impl GameView {
         // Baked occlusion culling: occludees stay out of static batches so each can be hidden.
         let culls = settings.occlusion_culling && scene.render_settings.occlusion.data.is_some();
         cache.set_occlusion_split(culls);
-        let meshes = cache.update(scene, materials, mask, |_| false);
+        let meshes = meshes.unwrap_or_else(|| cache.update(scene, materials, mask, |_| false));
         let occlusion = camera_occlusion(scene, cache, camera.position, culls);
         let mut environment = environment(scene, &lights);
         environment.occlusion = occlusion.as_ref().map(|o| o.mask.clone());

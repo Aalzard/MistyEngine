@@ -142,7 +142,12 @@ impl Gfx {
             ui,
             color_filter: Default::default(),
             target,
-            split: Default::default(),
+            split: {
+                // Like the game's own draw list: static objects in merged batches.
+                let mut s = misty_engine::split_screen::SplitScreen::new();
+                s.set_static_batching(true);
+                s
+            },
             layout,
             sampler,
             group,
@@ -412,6 +417,7 @@ impl Gfx {
                     scene,
                     materials,
                     frame.is_some(),
+                    Some(&mut self.ui),
                 );
             }
             misty_engine::profiler::set_render_stats(self.renderer.stats());

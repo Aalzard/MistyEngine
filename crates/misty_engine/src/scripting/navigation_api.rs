@@ -522,8 +522,8 @@ impl super::ScriptHost {
                 Ok(Value::Table(t))
             })()
             .ok();
-            for i in 0..self.instances.len() {
-                if self.instances[i].entity == ev.entity && self.runnable(&self.instances[i]) {
+            for i in self.instances_of(ev.entity) {
+                if self.runnable(&self.instances[i]) {
                     self.call(i, name, arg.clone());
                 }
             }

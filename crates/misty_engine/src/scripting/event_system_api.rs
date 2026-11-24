@@ -60,7 +60,7 @@ pub fn object_arg(v: &Value) -> Result<Option<Entity>> {
 }
 
 /// The object holding the scene's running Event System (the first enabled, active one).
-fn event_system_object(w: &World) -> Option<Entity> {
+pub(crate) fn event_system_object(w: &World) -> Option<Entity> {
     if !w.scene.has_any::<EventSystem>() {
         return None;
     }
@@ -73,7 +73,10 @@ fn event_system_object(w: &World) -> Option<Entity> {
     })
 }
 
-fn with_event_system<R>(w: &mut World, f: impl FnOnce(&mut EventSystem) -> R) -> Option<R> {
+pub(crate) fn with_event_system<R>(
+    w: &mut World,
+    f: impl FnOnce(&mut EventSystem) -> R,
+) -> Option<R> {
     let e = event_system_object(w)?;
     let mut es = w.scene.world.get::<&mut EventSystem>(e).ok()?;
     Some(f(&mut es))

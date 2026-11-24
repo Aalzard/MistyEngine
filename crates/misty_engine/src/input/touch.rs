@@ -44,6 +44,9 @@ pub struct Touch {
     /// Movement since the previous frame.
     pub delta: Vec2,
     pub phase: TouchPhase,
+    /// Taps in a row at this spot (`tapCount`; see [`super::taps`]): 0 from the window, filled
+    /// in by the scripting world.
+    pub tap_count: u32,
 }
 
 /// What a window reported for one finger.
@@ -89,6 +92,7 @@ impl TouchTracker {
                     position: p,
                     delta: p - last,
                     phase,
+                    tap_count: 0,
                 });
             }
         }
@@ -116,6 +120,7 @@ impl TouchTracker {
                     position: *now,
                     delta,
                     phase,
+                    tap_count: 0,
                 }
             })
             .collect();

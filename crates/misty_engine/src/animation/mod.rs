@@ -50,6 +50,8 @@ mod blend_tests;
 #[cfg(test)]
 mod humanoid_tests;
 #[cfg(test)]
+mod ik_layer_tests;
+#[cfg(test)]
 mod layer_tests;
 #[cfg(test)]
 mod live_edit_tests;

@@ -287,7 +287,7 @@ impl UiRenderer {
         crate::profile_scope!("UI.Render", crate::profiler::Category::Ui);
         let (w, h) = target.output_size();
         let screen = Vec2::new(w as f32, h as f32);
-        if !ui_view.overlay_in_world {
+        if !ui_view.overlay_in_world && !ui_view.world_only {
             // Video Players on camera planes: behind the scene (sky only), then in front of it.
             let far = camera_plane_list(scene, screen, true);
             if !far.vertices.is_empty() {

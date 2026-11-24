@@ -25,6 +25,7 @@ const TABLE: &str = r#"
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
 |Water||Water surface heights (buoyancy, wading)
+|TransformGroup||Move many objects from one script: positions and rotations as flat lists of numbers
 |BehaviourTree||Blackboards and control of Behaviour Tree Agents (the Behaviour Trees package)
 |Weather||Rain, snow, wet surfaces and lightning (events: OnLightning, OnThunder, OnWeatherChanged)
 |Accessibility||UI text scale and colour-blind filter (for options menus)
@@ -195,6 +196,18 @@ AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene
 Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a Vector3), nil when dry
+TransformGroup|new|new([objects])|A new group, with the GameObjects or Transforms of a list already in it
+#TransformGroup|count|count|How many objects are in the group (also #group)
+#TransformGroup|Add|Add(object)|Add a GameObject or Transform; returns its place (from 1)
+#TransformGroup|Get|Get(i)|The GameObject at place i (nil when destroyed)
+#TransformGroup|RemoveAt|RemoveAt(i)|Remove place i; the last object moves into it
+#TransformGroup|Prune|Prune()|Drop destroyed objects; returns the freed places, each filled by the then-last object
+#TransformGroup|Clear|Clear()|Empty the group
+#TransformGroup|GetPositions|GetPositions([list])|World positions as x, y, z per object, into the list (reuse it every frame)
+#TransformGroup|SetPositions|SetPositions(list)|Set world positions from x, y, z per object
+#TransformGroup|GetRotations|GetRotations([list])|World rotations as a quaternion x, y, z, w per object
+#TransformGroup|SetRotations|SetRotations(list)|Set world rotations from a quaternion x, y, z, w per object
+#TransformGroup|LookAlong|LookAlong(directions)|Turn every object to face its direction x, y, z (zero: unchanged)
 Weather|SetState|SetState(name [, seconds])|Blend to a weather state ("Rain", "HeavyRain", "Thunderstorm", "Snow", "Blizzard"…); false for an unknown name
 Weather|ClearState|ClearState([seconds])|Hand the weather back to the Weather volumes and their timelines
 Weather|SetRain|SetRain(intensity [, seconds])|Rain from 0 (none) to 1 (downpour)

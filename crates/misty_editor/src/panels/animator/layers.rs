@@ -1,6 +1,7 @@
 //! The Animator window's Layers list: every layer with its weight and badges (Mask, Additive,
 //! Synced); clicking one shows its state machine. "+" adds a layer; the selected layer shows its
-//! settings (name, blending, Avatar Mask, sync source, delete). In Play mode the weights are the
+//! settings (name, blending, Avatar Mask, sync source, IK Pass, delete; the base layer only has
+//! IK Pass). In Play mode the weights are the
 //! live ones and dragging them changes the running Animator.
 
 use egui::{Color32, RichText, Ui};
@@ -75,6 +76,10 @@ fn row(
                     s.animator.show_layer(i);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if c.ik_pass(i) {
+                        ui.label(RichText::new("IK").color(theme::text_dim()))
+                            .on_hover_text("IK Pass: scripts get OnAnimatorIK");
+                    }
                     if let Some(l) = c.layer(i) {
                         if l.sync_source.is_some() {
                             ui.label(RichText::new("S").color(theme::text_dim()))
@@ -105,8 +110,28 @@ fn row(
             if selected && i > 0 {
                 ui.separator();
                 settings(ui, s, path, c, i, busy);
+            } else if selected {
+                ui.separator();
+                let mut on = c.base_ik_pass;
+                if ik_pass_checkbox(ui, &mut on) {
+                    anim_controllers::edit(s, path, "Layer Settings", false, |c| {
+                        c.base_ik_pass = on;
+                    });
+                }
             }
         });
+}
+
+/// Label of the IK Pass checkbox (tests click it).
+pub const IK_PASS_LABEL: &str = "IK Pass";
+
+fn ik_pass_checkbox(ui: &mut Ui, on: &mut bool) -> bool {
+    ui.checkbox(on, IK_PASS_LABEL)
+        .on_hover_text(
+            "Call OnAnimatorIK(layerIndex) on the Animator's scripts for this layer, where they \
+             set hand / foot goals (SetIKPosition…) and the look-at point",
+        )
+        .changed()
 }
 
 fn set_weight(s: &mut EditorState, path: &str, i: usize, w: f32, live: bool, busy: bool) {
@@ -189,6 +214,9 @@ fn settings(
                             .changed();
                     }
                 });
+            ui.end_row();
+            ui.label("");
+            changed |= ik_pass_checkbox(ui, &mut l.ik_pass);
             ui.end_row();
         });
     if changed {
