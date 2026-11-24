@@ -1,7 +1,9 @@
 <p>
   <img src="crates/misty_editor/assets/branding/logo_small.png" width="48" height="48" alt="Misty Engine logo">
   &nbsp;
-  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/Support-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Support Misty Engine on PayPal" height="28"></a>
+  <a href="https://github.com/sponsors/Aalzard"><img src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?logo=githubsponsors&amp;logoColor=white" alt="Sponsor Misty Engine on GitHub" height="28"></a>
+  &nbsp;
+  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Donate to Misty Engine with PayPal" height="20"></a>
 </p>
 
 # Misty Engine
@@ -163,6 +165,32 @@ For developers: `cargo test --workspace` and `cargo clippy --workspace --all-tar
 `MISTY_SCREENSHOT=out.png` makes the editor (or `misty_player`) save a picture of its window and
 exit. How a release is made: [docs/release.md](docs/release.md). Notes:
 [progress](docs/progress.md) · [decisions](docs/decisions.md).
+
+## Support Misty Engine
+
+Misty Engine is free and made in spare time. Sponsors help keep it going and pay for more time on it.
+
+<p>
+  <a href="https://github.com/sponsors/Aalzard"><img src="https://img.shields.io/badge/Sponsor_on_GitHub-EA4AAA?style=for-the-badge&amp;logo=githubsponsors&amp;logoColor=white" alt="Sponsor on GitHub"></a>
+</p>
+
+| Tier | Monthly | What you get |
+| --- | --- | --- |
+| **Supporter** | $5 | Your name in the supporters list and our thanks. |
+| **Backer** | $25 | Your name higher in the list, and a vote on what gets built next. |
+| **Studio Sponsor** | $100+ | Your logo and link in the sponsor section below. |
+
+**No GitHub account?** You can also give a one-time gift with
+[PayPal](https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8).
+
+### Studio sponsors
+
+*Your logo here.* [Become a Studio Sponsor](https://github.com/sponsors/Aalzard) to show it to every
+visitor of this page.
+
+<!-- Add Studio Sponsor logos here, for example:
+<a href="https://example.com"><img src="docs/sponsors/example.png" height="60" alt="Example Studio"></a>
+-->
 
 ## License
 

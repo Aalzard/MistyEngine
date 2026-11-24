@@ -1,0 +1,4 @@
+# Shows the "Sponsor" button at the top of the GitHub repo page.
+# GitHub Sponsors is the main option. PayPal stays for people without a GitHub account.
+github: Aalzard
+custom: ["https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"]
