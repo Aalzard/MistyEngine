@@ -1935,6 +1935,8 @@ fn csharp_time_scale_set_by_a_script_pauses_the_game() {
     assert_eq!(heights[2], heights[1], "paused: {heights:?}");
     assert_eq!(heights[3], heights[1], "paused: {heights:?}");
     assert!(heights[4] < heights[3], "falls again: {heights:?}");
+}
+
 /// `TransformGroup` from C#: positions and rotations of many objects as arrays, destroyed
 /// objects keeping their place until `Prune`.
 #[test]
