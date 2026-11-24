@@ -127,6 +127,7 @@ fn to_lua(lua: &Lua, arg: &CsArg) -> mlua::Result<Value> {
         CsArg::Number(n) => Value::Number(*n),
         CsArg::Int(i) => Value::Integer(*i),
         CsArg::Text(t) => Value::String(lua.create_string(t)?),
+        CsArg::Engine => Value::Nil,
     })
 }
 

@@ -902,6 +902,9 @@ pub struct Layer {
     /// Synced layers: clip each source state plays on this layer (missing = nothing).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub sync_motions: BTreeMap<String, String>,
+    /// IK Pass: the Animator's scripts get `OnAnimatorIK(layer)` for this layer.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub ik_pass: bool,
     #[serde(flatten)]
     pub machine: StateMachine,
 }
@@ -915,6 +918,7 @@ impl Default for Layer {
             mask: None,
             sync_source: None,
             sync_motions: BTreeMap::new(),
+            ik_pass: false,
             machine: StateMachine::default(),
         }
     }
@@ -930,6 +934,9 @@ pub struct AnimatorController {
     /// Layers 1, 2, … in evaluation order (later layers win).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+    /// IK Pass of the base layer (the other layers have their own, [`Layer::ik_pass`]).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub base_ik_pass: bool,
 }
 
 impl AnimatorController {
@@ -989,6 +996,25 @@ impl AnimatorController {
 
     pub fn layer_index(&self, name: &str) -> Option<usize> {
         (0..self.layer_count()).find(|&i| self.layer_name(i) == name)
+    }
+
+    /// Whether layer `layer` has IK Pass on (`OnAnimatorIK`).
+    pub fn ik_pass(&self, layer: usize) -> bool {
+        match layer {
+            0 => self.base_ik_pass,
+            i => self.layer(i).is_some_and(|l| l.ik_pass),
+        }
+    }
+
+    pub fn set_ik_pass(&mut self, layer: usize, on: bool) {
+        match layer {
+            0 => self.base_ik_pass = on,
+            i => {
+                if let Some(l) = self.layer_mut(i) {
+                    l.ik_pass = on;
+                }
+            }
+        }
     }
 
     /// Settings of layer `i` ≥ 1.

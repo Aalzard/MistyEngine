@@ -88,26 +88,31 @@ describe("First Person Player", function()
         waitUntil(function() return math.abs(player.transform.position.y - ground) < 0.05 end, 3)
     end)
 
+    -- Walks forward until it is higher than `height` (or `seconds` pass) and returns the
+    -- highest point it reached; stops before it can walk off the top.
+    local function climb(height, seconds)
+        Input.simulateKeyDown("w")
+        local top = player.transform.position.y
+        for _ = 1, math.floor(seconds * 60) do
+            yieldFrames(1)
+            top = math.max(top, player.transform.position.y)
+            if top > height then break end
+        end
+        Input.simulateKeyUp("w")
+        return top
+    end
+
     it("climbs the 15 degree ramp and the stairs", function()
         teleport(-8, 0.1, 0)
-        Input.simulateKeyDown("w")
-        yield(4)
-        Input.simulateKeyUp("w")
-        expect(player.transform.position.y):toBeGreaterThan(1.8)
+        expect(climb(1.8, 4)):toBeGreaterThan(1.8)
 
         teleport(8, 0.1, 1)
-        Input.simulateKeyDown("w")
-        yield(3)
-        Input.simulateKeyUp("w")
-        expect(player.transform.position.y):toBeGreaterThan(1.5)
+        expect(climb(1.5, 3)):toBeGreaterThan(1.5)
     end)
 
     it("climbs the 30 degree ramp", function()
         teleport(-13, 0.1, 0)
-        Input.simulateKeyDown("w")
-        yield(4)
-        Input.simulateKeyUp("w")
-        expect(player.transform.position.y):toBeGreaterThan(2.5)
+        expect(climb(2.5, 4)):toBeGreaterThan(2.5)
     end)
 
     it("jumps from the first platform to the second", function()

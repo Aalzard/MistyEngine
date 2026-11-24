@@ -5,7 +5,8 @@
 //! `Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnDisable`, `OnDestroy`
 //! (see `lifecycle`), `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
 //! `OnJointBreak(breakForce)` (then the joint component is removed),
-//! and the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
+//! the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`,
+//! and `OnAnimatorIK(layerIndex)` on Animators with IK Pass layers (`animator_ik_host`).
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
 //! `SceneManager.LoadScene(name or index)` and `Application.Quit()` are handled after the frame
@@ -21,6 +22,8 @@
 
 pub mod accessibility_api;
 pub mod animator_api;
+pub mod animator_ik_api;
+mod animator_ik_host;
 pub mod api;
 pub mod app_api;
 pub mod assets_api;
@@ -314,6 +317,59 @@ pub struct World {
     pub on_screen: crate::input::OnScreenControls,
     /// Players the Player Input Manager has reported (joined / left).
     pub player_manager: player_manager_api::PlayerManagerState,
+    /// Counts taps in a row for `Touch.tapCount` (`input/taps.rs`).
+    pub taps: crate::input::TapCounter,
+    /// `Time.timeScale` as scripts set it, and the game clock it drives.
+    pub clock: ScaledClock,
+}
+
+/// `Time.timeScale` set by a script (`Time.timeScale = 0` pauses the game): from then on the
+/// frame's delta and game time follow it instead of the scale the caller's clock was made with.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScaledClock {
+    /// The scale scripts set last (`None` until one does).
+    pub scale: Option<f32>,
+    /// The frame the game time was last advanced on, and that time.
+    frame: u64,
+    time: f64,
+    /// `Time.timeScale` as last written into Lua's `Time` table: a Lua script that set it
+    /// shows as a difference.
+    lua: Option<f32>,
+}
+
+impl World {
+    /// `Time.timeScale = scale` from a script: `Time.timeScale` reads it at once; deltaTime
+    /// and game time follow it from the next frame on, as in the familiar engine.
+    pub fn set_time_scale(&mut self, scale: f32) {
+        if !scale.is_finite() {
+            return;
+        }
+        let scale = scale.clamp(0.0, 100.0);
+        if self.clock.scale.is_none() {
+            self.clock.frame = self.time.frame;
+            self.clock.time = self.time.time;
+        }
+        self.clock.scale = Some(scale);
+        self.time.time_scale = scale;
+    }
+
+    /// `t` with the scale a script set: delta and game time follow it (the caller's clock
+    /// only gives the real time that passed).
+    pub fn scaled_time(&mut self, t: &Time) -> Time {
+        let Some(scale) = self.clock.scale else {
+            return *t;
+        };
+        if t.frame != self.clock.frame {
+            self.clock.frame = t.frame;
+            self.clock.time += f64::from(t.unscaled_delta * scale);
+        }
+        Time {
+            delta: t.unscaled_delta * scale,
+            time: self.clock.time,
+            time_scale: scale,
+            ..*t
+        }
+    }
 }
 
 impl World {
@@ -388,6 +444,8 @@ impl World {
             ui_select_request: None,
             on_screen: Default::default(),
             player_manager: Default::default(),
+            taps: Default::default(),
+            clock: Default::default(),
         }
     }
 }
@@ -1162,6 +1220,8 @@ impl ScriptHost {
             }
             self.flush_spawned();
         }
+        // OnAnimatorIK and the IK goals, on the pose just written.
+        self.animator_ik_pass();
         // Timelines run last: like the reference engine, they override other animation.
         let unscaled = self.with_world(|w| w.time.unscaled_delta);
         let events = self.with_world(|w| {
@@ -1416,6 +1476,8 @@ impl ScriptHost {
                     v3(c.relative_velocity * sign),
                 ];
                 self.graphs.contact_with(&self.lua, me, &kind, &args);
+                // C#'s `Collision2D` reads its contact points from here (csharp_parity.rs).
+                let _contact = (!c.trigger).then(|| csharp_native::Contact2DScope::new(me, c));
                 for i in 0..self.instances.len() {
                     // Disabled scripts too, like 3D contacts.
                     if self.instances[i].entity != me || !self.hears_contacts(&self.instances[i]) {
@@ -1445,7 +1507,31 @@ impl ScriptHost {
         arm_deadline(&self.lua, false);
     }
 
+    /// This frame's clock as scripts see it: the caller's, or one following the
+    /// `Time.timeScale` a script set (C# sets it at once; a Lua script's change of
+    /// `Time.timeScale` is picked up here). The runtime asks before anything uses the delta.
+    pub fn frame_time(&self, time: &Time) -> Time {
+        let lua_scale = self
+            .lua
+            .globals()
+            .get::<Table>("Time")
+            .and_then(|t| t.get::<f32>("timeScale"))
+            .ok();
+        let Some(mut w) = self.lua.app_data_mut::<World>() else {
+            return *time;
+        };
+        if let (Some(v), Some(shown)) = (lua_scale, w.clock.lua)
+            && v != shown
+        {
+            w.set_time_scale(v);
+            w.clock.lua = Some(v);
+        }
+        w.scaled_time(time)
+    }
+
     fn update_frame(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        let scaled = self.frame_time(time);
+        let time = &scaled;
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
@@ -1466,6 +1552,7 @@ impl ScriptHost {
             }
             // Axis smoothing runs on real time, so it works while the game is paused.
             w.axes.update(&input, time.unscaled_delta);
+            w.taps.apply(&mut input.touches, time.unscaled_delta);
             w.input = input;
         });
         // Scene operations carried out between frames finish (their `completed` callbacks).
@@ -1478,11 +1565,14 @@ impl ScriptHost {
             profile_scope!("PlayerInputManager", Category::Scripts);
             self.player_manager_frame();
         }
-        if let Some(w) = self.lua.app_data_ref::<World>()
-            && let Err(e) = api::refresh_time(&self.lua, &w)
-        {
-            drop(w);
-            self.log(LogKind::Error, format!("Time: {e}"));
+        if let Some(mut w) = self.lua.app_data_mut::<World>() {
+            match api::refresh_time(&self.lua, &w) {
+                Ok(()) => w.clock.lua = Some(w.time.time_scale),
+                Err(e) => {
+                    drop(w);
+                    self.log(LogKind::Error, format!("Time: {e}"));
+                }
+            }
         }
         {
             let mut w = self
@@ -2423,6 +2513,8 @@ mod input_tests;
 mod material_tests;
 #[cfg(test)]
 mod network_tests;
+#[cfg(test)]
+mod parity_tests;
 #[cfg(test)]
 mod scene_async_tests;
 #[cfg(test)]

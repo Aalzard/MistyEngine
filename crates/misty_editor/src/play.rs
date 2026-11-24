@@ -189,6 +189,7 @@ pub fn stop(s: &mut EditorState) {
 /// follows an edit at once.
 pub fn sync_controllers(s: &mut EditorState) {
     sync_masks(s);
+    sync_overrides(s);
     sync_clips(s);
     let generation = s.anim_clips.controllers.generation();
     let Some(session) = s.play_session.as_mut() else {
@@ -224,6 +225,27 @@ fn sync_clips(s: &mut EditorState) {
     if let Some(runtime) = s.runtime.as_mut() {
         for (path, c) in changed {
             runtime.reload_animation_clip(&path, c);
+        }
+    }
+}
+
+/// Animator Override Controllers edited in the Inspector while playing: the running Animators
+/// that play one get its base controller with the new overrides (keeping their states).
+fn sync_overrides(s: &mut EditorState) {
+    let changed = s.anim_clips.overrides.take_changed();
+    if changed.is_empty() || s.play_session.is_none() {
+        return;
+    }
+    for (path, o) in changed {
+        let Some(base) = o.controller.clone() else {
+            continue;
+        };
+        let mut seen = vec![path.clone()];
+        let Ok(base) = crate::override_controllers::load_base(s, &base, &mut seen) else {
+            continue;
+        };
+        if let Some(runtime) = s.runtime.as_mut() {
+            runtime.reload_animator_controller(&path, o.apply(&base));
         }
     }
 }

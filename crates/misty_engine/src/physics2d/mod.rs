@@ -20,7 +20,7 @@ use crate::scene::{BodyType2D, CollisionDetection2D, Rigidbody2D, Scene};
 use crate::settings::{Physics2DSettings, PhysicsSettings};
 
 pub use colliders::polygon_points;
-pub use contacts::{Contact2D, Phase};
+pub use contacts::{Contact2D, ContactPoint2DData, MAX_CONTACT_POINTS_2D, Phase};
 pub use queries::RaycastHit2D;
 
 /// glam (ours) → rapier's vector type.

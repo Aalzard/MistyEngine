@@ -228,6 +228,48 @@ return Probe
     assert!(logs.iter().any(|(_, t)| t == "time 0.050 0.50"), "{logs:?}");
 }
 
+/// `Time.timeScale = 0` from Lua pauses (deltaTime 0 from the next frame, unscaledDeltaTime
+/// goes on); Project Settings' scale holds until a script changes it.
+#[test]
+fn lua_time_scale_set_by_a_script_pauses_the_game() {
+    use crate::runtime::Runtime;
+    use crate::settings::ProjectSettings;
+    let pauser = r#"
+local Pauser = { n = 0 }
+function Pauser:Update()
+    self.n = self.n + 1
+    Debug.Log(string.format("%d dt %.3f real %.3f scale %.2f", self.n, Time.deltaTime, Time.unscaledDeltaTime, Time.timeScale))
+    if self.n == 2 then Time.timeScale = 0 end
+    if self.n == 4 then Time.timeScale = 2 end
+end
+return Pauser
+"#;
+    let root = project(&[("Pauser.lua", pauser)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Pauser", None);
+    attach(&mut scene, e, "Pauser.lua", &[]);
+    let mut settings = ProjectSettings::default();
+    settings.time.time_scale = 0.5;
+    let mut runtime = Runtime::start(&mut scene, root, &settings);
+    let mut time = Time::new(&settings.time);
+    let mut logs = Vec::new();
+    for _ in 0..5 {
+        time.advance(0.1);
+        runtime.update(&mut scene, &time, Input::default());
+        logs.extend(runtime.take_logs().into_iter().map(|(_, t)| t));
+    }
+    assert_eq!(
+        logs,
+        [
+            "1 dt 0.050 real 0.100 scale 0.50",
+            "2 dt 0.050 real 0.100 scale 0.50",
+            "3 dt 0.000 real 0.100 scale 0.00",
+            "4 dt 0.000 real 0.100 scale 0.00",
+            "5 dt 0.200 real 0.100 scale 2.00",
+        ]
+    );
+}
+
 #[test]
 fn instantiate_prefabs_and_objects_with_physics_and_scripts() {
     let spawner = r#"

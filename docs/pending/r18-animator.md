@@ -125,14 +125,15 @@ Shift, Left / Right, Q, 1 / 2. "Buddy", a smaller second rig with other bone nam
 ## Not done yet
 
 - **Foot IK** for humanoids is not automatic: use the existing Two Bone IK constraint (Animation
-  Rigging) on the legs, as RiggingDemo does; no "IK Pass" layer option or `OnAnimatorIK`.
+  Rigging) on the legs, as RiggingDemo does, or tick IK Pass on a layer and set foot goals in
+  `OnAnimatorIK` (see docs/scripting.md, IK pass).
 - Humanoid retargeting is rotation-delta based, not muscle space: both rigs need the same rest pose,
   there are no muscle limits, no twist distribution, no mirror. The Avatar mapping can't be edited
   by hand yet (re-create it after renaming bones); humanoid body-part masks are not offered (masks
   list transform paths).
 - Blend trees can't nest (a child is always a clip); no "Compute Positions" from clip velocities; no
   per-child mirror or cycle offset.
-- Layers: the base layer has no mask; no per-layer IK pass; synced layers ignore "Timing".
+- Layers: the base layer has no mask; IK Pass goals of all layers are solved once on the final pose; synced layers ignore "Timing".
 - Transitions from an interrupted blend freeze the pose once (the blend tree parameters at that
   moment); state machine behaviours (`OnStateEnter` …) are not provided.
 - Root motion comes from the Base Layer only and does not drive a Rigidbody (only a Character

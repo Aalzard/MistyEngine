@@ -25,17 +25,38 @@ pub struct UiView {
     /// Editor Scene view: overlay canvases stand in the world at one unit per pixel, lower-left
     /// corner at the origin, facing −Z.
     pub overlay_in_world: bool,
+    /// Only World Space canvases (a split-screen camera's own view: its screen-space canvases
+    /// are drawn over the whole image).
+    pub world_only: bool,
 }
 
 impl UiView {
-    /// The game: overlays on a `screen`-sized image, the rest seen by the game camera.
+    /// The game: overlays on a `screen`-sized image, the rest seen by the camera that draws
+    /// the full-screen image (none in a split screen without one: each split-screen camera
+    /// sees the world canvases in its own view, [`UiView::split_view`]).
     pub fn game(scene: &Scene, screen: Vec2) -> Self {
+        let camera = crate::render_scene::screen_camera(scene)
+            .and_then(|e| crate::render_scene::camera_of(scene, e))
+            .map(|(c, _)| c);
         Self {
             screen,
             target: screen,
-            camera: crate::render_scene::game_camera(scene).map(|(c, _)| c),
+            camera,
             overlay_in_world: false,
+            world_only: false,
         }
+    }
+
+    /// The World Space canvases seen by split-screen camera `camera`, drawn into its own
+    /// `size` view image.
+    pub fn split_view(scene: &Scene, camera: Entity, size: Vec2) -> Option<Self> {
+        Some(Self {
+            screen: size,
+            target: size,
+            camera: Some(camera_of(scene, camera)?),
+            overlay_in_world: false,
+            world_only: true,
+        })
     }
 
     /// The editor's Scene view: everything in the world, seen by the scene camera.
@@ -45,6 +66,7 @@ impl UiView {
             target,
             camera: Some(camera),
             overlay_in_world: true,
+            world_only: false,
         }
     }
 
@@ -68,6 +90,10 @@ pub struct CanvasPlacement {
     pub sort_order: i32,
     /// Distance of the canvas centre from the view camera (world-placed canvases).
     pub distance: f32,
+    /// Hidden behind nearer scene depth (world and camera canvases). Off for a camera canvas
+    /// drawn into a split-screen camera's part of the image: that part's depth isn't in the
+    /// target.
+    pub depth: bool,
 }
 
 impl CanvasPlacement {
@@ -218,6 +244,44 @@ pub fn world_canvas(world: Mat4, size: Vec2, pivot: Vec2, scale: f32) -> Mat4 {
     world * local
 }
 
+/// The part of a game view (top-left corner and size, target pixels) that Screen Space -
+/// Camera canvas `canvas` covers when its Render Camera draws only part of the screen (split
+/// screen, a minimap): the canvas is laid out for that part and drawn into it, like that
+/// player's own screen. `None` for every other canvas (the whole view).
+pub fn split_area(scene: &Scene, view: &UiView, canvas: &Canvas) -> Option<(Vec2, Vec2)> {
+    if canvas.render_mode != CanvasRenderMode::ScreenSpaceCamera || view.overlay_in_world {
+        return None;
+    }
+    let c = scene
+        .world
+        .get::<&CameraComponent>(canvas.world_camera?)
+        .ok()?;
+    if crate::render_scene::covers_screen(c.viewport) {
+        return None;
+    }
+    let size = (view.target.x.max(1.0) as u32, view.target.y.max(1.0) as u32);
+    let (x, y, w, h) = crate::render_scene::viewport_pixels(c.viewport, size)?;
+    Some((Vec2::new(x as f32, y as f32), Vec2::new(w as f32, h as f32)))
+}
+
+/// Canvas pixels (`size`, y down) → clip space of the `origin` + `size` part of a `target`
+/// image.
+fn area_to_clip(origin: Vec2, size: Vec2, target: Vec2) -> Mat4 {
+    let t = target.max(Vec2::ONE);
+    let s = size / size.max(Vec2::ONE);
+    Mat4::from_cols(
+        Vec4::new(2.0 / t.x * s.x, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, -2.0 / t.y * s.y, 0.0, 0.0),
+        Vec4::Z,
+        Vec4::new(
+            origin.x / t.x * 2.0 - 1.0,
+            1.0 - origin.y / t.y * 2.0,
+            0.0,
+            1.0,
+        ),
+    )
+}
+
 /// Place canvas `e` for `view`: `size_units` is its rect in canvas units and `scale` its pixels
 /// per unit. `None` when it can't be shown (a world canvas with no camera to see it).
 pub fn place(
@@ -235,6 +299,21 @@ pub fn place(
         }
         m => m,
     };
+    // A per-player canvas in split screen: drawn flat into that player's part of the image.
+    if let Some((origin, area)) = split_area(scene, view, canvas)
+        && let Some(cam) = render_camera
+    {
+        return Some(CanvasPlacement {
+            canvas: e,
+            mode,
+            size: size_px,
+            to_world: Some(camera_plane(&cam, area, canvas.plane_distance)),
+            to_clip: Some(area_to_clip(origin, size_px, view.target)),
+            sort_order: canvas.sort_order,
+            distance: canvas.plane_distance,
+            depth: false,
+        });
+    }
     let to_world = match mode {
         CanvasRenderMode::ScreenSpaceOverlay => {
             view.overlay_in_world.then(|| overlay_in_world(size_px))
@@ -274,6 +353,7 @@ pub fn place(
         to_clip,
         sort_order: canvas.sort_order,
         distance,
+        depth: to_clip.is_some(),
     })
 }
 
@@ -306,6 +386,7 @@ mod tests {
             to_clip: Some(vp),
             sort_order: 0,
             distance: 25.0,
+            depth: true,
         };
         for q in [Vec2::ZERO, Vec2::new(800.0, 450.0), Vec2::new(1234.0, 77.0)] {
             let t = p.to_target(q, screen).unwrap();
@@ -363,6 +444,7 @@ mod tests {
             to_clip: Some(c.view_projection(1.0) * w),
             sort_order: 0,
             distance: 5.0,
+            depth: true,
         };
         assert_eq!(p.to_canvas(Vec2::splat(50.0), Vec2::splat(100.0)), None);
     }

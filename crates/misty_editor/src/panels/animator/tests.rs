@@ -989,3 +989,30 @@ fn clip_changes_during_play_reach_running_animations_and_animators() {
     crate::play::stop(&mut s);
     std::fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn layers_tab_switches_ik_pass_on_the_base_and_other_layers() {
+    let (s, root) = project("ikpass");
+    let mut h = window(s);
+    h.get_by_label("Layers").click();
+    h.run();
+    // The base layer (selected) has only IK Pass.
+    h.get_by_label(super::layers::IK_PASS_LABEL).click();
+    h.run();
+    assert!(saved(&root).base_ik_pass);
+    assert!(saved(&root).ik_pass(0));
+    h.get_by_label("IK");
+    h.get_by_label("+").click();
+    h.run();
+    h.get_by_label(super::layers::IK_PASS_LABEL).click();
+    h.run();
+    let c = saved(&root);
+    assert!(c.layers[0].ik_pass && c.ik_pass(1));
+    assert_eq!(h.query_all_by_label("IK").count(), 2, "badge on both rows");
+    // Undo turns the new layer's IK Pass off again.
+    commands::apply(h.state_mut(), Action::Undo);
+    h.run();
+    assert!(!saved(&root).layers[0].ik_pass);
+    assert!(saved(&root).base_ik_pass);
+    std::fs::remove_dir_all(root).ok();
+}

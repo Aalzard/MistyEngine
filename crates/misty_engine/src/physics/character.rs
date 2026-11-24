@@ -218,16 +218,49 @@ impl Physics {
             .exclude_sensors()
             .predicate(&test);
         let mut hits = Vec::new();
-        let moved = c.kcc().move_shape(
-            dt.max(1e-4),
-            &self.world.query_pipeline_with_filter(filter),
-            &*c.shape,
-            &pose(pos + rot * c.center, rot),
-            rv(motion),
-            |hit| hits.push(hit),
-        );
-        let t = gv(moved.translation);
-        let grounded = moved.grounded;
+        let kcc = c.kcc();
+        let queries = self.world.query_pipeline_with_filter(filter);
+        let start = pos + rot * c.center;
+        let cast = |from: Vec3, m: Vec3, hits: &mut Vec<_>| {
+            kcc.move_shape(
+                dt.max(1e-4),
+                &queries,
+                &*c.shape,
+                &pose(from, rot),
+                rv(m),
+                |hit| hits.push(hit),
+            )
+        };
+        // A grounded move that also pushes down (`vy = -2` style gravity) can stall: in one cast
+        // rapier's controller hits the floor it already touches at distance 0 and may use up its
+        // iterations without moving (a dropped frame), and on ramps it often walks only about
+        // half the asked distance. When the single cast lost more than half of the walk, also
+        // try walking first and then going down, and keep that only if it got further along
+        // the asked direction (a horizontal walk at a wall or ramp foot can do worse).
+        let walk = Vec3::new(motion.x, 0.0, motion.z);
+        let moved = cast(start, motion, &mut hits);
+        let mut t = gv(moved.translation);
+        let mut grounded = moved.grounded;
+        let want = walk.length();
+        // Progress along the asked direction (a slide sideways along a wall doesn't count).
+        let dir = walk.normalize_or_zero();
+        let walked = |t: Vec3| Vec3::new(t.x, 0.0, t.z).dot(dir);
+        if c.grounded && motion.y < 0.0 && want > 1e-5 && walked(t) < want * 0.5 {
+            let mut split_hits = Vec::new();
+            let step = cast(start, walk, &mut split_hits);
+            let walk_t = gv(step.translation);
+            let down = cast(
+                start + walk_t,
+                Vec3::new(0.0, motion.y, 0.0),
+                &mut split_hits,
+            );
+            let split_t = walk_t + gv(down.translation);
+            if walked(split_t) > walked(t) {
+                t = split_t;
+                grounded = down.grounded;
+                hits = split_hits;
+            }
+        }
         let handle = c.handle;
         let ground_normal = if grounded {
             // Straight down from the capsule's centre, a little past its feet and step reach.

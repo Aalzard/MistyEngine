@@ -12,6 +12,11 @@ use hecs::Entity;
 
 use super::{LogKind, World};
 
+#[path = "csharp_parity.rs"]
+mod parity;
+pub(super) use parity::Contact2DScope;
+use parity::{animator_ik, contacts};
+
 // ---- the world, for callbacks from C# ------------------------------------------------------
 
 thread_local! {
@@ -38,7 +43,7 @@ impl Drop for Enter {
 }
 
 /// Run `f` on the world installed by [`Enter`] (None outside a C# call).
-fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
+pub(super) fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
     let p = WORLD.with(|c| c.get());
     if p.is_null() {
         return None;
@@ -56,7 +61,7 @@ fn with_object<R>(id: u64, f: impl FnOnce(&mut World, Entity) -> R) -> Option<R>
     with_world(|w| w.scene.contains(e).then(|| f(w, e))).flatten()
 }
 
-fn text(ptr: *const u16, len: i32) -> String {
+pub(super) fn text(ptr: *const u16, len: i32) -> String {
     if ptr.is_null() || len <= 0 {
         return String::new();
     }
@@ -64,7 +69,7 @@ fn text(ptr: *const u16, len: i32) -> String {
     String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len as usize) })
 }
 
-fn id_of(e: Entity) -> u64 {
+pub(super) fn id_of(e: Entity) -> u64 {
     e.to_bits().get()
 }
 
@@ -146,8 +151,15 @@ pub(super) struct NativeApi {
     message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
     physics2d:
         extern "C" fn(i32, *const V3, *const V3, f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    /// `csharp_input.rs`: EventSystem, touches, Camera.rect, Player Input (Manager), Input
+    /// Actions, Gamepad / Keyboard / Mouse.
+    input_system: extern "C" fn(i32, u64, i64, *mut f64, *mut u16, i32) -> i64,
+    // ---- csharp_parity.rs ----
+    contacts: extern "C" fn(i32, *mut f32, i32, *mut u64) -> i32,
+    animator_ik: extern "C" fn(u64, i32, i32, *mut V4) -> i32,
     character_vec: extern "C" fn(u64, i32, *mut V3) -> i32,
     character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
+    time_scale: extern "C" fn(f32),
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -205,8 +217,12 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     scene_op,
     message,
     physics2d,
+    input_system: super::csharp::input::input_system,
+    contacts,
+    animator_ik,
     character_vec,
     character_scalar,
+    time_scale,
 };
 
 /// Same layout as `Misty.Internal.HitData`.
@@ -954,6 +970,11 @@ extern "C" fn character_vec(id: u64, op: i32, v: *mut V3) -> i32 {
     .unwrap_or(0)
 }
 
+/// `Time.timeScale = value`.
+extern "C" fn time_scale(value: f32) {
+    let _ = with_world(|w| w.set_time_scale(value));
+}
+
 /// `which`: 0 isGrounded (read only), 1 height, 2 radius, 3 slopeLimit, 4 stepOffset,
 /// 5 skinWidth, 6 minMoveDistance, 7 slopeSpeed; `set` 0 reads into `out`, 1 writes `value`.
 /// 1 done, 0 no object or no Character Controller.
@@ -1466,12 +1487,13 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
         let Some(cam) = super::camera_api::camera_of(w, e) else {
             return 0;
         };
-        let s = super::camera_api::screen(w);
-        let aspect = s.x / s.y;
-        // Normalised screen coordinates, y down (what `Camera` works in).
+        // Screen points are measured in the camera's own part of the screen (split screen).
+        let rect = super::camera_api::pixel_rect(w, e);
+        let aspect = rect.1.x / rect.1.y;
+        // Normalised camera coordinates, y down (what `Camera` works in).
         let uv = |p: Vec3, pixels: bool| {
             if pixels {
-                glam::Vec2::new(p.x / s.x, 1.0 - p.y / s.y)
+                super::camera_api::screen_to_uv(rect, p.truncate())
             } else {
                 glam::Vec2::new(p.x, 1.0 - p.y)
             }
@@ -1488,7 +1510,7 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
                 };
                 let (x, y) = (ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5);
                 let p = if op == 2 {
-                    Vec3::new(x * s.x, y * s.y, depth)
+                    (rect.0 + glam::Vec2::new(x, y) * rect.1).extend(depth)
                 } else {
                     Vec3::new(x, y, depth)
                 };

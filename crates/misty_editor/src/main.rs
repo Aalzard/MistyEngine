@@ -61,6 +61,7 @@ mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
 mod os_drop;
+mod override_controllers;
 mod packages;
 mod panels;
 mod particle_preview;
@@ -122,6 +123,8 @@ mod sample_foliage_lighting;
 mod sample_guides;
 #[cfg(test)]
 mod sample_hdri;
+#[cfg(test)]
+mod sample_hill_run;
 #[cfg(test)]
 mod sample_input;
 #[cfg(test)]

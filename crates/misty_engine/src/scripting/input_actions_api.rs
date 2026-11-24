@@ -13,6 +13,7 @@ use mlua::{
 };
 
 use super::api::{LGameObject, LVec3, with_world};
+use super::csharp::input::PendingArg;
 use super::{Instance, ScriptHost, World};
 use crate::input::actions::path::{ControlPath, DeviceFilter, PAD_BUTTONS};
 use crate::input::actions::{
@@ -535,6 +536,13 @@ impl UserData for LRebind {
             },
         );
         m.add_function(
+            "WithBindingGroup",
+            |lua, (r, group): (mlua::UserDataRef<LRebind>, String)| {
+                with_world(lua, |w| w.input_system.rebind_group(r.0, &group))?.map_err(err)?;
+                Ok(*r)
+            },
+        );
+        m.add_function(
             "OnMatchWaitForAnother",
             |lua, (r, secs): (mlua::UserDataRef<LRebind>, f64)| {
                 edit_rebind(lua, r.0, |x| x.wait = secs.max(0.0))?;
@@ -850,6 +858,7 @@ fn touch_table(lua: &Lua, t: &crate::input::Touch, screen_h: f32) -> Result<Tabl
     tt.set("delta", LVec3(Vec3::new(t.delta.x, -t.delta.y, 0.0)))?;
     tt.set("phase", t.phase.name())?;
     tt.set("isInProgress", t.phase.is_down())?;
+    tt.set("tapCount", t.tap_count)?;
     Ok(tt)
 }
 
@@ -1039,11 +1048,18 @@ fn context(lua: &Lua, set: usize, e: &ActionEvent) -> Result<Table> {
 
 impl ScriptHost {
     /// Call `method` with `arg` on every running script of `target` that defines it (no
-    /// warning when none does, like a message nobody needs to receive).
-    fn message(&mut self, target: Entity, method: &str, arg: Option<Value>) {
+    /// warning when none does, like a message nobody needs to receive); C# scripts get
+    /// `cs_arg` (an `InputValue`, a `PlayerInput`, a `CallbackContext`).
+    fn message(&mut self, target: Entity, method: &str, arg: Option<Value>, cs_arg: &PendingArg) {
         for i in 0..self.instances.len() {
             let inst: &Instance = &self.instances[i];
             if inst.entity != target || !self.runnable(inst) {
+                continue;
+            }
+            if let Some(cs) = inst.cs {
+                if self.cs_message_with(cs, method, Some(cs_arg)) {
+                    self.flush_spawned();
+                }
                 continue;
             }
             let defined = self
@@ -1058,7 +1074,14 @@ impl ScriptHost {
         }
     }
 
-    fn message_tree(&mut self, root: Entity, broadcast: bool, method: &str, arg: Option<Value>) {
+    fn message_tree(
+        &mut self,
+        root: Entity,
+        broadcast: bool,
+        method: &str,
+        arg: Option<Value>,
+        cs_arg: &PendingArg,
+    ) {
         let targets: Vec<Entity> = if broadcast {
             self.with_world(|w| {
                 w.scene
@@ -1072,7 +1095,7 @@ impl ScriptHost {
             vec![root]
         };
         for t in targets {
-            self.message(t, method, arg.clone());
+            self.message(t, method, arg.clone(), cs_arg);
         }
     }
 
@@ -1099,12 +1122,14 @@ impl ScriptHost {
                     self.player_note(e, "onDeviceRegained", "OnDeviceRegained")
                 }
                 SystemEvent::RebindComplete { id, path } => {
+                    self.cs_rebind_event(id, Some(path.clone()));
                     if let Err(e) = rebind_done(&self.lua, id, Some(path)) {
                         self.log(super::LogKind::Error, format!("OnComplete: {e}"));
                     }
                     self.flush_spawned();
                 }
                 SystemEvent::RebindCanceled { id } => {
+                    self.cs_rebind_event(id, None);
                     if let Err(e) = rebind_done(&self.lua, id, None) {
                         self.log(super::LogKind::Error, format!("OnCancel: {e}"));
                     }
@@ -1124,12 +1149,14 @@ impl ScriptHost {
             return;
         };
         self.run_listeners(&player_key(e, listener), arg.clone(), listener);
+        self.cs_player_event(e, listener);
+        let cs_arg = PendingArg::Player(e);
         match behavior {
             Some(PlayerInputBehavior::SendMessages) => {
-                self.message_tree(e, false, message, Some(arg))
+                self.message_tree(e, false, message, Some(arg), &cs_arg)
             }
             Some(PlayerInputBehavior::BroadcastMessages) => {
-                self.message_tree(e, true, message, Some(arg))
+                self.message_tree(e, true, message, Some(arg), &cs_arg)
             }
             _ => {}
         }
@@ -1168,6 +1195,12 @@ impl ScriptHost {
         let Some((full, name, kind)) = info else {
             return;
         };
+        let entities: Vec<Entity> = players.iter().map(|(p, _)| *p).collect();
+        self.cs_action_event(set, e, &entities);
+        let cs_ctx = PendingArg::Context {
+            set,
+            event: e.clone(),
+        };
         for (entity, behavior) in players {
             self.run_listeners(
                 &player_key(entity, "onActionTriggered"),
@@ -1182,7 +1215,8 @@ impl ScriptHost {
                     if send {
                         let arg = value_to_lua(&self.lua, e.value).ok();
                         let broadcast = behavior == PlayerInputBehavior::BroadcastMessages;
-                        self.message_tree(entity, broadcast, &message_name(&name), arg);
+                        let cs_arg = PendingArg::Value(e.value);
+                        self.message_tree(entity, broadcast, &message_name(&name), arg, &cs_arg);
                     }
                 }
                 PlayerInputBehavior::InvokeEvents => {
@@ -1206,7 +1240,7 @@ impl ScriptHost {
                         if let Some(t) = target
                             && !method.is_empty()
                         {
-                            self.message(t, &method, Some(Value::Table(ctx.clone())));
+                            self.message(t, &method, Some(Value::Table(ctx.clone())), &cs_ctx);
                         }
                     }
                 }
@@ -1218,3 +1252,7 @@ impl ScriptHost {
 #[cfg(test)]
 #[path = "input_actions_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "input_rebind_tests.rs"]
+mod rebind_tests;

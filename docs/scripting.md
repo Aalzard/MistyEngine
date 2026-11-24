@@ -34,7 +34,8 @@ sandboxed.
 `OnCollisionEnter(other)`, `OnCollisionStay(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`,
 `OnTriggerStay(other)`, `OnTriggerExit(other)` (`other` is a GameObject; Stay runs every physics step
 after the one they met in, while they still touch), `OnControllerColliderHit(hit)` (see Character Controller below),
-`OnAnimatorMove()` (root motion, see Driving an Animator below). Fields starting
+`OnAnimatorMove()` (root motion, see Driving an Animator below), `OnAnimatorIK(layerIndex)` (hand,
+foot and head goals, see IK pass below). Fields starting
 with `_` stay private. Callbacks are looked up when the script starts: a function added to
 the instance later (`self.Update = …`) is not called every frame.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
@@ -171,7 +172,7 @@ variables of type GameObject are object fields too.
 | RawImage (UI) | `color`, `texture`, `enabled`, `gameObject` |
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
-| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
+| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only except `timeScale`: `Time.timeScale = 0` pauses the game, deltaTime, game time, physics and animation stop from the next frame while `unscaledDeltaTime` goes on; it starts at Edit ▸ Project Settings ▸ Time, like `fixedDeltaTime`) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Scene Viewer focus (click it), gamepads always reach a playing game |
 | `EventSystem.current` | `currentSelectedGameObject`, `SetSelectedGameObject(go or nil)`, `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject` — the UI selection keyboard and gamepad navigation move (see UI navigation below) |
 | `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
@@ -283,12 +284,16 @@ return Player
 | Actions | `action:ReadValue()` (number or Vector2), `IsPressed()`, `WasPressedThisFrame()`, `WasReleasedThisFrame()`, `WasPerformedThisFrame()`, `IsInProgress()`, `triggered`, `phase` ("Disabled", "Waiting", "Started", "Performed", "Canceled"), `activeControl` (path), `enabled`, `Enable()` / `Disable()`, `name`, `type`, `bindings` (`path`, `effectivePath`, `overridePath`, `groups`, `isComposite`, `isPartOfComposite`), `actionMap` |
 | Callbacks | `action.started` / `performed` / `canceled`: `AddListener(f)`, `RemoveListener(f)`, `RemoveAllListeners()`; `f(ctx)` with `ctx.action`, `ctx.phase`, `ctx.started` / `performed` / `canceled`, `ctx:ReadValue()`, `ctx:ReadValueAsButton()`, `ctx.time`, `ctx.startTime`, `ctx.duration`, `ctx.interaction`, `ctx.control` |
 | Player Input | `GetComponent("PlayerInput")`: `actions`, `currentActionMap` (also settable by name), `SwitchCurrentActionMap(name)`, `currentControlScheme`, `SwitchCurrentControlScheme(name)`, `playerIndex`, `devices`, `inputIsActive`, `ActivateInput()`, `DeactivateInput()`, `GetDevice("Gamepad")`, `notificationBehavior`, events `onActionTriggered`, `onControlsChanged`, `onDeviceLost`, `onDeviceRegained`; `PlayerInput.all`, `PlayerInput.GetPlayerByIndex(i)` |
-| Rebinding | `action:GetBindingDisplayString(index?)` ("W", "W/A/S/D", "Shift+B"), `ApplyBindingOverride(index, path)` / `(path)`, `RemoveBindingOverride(index)`, `RemoveAllBindingOverrides()`; `actions:SaveBindingOverridesAsJson()`, `LoadBindingOverridesFromJson(json)`, `RemoveAllBindingOverrides()`; `action:PerformInteractiveRebinding(index?)` then `:WithControlsExcluding(path)`, `:WithCancelingThrough(path)` (default `<Keyboard>/escape`), `:WithTargetBinding(i)`, `:OnMatchWaitForAnother(s)`, `:OnComplete(f)`, `:OnCancel(f)`, `:Start()`, `:Cancel()`, `:Dispose()`, `op.completed`, `op.canceled`, `op.selectedControl` |
-| Devices | `Gamepad.current` (last used), `Gamepad.all`: `name`, `leftStick`, `rightStick`, `dpad`, `leftTrigger`, `rightTrigger`, `buttonSouth.isPressed` / `wasPressedThisFrame` / `wasReleasedThisFrame` (and the other buttons), `SetMotorSpeeds(low, high)`, `ResetHaptics()`, `PauseHaptics()`; `Keyboard.current.spaceKey.isPressed`, `Mouse.current.delta`, `Mouse.current.leftButton.wasPressedThisFrame`; `Touchscreen.current.primaryTouch`, `.touches`; legacy `Input.touchCount`, `Input.GetTouch(i)` (`fingerId`, `position`, `deltaPosition`, `phase`), `Input.touches`, `Input.touchSupported` |
+| Rebinding | `action:GetBindingDisplayString(index?)` ("W", "W/A/S/D", "Shift+B"), `ApplyBindingOverride(index, path)` / `(path)`, `RemoveBindingOverride(index)`, `RemoveAllBindingOverrides()`; `actions:SaveBindingOverridesAsJson()`, `LoadBindingOverridesFromJson(json)`, `RemoveAllBindingOverrides()`; `action:PerformInteractiveRebinding(index?)` then `:WithControlsExcluding(path)`, `:WithCancelingThrough(path)` (default `<Keyboard>/escape`), `:WithTargetBinding(i)`, `:WithBindingGroup(group)`, `:OnMatchWaitForAnother(s)`, `:OnComplete(f)`, `:OnCancel(f)`, `:Start()`, `:Cancel()`, `:Dispose()`, `op.started`, `op.completed`, `op.canceled`, `op.selectedControl`, `op.bindingIndex` |
+| Devices | `Gamepad.current` (last used), `Gamepad.all`: `name`, `leftStick`, `rightStick`, `dpad`, `leftTrigger`, `rightTrigger`, `buttonSouth.isPressed` / `wasPressedThisFrame` / `wasReleasedThisFrame` (and the other buttons), `SetMotorSpeeds(low, high)`, `ResetHaptics()`, `PauseHaptics()`; `Keyboard.current.spaceKey.isPressed`, `Mouse.current.delta`, `Mouse.current.leftButton.wasPressedThisFrame`; `Touchscreen.current.primaryTouch`, `.touches`; legacy `Input.touchCount`, `Input.GetTouch(i)` (`fingerId`, `position`, `deltaPosition`, `phase`, `tapCount`), `Input.touches`, `Input.touchSupported` |
 
 Rebinding listens for the next key, mouse button, gamepad button, trigger or stick direction (a whole stick for
 Vector 2 bindings), skips `<Mouse>/position` and `<Mouse>/delta`, disables the action meanwhile and turns it back
-on once the chosen control is released. Overrides are kept by binding id; save them with PlayerPrefs:
+on once the chosen control is released. Bindings of a button action never take a stick as a whole and Vector 2
+bindings never take keys or buttons. `WithBindingGroup("Gamepad")` rebinds the action's binding in that control
+scheme group (when the index given isn't in it) and only listens to that scheme's devices; Escape still cancels.
+`WithControlsExcluding` matches parts of paths, so `"Mouse"` skips every mouse control. Overrides are kept by
+binding id; save them with PlayerPrefs:
 
 ```lua
 local saved = PlayerPrefs.GetString("rebinds", "")
@@ -302,6 +307,12 @@ jump:PerformInteractiveRebinding(0)
     end)
     :Start()
 ```
+
+**Taps**: every touch has a `tapCount` (Lua `t.tapCount`, C# `Touch.tapCount` and
+`Touchscreen.current.primaryTouch.tapCount.ReadValue()`). A tap is a touch lifted within 0.5 s of touching down
+that moved at most 25 pixels; a touch that lands within 0.5 s of the last tap and 25 pixels of where it was
+continues the series, so the second tap of a double tap has `tapCount` 2 from the frame it touches down. A
+touch held too long or dragged too far reports `tapCount` 0 on its `Ended` frame and starts a new series.
 
 An action enabled while its button is already held (say the map comes back on with the key still down) doesn't
 count that as a press. Gamepad rumble uses force feedback where the platform has it (Windows and Linux through
@@ -321,6 +332,12 @@ saved to PlayerPrefs).
 A camera whose **Viewport Rect** covers only part of the screen renders into that part (split screen, a
 minimap). The full-screen image comes from the highest-Depth camera that covers the screen; with none, the
 screen starts black and only the viewport cameras draw, lowest Depth first. The UI draws over all of them.
+A camera's screen points (`ScreenPointToRay`, `WorldToScreenPoint`, `ScreenToWorldPoint`) are measured in
+its own part of the screen, so `cam:ScreenPointToRay(Input.mousePosition)` works for each player's camera.
+For a **per-player HUD**, give the player a Canvas set to Screen Space - Camera with the player's camera as
+Render Camera: when that camera draws only part of the screen, the canvas is laid out for that part (anchors,
+Canvas Scaler) and drawn into it, and clicks there reach it. World Space canvases (name tags, health bars) show in every
+player's view that sees them, hidden behind nearer objects of that view.
 
 **Player Input Manager** (Add Component ▸ Input) runs local multiplayer. With Join Behavior "Join Players When
 Button Is Pressed", a button pressed on a gamepad (or a key on the keyboard) that no player uses yet spawns
@@ -332,7 +349,8 @@ While joining is on, even a lone player keeps to its own devices (no control sch
 others stay free to join with.
 
 Scripts on the manager's object hear `OnPlayerJoined(player)` (the new player's GameObject, after its scripts'
-`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). `GetComponent("PlayerInputManager")` or
+`Awake`) and `OnPlayerLeft(player)` (nil once destroyed). Inside `OnPlayerJoined`, `playerCount` counts up to
+that player, also when several join in one frame. `GetComponent("PlayerInputManager")` or
 `PlayerInputManager.instance`: `playerCount`, `maxPlayerCount`, `joiningEnabled`, `EnableJoining()`,
 `DisableJoining()`, `JoinPlayer()` (spawns a player now with free devices; nil when full), `splitScreen`,
 `enabled`, `gameObject`.
@@ -481,6 +499,55 @@ end
 (WASD and Shift walk and run through a 2D blend tree with root motion, Q fades in the masked Upper
 Body layer, 1 / 2 enter the Emotes sub-state machine; the second character plays the wave retargeted
 through humanoid Avatars).
+
+Characters that move alike can share one state machine through an **Animator Override Controller**
+(Project ▸ Create ▸ Animator Override Controller, with the base `.controller` selected): its Inspector
+lists every clip the base plays with an Override slot (pick a clip or drop one from the Project window;
+× plays the original), and an Animator takes the `.overrideController` as its controller. Edits save at
+once, undo, and reach running Animators in Play mode.
+
+#### IK pass (`OnAnimatorIK`)
+
+Tick **IK Pass** on a layer in the Animator window's Layers list (select the layer; the Base Layer
+has it too). Every frame, after the Animator wrote its pose (and `OnAnimatorMove`), the scripts on
+the Animator's object get `OnAnimatorIK(layerIndex)` once per IK Pass layer, bottom layer first,
+before Timelines, rigs and `LateUpdate`. Each call sees the pose blended up to and including its
+layer (`GetIKPosition` without a goal reports where that pose puts the hand), starts with no goals,
+and the goals it sets are solved right away on that pose: goal weights are multiplied by the layer's
+weight, and bones the layer's Avatar Mask leaves out don't move. The layers above then blend over the
+IK'd pose, so a higher IK layer's goal wins over a lower one's, and an override layer above that
+animates the arm replaces the arm IK of the layers below:
+
+```lua
+local Reach = {}
+function Reach:Start() self._anim = self.gameObject:GetComponent("Animator") end
+function Reach:OnAnimatorIK(layer)
+    local a = self._anim
+    a:SetIKPositionWeight(AvatarIKGoal.RightHand, 1)
+    a:SetIKPosition(AvatarIKGoal.RightHand, GameObject.Find("Handle").transform.position)
+    a:SetIKHintPositionWeight(AvatarIKHint.RightElbow, 0.5)
+    a:SetIKHintPosition(AvatarIKHint.RightElbow, self.transform.position + Vector3.new(1, 1, -1))
+    a:SetLookAtWeight(1, 0.2, 1, 0, 0.5)   -- weight, body, head, eyes, clamp
+    a:SetLookAtPosition(GameObject.Find("Target").transform.position)
+end
+return Reach
+```
+Goals: `AvatarIKGoal.LeftFoot / RightFoot / LeftHand / RightHand` (or the name as text); hints
+`AvatarIKHint.LeftKnee / RightKnee / LeftElbow / RightElbow`. Also `SetIKRotation(goal, euler)` /
+`SetIKRotationWeight`, `GetIKPosition` / `GetIKRotation` (the goal set this frame, else where the
+animation put the hand or foot), `GetIKPositionWeight` / `GetIKRotationWeight`,
+`GetIKHintPosition` / `GetIKHintPositionWeight` and `GetBoneTransform(HumanBodyBones.Head)`.
+Weights go back to 0 every frame, so set them in every call. Each limb is a Two Bone IK (upper →
+lower → hand / foot) bent towards its hint; look-at turns the spine and chest (body weight) and the
+head (head weight), at most `180° × (1 − clamp)` from where they look. Rotations are humanoid effector
+rotations: identity is the bone as in the Avatar's rest pose with the character unrotated.
+Bones come from the Animator's Avatar; without one they are found by name (Hips, Spine, Chest,
+Head, LeftArm / LeftForeArm / LeftHand, LeftUpLeg / LeftLeg / LeftFoot, mixamorig and Bip01
+prefixes, `_l` / `.R` suffixes…), and the pose at the first IK frame counts as the rest pose.
+Limits: a layer's goals are solved on the pose blended up to that layer, not on the layer's own pose
+before it is blended in; the layer weight scales the goal weights rather than blending an IK'd copy
+of the layer (so weight 0.5 brings a hand halfway to its goal); eyes weight is ignored (no eye
+bones), and there is no foot pivot, body position or limb stretch.
 
 ### UI buttons
 
@@ -889,7 +956,10 @@ Sample: `Scenes/NavigationDemo.scene` with `Patrol.lua`, `Chaser.lua` and `Click
 | Image (UI) | also `sprite` (sprite reference or nil) |
 
 Callbacks: `OnCollisionEnter2D(c)`, `OnCollisionStay2D(c)`, `OnCollisionExit2D(c)` with `c.gameObject`, `c.collider`,
-`c.otherCollider`, `c.rigidbody`, `c.relativeVelocity`, `c.contacts[1].point/normal`, `c:GetContact(0)`;
+`c.otherCollider`, `c.rigidbody`, `c.otherRigidbody`, `c.relativeVelocity`, `c.contactCount`, `c.contacts` (every
+touching point of the physics step that sent the callback, 1-based: `point`, `normal` (pointing away from the other
+object), `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider`, `otherCollider`,
+`rigidbody`, `otherRigidbody`), `c:GetContact(0)` (0-based like the familiar engine) and `c:GetContacts(list)`;
 `OnTriggerEnter2D(other)`, `OnTriggerStay2D(other)`, `OnTriggerExit2D(other)` with the other GameObject.
 Rays that start inside a collider report it (Project Settings ▸ Physics 2D ▸ Queries Start In Colliders), so
 ground checks use a layer mask:
@@ -1330,8 +1400,12 @@ IEnumerator Start()
 - 2D physics: `Rigidbody2D` (`velocity`, `angularVelocity`, `position`, `rotation`,
   `gravityScale`, `mass`, `AddForce` / `AddTorque` with `ForceMode2D`, `MovePosition`,
   `MoveRotation`), `Collider2D.attachedRigidbody`, and the callbacks `OnCollisionEnter2D` /
-  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`) and
-  `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+  `Stay2D` / `Exit2D` (`Collision2D`: `gameObject`, `transform`, `collider`, `rigidbody`,
+  `otherCollider`, `otherRigidbody`, `relativeVelocity`, `contactCount`, `contacts`,
+  `GetContact(i)`, `GetContacts(array or List)`; `ContactPoint2D`: `point`, `normal`,
+  `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider`,
+  `otherCollider`, `rigidbody`, `otherRigidbody`, the points of the step that sent the
+  callback) and `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
 - `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
   `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
   `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
@@ -1371,7 +1445,12 @@ IEnumerator Start()
   (`GetMask`, `NameToLayer`, `LayerToName`).
 - `AudioSource`: `Play`, `Stop`, `Pause`, `UnPause`, `isPlaying`, `volume`, `pitch`, `loop`,
   `mute`, `time`. `Animator`: `SetFloat` / `GetFloat`, `SetInteger` / `GetInteger`, `SetBool` /
-  `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`.
+  `GetBool`, `SetTrigger`, `ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`, and in
+  `OnAnimatorIK(int layerIndex)` (layers with IK Pass): `SetIKPosition` / `SetIKRotation` /
+  `SetIKPositionWeight` / `SetIKRotationWeight` (`AvatarIKGoal`), the `Get…` versions,
+  `SetIKHintPosition` / `SetIKHintPositionWeight` (`AvatarIKHint`), `SetLookAtPosition`,
+  `SetLookAtWeight(weight, body, head, eyes, clamp)` and `GetBoneTransform(HumanBodyBones)`
+  (see IK pass above).
 - `SceneManager.LoadScene` (name or build index, `LoadSceneMode.Additive`),
   `LoadSceneAsync` / `UnloadSceneAsync` returning an `AsyncOperation` (`isDone`, `progress`,
   `allowSceneActivation`, the `completed` event; `yield return op` waits for it);
@@ -1386,12 +1465,72 @@ IEnumerator Start()
 - `Input`: `GetKey` / `GetKeyDown` / `GetKeyUp` (`KeyCode` or an Input Manager key name such as
   `"left shift"`), `GetMouseButton` / `Down` / `Up`, `GetAxis` / `GetAxisRaw` and `GetButton` /
   `Down` / `Up` (the Input Manager's axes and buttons), `mousePosition`, `mouseScrollDelta`,
-  `mouseDelta`, `anyKey`, `anyKeyDown`.
+  `mouseDelta`, `anyKey`, `anyKeyDown`, and touches: `touchCount`, `GetTouch(i)`, `touches`,
+  `touchSupported`; a `Touch` has `fingerId`, `position` / `rawPosition` (pixels from the
+  bottom-left, like `mousePosition`), `deltaPosition` (y up), `tapCount` and `phase` (`TouchPhase.Began`,
+  `Moved`, `Stationary`, `Ended`, `Canceled`; a lifted finger is reported for one frame).
+- **Input System devices**: `Keyboard.current` (`spaceKey`, `wKey`, `leftShiftKey`, `digit1Key`,
+  `f1Key`, `anyKey`, `[Key.W]`, …), `Mouse.current` (`position`, `delta`, `scroll`,
+  `leftButton` / `rightButton` / `middleButton`), `Gamepad.current` / `Gamepad.all` (`leftStick`,
+  `rightStick`, `dpad`, `leftTrigger` / `rightTrigger`, `buttonSouth` … `buttonNorth` with
+  their `aButton` / `crossButton` names, shoulders, `startButton`, `selectButton`, stick presses,
+  `[GamepadButton.DpadUp]`, `SetMotorSpeeds`, `ResetHaptics`) and `Touchscreen.current` (null
+  until the screen is touched; `primaryTouch`, `touches`: `position`, `delta`, `press`, `phase`,
+  `touchId`, `tapCount`, `isInProgress`). Buttons have `isPressed`, `wasPressedThisFrame`,
+  `wasReleasedThisFrame` and `ReadValue()`; sticks and positions `ReadValue()` (a `Vector2`, y
+  up), `x`, `y`. Triggers and stick directions report `isPressed` past half way but no
+  this-frame edges.
+- **Input Actions**: `playerInput.actions` or `InputActionAsset.Load(path)` (shared, like Lua's
+  `InputActions.Load`) / `Instantiate(path)`: `FindAction("Jump")` / `["Player/Jump"]`,
+  `FindActionMap`, `actionMaps`, `controlSchemes`, `Enable` / `Disable`,
+  `SaveBindingOverridesAsJson` / `LoadBindingOverridesFromJson` / `RemoveAllBindingOverrides`.
+  `InputActionMap`: `name`, `enabled`, `actions`, `FindAction`, `Enable` / `Disable`.
+  `InputAction`: `ReadValue<Vector2>()` / `<float>()` (also `bool`, `int`, `double`,
+  `Vector3`), `IsPressed`, `WasPressedThisFrame`, `WasReleasedThisFrame`,
+  `WasPerformedThisFrame`, `IsInProgress`, `triggered`, `phase` (`InputActionPhase`), `type`,
+  `enabled`, `Enable` / `Disable`, `GetBindingDisplayString`, `ApplyBindingOverride` /
+  `RemoveBindingOverride`, `RemoveAllBindingOverrides`, `bindings` (`InputBinding`: `name`, `path`,
+  `overridePath` (null without one), `effectivePath`, `groups`, `id`, `isComposite`,
+  `isPartOfComposite`, `hasOverrides`), `GetBindingIndex(group, path)`, interactive rebinding
+  (`var op = jump.PerformInteractiveRebinding(0).WithControlsExcluding("Mouse")
+  .WithCancelingThrough("<Keyboard>/escape").OnComplete(o => { PlayerPrefs.SetString("rebinds",
+  actions.SaveBindingOverridesAsJson()); o.Dispose(); }).Start();` returns an
+  `InputActionRebindingExtensions.RebindingOperation` with `WithTargetBinding`, `WithBindingGroup`,
+  `OnMatchWaitForAnother`, `OnCancel`, `Cancel`, `Dispose`, `started`, `completed`, `canceled`,
+  `selectedControl`, `bindingIndex`, `action`; it works like Lua's, see Rebinding above), and the
+  `started` / `performed` / `canceled` events
+  (`jump.performed += ctx => …`) with an `InputAction.CallbackContext` (`action`, `phase`,
+  `started` / `performed` / `canceled`, `ReadValue<T>()`, `ReadValueAsButton()`, `time`,
+  `startTime`, `duration`, `control.path`, `interactionName`).
+- **Player Input**: `GetComponent<PlayerInput>()`, `PlayerInput.all`,
+  `PlayerInput.GetPlayerByIndex(i)`: `playerIndex`, `camera` (the first Camera on the object or
+  under it), `devices`, `GetDevice<Gamepad>()`, `actions`, `currentControlScheme`,
+  `currentActionMap`, `inputIsActive`, `notificationBehavior`, `SwitchCurrentActionMap`,
+  `SwitchCurrentControlScheme`, `ActivateInput` / `DeactivateInput`, and the `onActionTriggered`,
+  `onControlsChanged`, `onDeviceLost`, `onDeviceRegained` events. With **Send Messages** /
+  **Broadcast Messages** C# scripts get `OnMove(InputValue value)` (`value.Get<Vector2>()`,
+  `value.isPressed`) or `OnJump()`, and `OnDeviceLost(PlayerInput)` and friends; with **Invoke
+  Events** the methods listed get an `InputAction.CallbackContext`.
+- **Player Input Manager** (local multiplayer, split screen): `PlayerInputManager.instance` or
+  `GetComponent<PlayerInputManager>()`: `playerCount`, `maxPlayerCount` (-1 for no limit),
+  `joiningEnabled`, `EnableJoining` / `DisableJoining`, `splitScreen`, `enabled`,
+  `joinBehavior` (`PlayerJoinBehavior`), `fixedNumberOfSplitScreens`, `JoinPlayer()` (the new
+  player's `PlayerInput`, null when full) and the `onPlayerJoined` / `onPlayerLeft` events;
+  scripts on the manager hear `OnPlayerJoined(PlayerInput player)` / `OnPlayerLeft(PlayerInput
+  player)` (a player that left was destroyed: it `== null`). `Camera.rect` (0..1 from the
+  bottom-left, settable) and `Camera.pixelRect` show each player's part of the screen.
+- **Event System**: `EventSystem.current` (`currentSelectedGameObject`,
+  `SetSelectedGameObject(go or null)`, `firstSelectedGameObject`, `sendNavigationEvents`,
+  `gameObject`, `IsPointerOverGameObject()` for the mouse or `(fingerId)` for a touch) and
+  `button.Select()` (also on `Toggle`, `Slider`, `InputField`). Scripts on the object the
+  selection moves to / off hear `OnSelect` / `OnDeselect` (and the selected one `OnCancel`),
+  with no parameter or a `BaseEventData` (`selectedObject`, `Use()`); `ISelectHandler`,
+  `IDeselectHandler` and `ICancelHandler` declare them.
 - Math: `Vector2`, `Vector3`, `Quaternion` (`Euler`, `AngleAxis`, `LookRotation`, `Slerp`,
   `Lerp`, `RotateTowards`, `FromToRotation`, `Inverse`, `Angle`), `Mathf` (with `SmoothDamp`,
   `MoveTowards`, `Repeat`, `PingPong`, `DeltaAngle`, …), `Random` (`Range`, `value`,
   `insideUnitSphere`, …).
-- `Time` (`deltaTime`, `unscaledDeltaTime`, `time`, `fixedDeltaTime`, `timeScale`,
+- `Time` (`deltaTime`, `unscaledDeltaTime`, `time`, `fixedDeltaTime`, `timeScale` (settable: 0 pauses),
   `frameCount`) and `Debug` (`Log`, `LogWarning`, `LogError`, `LogFormat`).
 
 Like the familiar engine, `Object` and `Random` clash with `System.Object` and `System.Random`
