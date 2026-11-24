@@ -1,7 +1,9 @@
 <p>
   <img src="crates/misty_editor/assets/branding/logo_small.png" width="48" height="48" alt="Misty Engine logo">
   &nbsp;
-  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/Support-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Support Misty Engine on PayPal" height="28"></a>
+  <a href="https://github.com/sponsors/Aalzard"><img src="https://img.shields.io/badge/Sponsor_on_GitHub-EA4AAA?logo=githubsponsors&amp;logoColor=white" alt="Sponsor on GitHub" height="28"></a>
+  &nbsp;
+  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/Support_on_PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Support on PayPal" height="28"></a>
 </p>
 
 # Misty Engine
@@ -163,6 +165,16 @@ For developers: `cargo test --workspace` and `cargo clippy --workspace --all-tar
 `MISTY_SCREENSHOT=out.png` makes the editor (or `misty_player`) save a picture of its window and
 exit. How a release is made: [docs/release.md](docs/release.md). Notes:
 [progress](docs/progress.md) · [decisions](docs/decisions.md).
+
+## Support Misty Engine
+
+Misty Engine is free and made in spare time. If you want to help, pick one:
+
+<p>
+  <a href="https://github.com/sponsors/Aalzard"><img src="https://img.shields.io/badge/Sponsor_on_GitHub-EA4AAA?style=for-the-badge&amp;logo=githubsponsors&amp;logoColor=white" alt="Sponsor on GitHub"></a>
+  &nbsp;
+  <a href="https://www.paypal.com/donate/?hosted_button_id=UFCVX9QYCB8F8"><img src="https://img.shields.io/badge/Support_on_PayPal-00457C?style=for-the-badge&amp;logo=paypal&amp;logoColor=white" alt="Support on PayPal"></a>
+</p>
 
 ## License
 
