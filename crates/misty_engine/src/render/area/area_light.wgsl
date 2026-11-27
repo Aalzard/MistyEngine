@@ -149,7 +149,7 @@ fn rect_light(li: LightItem, world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, perce
 
 // Light from rectangle light `i` reflected towards the eye: diffuse + GGX, windowed by range,
 // shadowed by the map rendered from its centre (like a spot light) and contact shadows.
-fn rect_shade(i: u32, li: LightItem, world: vec3<f32>, receive_shadows: bool, n: vec3<f32>, v: vec3<f32>, perceptual: f32, f0: vec3<f32>, diffuse_color: vec3<f32>, ssao: f32) -> vec3<f32> {
+fn rect_shade(i: u32, li: LightItem, world: vec3<f32>, receive_shadows: bool, n: vec3<f32>, v: vec3<f32>, perceptual: f32, f0: vec3<f32>, diffuse_color: vec3<f32>, ssao: f32, spec_scale: f32) -> vec3<f32> {
     var atten = rect_window(li, world);
     if (atten <= 0.0) {
         return vec3<f32>(0.0);
@@ -164,5 +164,5 @@ fn rect_shade(i: u32, li: LightItem, world: vec3<f32>, receive_shadows: bool, n:
         atten *= contact_shadow(li, world, n, l);
     }
     atten *= direct_occlusion(ssao);
-    return (diffuse_color * t.diffuse + t.specular) * li.color.rgb * atten;
+    return (diffuse_color * t.diffuse + t.specular * spec_scale) * li.color.rgb * atten;
 }

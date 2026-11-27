@@ -377,7 +377,9 @@ fn terrain_surface(in: MeshOut) -> Surface {
     for (var i = 0u; i < 4u; i++) {
         if (w[i] > 0.0) {
             occlusion += terrain.surface[ids[i]].w * w[i];
-            s.albedo += harmonize(layers[i].albedo, terrain.harmony[ids[i]]) * w[i];
+            s.albedo += color_adjust(harmonize(layers[i].albedo, terrain.harmony[ids[i]]), terrain.look[ids[i]].xyz) * w[i];
+            s.no_highlights += terrain.relief[ids[i]].y * w[i];
+            s.no_reflections += terrain.relief[ids[i]].z * w[i];
             s.normal += layers[i].normal * w[i];
             s.metallic += terrain.surface[ids[i]].x * w[i];
             s.smoothness += terrain.surface[ids[i]].y * w[i];
