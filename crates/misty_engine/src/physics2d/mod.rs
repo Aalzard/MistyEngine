@@ -8,6 +8,7 @@
 
 mod colliders;
 mod contacts;
+mod follow;
 mod queries;
 
 use std::collections::{HashMap, HashSet};
@@ -56,6 +57,8 @@ struct Body {
     kind: BodyType2D,
     /// MovePosition / MoveRotation target for the next step (kinematic bodies sweep there).
     target: Option<(Vec2, f32)>,
+    /// The Transform pose (X/Y, Z angle) `follow_transforms` last saw (see `follow.rs`).
+    seen: (Vec2, f32),
 }
 
 pub struct Physics2D {
@@ -85,6 +88,8 @@ pub struct Physics2D {
     /// Colliders of objects switched off since the last step, with their objects: rapier
     /// reports their contacts as stopped and the step turns them into Exit contacts.
     departed: HashMap<rp::ColliderHandle, Entity>,
+    /// Colliders without a body of their own, kept on their Transform (see `follow.rs`).
+    followers: HashMap<Entity, follow::Follower>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -131,6 +136,7 @@ impl Physics2D {
             dormant_set: HashSet::new(),
             activity_seen: None,
             departed: HashMap::new(),
+            followers: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
@@ -212,6 +218,7 @@ impl Physics2D {
                 handle,
                 kind: rb.body_type,
                 target: None,
+                seen: (p, a),
             },
         );
     }
@@ -447,6 +454,7 @@ impl Physics2D {
                 }
             }
         }
+        self.followers.remove(&e);
         // Its colliders on a body further up, or on none.
         for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
@@ -592,6 +600,7 @@ impl Physics2D {
 
     /// Remove an object's colliders (its body stays).
     fn remove_colliders(&mut self, e: Entity) {
+        self.followers.remove(&e);
         for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
             self.colliders.remove(&h);

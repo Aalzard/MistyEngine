@@ -1866,6 +1866,7 @@ impl ScriptHost {
             let contacts_2d = self.with_world(|w| {
                 w.physics2d.sync_active(&w.scene);
                 w.physics2d.refresh_tilemaps(&w.scene);
+                w.physics2d.follow_transforms(&w.scene);
                 w.physics2d.step()
             });
             self.dispatch_2d(&contacts_2d);

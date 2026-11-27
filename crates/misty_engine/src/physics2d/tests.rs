@@ -674,3 +674,94 @@ fn switching_off_sends_exit_2d() {
     let off = run_synced(&mut p, &mut scene, 2);
     assert_eq!(count(&off, floor, b, false, Phase::Exit), 1, "{off:?}");
 }
+
+/// Steps the way Play does: catch up with Transforms before each step.
+fn run_following(p: &mut Physics2D, scene: &mut Scene, steps: usize) {
+    for _ in 0..steps {
+        p.follow_transforms(scene);
+        p.step();
+        p.sync_out(scene);
+    }
+}
+
+#[test]
+fn moved_static_colliders_follow_their_transform() {
+    let mut scene = Scene::new("t");
+    let g = ground(&mut scene, 0.0);
+    let b = crate_box(&mut scene, Vec2::new(0.0, 1.0));
+    let mut p = build(&scene);
+    run_following(&mut p, &mut scene, 30);
+    let rest = scene.world_position(b).y;
+    assert!((rest - 1.0).abs() < 0.05, "{rest}");
+    // The ground slides away (a script or an Animator moving a platform): the box falls.
+    scene.set_transform(g, Transform::from_position(Vec3::new(40.0, 0.0, 0.0)));
+    run_following(&mut p, &mut scene, 60);
+    assert!(
+        scene.world_position(b).y < -2.0,
+        "{}",
+        scene.world_position(b)
+    );
+    assert_eq!(p.overlap_point_all(Vec2::new(40.0, 0.0), u32::MAX), vec![g]);
+
+    // A collider on a body's child follows the child's local moves.
+    let mut scene = Scene::new("t");
+    let body = object(&mut scene, "Body", Vec2::ZERO);
+    scene.add(
+        body,
+        Rigidbody2D {
+            body_type: BodyType2D::Kinematic,
+            ..Default::default()
+        },
+    );
+    let arm = scene.spawn("Arm", Some(body));
+    scene.add(arm, BoxCollider2D::default());
+    let mut p = build(&scene);
+    scene.set_transform(arm, Transform::from_position(Vec3::new(3.0, 0.0, 0.0)));
+    run_following(&mut p, &mut scene, 1);
+    assert_eq!(
+        p.overlap_point_all(Vec2::new(3.0, 0.0), u32::MAX),
+        vec![arm]
+    );
+    assert!(p.overlap_point_all(Vec2::ZERO, u32::MAX).is_empty());
+
+    // A rescaled static collider grows.
+    let mut t = scene.transform(arm);
+    t.scale = Vec3::new(4.0, 1.0, 1.0);
+    scene.set_transform(arm, t);
+    run_following(&mut p, &mut scene, 1);
+    assert_eq!(
+        p.overlap_point_all(Vec2::new(4.5, 0.0), u32::MAX),
+        vec![arm]
+    );
+}
+
+#[test]
+fn kinematic_bodies_follow_animated_transforms_but_keep_their_velocity() {
+    let mut scene = Scene::new("t");
+    let k = object(&mut scene, "Lift", Vec2::ZERO);
+    scene.add(
+        k,
+        Rigidbody2D {
+            body_type: BodyType2D::Kinematic,
+            ..Default::default()
+        },
+    );
+    scene.add(k, BoxCollider2D::default());
+    let mut p = build(&scene);
+    // An Animator writes the Transform: the body jumps there.
+    scene.set_transform(k, Transform::from_position(Vec3::new(0.0, 5.0, 0.0)));
+    run_following(&mut p, &mut scene, 1);
+    assert!((p.body_pose(k).unwrap().0 - Vec2::new(0.0, 5.0)).length() < 1e-4);
+    // Moving by velocity over several steps before the Transform is written back: not pulled
+    // back to the stale Transform.
+    p.set_velocity(k, Vec2::new(1.0, 0.0));
+    for _ in 0..10 {
+        p.follow_transforms(&scene);
+        p.step();
+    }
+    let x = p.body_pose(k).unwrap().0.x;
+    assert!(x > 10.0 * p.fixed_dt * 0.9, "{x}");
+    p.sync_out(&mut scene);
+    run_following(&mut p, &mut scene, 1);
+    assert!(p.body_pose(k).unwrap().0.x > x);
+}

@@ -82,6 +82,9 @@ impl Physics2D {
         self.colliders.insert(h, e);
         self.colliders_of.entry(e).or_default().push(h);
         self.owners.insert(e);
+        if owner != Some(e) {
+            self.follow(scene, e, owner, h, offset);
+        }
     }
 
     /// The object whose body `e`'s colliders attach to: itself or the closest parent with one.
