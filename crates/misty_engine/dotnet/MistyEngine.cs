@@ -933,6 +933,18 @@ namespace Misty
 
     public enum ForceMode { Force, Impulse, VelocityChange, Acceleration }
 
+    [System.Flags]
+    public enum RigidbodyConstraints
+    {
+        None = 0,
+        FreezePositionX = 2, FreezePositionY = 4, FreezePositionZ = 8,
+        FreezeRotationX = 16, FreezeRotationY = 32, FreezeRotationZ = 64,
+        FreezePosition = 14, FreezeRotation = 112, FreezeAll = 126,
+    }
+
+    public enum CollisionDetectionMode { Discrete, Continuous, ContinuousDynamic, ContinuousSpeculative }
+    public enum RigidbodyInterpolation { None, Interpolate, Extrapolate }
+
     /// <summary>A physics body (the object's Rigidbody component).</summary>
     public sealed unsafe class Rigidbody : Component
     {
@@ -970,6 +982,45 @@ namespace Misty
         public float mass { get => Scalar(0); set => SetScalar(0, value); }
         public bool isKinematic { get => Scalar(1) != 0; set => SetScalar(1, value ? 1 : 0); }
         public bool useGravity { get => Scalar(2) != 0; set => SetScalar(2, value ? 1 : 0); }
+        public float drag { get => Scalar(3); set => SetScalar(3, value); }
+        public float angularDrag { get => Scalar(4); set => SetScalar(4, value); }
+        public float linearDamping { get => drag; set => drag = value; }
+        public float angularDamping { get => angularDrag; set => angularDrag = value; }
+        public RigidbodyConstraints constraints { get => (RigidbodyConstraints)(int)Scalar(5); set => SetScalar(5, (int)value); }
+        public bool freezeRotation
+        {
+            get => (constraints & RigidbodyConstraints.FreezeRotation) == RigidbodyConstraints.FreezeRotation;
+            set => constraints = value ? constraints | RigidbodyConstraints.FreezeRotation : constraints & ~RigidbodyConstraints.FreezeRotation;
+        }
+        /// <summary>Every mode but Discrete turns on continuous collision detection.</summary>
+        public CollisionDetectionMode collisionDetectionMode
+        {
+            get => Scalar(6) != 0 ? CollisionDetectionMode.Continuous : CollisionDetectionMode.Discrete;
+            set => SetScalar(6, value == CollisionDetectionMode.Discrete ? 0 : 1);
+        }
+        /// <summary>Extrapolate works as Interpolate.</summary>
+        public RigidbodyInterpolation interpolation
+        {
+            get => Scalar(7) != 0 ? RigidbodyInterpolation.Interpolate : RigidbodyInterpolation.None;
+            set => SetScalar(7, value == RigidbodyInterpolation.None ? 0 : 1);
+        }
+        public Vector3 GetPointVelocity(Vector3 worldPoint)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = worldPoint;
+            if (Internal.Native.api.physicsExtra(10, id, 0, v, 0, 0, 0) != 1) throw Internal.Native.Missing("Rigidbody");
+            return v[0];
+        }
+        public Vector3 worldCenterOfMass
+        {
+            get
+            {
+                Vector3* v = stackalloc Vector3[2];
+                if (Internal.Native.api.physicsExtra(11, id, 0, v, 0, 0, 0) != 1) return position;
+                return v[0];
+            }
+        }
+        public void AddRelativeTorque(Vector3 torque, ForceMode mode = ForceMode.Force) => AddTorque(transform.rotation * torque, mode);
         /// <summary>The body's position in the physics world (the Transform may be interpolated).</summary>
         public Vector3 position => Vec(7);
         public Quaternion rotation => transform.rotation;
@@ -977,6 +1028,24 @@ namespace Misty
         public void AddForce(Vector3 force, ForceMode mode = ForceMode.Force) => SetVec(4, force, mode);
         public void AddForce(float x, float y, float z, ForceMode mode = ForceMode.Force) => AddForce(new Vector3(x, y, z), mode);
         public void AddTorque(Vector3 torque, ForceMode mode = ForceMode.Force) => SetVec(5, torque, mode);
+        /// <summary>A force at a world point: also turns the body.</summary>
+        public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode mode = ForceMode.Force)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = force; v[1] = position;
+            Internal.Native.api.physicsExtra(4, id, (ulong)mode, v, 0, 0, 0);
+        }
+        /// <summary>Pushes the body away from an explosion at `explosionPosition`, weaker towards
+        /// `explosionRadius` (0: no limit); `upwardsModifier` lifts it.</summary>
+        public void AddExplosionForce(float explosionForce, Vector3 explosionPosition, float explosionRadius, float upwardsModifier = 0f, ForceMode mode = ForceMode.Force)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = explosionPosition;
+            Internal.Native.api.physicsExtra(5, id, (ulong)mode, v, explosionForce, explosionRadius, upwardsModifier);
+        }
+        public void Sleep() => Internal.Native.api.physicsExtra(6, id, 0, null, 0, 0, 0);
+        public void WakeUp() => Internal.Native.api.physicsExtra(7, id, 0, null, 0, 0, 0);
+        public bool IsSleeping() => Internal.Native.api.physicsExtra(8, id, 0, null, 0, 0, 0) == 1;
         public void AddRelativeForce(Vector3 force, ForceMode mode = ForceMode.Force) => AddForce(transform.rotation * force, mode);
         /// <summary>Kinematic bodies sweep to `position` in the next step, pushing others.</summary>
         public void MovePosition(Vector3 position) => SetVec(6, position);
@@ -994,6 +1063,13 @@ namespace Misty
         internal override ulong EntityId => id;
         /// <summary>The Rigidbody this collider moves with (its own or a parent's), or null.</summary>
         public Rigidbody attachedRigidbody => GetComponentInParent<Rigidbody>();
+        /// <summary>The point on this object's colliders nearest `position` (itself when inside).</summary>
+        public unsafe Vector3 ClosestPoint(Vector3 position)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = position;
+            return Internal.Native.api.physicsExtra(9, EntityId, 0, v, 0, 0, 0) == 1 ? v[0] : position;
+        }
     }
 
     public sealed class BoxCollider : Collider { internal BoxCollider(ulong id) : base(id) { } }
@@ -1162,6 +1238,17 @@ namespace Misty
             for (int i = 0; i < n; i++) hits[i] = new RaycastHit { data = buf[i] };
             return hits;
         }
+
+        /// <summary>The colliders of `collider1` and `collider2` pass through each other.</summary>
+        public static void IgnoreCollision(Collider collider1, Collider collider2, bool ignore = true) =>
+            Internal.Native.api.physicsExtra(0, collider1.EntityId, collider2.EntityId, null, ignore ? 1 : 0, 0, 0);
+        public static bool GetIgnoreCollision(Collider collider1, Collider collider2) =>
+            Internal.Native.api.physicsExtra(1, collider1.EntityId, collider2.EntityId, null, 0, 0, 0) == 1;
+        /// <summary>Tick or untick a box of the Layer Collision Matrix while playing.</summary>
+        public static void IgnoreLayerCollision(int layer1, int layer2, bool ignore = true) =>
+            Internal.Native.api.physicsExtra(2, (ulong)Math.Clamp(layer1, 0, 31), (ulong)Math.Clamp(layer2, 0, 31), null, ignore ? 1 : 0, 0, 0);
+        public static bool GetIgnoreLayerCollision(int layer1, int layer2) =>
+            Internal.Native.api.physicsExtra(3, (ulong)Math.Clamp(layer1, 0, 31), (ulong)Math.Clamp(layer2, 0, 31), null, 0, 0, 0) == 1;
 
         /// <summary>Whether any collider touches the sphere.</summary>
         public static bool CheckSphere(Vector3 position, float radius, int layerMask = DefaultRaycastLayers) =>
@@ -3579,6 +3666,7 @@ namespace Misty.Internal
         public delegate* unmanaged<int, ulong*, int, float*, int> transformGroup;
         public delegate* unmanaged<int, int, char*, int, char*, int, int> app;
         public delegate* unmanaged<int, int, float*, uint, HitData*, ulong*, int, int> shapeQuery;
+        public delegate* unmanaged<int, ulong, ulong, Vector3*, float, float, float, int> physicsExtra;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>

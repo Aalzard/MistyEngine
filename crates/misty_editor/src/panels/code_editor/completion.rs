@@ -458,7 +458,10 @@ mod tests {
         assert_eq!(input[0].label, "GetKeyDown");
         assert!(input[0].signature.starts_with("GetKeyDown("));
         let rb = complete(&ctx("self._rb:Add"), &src, 0);
-        assert_eq!(labels(&rb), vec!["AddForce", "AddTorque"]);
+        assert_eq!(labels(&rb)[0], "AddForce");
+        for want in ["AddTorque", "AddForceAtPosition", "AddExplosionForce"] {
+            assert!(labels(&rb).contains(&want), "{want} in {:?}", labels(&rb));
+        }
         let hit = complete(&ctx("hit.poi"), &src, 0);
         assert_eq!(labels(&hit), vec!["point"]);
         let me = complete(&ctx("self."), &src, 0);

@@ -305,6 +305,51 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     register_shapes(lua, &physics)?;
+    physics.set(
+        "IgnoreCollision",
+        lua.create_function(|lua, (a, b, ignore): (Value, Value, Option<bool>)| {
+            let (a, b) = (
+                object(&a, "IgnoreCollision")?,
+                object(&b, "IgnoreCollision")?,
+            );
+            with_world(lua, |w| {
+                w.physics.ignore_collision(a, b, ignore.unwrap_or(true))
+            })
+        })?,
+    )?;
+    physics.set(
+        "GetIgnoreCollision",
+        lua.create_function(|lua, (a, b): (Value, Value)| {
+            let (a, b) = (
+                object(&a, "GetIgnoreCollision")?,
+                object(&b, "GetIgnoreCollision")?,
+            );
+            with_world(lua, |w| w.physics.collision_ignored(a, b))
+        })?,
+    )?;
+    physics.set(
+        "IgnoreLayerCollision",
+        lua.create_function(|lua, (a, b, ignore): (u8, u8, Option<bool>)| {
+            with_world(lua, |w| {
+                w.physics
+                    .ignore_layer_collision(a, b, ignore.unwrap_or(true))
+            })
+        })?,
+    )?;
+    physics.set(
+        "GetIgnoreLayerCollision",
+        lua.create_function(|lua, (a, b): (u8, u8)| {
+            with_world(lua, |w| w.physics.layer_collision_ignored(a, b))
+        })?,
+    )?;
+    // ClosestPoint(point, gameObject): on the object's colliders (the point itself inside).
+    physics.set(
+        "ClosestPoint",
+        lua.create_function(|lua, (p, go): (LVec3, Value)| {
+            let e = object(&go, "ClosestPoint")?;
+            with_world(lua, |w| w.physics.closest_point(e, p.0).map(LVec3))
+        })?,
+    )?;
     // `Physics.gravity` reads and writes the live world.
     let meta = lua.create_table()?;
     meta.set(

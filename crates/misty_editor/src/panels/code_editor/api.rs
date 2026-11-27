@@ -63,6 +63,11 @@ Physics|CapsuleCast|CapsuleCast(point1, point2, radius, direction [, maxDistance
 Physics|SphereCastAll|SphereCastAll(origin, radius, direction [, maxDistance [, layerMask]])|Every hit of a sphere sweep, nearest first
 Physics|BoxCastAll|BoxCastAll(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])|Every hit of a box sweep, nearest first
 Physics|CapsuleCastAll|CapsuleCastAll(point1, point2, radius, direction [, maxDistance [, layerMask]])|Every hit of a capsule sweep, nearest first
+Physics|IgnoreCollision|IgnoreCollision(goA, goB [, ignore])|Stop (or with false, restart) contacts between two objects
+Physics|GetIgnoreCollision|GetIgnoreCollision(goA, goB)|True when the two objects ignore each other
+Physics|IgnoreLayerCollision|IgnoreLayerCollision(layerA, layerB [, ignore])|Stop (or restart) contacts between two layers
+Physics|GetIgnoreLayerCollision|GetIgnoreLayerCollision(layerA, layerB)|True when the two layers ignore each other
+Physics|ClosestPoint|ClosestPoint(point, gameObject)|Nearest point on the object's colliders (the point itself when inside)
 Physics|DefaultRaycastLayers|DefaultRaycastLayers|Every layer but Ignore Raycast
 Physics|AllLayers|AllLayers|Every layer
 Physics|IgnoreRaycastLayer|IgnoreRaycastLayer|The Ignore Raycast layer mask
@@ -144,6 +149,16 @@ ForceMode|Force|Force|Continuous force (uses mass and time)
 ForceMode|Impulse|Impulse|Instant force (uses mass)
 ForceMode|VelocityChange|VelocityChange|Instant velocity change
 ForceMode|Acceleration|Acceleration|Continuous acceleration
+RigidbodyConstraints|None|None|Nothing frozen (0)
+RigidbodyConstraints|FreezePositionX|FreezePositionX|Freeze X movement (2)
+RigidbodyConstraints|FreezePositionY|FreezePositionY|Freeze Y movement (4)
+RigidbodyConstraints|FreezePositionZ|FreezePositionZ|Freeze Z movement (8)
+RigidbodyConstraints|FreezeRotationX|FreezeRotationX|Freeze turning around X (16)
+RigidbodyConstraints|FreezeRotationY|FreezeRotationY|Freeze turning around Y (32)
+RigidbodyConstraints|FreezeRotationZ|FreezeRotationZ|Freeze turning around Z (64)
+RigidbodyConstraints|FreezePosition|FreezePosition|Freeze all movement
+RigidbodyConstraints|FreezeRotation|FreezeRotation|Freeze all turning
+RigidbodyConstraints|FreezeAll|FreezeAll|Freeze everything
 RenderSettings|fog|fog|Fog on/off
 RenderSettings|fogColor|fogColor|Fog colour
 RenderSettings|fogDensity|fogDensity|Exponential fog density
@@ -288,6 +303,19 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #Rigidbody|useGravity|useGravity|Affected by gravity
 #Rigidbody|AddForce|AddForce(v [, mode])|Apply a force (ForceMode.Force by default)
 #Rigidbody|AddTorque|AddTorque(v [, mode])|Apply a torque
+#Rigidbody|drag|drag|Linear damping (settable)
+#Rigidbody|angularDrag|angularDrag|Angular damping (settable)
+#Rigidbody|constraints|constraints|RigidbodyConstraints bits: frozen position/rotation axes (settable)
+#Rigidbody|freezeRotation|freezeRotation|Stop all turning (settable)
+#Rigidbody|worldCenterOfMass|worldCenterOfMass|Centre of mass in world space
+#Rigidbody|GetPointVelocity|GetPointVelocity(worldPoint)|Velocity of the body at a world point (spin included)
+#Rigidbody|AddRelativeForce|AddRelativeForce(v [, mode])|Apply a force in the body's local axes
+#Rigidbody|AddRelativeTorque|AddRelativeTorque(v [, mode])|Apply a torque in the body's local axes
+#Rigidbody|AddForceAtPosition|AddForceAtPosition(force, position [, mode])|Push at a world point (also turns the body)
+#Rigidbody|AddExplosionForce|AddExplosionForce(force, position, radius [, upwardsModifier [, mode]])|Push away from a point, weaker with distance
+#Rigidbody|Sleep|Sleep()|Put the body to sleep until something touches it
+#Rigidbody|WakeUp|WakeUp()|Wake a sleeping body
+#Rigidbody|IsSleeping|IsSleeping()|True while the body sleeps
 #Rigidbody|MovePosition|MovePosition(v)|Move a kinematic body
 #Rigidbody|MoveRotation|MoveRotation(eulerDegrees)|Rotate a kinematic body
 #Rigidbody2D|AddForce|AddForce(force [, mode])|Apply a 2D force (mode "Force" by default, or "Impulse")

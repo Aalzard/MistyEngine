@@ -1853,10 +1853,7 @@ impl ScriptHost {
             // `Collision.relativeVelocity` wants the speeds before the step: kept while some
             // script has a collision callback.
             let enter = lacks_bit("OnCollisionEnter") | lacks_bit("OnCollisionStay");
-            let impacts = self
-                .instances
-                .iter()
-                .any(|i| i.lacks & enter != enter);
+            let impacts = self.instances.iter().any(|i| i.lacks & enter != enter);
             let contacts = self.with_world(|w| {
                 w.physics.track_impacts = impacts;
                 w.physics.step(&w.scene)

@@ -35,6 +35,9 @@ impl Physics {
                 if owner != Some(e) {
                     self.follow(scene, e, owner, h);
                 }
+                if self.has_ignored_pair(e) {
+                    self.refresh_filter_hooks(e);
+                }
                 if let Some(m) = material {
                     self.materials.insert(h, m);
                 }

@@ -163,6 +163,7 @@ pub(super) struct NativeApi {
     transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
     app: extern "C" fn(i32, i32, *const u16, i32, *mut u16, i32) -> i32,
     shape_query: extern "C" fn(i32, i32, *const f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    physics_extra: extern "C" fn(i32, u64, u64, *mut V3, f32, f32, f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -229,7 +230,111 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     transform_group,
     app,
     shape_query,
+    physics_extra,
 };
+
+fn force_mode(m: i64) -> &'static str {
+    match m {
+        1 => "Impulse",
+        2 => "VelocityChange",
+        3 => "Acceleration",
+        _ => "Force",
+    }
+}
+
+/// Physics.IgnoreCollision & co. and the Rigidbody extras. `v` points at two Vector3s.
+/// ops: 0 IgnoreCollision(a, b, ignore = x != 0), 1 GetIgnoreCollision(a, b), 2
+/// IgnoreLayerCollision(layer a, layer b, ignore = x != 0), 3 GetIgnoreLayerCollision, 4
+/// AddForceAtPosition(body a, force v[0], position v[1], mode b), 5 AddExplosionForce(body a,
+/// force x, position v[0], radius y, upwards z, mode b), 6 Sleep(a), 7 WakeUp(a), 8
+/// IsSleeping(a), 9 ClosestPoint(collider a, point v[0] → v[0]; 0 without colliders), 10
+/// GetPointVelocity(body a, point v[0] → v[0]), 11 worldCenterOfMass(body a → v[0]; 0
+/// without a body).
+/// Returns 1/0 (or the answer), -1 outside a call from the engine.
+extern "C" fn physics_extra(op: i32, a: u64, b: u64, v: *mut V3, x: f32, y: f32, z: f32) -> i32 {
+    let read = |i: usize| -> Vec3 {
+        if v.is_null() {
+            return Vec3::ZERO;
+        }
+        // SAFETY: C# passes two Vector3s.
+        Vec3::from_array(unsafe { *v.add(i) })
+    };
+    let ent = |id: u64| Entity::from_bits(id);
+    with_world(|w| {
+        let alive = |e: Option<Entity>| e.filter(|e| w.scene.contains(*e));
+        match op {
+            0 | 1 => {
+                let (Some(ea), Some(eb)) = (alive(ent(a)), alive(ent(b))) else {
+                    return 0;
+                };
+                if op == 0 {
+                    w.physics.ignore_collision(ea, eb, x != 0.0);
+                    1
+                } else {
+                    i32::from(w.physics.collision_ignored(ea, eb))
+                }
+            }
+            2 => {
+                w.physics
+                    .ignore_layer_collision(a.min(31) as u8, b.min(31) as u8, x != 0.0);
+                1
+            }
+            3 => i32::from(
+                w.physics
+                    .layer_collision_ignored(a.min(31) as u8, b.min(31) as u8),
+            ),
+            4..=8 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match op {
+                    4 => {
+                        let impulse = super::api::impulse_of(w, e, read(0), force_mode(b as i64));
+                        w.physics.add_impulse_at_position(e, impulse, read(1));
+                    }
+                    5 => {
+                        if let Some(push) = w.physics.explosion_push(e, x, read(0), y, z) {
+                            let dv = super::api::delta_velocity(w, e, push, force_mode(b as i64));
+                            let vel = w.physics.velocity(e).unwrap_or_default();
+                            w.physics.set_velocity(e, vel + dv);
+                        }
+                    }
+                    6 => w.physics.set_sleeping(e, true),
+                    7 => w.physics.set_sleeping(e, false),
+                    _ => return i32::from(w.physics.is_sleeping(e)),
+                }
+                1
+            }
+            9 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match w.physics.closest_point(e, read(0)) {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            10 | 11 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                let out = if op == 10 {
+                    Some(w.physics.point_velocity(e, read(0)))
+                } else {
+                    w.physics.world_center_of_mass(e)
+                };
+                match out {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            _ => -1,
+        }
+    })
+    .unwrap_or(-1)
+}
 
 /// `Application` and `ScreenCapture`. op 0: `CaptureScreenshot(text, superSize = arg)`;
 /// 1: `persistentDataPath` (written to `out`, returns its length); 2: `HasDefine(text)` (1/0);
@@ -955,8 +1060,10 @@ extern "C" fn rigidbody_move_rotation(id: u64, q: *const Q) -> i32 {
     .unwrap_or(0)
 }
 
-/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1); `set` 0 reads into `out`,
-/// 1 writes `value`. 1 done, 0 no object or no Rigidbody.
+/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1), 3 drag, 4 angularDrag,
+/// 5 constraints (`RigidbodyConstraints` bits), 6 collisionDetectionMode (0 Discrete, else
+/// continuous), 7 interpolation (0 None, else Interpolate); `set` 0 reads into `out`, 1
+/// writes `value`. 1 done, 0 no object or no Rigidbody.
 extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *mut f32) -> i32 {
     with_object(id, |w, e| {
         let Ok(mut b) = w.scene.world.get::<&mut crate::scene::Rigidbody>(e) else {
@@ -967,19 +1074,38 @@ extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *
             match which {
                 1 => b.is_kinematic = on,
                 2 => b.use_gravity = on,
+                3 => b.drag = value.max(0.0),
+                4 => b.angular_drag = value.max(0.0),
+                5 => b.set_constraints(value as u32),
+                6 => b.continuous = on,
+                7 => {
+                    b.interpolation = if on {
+                        crate::scene::Interpolation::Interpolate
+                    } else {
+                        crate::scene::Interpolation::None
+                    }
+                }
                 _ => b.mass = value.max(1e-4),
             }
-            let mass = b.mass;
+            let rb = b.clone();
             drop(b);
             match which {
                 1 => w.physics.set_kinematic(e, on),
                 2 => w.physics.set_use_gravity(e, on),
-                _ => w.physics.set_mass(e, mass),
+                3..=6 => w.physics.apply_body_settings(e, &rb),
+                7 => w.physics.set_interpolate(e, on),
+                _ => w.physics.set_mass(e, rb.mass),
             }
         } else if !out.is_null() {
+            let flag = |on: bool| f32::from(u8::from(on));
             let v = match which {
-                1 => f32::from(u8::from(b.is_kinematic)),
-                2 => f32::from(u8::from(b.use_gravity)),
+                1 => flag(b.is_kinematic),
+                2 => flag(b.use_gravity),
+                3 => b.drag,
+                4 => b.angular_drag,
+                5 => b.constraints() as f32,
+                6 => flag(b.continuous),
+                7 => flag(b.interpolation != crate::scene::Interpolation::None),
                 _ => b.mass,
             };
             // SAFETY: `out` points at a float on the C# stack.

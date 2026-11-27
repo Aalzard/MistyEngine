@@ -15,6 +15,7 @@ mod colliders;
 mod contact_info;
 mod convert;
 pub mod debug;
+mod extras;
 mod follow;
 mod joints;
 pub mod layers;
@@ -152,6 +153,8 @@ pub struct Physics {
     /// Keep `before` (some script reads collision details; costs a look at every moving
     /// body per step, so it is off otherwise and relative velocities are the current ones).
     pub track_impacts: bool,
+    /// Object pairs whose colliders ignore each other (`Physics.IgnoreCollision`).
+    ignored: HashSet<(Entity, Entity)>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -245,6 +248,7 @@ impl Physics {
             followers: HashMap::new(),
             before: HashMap::new(),
             track_impacts: false,
+            ignored: HashSet::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -474,6 +478,8 @@ impl Physics {
         let events = EventLog::default();
         let hooks = material::MaterialHooks {
             materials: &self.materials,
+            ignored: &self.ignored,
+            owners: &self.colliders,
         };
         self.world.step_with_events(&hooks, &events);
         self.check_breaks();
@@ -691,6 +697,9 @@ impl Physics {
         self.remove_wheels(e);
         self.ragdolls.forget(e);
         self.followers.remove(&e);
+        if !self.ignored.is_empty() {
+            self.ignored.retain(|(a, b)| *a != e && *b != e);
+        }
         if !owned {
             return;
         }
@@ -901,6 +910,8 @@ mod active_tests;
 mod busy_bench;
 #[cfg(test)]
 mod character_tests;
+#[cfg(test)]
+mod extras_tests;
 #[cfg(test)]
 mod follow_tests;
 #[cfg(test)]

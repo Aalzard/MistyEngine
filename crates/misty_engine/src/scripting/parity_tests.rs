@@ -693,3 +693,161 @@ public class Walker : MonoBehaviour
         "{logs:?}"
     );
 }
+
+// ---- IgnoreCollision & co. -----------------------------------------------------------------------
+
+#[test]
+fn physics_extras_from_lua_and_csharp() {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let lua = r#"
+local P = {}
+function P:Start()
+    local floor = GameObject.Find("Floor")
+    Physics.IgnoreCollision(self.gameObject, floor)
+    Physics.IgnoreLayerCollision(3, 4)
+    local rb = self.gameObject:GetComponent("Rigidbody")
+    rb:AddForceAtPosition(Vector3.new(0, 0, 1), Vector3.new(0, 3.5, 0), "Impulse")
+    rb:AddExplosionForce(10, Vector3.new(0, 1, 0), 0, 0, "Impulse")
+    local p = Physics.ClosestPoint(Vector3.new(5, 3, 0), self.gameObject)
+    Debug.Log("lua " .. tostring(Physics.GetIgnoreCollision(floor, self.gameObject))
+        .. " " .. tostring(Physics.GetIgnoreLayerCollision(4, 3)) .. " " .. string.format("%.2f", p.x)
+        .. " " .. tostring(rb.velocity.z > 0.5) .. " " .. tostring(rb.velocity.y > 5))
+    rb:Sleep()
+    Debug.Log("asleep " .. tostring(rb:IsSleeping()))
+    rb:WakeUp()
+end
+return P
+"#;
+    let root = project(&[("P.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter().any(|l| l == "lua true true 0.50 true true"),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "asleep true"), "{logs:?}");
+
+    if no_dotnet() {
+        return;
+    }
+    let cs = r#"
+using Misty;
+public class P : MonoBehaviour
+{
+    void Start()
+    {
+        var floor = GameObject.Find("Floor").GetComponent<Collider>();
+        var me = GetComponent<Collider>();
+        Physics.IgnoreCollision(me, floor);
+        Physics.IgnoreLayerCollision(3, 4);
+        var rb = GetComponent<Rigidbody>();
+        rb.AddForceAtPosition(new Vector3(0, 0, 1), new Vector3(0, 3.5f, 0), ForceMode.Impulse);
+        rb.AddExplosionForce(10, new Vector3(0, 1, 0), 0, 0, ForceMode.Impulse);
+        Debug.Log("cs " + Physics.GetIgnoreCollision(floor, me) + " " + Physics.GetIgnoreLayerCollision(4, 3)
+            + " " + me.ClosestPoint(new Vector3(5, 3, 0)).x.ToString("F2")
+            + " " + (rb.velocity.z > 0.5f) + " " + (rb.velocity.y > 5));
+        rb.Sleep();
+        Debug.Log("asleep " + rb.IsSleeping());
+    }
+}
+"#;
+    let root = project(&[("P.cs", cs)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter().any(|l| l == "cs True True 0.50 True True"),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "asleep True"), "{logs:?}");
+}
+
+#[test]
+fn rigidbody_settings_from_lua_and_csharp() {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let lua = r#"
+local P = {}
+function P:Start()
+    local rb = self.gameObject:GetComponent("Rigidbody")
+    rb.drag = 2
+    rb.angularDrag = 0.5
+    rb.constraints = RigidbodyConstraints.FreezePositionX + RigidbodyConstraints.FreezeRotationY
+    local c1 = rb.constraints
+    rb.freezeRotation = true
+    rb.angularVelocity = Vector3.new(0, 0, 1)
+    local v = rb:GetPointVelocity(Vector3.new(1, 3, 0))
+    local com = rb.worldCenterOfMass
+    Debug.Log(string.format("lua %.1f %.1f %d %s %d %.2f %.2f", rb.drag, rb.angularDrag, c1,
+        tostring(rb.freezeRotation), rb.constraints, v.y, com.y))
+end
+return P
+"#;
+    let root = project(&[("P.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter()
+            .any(|l| l == "lua 2.0 0.5 34 true 114 1.00 3.00"),
+        "{logs:?}"
+    );
+    let rb = scene.world.get::<&Rigidbody>(e).unwrap().clone();
+    assert_eq!((rb.drag, rb.freeze_rotation), (2.0, [true; 3]));
+
+    if no_dotnet() {
+        return;
+    }
+    let cs = r#"
+using Misty;
+public class P : MonoBehaviour
+{
+    void Start()
+    {
+        var rb = GetComponent<Rigidbody>();
+        rb.drag = 2;
+        rb.angularDrag = 0.5f;
+        rb.constraints = RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezeRotationY;
+        int c1 = (int)rb.constraints;
+        rb.freezeRotation = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.angularVelocity = new Vector3(0, 0, 1);
+        var v = rb.GetPointVelocity(new Vector3(1, 3, 0));
+        Debug.Log("cs " + rb.drag.ToString("F1") + " " + rb.angularDrag.ToString("F1") + " " + c1
+            + " " + rb.freezeRotation + " " + (int)rb.constraints + " " + v.y.ToString("F2")
+            + " " + rb.worldCenterOfMass.y.ToString("F2") + " " + rb.collisionDetectionMode
+            + " " + rb.interpolation);
+    }
+}
+"#;
+    let root = project(&[("P.cs", cs)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter()
+            .any(|l| l == "cs 2.0 0.5 34 True 114 1.00 3.00 Continuous Interpolate"),
+        "{logs:?}"
+    );
+}

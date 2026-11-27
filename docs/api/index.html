@@ -76,6 +76,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#ragdoll">Ragdoll</a></li>
 <li><a href="#recorder">Recorder</a></li>
 <li><a href="#rendersettings">RenderSettings</a></li>
+<li><a href="#rigidbodyconstraints">RigidbodyConstraints</a></li>
 <li><a href="#rpctarget">RpcTarget</a></li>
 <li><a href="#savesystem">SaveSystem</a></li>
 <li><a href="#scenemanager">SceneManager</a></li>
@@ -978,6 +979,32 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function</div>
 <p>True when any collider touches the sphere</p>
 </div>
+<div class="entry" data-key="physics.closestpoint(point, gameobject) nearest point on the object's colliders (the point itself when inside)">
+<div class="sig">Physics.ClosestPoint(point, gameObject)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Nearest point on the object's colliders (the point itself when inside)</p>
+<p class="notes">ClosestPoint(point, gameObject): on the object's colliders (the point itself inside).</p>
+</div>
+<div class="entry" data-key="physics.getignorecollision(goa, gob) true when the two objects ignore each other">
+<div class="sig">Physics.GetIgnoreCollision(goA, goB)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>True when the two objects ignore each other</p>
+</div>
+<div class="entry" data-key="physics.getignorelayercollision(layera, layerb) true when the two layers ignore each other">
+<div class="sig">Physics.GetIgnoreLayerCollision(layerA, layerB)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>True when the two layers ignore each other</p>
+</div>
+<div class="entry" data-key="physics.ignorecollision(goa, gob [, ignore]) stop (or with false, restart) contacts between two objects">
+<div class="sig">Physics.IgnoreCollision(goA, goB [, ignore])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Stop (or with false, restart) contacts between two objects</p>
+</div>
+<div class="entry" data-key="physics.ignorelayercollision(layera, layerb [, ignore]) stop (or restart) contacts between two layers">
+<div class="sig">Physics.IgnoreLayerCollision(layerA, layerB [, ignore])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Stop (or restart) contacts between two layers</p>
+</div>
 <div class="entry" data-key="physics.overlapbox(center, halfextents [, orientation [, layermask]]) gameobjects touching a box">
 <div class="sig">Physics.OverlapBox(center, halfExtents [, orientation [, layerMask]])</div>
 <div class="meta">function</div>
@@ -1473,6 +1500,59 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">RenderSettings.stars</div>
 <div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
 <p>Star field brightness at night (0 = none)</p>
+</div>
+</section>
+<section id="rigidbodyconstraints">
+<h2>RigidbodyConstraints</h2>
+<div class="entry" data-key="rigidbodyconstraints.freezeall freeze everything">
+<div class="sig">RigidbodyConstraints.FreezeAll</div>
+<div class="meta">property</div>
+<p>Freeze everything</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezeposition freeze all movement">
+<div class="sig">RigidbodyConstraints.FreezePosition</div>
+<div class="meta">property</div>
+<p>Freeze all movement</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositionx freeze x movement (2)">
+<div class="sig">RigidbodyConstraints.FreezePositionX</div>
+<div class="meta">property</div>
+<p>Freeze X movement (2)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositiony freeze y movement (4)">
+<div class="sig">RigidbodyConstraints.FreezePositionY</div>
+<div class="meta">property</div>
+<p>Freeze Y movement (4)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositionz freeze z movement (8)">
+<div class="sig">RigidbodyConstraints.FreezePositionZ</div>
+<div class="meta">property</div>
+<p>Freeze Z movement (8)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotation freeze all turning">
+<div class="sig">RigidbodyConstraints.FreezeRotation</div>
+<div class="meta">property</div>
+<p>Freeze all turning</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationx freeze turning around x (16)">
+<div class="sig">RigidbodyConstraints.FreezeRotationX</div>
+<div class="meta">property</div>
+<p>Freeze turning around X (16)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationy freeze turning around y (32)">
+<div class="sig">RigidbodyConstraints.FreezeRotationY</div>
+<div class="meta">property</div>
+<p>Freeze turning around Y (32)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationz freeze turning around z (64)">
+<div class="sig">RigidbodyConstraints.FreezeRotationZ</div>
+<div class="meta">property</div>
+<p>Freeze turning around Z (64)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.none nothing frozen (0)">
+<div class="sig">RigidbodyConstraints.None</div>
+<div class="meta">property</div>
+<p>Nothing frozen (0)</p>
 </div>
 </section>
 <section id="rpctarget">
@@ -3879,15 +3959,48 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-rigidbody">
 <h2>Rigidbody (object)</h2>
+<div class="entry" data-key="rigidbody:addexplosionforce(force, position, radius [, upwardsmodifier [, mode]]) push away from a point, weaker with distance">
+<div class="sig">rigidbody:AddExplosionForce(force, position, radius [, upwardsModifier [, mode]])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Push away from a point, weaker with distance</p>
+<p class="notes">AddExplosionForce(force, position, radius[, upwardsModifier, mode])</p>
+</div>
 <div class="entry" data-key="rigidbody:addforce(v [, mode]) apply a force (forcemode.force by default)">
 <div class="sig">rigidbody:AddForce(v [, mode])</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Apply a force (ForceMode.Force by default)</p>
 </div>
+<div class="entry" data-key="rigidbody:addforceatposition(force, position [, mode]) push at a world point (also turns the body)">
+<div class="sig">rigidbody:AddForceAtPosition(force, position [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Push at a world point (also turns the body)</p>
+<p class="notes">AddForceAtPosition(force, position[, mode]): also turns the body.</p>
+</div>
+<div class="entry" data-key="rigidbody:addrelativeforce(v [, mode]) apply a force in the body's local axes">
+<div class="sig">rigidbody:AddRelativeForce(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a force in the body's local axes</p>
+</div>
+<div class="entry" data-key="rigidbody:addrelativetorque(v [, mode]) apply a torque in the body's local axes">
+<div class="sig">rigidbody:AddRelativeTorque(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a torque in the body's local axes</p>
+</div>
 <div class="entry" data-key="rigidbody:addtorque(v [, mode]) apply a torque">
 <div class="sig">rigidbody:AddTorque(v [, mode])</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Apply a torque</p>
+</div>
+<div class="entry" data-key="rigidbody:getpointvelocity(worldpoint) velocity of the body at a world point (spin included)">
+<div class="sig">rigidbody:GetPointVelocity(worldPoint)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Velocity of the body at a world point (spin included)</p>
+<p class="notes">GetPointVelocity(worldPoint): the body's velocity at that point (spin included).</p>
+</div>
+<div class="entry" data-key="rigidbody:issleeping() true while the body sleeps">
+<div class="sig">rigidbody:IsSleeping()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True while the body sleeps</p>
 </div>
 <div class="entry" data-key="rigidbody:moveposition(v) move a kinematic body">
 <div class="sig">rigidbody:MovePosition(v)</div>
@@ -3901,10 +4014,41 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p>Rotate a kinematic body</p>
 <p class="notes">MoveRotation(euler): Euler angles in degrees (there is no Quaternion type).</p>
 </div>
+<div class="entry" data-key="rigidbody:sleep() put the body to sleep until something touches it">
+<div class="sig">rigidbody:Sleep()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Put the body to sleep until something touches it</p>
+</div>
+<div class="entry" data-key="rigidbody:wakeup() wake a sleeping body">
+<div class="sig">rigidbody:WakeUp()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Wake a sleeping body</p>
+</div>
+<div class="entry" data-key="rigidbody.angulardrag angular damping (settable)">
+<div class="sig">rigidbody.angularDrag</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Angular damping (settable)</p>
+</div>
 <div class="entry" data-key="rigidbody.angularvelocity angular velocity">
 <div class="sig">rigidbody.angularVelocity</div>
 <div class="meta">property (read / write) · source: <code>api.rs</code></div>
 <p>Angular velocity</p>
+</div>
+<div class="entry" data-key="rigidbody.constraints rigidbodyconstraints bits: frozen position/rotation axes (settable)">
+<div class="sig">rigidbody.constraints</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>RigidbodyConstraints bits: frozen position/rotation axes (settable)</p>
+<p class="notes">RigidbodyConstraints bits (FreezePositionX = 2 … FreezeRotationZ = 64).</p>
+</div>
+<div class="entry" data-key="rigidbody.drag linear damping (settable)">
+<div class="sig">rigidbody.drag</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Linear damping (settable)</p>
+</div>
+<div class="entry" data-key="rigidbody.freezerotation stop all turning (settable)">
+<div class="sig">rigidbody.freezeRotation</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Stop all turning (settable)</p>
 </div>
 <div class="entry" data-key="rigidbody.gameobject ">
 <div class="sig">rigidbody.gameObject</div>
@@ -3934,6 +4078,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">rigidbody.velocity</div>
 <div class="meta">property (read / write) · source: <code>api.rs</code></div>
 <p>Linear velocity</p>
+</div>
+<div class="entry" data-key="rigidbody.worldcenterofmass centre of mass in world space">
+<div class="sig">rigidbody.worldCenterOfMass</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Centre of mass in world space</p>
 </div>
 </section>
 <section id="type-rigidbody2d">
