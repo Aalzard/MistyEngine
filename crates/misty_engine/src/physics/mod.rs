@@ -12,8 +12,10 @@
 mod character;
 pub mod cloth;
 mod colliders;
+mod contact_info;
 mod convert;
 pub mod debug;
+mod follow;
 mod joints;
 pub mod layers;
 pub mod material;
@@ -33,6 +35,7 @@ use crate::settings::PhysicsSettings;
 use convert::{gv, parts, pose, rv};
 
 pub use character::{ControllerHit, slope_scaled, tobler_factor};
+pub use contact_info::{CollisionInfo, ContactPoint3D, MAX_CONTACT_POINTS};
 pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
 pub use queries::RaycastHit;
@@ -141,6 +144,14 @@ pub struct Physics {
     /// their contacts as stopped, and the step turns those into exits (OnTriggerExit /
     /// OnCollisionExit) instead of dropping them.
     departed: HashMap<rp::ColliderHandle, Entity>,
+    /// Colliders without a body of their own (static ones, and ones on children of a body)
+    /// that follow their object's Transform when a script, Animator or Timeline moves it.
+    followers: HashMap<Entity, follow::Follower>,
+    /// Velocities of the moving bodies before the last step (`collision_info`).
+    before: HashMap<rp::RigidBodyHandle, Vec3>,
+    /// Keep `before` (some script reads collision details; costs a look at every moving
+    /// body per step, so it is off otherwise and relative velocities are the current ones).
+    pub track_impacts: bool,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -231,6 +242,9 @@ impl Physics {
             dormant_set: HashSet::new(),
             activity_seen: None,
             departed: HashMap::new(),
+            followers: HashMap::new(),
+            before: HashMap::new(),
+            track_impacts: false,
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -444,6 +458,7 @@ impl Physics {
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.sync_active(scene);
         self.push_kinematic(scene);
+        self.follow_transforms(scene);
         self.apply_springs();
         let dt = self.world.integration_parameters.dt;
         self.apply_wheels(scene, dt);
@@ -454,6 +469,7 @@ impl Physics {
                 b.prev = parts(body.position());
             }
         }
+        self.remember_velocities();
         let events = EventLog::default();
         let hooks = material::MaterialHooks {
             materials: &self.materials,
@@ -651,6 +667,7 @@ impl Physics {
         self.remove_springs(e);
         self.remove_wheels(e);
         self.ragdolls.forget(e);
+        self.followers.remove(&e);
         if !owned {
             return;
         }
@@ -665,7 +682,11 @@ impl Physics {
     /// Collider `h` left the world with its body.
     fn forget_collider(&mut self, h: rp::ColliderHandle) {
         self.materials.remove(&h);
-        if let Some(owner) = self.colliders.remove(&h)
+        let owner = self.colliders.remove(&h);
+        if let Some(owner) = owner {
+            self.forget_follower(owner, h);
+        }
+        if let Some(owner) = owner
             && let Some(list) = self.colliders_of.get_mut(&owner)
         {
             list.retain(|x| *x != h);
@@ -844,6 +865,8 @@ mod active_tests;
 mod busy_bench;
 #[cfg(test)]
 mod character_tests;
+#[cfg(test)]
+mod follow_tests;
 #[cfg(test)]
 mod joint_config_tests;
 #[cfg(test)]

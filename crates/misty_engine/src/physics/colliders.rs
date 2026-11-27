@@ -32,6 +32,9 @@ impl Physics {
                     collider = collider.active_hooks(rp::ActiveHooks::MODIFY_SOLVER_CONTACTS);
                 }
                 let h = self.insert_collider(scene, e, owner, collider);
+                if owner != Some(e) {
+                    self.follow(scene, e, owner, h);
+                }
                 if let Some(m) = material {
                     self.materials.insert(h, m);
                 }
@@ -138,7 +141,7 @@ impl Physics {
 
     /// Collider builders for `e`'s collider components (in the object's local frame, scaled),
     /// with the Physics Material each one uses.
-    fn colliders_for(
+    pub(super) fn colliders_for(
         &mut self,
         scene: &Scene,
         e: Entity,
