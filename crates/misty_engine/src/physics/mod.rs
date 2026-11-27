@@ -19,6 +19,7 @@ mod extras;
 mod follow;
 mod joints;
 pub mod layers;
+mod live_edit;
 pub mod material;
 mod queries;
 pub mod ragdoll;
@@ -918,6 +919,8 @@ mod follow_tests;
 mod joint_config_tests;
 #[cfg(test)]
 mod joint_tests;
+#[cfg(test)]
+mod live_edit_tests;
 #[cfg(test)]
 mod query_tests;
 #[cfg(test)]

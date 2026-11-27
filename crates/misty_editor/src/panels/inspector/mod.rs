@@ -443,6 +443,7 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
                 for &t in targets {
                     editors::set_enabled(state, t, name, on);
                 }
+                refresh_live_physics(state, targets, name);
                 let verb = if on { "Enable" } else { "Disable" };
                 state.mark_edited(&format!("{verb} {name}"));
             }
@@ -494,10 +495,33 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
             if name != "Transform" {
                 propagate(state, targets, name, before);
             }
+            refresh_live_physics(state, targets, name);
             state.mark_edited(&label);
         }
     };
     card::card(ui, id, state, header, body);
+}
+
+/// While playing, a Rigidbody or collider edit reaches the running physics world (it was read
+/// only when Play started).
+fn refresh_live_physics(state: &mut EditorState, targets: &[Entity], name: &str) {
+    const LIVE: [&str; 5] = [
+        "Rigidbody",
+        "Box Collider",
+        "Sphere Collider",
+        "Capsule Collider",
+        "Mesh Collider",
+    ];
+    if !LIVE.contains(&name) || !state.play.in_play_mode() {
+        return;
+    }
+    if let Some(rt) = state.runtime.as_mut() {
+        rt.with_physics_scene(&mut state.scene, |p, s| {
+            for &e in targets {
+                p.refresh_object(s, e);
+            }
+        });
+    }
 }
 
 /// Component context menu. Reset, Remove and Paste act on every target; Move and Copy on the
