@@ -1002,10 +1002,10 @@ namespace Misty
     public sealed class MeshCollider : Collider { internal MeshCollider(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter / OnCollisionExit callback hit.</summary>
-    public sealed class Collision
+    public sealed partial class Collision
     {
         readonly ulong id;
-        internal Collision(ulong id) { this.id = id; }
+        internal Collision(ulong id) { this.id = id; Capture(); }
         public GameObject gameObject => new GameObject(id);
         public Transform transform => new Transform(id);
         public Collider collider => new Collider(id);
@@ -2047,6 +2047,48 @@ namespace Misty
         /// <summary>Quit the game (stops Play mode in the editor).</summary>
         public static void Quit() => Internal.Native.api.request(3, -1, null, 0, 0);
         public static bool isPlaying => true;
+        /// <summary>True in the editor's Play mode.</summary>
+        public static bool isEditor => Internal.Native.api.app(3, 0, null, 0, null, 0) == 1;
+        /// <summary>Whether the Build Profile defines this scripting define.</summary>
+        public static bool HasDefine(string name)
+        {
+            name ??= "";
+            fixed (char* p = name) return Internal.Native.api.app(2, 0, p, name.Length, null, 0) == 1;
+        }
+        /// <summary>A folder the game can always write to: the project folder in the editor,
+        /// the per-user folder that holds PlayerPrefs and saves in a built game.</summary>
+        public static string persistentDataPath
+        {
+            get
+            {
+                char* buf = stackalloc char[512];
+                int n = Internal.Native.api.app(1, 0, null, 0, buf, 512);
+                if (n < 0) throw new InvalidOperationException("Application.persistentDataPath used outside a script callback");
+                if (n <= 512) return new string(buf, 0, n);
+                var big = new char[n];
+                fixed (char* p = big)
+                {
+                    n = Internal.Native.api.app(1, 0, null, 0, p, big.Length);
+                    return new string(p, 0, Math.Min(Math.Max(n, 0), big.Length));
+                }
+            }
+        }
+    }
+
+    /// <summary>Saves the game's image as a PNG.</summary>
+    public static unsafe class ScreenCapture
+    {
+        /// <summary>Save the frame being drawn once it is finished. A relative name goes under
+        /// Application.persistentDataPath; superSize above 1 scales the image up (at most 8).</summary>
+        public static void CaptureScreenshot(string filename, int superSize = 1)
+        {
+            if (string.IsNullOrEmpty(filename)) throw new ArgumentException("CaptureScreenshot needs a file name");
+            fixed (char* p = filename)
+            {
+                if (Internal.Native.api.app(0, superSize, p, filename.Length, null, 0) < 0)
+                    throw new InvalidOperationException("ScreenCapture used outside a script callback");
+            }
+        }
     }
 
     // ---- coroutines ------------------------------------------------------------------------
@@ -3450,6 +3492,7 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, int, float, float*, int> characterScalar;
         public delegate* unmanaged<float, void> timeScale;
         public delegate* unmanaged<int, ulong*, int, float*, int> transformGroup;
+        public delegate* unmanaged<int, int, char*, int, char*, int, int> app;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -4631,7 +4674,7 @@ namespace Misty.Internal
     }
 }
 
-// ---- 2D contact points and the Animator IK pass (csharp_parity.rs) ----------------------------
+// ---- 2D / 3D contact points and the Animator IK pass (csharp_parity.rs) ----------------------------
 
 namespace Misty
 {
@@ -4718,6 +4761,86 @@ namespace Misty
         }
         /// <summary>Replaces the list's contents with the contact points; returns the count.</summary>
         public int GetContacts(List<ContactPoint2D> contacts)
+        {
+            contacts.Clear();
+            contacts.AddRange(points);
+            return points.Length;
+        }
+    }
+
+    /// <summary>One touching point of a 3D collision (`Collision.GetContact`).</summary>
+    public struct ContactPoint
+    {
+        internal ulong thisId, otherId;
+        /// <summary>World position of the point.</summary>
+        public Vector3 point { get; internal set; }
+        /// <summary>Surface normal, pointing away from the other collider (towards this one).</summary>
+        public Vector3 normal { get; internal set; }
+        /// <summary>Distance between the surfaces along the normal (negative: overlapping).</summary>
+        public float separation { get; internal set; }
+        /// <summary>Impulse the solver applied at this point in the step (along the normal).</summary>
+        public Vector3 impulse { get; internal set; }
+        /// <summary>The collider of the object whose callback runs.</summary>
+        public Collider thisCollider => thisId == 0 ? null : new Collider(thisId);
+        /// <summary>The other object's collider.</summary>
+        public Collider otherCollider => otherId == 0 ? null : new Collider(otherId);
+    }
+
+    public sealed unsafe partial class Collision
+    {
+        ContactPoint[] points = Array.Empty<ContactPoint>();
+
+        /// <summary>Copies the contact points of the step that fired the callback.</summary>
+        void Capture()
+        {
+            const int Floats = 8, Max = 16;
+            float* buf = stackalloc float[6 + Floats * Max];
+            ulong* ids = stackalloc ulong[2];
+            int n = Internal.Native.api.contacts(1, buf, 6 + Floats * Max, ids);
+            if (n < 0) return;
+            n = Math.Min(n, Max);
+            ulong me = ids[0];
+            relativeVelocity = new Vector3(buf[0], buf[1], buf[2]);
+            impulse = new Vector3(buf[3], buf[4], buf[5]);
+            points = new ContactPoint[n];
+            for (int i = 0; i < n; i++)
+            {
+                float* p = buf + 6 + i * Floats;
+                var normal = new Vector3(p[3], p[4], p[5]);
+                points[i] = new ContactPoint
+                {
+                    thisId = me,
+                    otherId = id,
+                    point = new Vector3(p[0], p[1], p[2]),
+                    normal = normal,
+                    separation = p[6],
+                    impulse = normal * p[7],
+                };
+            }
+        }
+
+        /// <summary>Velocity of the other object relative to this one (before the step, so an impact reports the speed it hit with).</summary>
+        public Vector3 relativeVelocity { get; private set; }
+        /// <summary>Total impulse applied to this object by the contact in the step.</summary>
+        public Vector3 impulse { get; private set; }
+        public int contactCount => points.Length;
+        /// <summary>A copy of the contact points (allocates; prefer GetContact / GetContacts).</summary>
+        public ContactPoint[] contacts => (ContactPoint[])points.Clone();
+        public ContactPoint GetContact(int index)
+        {
+            if ((uint)index >= (uint)points.Length)
+                throw new IndexOutOfRangeException($"Contact index {index} is out of range (contactCount is {points.Length}).");
+            return points[index];
+        }
+        /// <summary>Fills `contacts` (as many as fit); returns how many were written.</summary>
+        public int GetContacts(ContactPoint[] contacts)
+        {
+            int n = Math.Min(contacts.Length, points.Length);
+            Array.Copy(points, contacts, n);
+            return n;
+        }
+        /// <summary>Replaces the list's contents with the contact points; returns the count.</summary>
+        public int GetContacts(List<ContactPoint> contacts)
         {
             contacts.Clear();
             contacts.AddRange(points);

@@ -413,3 +413,167 @@ fn lua_on_animator_ik_runs_per_layer_with_fresh_goals() {
         hand(&scene)
     );
 }
+
+// ---- 3D contacts ---------------------------------------------------------------------------
+
+/// A 1×1×1 cube ("Player", script attached) dropping onto a wide static box whose top is at
+/// y = -2.5.
+fn drop_scene_3d(script: &str) -> Scene {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(ground, Transform::from_position(Vec3::new(0.0, -3.0, 0.0)));
+    scene.add(
+        ground,
+        BoxCollider {
+            size: Vec3::new(40.0, 1.0, 40.0),
+            ..Default::default()
+        },
+    );
+    let player = scene.spawn("Player", None);
+    scene.add(player, Rigidbody::default());
+    scene.add(player, BoxCollider::default());
+    attach(&mut scene, player, script);
+    scene
+}
+
+const CS_CONTACTS_3D: &str = r#"
+using System.Collections.Generic;
+using Misty;
+public class Lander3D : MonoBehaviour
+{
+    bool entered, stayed;
+    List<ContactPoint> list = new List<ContactPoint>();
+    void OnCollisionEnter(Collision c)
+    {
+        if (entered) return;
+        entered = true;
+        var p = c.GetContact(0);
+        Debug.Log("enter " + c.contactCount + " " + (c.contactCount == c.contacts.Length)
+            + " " + (c.GetContacts(list) == c.contactCount) + " " + (list.Count == c.contactCount)
+            + " normal " + (p.normal.y > 0.9f) + " point " + (Mathf.Abs(p.point.y + 2.5f) < 0.1f)
+            + " sep " + (p.separation < 0.05f) + " rel " + (c.relativeVelocity.y > 1f)
+            + " this " + p.thisCollider.name + " other " + p.otherCollider.name + " " + c.gameObject.name);
+        try { c.GetContact(c.contactCount); } catch (System.IndexOutOfRangeException) { Debug.Log("out of range"); }
+    }
+    void OnCollisionStay(Collision c)
+    {
+        if (stayed || Time.frameCount < 60) return;
+        stayed = true;
+        float impulse = 0;
+        for (int i = 0; i < c.contactCount; i++) impulse += c.GetContact(i).impulse.y;
+        Debug.Log("stay " + (c.contactCount >= 1) + " impulse " + (impulse > 0.005f && impulse < 1f)
+            + " total " + (Mathf.Abs(c.impulse.y - impulse) < 1e-4f));
+    }
+}
+"#;
+
+#[test]
+fn csharp_collision_has_the_contact_points_of_the_step() {
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[("Lander3D.cs", CS_CONTACTS_3D)]);
+    let mut scene = drop_scene_3d("Lander3D.cs");
+    let logs = run(&mut scene, &root, Vec3::new(0.0, -9.81, 0.0), 90);
+    let enter = logs
+        .iter()
+        .find(|l| l.starts_with("enter"))
+        .expect("entered");
+    assert!(
+        enter.ends_with(
+            "True True True normal True point True sep True rel True this Player other Ground Ground"
+        ),
+        "{enter}"
+    );
+    let count: usize = enter.split(' ').nth(1).unwrap().parse().unwrap();
+    assert!((1..=16).contains(&count), "{enter}");
+    assert!(logs.iter().any(|l| l == "out of range"), "{logs:?}");
+    assert!(
+        logs.iter()
+            .any(|l| l == "stay True impulse True total True"),
+        "{logs:?}"
+    );
+}
+
+// ---- ScreenCapture / Application.persistentDataPath -----------------------------------------
+
+/// Requests of the screenshot queue under `root` (other tests may queue their own).
+fn captures_under(root: &Path) -> Vec<crate::screen_capture::Request> {
+    let mut mine = Vec::new();
+    for r in crate::screen_capture::take() {
+        if r.path.starts_with(root) {
+            mine.push(r);
+        } else {
+            crate::screen_capture::request(Path::new("/"), &r.path.to_string_lossy(), 1);
+        }
+    }
+    mine
+}
+
+#[test]
+fn lua_screen_capture_queues_a_png_under_the_data_folder() {
+    let root = project(&[(
+        "Shot.lua",
+        r#"
+local Shot = {}
+function Shot:Start()
+    ScreenCapture.CaptureScreenshot("shots/first", 2)
+    Debug.Log("data " .. Application.persistentDataPath)
+end
+return Shot
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Camera", None);
+    attach(&mut scene, e, "Shot.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 2);
+    assert!(
+        logs.iter()
+            .any(|l| l == &format!("data {}", root.display())),
+        "{logs:?}"
+    );
+    let shots = captures_under(&root);
+    assert_eq!(shots.len(), 1, "{shots:?}");
+    assert_eq!(shots[0].path, root.join("shots/first.png"));
+    assert_eq!(shots[0].super_size, 2);
+}
+
+#[test]
+fn csharp_screen_capture_and_application_paths() {
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Shot.cs",
+        r#"
+using Misty;
+public class Shot : MonoBehaviour
+{
+    void Start()
+    {
+        ScreenCapture.CaptureScreenshot("cs_shot.png");
+        Debug.Log("data " + Application.persistentDataPath + " editor " + Application.isEditor
+            + " define " + Application.HasDefine("NOT_A_DEFINE_123"));
+        try { ScreenCapture.CaptureScreenshot(""); } catch (System.ArgumentException) { Debug.Log("empty refused"); }
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Camera", None);
+    attach(&mut scene, e, "Shot.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 2);
+    assert!(
+        logs.iter().any(
+            |l| l.starts_with(&format!("data {} editor ", root.display()))
+                && l.ends_with(" define False")
+        ),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "empty refused"), "{logs:?}");
+    let shots = captures_under(&root);
+    assert_eq!(shots.len(), 1, "{shots:?}");
+    assert_eq!(shots[0].path, root.join("cs_shot.png"));
+    assert_eq!(shots[0].super_size, 1);
+}

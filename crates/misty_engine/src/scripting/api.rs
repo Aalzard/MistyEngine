@@ -1179,7 +1179,36 @@ pub fn register(lua: &Lua) -> Result<()> {
         crate::build_profile::has_define("MISTY_SERVER"),
     )?;
     app.set("isEditor", crate::build_profile::has_define("MISTY_EDITOR"))?;
+    // `Application.persistentDataPath`: worked out when read (built games set their folder
+    // at startup).
+    let app_meta = lua.create_table()?;
+    app_meta.set(
+        "__index",
+        lua.create_function(|lua, (_, key): (Value, String)| {
+            if key == "persistentDataPath" {
+                let root = with_world(lua, |w| w.root.clone())?;
+                let path = crate::screen_capture::data_folder(&root);
+                return Ok(Value::String(
+                    lua.create_string(path.to_string_lossy().as_ref())?,
+                ));
+            }
+            Ok(Value::Nil)
+        })?,
+    )?;
+    app.set_metatable(Some(app_meta))?;
     g.set("Application", app)?;
+    // ScreenCapture.CaptureScreenshot(filename[, superSize]): the frame being drawn is saved
+    // as a PNG once it is finished.
+    let capture = lua.create_table()?;
+    capture.set(
+        "CaptureScreenshot",
+        lua.create_function(|lua, (name, size): (String, Option<i64>)| {
+            let root = with_world(lua, |w| w.root.clone())?;
+            crate::screen_capture::request(&root, &name, size.unwrap_or(1));
+            Ok(())
+        })?,
+    )?;
+    g.set("ScreenCapture", capture)?;
     crate::achievements::register_lua(lua)?;
     super::assets_api::register(lua)?;
     Ok(())

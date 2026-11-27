@@ -1470,6 +1470,11 @@ IEnumerator Start()
   `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider`,
   `otherCollider`, `rigidbody`, `otherRigidbody`, the points of the step that sent the
   callback) and `OnTriggerEnter2D` / `Stay2D` / `Exit2D` (`Collider2D`).
+- 3D collisions: `OnCollisionEnter` / `Stay` / `Exit` get a `Collision` with `gameObject`,
+  `transform`, `collider`, `rigidbody`, `relativeVelocity` (the speed it hit with), `impulse`,
+  `contactCount`, `contacts`, `GetContact(i)`, `GetContacts(array or List)`; `ContactPoint`:
+  `point`, `normal` (pointing towards this object), `separation`, `impulse`, `thisCollider`,
+  `otherCollider`. Exit reports no points.
 - `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
   `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
   `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
@@ -1601,7 +1606,7 @@ Like the familiar engine, `Object` and `Random` clash with `System.Object` and `
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
 Not yet: the other engine components (Sprite Renderer, Timeline, the other UI widgets, …),
-contact points, `OnControllerColliderHit`, `Instantiate` of a script (instantiate its
+`OnControllerColliderHit`, `Instantiate` of a script (instantiate its
 `gameObject`), materials after a renderer's first, and textures on materials. Each changed
 build stays loaded until the editor is closed.
 

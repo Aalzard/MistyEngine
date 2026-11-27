@@ -1,13 +1,14 @@
 //! Native functions C# reaches through the end of the table: the contact points of the 2D
-//! collision being reported (`Collision2D.contacts`) and the Animator IK pass
+//! and 3D collision being reported (`Collision2D.contacts`, `Collision.contacts`) and the Animator IK pass
 //! (`SetIKPosition` … in `OnAnimatorIK`). A child of `csharp_native`.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use glam::{Quat, Vec3};
 use hecs::Entity;
 
 use super::{V4, id_of, with_object};
+use crate::physics::CollisionInfo;
 use crate::physics2d::Contact2D;
 use crate::rigging::animator_ik::{self as ik, IkGoal, IkHint};
 
@@ -36,14 +37,89 @@ impl Drop for Contact2DScope {
     }
 }
 
+// ---- 3D contacts ---------------------------------------------------------------------------
+
+thread_local! {
+    /// The 3D collision being reported to C# (me, other, details), while its callback runs.
+    static CONTACT3D: RefCell<Option<(Entity, Entity, CollisionInfo)>> = const { RefCell::new(None) };
+}
+
+/// Makes `info` (`me` hit `other`) the collision `Collision` reads until dropped.
+pub(in crate::scripting) struct Contact3DScope {
+    previous: Option<(Entity, Entity, CollisionInfo)>,
+}
+
+impl Contact3DScope {
+    pub(in crate::scripting) fn new(me: Entity, other: Entity, info: CollisionInfo) -> Self {
+        let previous = CONTACT3D.with(|x| x.replace(Some((me, other, info))));
+        Self { previous }
+    }
+}
+
+impl Drop for Contact3DScope {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        CONTACT3D.with(|x| *x.borrow_mut() = previous);
+    }
+}
+
+/// Floats per 3D contact point written by [`contacts`] op 1.
+const POINT_FLOATS_3D: usize = 8;
+
+/// op 1: the 3D collision being reported. Writes the relative velocity (3 floats) and the
+/// impulse (3), then per point `point.xyz, normal.xyz, separation, impulse` while `cap` floats
+/// last; `ids` gets (me, other). Normals point towards `me`. Returns the point count (-1 when no
+/// collision is being reported).
+fn contacts_3d(buf: *mut f32, cap: i32, ids: *mut u64) -> i32 {
+    let out = CONTACT3D.with(|x| {
+        let x = x.borrow();
+        let (me, other, info) = x.as_ref()?;
+        let mut out: Vec<f32> = Vec::with_capacity(6 + POINT_FLOATS_3D * info.points.len());
+        let (rv, im) = (info.relative_velocity, info.impulse);
+        out.extend([rv.x, rv.y, rv.z, im.x, im.y, im.z]);
+        for p in &info.points {
+            out.extend([
+                p.point.x,
+                p.point.y,
+                p.point.z,
+                p.normal.x,
+                p.normal.y,
+                p.normal.z,
+                p.separation,
+                p.impulse,
+            ]);
+        }
+        Some((*me, *other, out))
+    });
+    let Some((me, other, out)) = out else {
+        return -1;
+    };
+    if !buf.is_null() {
+        let n = out.len().min(cap.max(0) as usize);
+        // SAFETY: C# passes a buffer of `cap` floats.
+        unsafe { std::ptr::copy_nonoverlapping(out.as_ptr(), buf, n) };
+    }
+    if !ids.is_null() {
+        // SAFETY: C# passes room for two ids.
+        unsafe {
+            ids.write(id_of(me));
+            ids.add(1).write(id_of(other));
+        }
+    }
+    ((out.len() - 6) / POINT_FLOATS_3D) as i32
+}
+
 /// Floats per contact point written by [`contacts`].
 const POINT_FLOATS: usize = 7;
 
-/// op 0: the 2D collision being reported. Writes the relative velocity (2 floats), then per
+/// op 0: the 2D collision being reported (op 1: the 3D one, see `contacts_3d`). Writes the relative velocity (2 floats), then per
 /// point `point.xy, normal.xy, separation, normalImpulse, tangentImpulse` while `cap` floats
 /// last; `ids` gets (me, other). Normals point towards `me`. Returns the point count (-1 when no
 /// collision is being reported).
 pub(super) extern "C" fn contacts(op: i32, buf: *mut f32, cap: i32, ids: *mut u64) -> i32 {
+    if op == 1 {
+        return contacts_3d(buf, cap, ids);
+    }
     if op != 0 {
         return -1;
     }

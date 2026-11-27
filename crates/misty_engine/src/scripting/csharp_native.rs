@@ -14,7 +14,7 @@ use super::{LogKind, World};
 
 #[path = "csharp_parity.rs"]
 mod parity;
-pub(super) use parity::Contact2DScope;
+pub(super) use parity::{Contact2DScope, Contact3DScope};
 use parity::{animator_ik, contacts};
 
 // ---- the world, for callbacks from C# ------------------------------------------------------
@@ -161,6 +161,7 @@ pub(super) struct NativeApi {
     character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
     time_scale: extern "C" fn(f32),
     transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
+    app: extern "C" fn(i32, i32, *const u16, i32, *mut u16, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -225,7 +226,26 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     character_scalar,
     time_scale,
     transform_group,
+    app,
 };
+
+/// `Application` and `ScreenCapture`. op 0: `CaptureScreenshot(text, superSize = arg)`;
+/// 1: `persistentDataPath` (written to `out`, returns its length); 2: `HasDefine(text)` (1/0);
+/// 3: `isEditor` (1/0). -1 outside a call from the engine (ops 0 and 1) or for an unknown op.
+extern "C" fn app(op: i32, arg: i32, input: *const u16, len: i32, out: *mut u16, cap: i32) -> i32 {
+    match op {
+        0 => {
+            let name = text(input, len);
+            with_world(|w| crate::screen_capture::request(&w.root, &name, i64::from(arg)))
+                .map_or(-1, |_| 1)
+        }
+        1 => with_world(|w| crate::screen_capture::data_folder(&w.root))
+            .map_or(-1, |p| write_text(&p.to_string_lossy(), out, cap)),
+        2 => i32::from(crate::build_profile::has_define(&text(input, len))),
+        3 => i32::from(crate::build_profile::has_define("MISTY_EDITOR")),
+        _ => -1,
+    }
+}
 
 /// `TransformGroup` in C#: one call for `count` objects. `data` holds `width` floats per
 /// object: op 0 reads world positions (3), 1 writes them, 2 reads world rotations (4), 3 writes

@@ -1558,8 +1558,19 @@ impl ScriptHost {
         event: &str,
         kind: &crate::visual_script::compile::EventKind,
     ) {
+        let collision = event.starts_with("OnCollision");
         for (me, other) in [(a, b), (b, a)] {
             self.graphs.contact(&self.lua, me, other, kind);
+            // C#'s `Collision` reads its contact points from here (csharp_parity.rs); worked
+            // out only when a C# script of `me` will hear it.
+            let cs_hears = collision
+                && self.instances_of(me).into_iter().any(|i| {
+                    self.instances[i].cs.is_some() && self.hears_contacts(&self.instances[i])
+                });
+            let _contact = cs_hears.then(|| {
+                let info = self.with_world(|w| w.physics.collision_info(me, other));
+                csharp_native::Contact3DScope::new(me, other, info)
+            });
             for i in self.instances_of(me) {
                 // Disabled scripts hear contacts too (not Update), as in the familiar
                 // engine; switched-off objects don't.
@@ -1789,7 +1800,12 @@ impl ScriptHost {
                 self.flush_spawned();
             }
             profile_scope!("Physics.Step", Category::Physics);
-            let contacts = self.with_world(|w| w.physics.step(&w.scene));
+            // C#'s `Collision.relativeVelocity` wants the speeds before the step.
+            let impacts = self.instances.iter().any(|i| i.cs.is_some());
+            let contacts = self.with_world(|w| {
+                w.physics.track_impacts = impacts;
+                w.physics.step(&w.scene)
+            });
             self.dispatch(&contacts);
             // Impulse Sources that fire on collision.
             self.with_world(|w| w.cameras.impulses.on_contacts(&w.scene, &contacts));

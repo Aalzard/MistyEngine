@@ -56,6 +56,7 @@ pub mod runtime;
 pub mod save;
 pub mod scene;
 pub mod screen;
+pub mod screen_capture;
 pub mod scripting;
 pub mod settings;
 pub mod shader_asset;
