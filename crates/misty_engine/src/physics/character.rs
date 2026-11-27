@@ -95,6 +95,7 @@ impl Physics {
         let handle = self.world.insert_body(
             rp::RigidBodyBuilder::kinematic_position_based()
                 .pose(pose(pos, rot))
+                .user_data(super::body_tag(e))
                 .build(),
         );
         self.owners.insert(e);

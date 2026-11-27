@@ -38,7 +38,7 @@ pub use character::{ControllerHit, slope_scaled, tobler_factor};
 pub use contact_info::{CollisionInfo, ContactPoint3D, MAX_CONTACT_POINTS};
 pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
-pub use queries::RaycastHit;
+pub use queries::{MAX_CAST_HITS, QueryShape, RaycastHit};
 pub use vehicles::world_pose_of as wheel_world_pose;
 
 struct Body {
@@ -345,6 +345,7 @@ impl Physics {
             .locked_axes(locked_axes(&rb))
             .ccd_enabled(rb.continuous)
             .additional_mass(rb.mass.max(1e-4))
+            .user_data(body_tag(e))
             .build();
         let handle = self.world.insert_body(body);
         self.owners.insert(e);
@@ -858,6 +859,19 @@ impl Physics {
 }
 
 /// Rigidbody ▸ Constraints as rapier locked axes.
+/// A body's `user_data`: its object's id (queries find a hit collider's object without a walk
+/// over every body).
+fn body_tag(e: Entity) -> u128 {
+    u128::from(e.to_bits().get())
+}
+
+/// The object a body was made for (see `body_tag`).
+fn body_object(body: &rp::RigidBody) -> Option<Entity> {
+    u64::try_from(body.user_data)
+        .ok()
+        .and_then(Entity::from_bits)
+}
+
 fn locked_axes(rb: &Rigidbody) -> rp::LockedAxes {
     let flags = [
         rp::LockedAxes::TRANSLATION_LOCKED_X,

@@ -304,6 +304,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property · source: <code>api.rs</code></div>
 <p>True in the editor's Play mode</p>
 </div>
+<div class="entry" data-key="application.persistentdatapath a folder the game can always write to (project folder in the editor)">
+<div class="sig">Application.persistentDataPath</div>
+<div class="meta">property</div>
+<p>A folder the game can always write to (project folder in the editor)</p>
+</div>
 </section>
 <section id="assets">
 <h2>Assets</h2>
@@ -938,6 +943,51 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <section id="physics">
 <h2>Physics</h2>
 <p>Raycasts and overlap queries</p>
+<div class="entry" data-key="physics.boxcast(center, halfextents, direction [, orientation [, maxdistance [, layermask]]]) first hit of a box swept along a direction, or nil">
+<div class="sig">Physics.BoxCast(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])</div>
+<div class="meta">function</div>
+<p>First hit of a box swept along a direction, or nil</p>
+</div>
+<div class="entry" data-key="physics.boxcastall(center, halfextents, direction [, orientation [, maxdistance [, layermask]]]) every hit of a box sweep, nearest first">
+<div class="sig">Physics.BoxCastAll(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])</div>
+<div class="meta">function</div>
+<p>Every hit of a box sweep, nearest first</p>
+</div>
+<div class="entry" data-key="physics.capsulecast(point1, point2, radius, direction [, maxdistance [, layermask]]) first hit of a capsule swept along a direction, or nil">
+<div class="sig">Physics.CapsuleCast(point1, point2, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>First hit of a capsule swept along a direction, or nil</p>
+</div>
+<div class="entry" data-key="physics.capsulecastall(point1, point2, radius, direction [, maxdistance [, layermask]]) every hit of a capsule sweep, nearest first">
+<div class="sig">Physics.CapsuleCastAll(point1, point2, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>Every hit of a capsule sweep, nearest first</p>
+</div>
+<div class="entry" data-key="physics.checkbox(center, halfextents [, orientation [, layermask]]) true when any collider touches the box (orientation: euler degrees)">
+<div class="sig">Physics.CheckBox(center, halfExtents [, orientation [, layerMask]])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the box (orientation: Euler degrees)</p>
+</div>
+<div class="entry" data-key="physics.checkcapsule(start, end, radius [, layermask]) true when any collider touches the capsule">
+<div class="sig">Physics.CheckCapsule(start, end, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the capsule</p>
+</div>
+<div class="entry" data-key="physics.checksphere(position, radius [, layermask]) true when any collider touches the sphere">
+<div class="sig">Physics.CheckSphere(position, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the sphere</p>
+</div>
+<div class="entry" data-key="physics.overlapbox(center, halfextents [, orientation [, layermask]]) gameobjects touching a box">
+<div class="sig">Physics.OverlapBox(center, halfExtents [, orientation [, layerMask]])</div>
+<div class="meta">function</div>
+<p>GameObjects touching a box</p>
+</div>
+<div class="entry" data-key="physics.overlapcapsule(point0, point1, radius [, layermask]) gameobjects touching a capsule">
+<div class="sig">Physics.OverlapCapsule(point0, point1, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>GameObjects touching a capsule</p>
+</div>
 <div class="entry" data-key="physics.overlapsphere(center, radius [, layermask]) gameobjects touching a sphere">
 <div class="sig">Physics.OverlapSphere(center, radius [, layerMask])</div>
 <div class="meta">function · source: <code>physics_api.rs</code></div>
@@ -957,6 +1007,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Physics.SphereCast(origin, radius, direction [, maxDistance [, layerMask]])</div>
 <div class="meta">function · source: <code>physics_api.rs</code></div>
 <p>Like Raycast with a sphere</p>
+</div>
+<div class="entry" data-key="physics.spherecastall(origin, radius, direction [, maxdistance [, layermask]]) every hit of a sphere sweep, nearest first">
+<div class="sig">Physics.SphereCastAll(origin, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>Every hit of a sphere sweep, nearest first</p>
 </div>
 <div class="entry" data-key="physics.alllayers every layer">
 <div class="sig">Physics.AllLayers</div>

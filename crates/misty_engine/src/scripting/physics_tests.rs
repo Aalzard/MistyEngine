@@ -217,3 +217,43 @@ return Keeper
         );
     }
 }
+
+#[test]
+fn box_and_capsule_queries_from_lua() {
+    let root = project(
+        "Shapes.lua",
+        r#"
+local Shapes = {}
+function Shapes:Start()
+    local h = Physics.BoxCast(Vector3.new(0, 0, 0), Vector3.new(0.2, 0.2, 0.2), Vector3.new(0, 0, 1))
+    Debug.Log("box " .. h.gameObject.name .. " " .. string.format("%.2f", h.distance))
+    Debug.Log("check " .. tostring(Physics.CheckSphere(Vector3.new(0, 0, 4.6), 0.2))
+        .. " " .. tostring(Physics.CheckBox(Vector3.new(0, 0, 3.6), Vector3.new(0.1, 0.1, 1), Vector3.new(0, 90, 0)))
+        .. " " .. tostring(Physics.CheckCapsule(Vector3.new(0, 0, 3), Vector3.new(0, 0, 4.4), 0.2)))
+    Debug.Log("overlap " .. #Physics.OverlapBox(Vector3.new(0, 0, 7), Vector3.new(1, 1, 3))
+        .. " " .. #Physics.OverlapCapsule(Vector3.new(0, 0, 3), Vector3.new(0, 0, 4.4), 0.2))
+    local c = Physics.CapsuleCast(Vector3.new(0, 0, 3), Vector3.new(0, 0, 4), 0.2, Vector3.new(0, 0, 1))
+    Debug.Log("capsule " .. string.format("%.2f", c.distance))
+    Debug.Log("all " .. #Physics.SphereCastAll(Vector3.new(0, 0, 0), 0.2, Vector3.new(0, 0, 1))
+        .. " " .. #Physics.BoxCastAll(Vector3.new(0, 0, 0), Vector3.new(0.2, 0.2, 0.2), Vector3.new(0, 0, 1), nil, 6)
+        .. " " .. #Physics.CapsuleCastAll(Vector3.new(0, 0, 3), Vector3.new(0, 0, 4), 0.2, Vector3.new(0, 0, 1)))
+end
+return Shapes
+"#,
+    );
+    let mut scene = Scene::new("t");
+    solid(&mut scene, "A", Vec3::new(0.0, 0.0, 5.0), Vec3::ONE);
+    solid(&mut scene, "B", Vec3::new(0.0, 0.0, 9.0), Vec3::ONE);
+    let e = scene.spawn("Prober", None);
+    script(&mut scene, e, "Shapes.lua");
+    let logs = run(&mut scene, root, 1);
+    for want in [
+        "box A 4.30",
+        "check true false true",
+        "overlap 2 1",
+        "capsule 0.30",
+        "all 2 1 2",
+    ] {
+        assert!(logs.iter().any(|l| l == want), "{want}: {logs:?}");
+    }
+}

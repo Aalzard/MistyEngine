@@ -53,6 +53,16 @@ Physics|Raycast|Raycast(origin, direction [, maxDistance [, layerMask]])|Nearest
 Physics|RaycastAll|RaycastAll(origin, direction [, maxDistance [, layerMask]])|Every hit, nearest first
 Physics|SphereCast|SphereCast(origin, radius, direction [, maxDistance [, layerMask]])|Like Raycast with a sphere
 Physics|OverlapSphere|OverlapSphere(center, radius [, layerMask])|GameObjects touching a sphere
+Physics|CheckSphere|CheckSphere(position, radius [, layerMask])|True when any collider touches the sphere
+Physics|CheckBox|CheckBox(center, halfExtents [, orientation [, layerMask]])|True when any collider touches the box (orientation: Euler degrees)
+Physics|CheckCapsule|CheckCapsule(start, end, radius [, layerMask])|True when any collider touches the capsule
+Physics|OverlapBox|OverlapBox(center, halfExtents [, orientation [, layerMask]])|GameObjects touching a box
+Physics|OverlapCapsule|OverlapCapsule(point0, point1, radius [, layerMask])|GameObjects touching a capsule
+Physics|BoxCast|BoxCast(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])|First hit of a box swept along a direction, or nil
+Physics|CapsuleCast|CapsuleCast(point1, point2, radius, direction [, maxDistance [, layerMask]])|First hit of a capsule swept along a direction, or nil
+Physics|SphereCastAll|SphereCastAll(origin, radius, direction [, maxDistance [, layerMask]])|Every hit of a sphere sweep, nearest first
+Physics|BoxCastAll|BoxCastAll(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])|Every hit of a box sweep, nearest first
+Physics|CapsuleCastAll|CapsuleCastAll(point1, point2, radius, direction [, maxDistance [, layerMask]])|Every hit of a capsule sweep, nearest first
 Physics|DefaultRaycastLayers|DefaultRaycastLayers|Every layer but Ignore Raycast
 Physics|AllLayers|AllLayers|Every layer
 Physics|IgnoreRaycastLayer|IgnoreRaycastLayer|The Ignore Raycast layer mask
@@ -122,6 +132,7 @@ Application|Quit|Quit()|Close the built game
 Application|HasDefine|HasDefine(name)|True when the Build Profile's scripting defines include the name ("DEMO")
 Application|isDedicatedServer|isDedicatedServer|True in a Dedicated Server build (headless, no window or audio)
 Application|isEditor|isEditor|True in the editor's Play mode
+Application|persistentDataPath|persistentDataPath|A folder the game can always write to (project folder in the editor)
 Achievements|Unlock|Unlock(id)|Unlock an achievement; true the first time
 Achievements|IsUnlocked|IsUnlocked(id)|True when the achievement is unlocked
 Achievements|Clear|Clear(id)|Lock an achievement again (testing)

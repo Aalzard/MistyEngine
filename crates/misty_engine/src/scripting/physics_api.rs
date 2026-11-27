@@ -1,4 +1,7 @@
-//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `Physics.gravity`
+//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, the box and capsule
+//! queries (`CheckSphere/CheckBox/CheckCapsule`, `OverlapBox/OverlapCapsule`,
+//! `BoxCast/CapsuleCast`, `SphereCastAll/BoxCastAll/CapsuleCastAll`; box orientations are
+//! Euler angles in degrees), `Physics.gravity`
 //! (reads and writes the live world), `LayerMask`,
 //! `Ragdoll.Enable(go)` / `Ragdoll.Disable(go [, blendTime])` / `Ragdoll.IsEnabled(go)` (`go`
 //! is the ragdoll's root or any of its bones), and the CharacterController component (`Move`,
@@ -12,7 +15,7 @@ use mlua::{Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value,
 
 use super::World;
 use super::api::{LGameObject, LRigidbody, LTransform, LVec3, with_world};
-use crate::physics::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, RaycastHit, layers};
+use crate::physics::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, QueryShape, RaycastHit, layers};
 use crate::scene::{CharacterController, Rigidbody};
 
 /// Lua integers are 64-bit; masks keep their low 32 bits (so `~mask` works).
@@ -58,6 +61,178 @@ fn single(lua: &Lua, hit: Option<RaycastHit>) -> Result<Value> {
         Some(h) => with_world(lua, |w| hit_table(lua, w, &h).map(Value::Table))?,
         None => Ok(Value::Nil),
     }
+}
+
+fn objects_list(lua: &Lua, found: Vec<Entity>) -> Result<Table> {
+    let list = lua.create_table()?;
+    for (i, e) in found.into_iter().enumerate() {
+        list.set(i + 1, LGameObject(e))?;
+    }
+    Ok(list)
+}
+
+/// Box orientation: Euler angles in degrees (nil: none).
+fn orientation(v: Option<LVec3>) -> glam::Quat {
+    v.map_or(glam::Quat::IDENTITY, |e| crate::camera::euler_to_quat(e.0))
+}
+
+fn box_shape(half: LVec3) -> QueryShape {
+    QueryShape::Box {
+        half_extents: half.0,
+    }
+}
+
+/// The shape queries beside Raycast / SphereCast / OverlapSphere.
+fn register_shapes(lua: &Lua, physics: &Table) -> Result<()> {
+    physics.set(
+        "CheckSphere",
+        lua.create_function(|lua, (c, r, m): (LVec3, f32, Option<i64>)| {
+            with_world(lua, |w| {
+                let shape = QueryShape::Sphere { radius: r };
+                w.physics.check(
+                    shape,
+                    c.0,
+                    glam::Quat::IDENTITY,
+                    mask(m, DEFAULT_RAYCAST_LAYERS),
+                )
+            })
+        })?,
+    )?;
+    physics.set(
+        "CheckBox",
+        lua.create_function(
+            |lua, (c, half, rot, m): (LVec3, LVec3, Option<LVec3>, Option<i64>)| {
+                with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics.check(box_shape(half), c.0, orientation(rot), m)
+                })
+            },
+        )?,
+    )?;
+    physics.set(
+        "CheckCapsule",
+        lua.create_function(|lua, (a, b, r, m): (LVec3, LVec3, f32, Option<i64>)| {
+            with_world(lua, |w| {
+                let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                w.physics.check(
+                    shape,
+                    c,
+                    glam::Quat::IDENTITY,
+                    mask(m, DEFAULT_RAYCAST_LAYERS),
+                )
+            })
+        })?,
+    )?;
+    physics.set(
+        "OverlapBox",
+        lua.create_function(
+            |lua, (c, half, rot, m): (LVec3, LVec3, Option<LVec3>, Option<i64>)| {
+                let found = with_world(lua, |w| {
+                    let m = mask(m, ALL_LAYERS);
+                    w.physics.overlap(box_shape(half), c.0, orientation(rot), m)
+                })?;
+                objects_list(lua, found)
+            },
+        )?,
+    )?;
+    physics.set(
+        "OverlapCapsule",
+        lua.create_function(|lua, (a, b, r, m): (LVec3, LVec3, f32, Option<i64>)| {
+            let found = with_world(lua, |w| {
+                let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                w.physics
+                    .overlap(shape, c, glam::Quat::IDENTITY, mask(m, ALL_LAYERS))
+            })?;
+            objects_list(lua, found)
+        })?,
+    )?;
+    // BoxCast(center, halfExtents, direction[, orientation, maxDistance, layerMask])
+    physics.set(
+        "BoxCast",
+        lua.create_function(
+            |lua,
+             (c, half, dir, rot, max, m): (
+                LVec3,
+                LVec3,
+                LVec3,
+                Option<LVec3>,
+                Option<f32>,
+                Option<i64>,
+            )| {
+                let hit = with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    let (rot, max) = (orientation(rot), distance(max));
+                    w.physics.cast(box_shape(half), c.0, rot, dir.0, max, m)
+                })?;
+                single(lua, hit)
+            },
+        )?,
+    )?;
+    physics.set(
+        "BoxCastAll",
+        lua.create_function(
+            |lua,
+             (c, half, dir, rot, max, m): (
+                LVec3,
+                LVec3,
+                LVec3,
+                Option<LVec3>,
+                Option<f32>,
+                Option<i64>,
+            )| {
+                let hits = with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    let (rot, max) = (orientation(rot), distance(max));
+                    w.physics.cast_all(box_shape(half), c.0, rot, dir.0, max, m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    // CapsuleCast(point1, point2, radius, direction[, maxDistance, layerMask])
+    physics.set(
+        "CapsuleCast",
+        lua.create_function(
+            |lua, (a, b, r, dir, max, m): (LVec3, LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hit = with_world(lua, |w| {
+                    let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast(shape, c, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                single(lua, hit)
+            },
+        )?,
+    )?;
+    physics.set(
+        "CapsuleCastAll",
+        lua.create_function(
+            |lua, (a, b, r, dir, max, m): (LVec3, LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hits = with_world(lua, |w| {
+                    let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast_all(shape, c, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    physics.set(
+        "SphereCastAll",
+        lua.create_function(
+            |lua, (o, r, dir, max, m): (LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hits = with_world(lua, |w| {
+                    let shape = QueryShape::Sphere { radius: r };
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast_all(shape, o.0, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    Ok(())
 }
 
 pub fn register(lua: &Lua) -> Result<()> {
@@ -129,6 +304,7 @@ pub fn register(lua: &Lua) -> Result<()> {
             Ok(list)
         })?,
     )?;
+    register_shapes(lua, &physics)?;
     // `Physics.gravity` reads and writes the live world.
     let meta = lua.create_table()?;
     meta.set(
