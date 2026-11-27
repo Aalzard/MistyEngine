@@ -19,7 +19,7 @@ pub(super) struct Follower {
     /// The object whose body the colliders hang on (`None`: static, in world space).
     owner: Option<Entity>,
     /// Each collider with its offset in the object's local space.
-    handles: Vec<(rp::ColliderHandle, Vec2)>,
+    pub(super) handles: Vec<(rp::ColliderHandle, Vec2)>,
     /// The frame the colliders were last placed for (see `frame`).
     last: Mat4,
 }

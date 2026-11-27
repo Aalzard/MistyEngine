@@ -9,6 +9,7 @@
 mod colliders;
 mod contacts;
 mod follow;
+mod live_edit;
 mod queries;
 
 use std::collections::{HashMap, HashSet};

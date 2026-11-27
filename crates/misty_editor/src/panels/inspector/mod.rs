@@ -502,25 +502,27 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
     card::card(ui, id, state, header, body);
 }
 
-/// While playing, a Rigidbody or collider edit reaches the running physics world (it was read
-/// only when Play started).
+/// While playing, a Rigidbody or collider edit (3D or 2D) reaches the running physics world (it
+/// was read only when Play started).
 fn refresh_live_physics(state: &mut EditorState, targets: &[Entity], name: &str) {
-    const LIVE: [&str; 5] = [
+    const LIVE: [&str; 11] = [
         "Rigidbody",
         "Box Collider",
         "Sphere Collider",
         "Capsule Collider",
         "Mesh Collider",
+        "Rigidbody 2D",
+        "Box Collider 2D",
+        "Circle Collider 2D",
+        "Capsule Collider 2D",
+        "Polygon Collider 2D",
+        "Edge Collider 2D",
     ];
     if !LIVE.contains(&name) || !state.play.in_play_mode() {
         return;
     }
     if let Some(rt) = state.runtime.as_mut() {
-        rt.with_physics_scene(&mut state.scene, |p, s| {
-            for &e in targets {
-                p.refresh_object(s, e);
-            }
-        });
+        rt.refresh_live_physics(&mut state.scene, targets);
     }
 }
 

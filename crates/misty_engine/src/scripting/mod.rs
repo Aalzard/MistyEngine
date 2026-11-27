@@ -2377,6 +2377,21 @@ impl ScriptHost {
         r
     }
 
+    /// Inspector edits of `entities`' Rigidbody / collider components (3D and 2D) reach the
+    /// playing physics worlds.
+    pub fn refresh_live_physics(&mut self, scene: &mut Scene, entities: &[Entity]) {
+        let taken = std::mem::take(scene);
+        let back = self.with_world(|w| {
+            let mine = std::mem::replace(&mut w.scene, taken);
+            for &e in entities {
+                w.physics.refresh_object(&w.scene, e);
+                w.physics2d.refresh_object(&w.scene, e);
+            }
+            std::mem::replace(&mut w.scene, mine)
+        });
+        *scene = back;
+    }
+
     pub fn instance_count(&self) -> usize {
         self.instances.len()
     }

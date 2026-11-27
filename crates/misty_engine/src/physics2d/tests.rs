@@ -765,3 +765,62 @@ fn kinematic_bodies_follow_animated_transforms_but_keep_their_velocity() {
     run_following(&mut p, &mut scene, 1);
     assert!(p.body_pose(k).unwrap().0.x > x);
 }
+
+#[test]
+fn inspector_edits_while_playing_reach_2d_bodies_and_colliders() {
+    let mut scene = Scene::new("t");
+    let g = ground(&mut scene, 0.0);
+    let b = crate_box(&mut scene, Vec2::new(0.0, 1.0));
+    let mut p = build(&scene);
+    run_following(&mut p, &mut scene, 30);
+    // A taller box rests higher.
+    {
+        let mut c = scene.world.get::<&mut BoxCollider2D>(b).unwrap();
+        c.size = Vec2::new(1.0, 2.0);
+        c.common.offset = Vec2::new(0.0, 0.0);
+    }
+    p.refresh_object(&scene, b);
+    run_following(&mut p, &mut scene, 60);
+    assert!(
+        (scene.world_position(b).y - 1.5).abs() < 0.05,
+        "{}",
+        scene.world_position(b)
+    );
+    // Gravity scale 0 and Static ground turned into a trigger: it hangs, then nothing holds it.
+    scene
+        .world
+        .get::<&mut Rigidbody2D>(b)
+        .unwrap()
+        .gravity_scale = 0.0;
+    p.refresh_object(&scene, b);
+    scene
+        .world
+        .get::<&mut BoxCollider2D>(g)
+        .unwrap()
+        .common
+        .is_trigger = true;
+    p.refresh_object(&scene, g);
+    p.set_velocity(b, Vec2::ZERO);
+    run_following(&mut p, &mut scene, 30);
+    assert!((scene.world_position(b).y - 1.5).abs() < 0.05);
+    scene
+        .world
+        .get::<&mut Rigidbody2D>(b)
+        .unwrap()
+        .gravity_scale = 1.0;
+    p.refresh_object(&scene, b);
+    run_following(&mut p, &mut scene, 60);
+    assert!(scene.world_position(b).y < 0.0, "fell through the trigger");
+    // Switched off: no collider left.
+    scene
+        .world
+        .get::<&mut BoxCollider2D>(g)
+        .unwrap()
+        .common
+        .enabled = false;
+    p.refresh_object(&scene, g);
+    assert!(
+        p.overlap_point_all(Vec2::new(5.0, 0.0), u32::MAX)
+            .is_empty()
+    );
+}

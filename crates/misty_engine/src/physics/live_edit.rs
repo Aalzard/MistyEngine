@@ -78,6 +78,12 @@ impl Physics {
             let mut hooks = c.active_hooks();
             hooks.set(rp::ActiveHooks::MODIFY_SOLVER_CONTACTS, material.is_some());
             c.set_active_hooks(hooks);
+            if let Some(parent) = c.parent()
+                && let Some(b) = self.world.bodies.get_mut(parent)
+            {
+                // A sleeping body wouldn't notice its new shape.
+                b.wake_up(true);
+            }
             match material {
                 Some(m) => {
                     self.materials.insert(*h, m);
