@@ -529,6 +529,57 @@ pub fn controller_hit_table(lua: &Lua, hit: &crate::physics::ControllerHit) -> R
     Ok(t)
 }
 
+/// The Collision table 3D `OnCollisionEnter/Stay/Exit(other, collision)` get as their second
+/// argument (`me` hit `other`): `gameObject`, `collider`, `transform`, `rigidbody`,
+/// `relativeVelocity`, `impulse`, `contactCount`, `contacts` (`point`, `normal` pointing
+/// towards `me`, `separation`, `impulse`, `thisCollider`, `otherCollider`) and
+/// `GetContact(i)` (from 0). Exit has no points.
+pub fn collision_table(
+    lua: &Lua,
+    me: Entity,
+    other: Entity,
+    info: &crate::physics::CollisionInfo,
+) -> Result<Table> {
+    let t = lua.create_table()?;
+    t.set("gameObject", LGameObject(other))?;
+    t.set("collider", LGameObject(other))?;
+    t.set("transform", LTransform(other))?;
+    t.set("relativeVelocity", LVec3(info.relative_velocity))?;
+    t.set("impulse", LVec3(info.impulse))?;
+    let body = with_world(lua, |w| {
+        let mut cur = Some(other);
+        while let Some(c) = cur {
+            if w.scene.world.get::<&Rigidbody>(c).is_ok() {
+                return Some(c);
+            }
+            cur = w.scene.parent(c);
+        }
+        None
+    })?;
+    if let Some(b) = body {
+        t.set("rigidbody", LRigidbody(b))?;
+    }
+    let list = lua.create_table()?;
+    for (i, p) in info.points.iter().enumerate() {
+        let c = lua.create_table()?;
+        c.set("point", LVec3(p.point))?;
+        c.set("normal", LVec3(p.normal))?;
+        c.set("separation", p.separation)?;
+        c.set("impulse", LVec3(p.normal * p.impulse))?;
+        c.set("thisCollider", LGameObject(me))?;
+        c.set("otherCollider", LGameObject(other))?;
+        list.set(i + 1, c)?;
+    }
+    t.set("contactCount", info.points.len())?;
+    t.set("contacts", list)?;
+    let get_contact = lua.create_function(|_, (t, i): (Table, i64)| match i.checked_add(1) {
+        Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
+        None => Ok(Value::Nil),
+    })?;
+    t.set("GetContact", get_contact)?;
+    Ok(t)
+}
+
 #[cfg(test)]
 #[path = "physics_tests.rs"]
 mod tests;

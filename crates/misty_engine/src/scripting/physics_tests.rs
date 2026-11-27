@@ -257,3 +257,43 @@ return Shapes
         assert!(logs.iter().any(|l| l == want), "{want}: {logs:?}");
     }
 }
+
+#[test]
+fn lua_3d_collisions_get_a_collision_table_second() {
+    let root = project(
+        "Lander.lua",
+        r#"
+local Lander = {}
+function Lander:OnCollisionEnter(other, c)
+    if self.done then return end
+    self.done = true
+    local p = c:GetContact(0)
+    Debug.Log("enter " .. other.name .. " " .. c.gameObject.name .. " " .. tostring(c.contactCount >= 1)
+        .. " " .. tostring(#c.contacts == c.contactCount) .. " " .. tostring(p.normal.y > 0.9)
+        .. " " .. tostring(math.abs(p.point.y + 2.5) < 0.1) .. " " .. tostring(c.relativeVelocity.y > 1)
+        .. " " .. p.thisCollider.name .. " " .. tostring(c.rigidbody == nil))
+end
+function Lander:OnCollisionExit(other, c)
+    Debug.Log("exit " .. c.contactCount)
+end
+return Lander
+"#,
+    );
+    let mut scene = Scene::new("t");
+    solid(
+        &mut scene,
+        "Ground",
+        Vec3::new(0.0, -3.0, 0.0),
+        Vec3::new(40.0, 1.0, 40.0),
+    );
+    let player = scene.spawn("Player", None);
+    scene.add(player, Rigidbody::default());
+    scene.add(player, BoxCollider::default());
+    script(&mut scene, player, "Lander.lua");
+    let logs = run(&mut scene, root, 90);
+    assert!(
+        logs.iter()
+            .any(|l| l == "enter Ground Ground true true true true true Player true"),
+        "{logs:?}"
+    );
+}

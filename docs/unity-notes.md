@@ -209,4 +209,4 @@ Each entry: **Name** — what it does — what changes on screen.
   point between the objects (as Lua always has).
 - **Collision** (3D, C#) carries the contact points too: `contactCount`, `GetContact(i)`, `GetContacts`, `contacts`,
   `relativeVelocity` and `impulse`; `ContactPoint` has `point`, `normal`, `separation`, `impulse`,
-  `thisCollider` / `otherCollider`. Lua's 3D callbacks still get only the other object.
+  `thisCollider` / `otherCollider`. Lua's 3D callbacks get the other object first and the Collision table second.

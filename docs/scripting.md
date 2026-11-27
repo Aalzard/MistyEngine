@@ -33,7 +33,11 @@ sandboxed.
 `OnDisable`, `OnDestroy`,
 `OnCollisionEnter(other)`, `OnCollisionStay(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`,
 `OnTriggerStay(other)`, `OnTriggerExit(other)` (`other` is a GameObject; Stay runs every physics step
-after the one they met in, while they still touch), `OnControllerColliderHit(hit)` (see Character Controller below),
+after the one they met in, while they still touch; the collision callbacks also get a second
+argument, a Collision table: `OnCollisionEnter(other, c)` with `c.contactCount`, `c.contacts` /
+`c:GetContact(i)` (from 0: `point`, `normal` pointing at this object, `separation`, `impulse`,
+`thisCollider`, `otherCollider`), `c.relativeVelocity` (speed of the impact), `c.impulse`,
+`c.gameObject`, `c.rigidbody`; Exit has no points), `OnControllerColliderHit(hit)` (see Character Controller below),
 `OnAnimatorMove()` (root motion, see Driving an Animator below), `OnAnimatorIK(layerIndex)` (hand,
 foot and head goals, see IK pass below). Fields starting
 with `_` stay private. Callbacks are looked up when the script starts: a function added to
