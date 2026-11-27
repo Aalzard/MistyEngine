@@ -221,12 +221,13 @@ pub fn vec_args(lua: &Lua, args: &[Value]) -> Result<Vec3> {
 #[derive(Clone, Copy)]
 pub struct LTransform(pub Entity);
 
-/// After a script moves an object with a Rigidbody, move its body too.
+/// After a script moves an object with a Rigidbody (or above one), move the bodies too.
 pub(crate) fn sync_body(w: &mut World, e: Entity) {
     if w.physics.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
+    w.physics.teleport_children(&w.scene, e);
     if w.physics2d.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics2d.teleport(e, pos, rot);

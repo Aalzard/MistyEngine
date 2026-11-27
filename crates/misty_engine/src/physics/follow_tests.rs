@@ -114,3 +114,27 @@ fn a_rescaled_static_collider_changes_size() {
         .expect("hits the wall");
     assert!((hit.distance - 3.0).abs() < 1e-3, "{}", hit.distance);
 }
+
+#[test]
+fn moving_a_parent_takes_its_rigidbody_children_along() {
+    let mut scene = Scene::new("t");
+    let holder = scene.spawn("Holder", None);
+    let ball = box_at(&mut scene, "Ball", Vec3::new(0.0, 1.0, 0.0), Some(holder));
+    scene.add(
+        ball,
+        Rigidbody {
+            use_gravity: false,
+            ..Default::default()
+        },
+    );
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    step(&mut physics, &mut scene, 2);
+    scene.set_world_position(holder, Vec3::new(10.0, 0.0, 0.0));
+    physics.teleport_children(&scene, holder);
+    step(&mut physics, &mut scene, 2);
+    let p = scene.world_position(ball);
+    assert!(
+        p.distance(Vec3::new(10.0, 1.0, 0.0)) < 1e-3,
+        "the body went with its parent: {p}"
+    );
+}

@@ -610,6 +610,28 @@ impl Physics {
         }
     }
 
+    /// A script moved `e`: the dynamic bodies of objects under it go along (a moved parent
+    /// left its Rigidbody children behind, and they snapped back). Kinematic ones follow their
+    /// Transform at the next step anyway.
+    pub fn teleport_children(&mut self, scene: &Scene, e: Entity) {
+        if !self.bodies.values().any(|b| !b.kinematic) {
+            return;
+        }
+        let mut stack: Vec<Entity> = match scene.world.get::<&crate::scene::Node>(e) {
+            Ok(n) if !n.children.is_empty() => n.children.clone(),
+            _ => return,
+        };
+        while let Some(x) = stack.pop() {
+            if self.bodies.get(&x).is_some_and(|b| !b.kinematic) {
+                let (p, r, _) = world_pose(scene, x);
+                self.teleport(x, p, r);
+            }
+            if let Ok(n) = scene.world.get::<&crate::scene::Node>(x) {
+                stack.extend(n.children.iter().copied());
+            }
+        }
+    }
+
     /// Rigidbody.MovePosition / MoveRotation: kinematic bodies sweep there during the next
     /// step (pushing what they meet), dynamic ones are placed there. The Transform follows.
     pub fn move_body(&mut self, scene: &mut Scene, e: Entity, position: Vec3, rotation: Quat) {
