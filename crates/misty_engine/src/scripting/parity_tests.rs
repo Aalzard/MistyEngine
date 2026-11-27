@@ -577,3 +577,119 @@ public class Shot : MonoBehaviour
     assert_eq!(shots[0].path, root.join("cs_shot.png"));
     assert_eq!(shots[0].super_size, 1);
 }
+
+// ---- Box / capsule queries -------------------------------------------------------------------
+
+#[test]
+fn csharp_box_and_capsule_queries() {
+    use crate::scene::BoxCollider;
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Shapes.cs",
+        r#"
+using Misty;
+public class Shapes : MonoBehaviour
+{
+    void Start()
+    {
+        RaycastHit h;
+        bool hit = Physics.BoxCast(Vector3.zero, new Vector3(0.2f, 0.2f, 0.2f), Vector3.forward, out h);
+        Debug.Log("box " + hit + " " + h.collider.name + " " + h.distance.ToString("F2"));
+        Debug.Log("check " + Physics.CheckSphere(new Vector3(0, 0, 4.6f), 0.2f)
+            + " " + Physics.CheckBox(new Vector3(0, 0, 3.6f), new Vector3(0.1f, 0.1f, 1f), Quaternion.Euler(0, 90, 0))
+            + " " + Physics.CheckCapsule(new Vector3(0, 0, 3), new Vector3(0, 0, 4.4f), 0.2f));
+        Debug.Log("overlap " + Physics.OverlapBox(new Vector3(0, 0, 7), new Vector3(1, 1, 3)).Length
+            + " " + Physics.OverlapCapsule(new Vector3(0, 0, 3), new Vector3(0, 0, 4.4f), 0.2f).Length);
+        Physics.CapsuleCast(new Vector3(0, 0, 3), new Vector3(0, 0, 4), 0.2f, Vector3.forward, out h);
+        Debug.Log("capsule " + h.distance.ToString("F2"));
+        Debug.Log("all " + Physics.SphereCastAll(Vector3.zero, 0.2f, Vector3.forward).Length
+            + " " + Physics.BoxCastAll(Vector3.zero, new Vector3(0.2f, 0.2f, 0.2f), Vector3.forward, Quaternion.identity, 6f).Length
+            + " " + Physics.CapsuleCastAll(new Vector3(0, 0, 3), new Vector3(0, 0, 4), 0.2f, Vector3.forward).Length);
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    for (name, z) in [("A", 5.0), ("B", 9.0)] {
+        let e = scene.spawn(name, None);
+        scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 0.0, z)));
+        scene.add(e, BoxCollider::default());
+    }
+    let e = scene.spawn("Prober", None);
+    attach(&mut scene, e, "Shapes.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    for want in [
+        "box True A 4.30",
+        "check True False True",
+        "overlap 2 1",
+        "capsule 0.30",
+        "all 2 1 2",
+    ] {
+        assert!(logs.iter().any(|l| l == want), "{want}: {logs:?}");
+    }
+}
+
+// ---- OnControllerColliderHit ----------------------------------------------------------------
+
+#[test]
+fn csharp_controller_collider_hit() {
+    use crate::scene::{BoxCollider, CharacterController};
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Walker.cs",
+        r#"
+using Misty;
+public class Walker : MonoBehaviour
+{
+    CharacterController cc;
+    bool reported;
+    void Start() { cc = GetComponent<CharacterController>(); }
+    void Update() { cc.SimpleMove(new Vector3(2, 0, 0)); }
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (reported || hit.gameObject.name != "Wall") return;
+        reported = true;
+        Debug.Log("cc hit " + hit.collider.name + " " + (hit.normal.x < -0.5f)
+            + " " + (hit.controller.gameObject.name) + " " + (hit.moveDirection.x > 0.5f)
+            + " " + (Mathf.Abs(hit.point.x - 12.5f) < 0.2f) + " " + (hit.rigidbody == null));
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    for (name, pos, size) in [
+        (
+            "Ground",
+            Vec3::new(0.0, -0.5, 0.0),
+            Vec3::new(60.0, 1.0, 60.0),
+        ),
+        (
+            "Wall",
+            Vec3::new(13.0, 1.5, -10.0),
+            Vec3::new(1.0, 3.0, 2.0),
+        ),
+    ] {
+        let e = scene.spawn(name, None);
+        let mut t = Transform::from_position(pos);
+        t.scale = size;
+        scene.set_transform(e, t);
+        scene.add(e, BoxCollider::default());
+    }
+    let player = scene.spawn("Player", None);
+    scene.set_transform(
+        player,
+        Transform::from_position(Vec3::new(10.0, 1.2, -10.0)),
+    );
+    scene.add(player, CharacterController::default());
+    attach(&mut scene, player, "Walker.cs");
+    let logs = run(&mut scene, &root, Vec3::new(0.0, -9.81, 0.0), 120);
+    assert!(
+        logs.iter()
+            .any(|l| l == "cc hit Wall True Player True True True"),
+        "{logs:?}"
+    );
+}

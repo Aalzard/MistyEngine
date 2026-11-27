@@ -14,7 +14,7 @@ use super::{LogKind, World};
 
 #[path = "csharp_parity.rs"]
 mod parity;
-pub(super) use parity::{Contact2DScope, Contact3DScope};
+pub(super) use parity::{Contact2DScope, Contact3DScope, ControllerHitScope};
 use parity::{animator_ik, contacts};
 
 // ---- the world, for callbacks from C# ------------------------------------------------------
@@ -162,6 +162,7 @@ pub(super) struct NativeApi {
     time_scale: extern "C" fn(f32),
     transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
     app: extern "C" fn(i32, i32, *const u16, i32, *mut u16, i32) -> i32,
+    shape_query: extern "C" fn(i32, i32, *const f32, u32, *mut HitData, *mut u64, i32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -227,6 +228,7 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     time_scale,
     transform_group,
     app,
+    shape_query,
 };
 
 /// `Application` and `ScreenCapture`. op 0: `CaptureScreenshot(text, superSize = arg)`;
@@ -1186,6 +1188,81 @@ extern "C" fn overlap_sphere(
         found.len() as i32
     })
     .unwrap_or(0)
+}
+
+/// Floats [`shape_query`] reads.
+const SHAPE_FLOATS: usize = 15;
+
+/// Box and capsule queries, and sphere checks / sweeps of every hit. `kind`: 0 sphere, 1 box,
+/// 2 capsule. `p` holds 15 floats: position (capsule: first point) xyz, half extents (capsule:
+/// second point) xyz, radius, rotation xyzw, direction xyz, max distance. ops: 0 check (1/0),
+/// 1 overlap (writes up to `cap` ids, returns how many), 2 the first sweep hit (`hits[0]`;
+/// 1/0), 3 every sweep hit (up to `cap`, returns how many). -1 outside a call from the engine
+/// or for a bad op / kind.
+extern "C" fn shape_query(
+    op: i32,
+    kind: i32,
+    p: *const f32,
+    mask: u32,
+    hits: *mut HitData,
+    ids: *mut u64,
+    cap: i32,
+) -> i32 {
+    use crate::physics::QueryShape;
+    if p.is_null() {
+        return -1;
+    }
+    // SAFETY: C# passes 15 floats.
+    let p = unsafe { std::slice::from_raw_parts(p, SHAPE_FLOATS) };
+    let v = |i: usize| Vec3::new(p[i], p[i + 1], p[i + 2]);
+    let (mut center, rot) = (v(0), Quat::from_xyzw(p[7], p[8], p[9], p[10]));
+    let shape = match kind {
+        0 => QueryShape::Sphere { radius: p[6] },
+        1 => QueryShape::Box { half_extents: v(3) },
+        2 => {
+            let (shape, c) = QueryShape::capsule(v(0), v(3), p[6]);
+            center = c;
+            shape
+        }
+        _ => return -1,
+    };
+    let (dir, max) = (v(11), p[14]);
+    let cap = cap.max(0) as usize;
+    with_world(|w| match op {
+        0 => i32::from(w.physics.check(shape, center, rot, mask)),
+        1 => {
+            let found = w.physics.overlap(shape, center, rot, mask);
+            if !ids.is_null() {
+                for (i, e) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `ids` holds `cap` ids on the C# side.
+                    unsafe { ids.add(i).write(id_of(*e)) };
+                }
+            }
+            found.len() as i32
+        }
+        2 => match w.physics.cast(shape, center, rot, dir, max, mask) {
+            Some(h) => {
+                if !hits.is_null() {
+                    // SAFETY: `hits` points at a HitData on the C# stack.
+                    unsafe { hits.write(hit_data(w, &h)) };
+                }
+                1
+            }
+            None => 0,
+        },
+        3 => {
+            let found = w.physics.cast_all(shape, center, rot, dir, max, mask);
+            if !hits.is_null() {
+                for (i, h) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `hits` holds `cap` HitData on the C# side.
+                    unsafe { hits.add(i).write(hit_data(w, h)) };
+                }
+            }
+            found.len() as i32
+        }
+        _ => -1,
+    })
+    .unwrap_or(-1)
 }
 
 /// `set` 0 reads `Physics.gravity` into `v`, 1 sets it from `v`.

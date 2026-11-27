@@ -141,7 +141,7 @@ variables of type GameObject are object fields too.
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
-| `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
+| `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere`, `CheckSphere/Box/Capsule`, `OverlapBox/Capsule`, `BoxCast`, `CapsuleCast`, `SphereCastAll/BoxCastAll/CapsuleCastAll` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
 | `LayerMask` | `GetMask("Default", "Player", …)`, `NameToLayer(name)` (-1 if unknown), `LayerToName(index)` |
 | CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `groundNormal`, `height`, `radius`, `center` (settable: the capsule is rebuilt, e.g. crouching), `slopeSpeed` (settable, 0–1), `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
 | WheelCollider | `motorTorque`, `brakeTorque`, `steerAngle`, `enabled` (settable), `rpm`, `isGrounded`, `radius`, `suspensionDistance` (read-only), `GetWorldPose()` (returns position and Euler angles), `GetGroundHit()` (WheelHit or nil) |
@@ -771,11 +771,19 @@ end
 local all = Physics.RaycastAll(origin, direction, 50)          -- list of hits, nearest first
 local hit2 = Physics.SphereCast(origin, 0.5, direction, 10)    -- like Raycast with a sphere
 local near = Physics.OverlapSphere(center, 3)                  -- list of GameObjects (one per collider)
+-- Boxes take half sizes and an optional orientation in Euler degrees; capsules two end points.
+local grounded = Physics.CheckSphere(feet, 0.2)                -- true when anything touches it
+local inBox = Physics.OverlapBox(center, Vector3.new(1, 1, 1), Vector3.new(0, 45, 0))
+local inCapsule = Physics.OverlapCapsule(bottom, top, 0.5)
+local hit3 = Physics.BoxCast(center, halfSize, direction [, orientation, maxDistance, layerMask])
+local hit4 = Physics.CapsuleCast(bottom, top, 0.5, direction [, maxDistance, layerMask])
+local hits = Physics.SphereCastAll(origin, 0.5, direction, 10) -- also BoxCastAll, CapsuleCastAll (64 at most)
 ```
 A hit has `point`, `normal`, `distance`, `gameObject`, `collider` (the collider's GameObject, so
 `hit.collider.gameObject` works), `transform` and `rigidbody` (nil for static colliders). `direction` doesn't need
 to be normalised; `maxDistance` defaults to `Mathf.Infinity`. Masks are layer bit masks: Raycast/RaycastAll/
-SphereCast default to `Physics.DefaultRaycastLayers` (every layer but Ignore Raycast), OverlapSphere to every layer.
+SphereCast and the other casts and Check* default to `Physics.DefaultRaycastLayers` (every layer but Ignore
+Raycast), the Overlap* queries to every layer. Sweeps skip colliders they start inside.
 Combine them with Lua's bit operators, e.g. `Physics.DefaultRaycastLayers & ~LayerMask.GetMask("Player")`.
 Rays ignore colliders they start inside. Triggers are hit unless Project Settings ▸ Physics ▸ Queries Hit
 Triggers is off; the Layer Collision Matrix there decides which layers collide (queries use only the mask).
@@ -1475,6 +1483,9 @@ IEnumerator Start()
   `contactCount`, `contacts`, `GetContact(i)`, `GetContacts(array or List)`; `ContactPoint`:
   `point`, `normal` (pointing towards this object), `separation`, `impulse`, `thisCollider`,
   `otherCollider`. Exit reports no points.
+- `OnControllerColliderHit(ControllerColliderHit hit)` for Character Controllers: `controller`,
+  `gameObject`, `transform`, `collider`, `rigidbody`, `point`, `normal`, `moveDirection`,
+  `moveLength`.
 - `NavMeshAgent`: `SetDestination`, `destination`, `remainingDistance`, `hasPath`,
   `pathPending`, `pathStatus`, `isOnNavMesh`, `isStopped`, `velocity`, `desiredVelocity`,
   `nextPosition`, `Warp`, `ResetPath`, `speed`, `angularSpeed`, `acceleration`,
@@ -1509,7 +1520,9 @@ IEnumerator Start()
   `MoveRotation`. `Collider.attachedRigidbody`; `Collision` (`gameObject`, `transform`,
   `collider`, `rigidbody`).
 - `Physics`: `Raycast` (with or without `out RaycastHit`, from a `Ray` or origin + direction,
-  max distance, layer mask), `RaycastAll`, `SphereCast`, `OverlapSphere`, `gravity`;
+  max distance, layer mask), `RaycastAll`, `SphereCast`, `OverlapSphere`, `CheckSphere`,
+  `CheckBox`, `CheckCapsule`, `OverlapBox`, `OverlapCapsule`, `BoxCast`, `CapsuleCast`,
+  `SphereCastAll`, `BoxCastAll`, `CapsuleCastAll`, `gravity`;
   `RaycastHit` (`point`, `normal`, `distance`, `collider`, `transform`, `rigidbody`); `LayerMask`
   (`GetMask`, `NameToLayer`, `LayerToName`).
 - `AudioSource`: `Play`, `Stop`, `Pause`, `UnPause`, `isPlaying`, `volume`, `pitch`, `loop`,
@@ -1606,7 +1619,7 @@ Like the familiar engine, `Object` and `Random` clash with `System.Object` and `
 when a script also has `using System;`; write `Misty.Random` / `Misty.Object` then.
 
 Not yet: the other engine components (Sprite Renderer, Timeline, the other UI widgets, …),
-`OnControllerColliderHit`, `Instantiate` of a script (instantiate its
+`Instantiate` of a script (instantiate its
 `gameObject`), materials after a renderer's first, and textures on materials. Each changed
 build stays loaded until the editor is closed.
 

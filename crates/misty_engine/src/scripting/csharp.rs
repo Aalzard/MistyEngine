@@ -68,9 +68,11 @@ pub(crate) enum Method {
     OnTriggerStay2D = 19,
     /// Takes the layer index (`OnAnimatorIK(int layerIndex)`).
     OnAnimatorIK = 20,
+    /// Takes the hit (`OnControllerColliderHit(ControllerColliderHit hit)`).
+    OnControllerColliderHit = 21,
 }
 
-const METHOD_COUNT: usize = 21;
+const METHOD_COUNT: usize = 22;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -1025,6 +1027,7 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnCollisionStay2D" => Method::OnCollisionStay2D,
         "OnTriggerStay2D" => Method::OnTriggerStay2D,
         "OnAnimatorIK" => Method::OnAnimatorIK,
+        "OnControllerColliderHit" => Method::OnControllerColliderHit,
         _ => return None,
     })
 }

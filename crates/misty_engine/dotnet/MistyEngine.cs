@@ -1111,6 +1111,91 @@ namespace Misty
         public static RaycastHit[] RaycastAll(Ray ray, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
             RaycastAll(ray.origin, ray.direction, maxDistance, layerMask);
 
+        // ---- box and capsule queries (shape_query in csharp_native.rs) ----
+
+        const int Sphere = 0, Box = 1, Capsule = 2;
+
+        static int Query(int op, int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, float max, int layerMask,
+            Internal.HitData* hits, ulong* ids, int cap)
+        {
+            float* p = stackalloc float[15];
+            p[0] = a.x; p[1] = a.y; p[2] = a.z; p[3] = b.x; p[4] = b.y; p[5] = b.z; p[6] = radius;
+            p[7] = rot.x; p[8] = rot.y; p[9] = rot.z; p[10] = rot.w;
+            p[11] = dir.x; p[12] = dir.y; p[13] = dir.z; p[14] = max;
+            int r = Internal.Native.api.shapeQuery(op, kind, p, (uint)layerMask, hits, ids, cap);
+            if (r < 0) throw new InvalidOperationException("Physics used outside a script callback");
+            return r;
+        }
+
+        static bool Check(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, int layerMask) =>
+            Query(0, kind, a, b, radius, rot, Vector3.zero, 0, layerMask, null, null, 0) == 1;
+
+        static Collider[] Overlap(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, int layerMask)
+        {
+            var buf = new ulong[64];
+            while (true)
+            {
+                int n;
+                fixed (ulong* ids = buf) n = Query(1, kind, a, b, radius, rot, Vector3.zero, 0, layerMask, null, ids, buf.Length);
+                if (n > buf.Length) { buf = new ulong[n]; continue; }
+                var found = new Collider[n];
+                for (int i = 0; i < n; i++) found[i] = new Collider(buf[i]);
+                return found;
+            }
+        }
+
+        static bool Sweep(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, out RaycastHit hit, float max, int layerMask)
+        {
+            Internal.HitData data;
+            int r = Query(2, kind, a, b, radius, rot, dir, max, layerMask, &data, null, 1);
+            hit = new RaycastHit { data = r == 1 ? data : default };
+            return r == 1;
+        }
+
+        static RaycastHit[] SweepAll(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, float max, int layerMask)
+        {
+            var buf = new Internal.HitData[64];
+            int n;
+            fixed (Internal.HitData* h = buf) n = Query(3, kind, a, b, radius, rot, dir, max, layerMask, h, null, buf.Length);
+            n = Math.Min(n, buf.Length);
+            var hits = new RaycastHit[n];
+            for (int i = 0; i < n; i++) hits[i] = new RaycastHit { data = buf[i] };
+            return hits;
+        }
+
+        /// <summary>Whether any collider touches the sphere.</summary>
+        public static bool CheckSphere(Vector3 position, float radius, int layerMask = DefaultRaycastLayers) =>
+            Check(Sphere, position, Vector3.zero, radius, Quaternion.identity, layerMask);
+        /// <summary>Whether any collider touches the box.</summary>
+        public static bool CheckBox(Vector3 center, Vector3 halfExtents, Quaternion orientation = default, int layerMask = DefaultRaycastLayers) =>
+            Check(Box, center, halfExtents, 0, orientation, layerMask);
+        /// <summary>Whether any collider touches the capsule round start–end.</summary>
+        public static bool CheckCapsule(Vector3 start, Vector3 end, float radius, int layerMask = DefaultRaycastLayers) =>
+            Check(Capsule, start, end, radius, Quaternion.identity, layerMask);
+        /// <summary>The colliders touching the box.</summary>
+        public static Collider[] OverlapBox(Vector3 center, Vector3 halfExtents, Quaternion orientation = default, int layerMask = AllLayers) =>
+            Overlap(Box, center, halfExtents, 0, orientation, layerMask);
+        /// <summary>The colliders touching the capsule round point0–point1.</summary>
+        public static Collider[] OverlapCapsule(Vector3 point0, Vector3 point1, float radius, int layerMask = AllLayers) =>
+            Overlap(Capsule, point0, point1, radius, Quaternion.identity, layerMask);
+        public static bool BoxCast(Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Box, center, halfExtents, 0, orientation, direction, out _, maxDistance, layerMask);
+        public static bool BoxCast(Vector3 center, Vector3 halfExtents, Vector3 direction, out RaycastHit hitInfo, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Box, center, halfExtents, 0, orientation, direction, out hitInfo, maxDistance, layerMask);
+        public static bool CapsuleCast(Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Capsule, point1, point2, radius, Quaternion.identity, direction, out _, maxDistance, layerMask);
+        public static bool CapsuleCast(Vector3 point1, Vector3 point2, float radius, Vector3 direction, out RaycastHit hitInfo, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Capsule, point1, point2, radius, Quaternion.identity, direction, out hitInfo, maxDistance, layerMask);
+        public static bool SphereCast(Ray ray, float radius, out RaycastHit hitInfo, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SphereCast(ray.origin, radius, ray.direction, out hitInfo, maxDistance, layerMask);
+        /// <summary>Every collider the sweep hits, nearest first (at most 64).</summary>
+        public static RaycastHit[] SphereCastAll(Vector3 origin, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Sphere, origin, Vector3.zero, radius, Quaternion.identity, direction, maxDistance, layerMask);
+        public static RaycastHit[] BoxCastAll(Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Box, center, halfExtents, 0, orientation, direction, maxDistance, layerMask);
+        public static RaycastHit[] CapsuleCastAll(Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Capsule, point1, point2, radius, Quaternion.identity, direction, maxDistance, layerMask);
+
         /// <summary>The colliders touching a sphere.</summary>
         public static Collider[] OverlapSphere(Vector3 position, float radius, int layerMask = AllLayers)
         {
@@ -3493,6 +3578,7 @@ namespace Misty.Internal
         public delegate* unmanaged<float, void> timeScale;
         public delegate* unmanaged<int, ulong*, int, float*, int> transformGroup;
         public delegate* unmanaged<int, int, char*, int, char*, int, int> app;
+        public delegate* unmanaged<int, int, float*, uint, HitData*, ulong*, int, int> shapeQuery;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -3869,7 +3955,7 @@ namespace Misty.Internal
             "OnCollisionStay", "OnTriggerStay",
             "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
             "OnCollisionStay2D", "OnTriggerStay2D",
-            "OnAnimatorIK",
+            "OnAnimatorIK", "OnControllerColliderHit",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -4031,6 +4117,11 @@ namespace Misty.Internal
                     {
                         var a = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), script, m);
                         return other => a(new GameObject(other));
+                    }
+                    if (p == typeof(ControllerColliderHit))
+                    {
+                        var a = (Action<ControllerColliderHit>)Delegate.CreateDelegate(typeof(Action<ControllerColliderHit>), script, m);
+                        return other => a(new ControllerColliderHit(other));
                     }
                     // OnAnimatorIK(int layerIndex): the layer index travels as `other`.
                     if (p == typeof(int) && name == "OnAnimatorIK")
@@ -4766,6 +4857,38 @@ namespace Misty
             contacts.AddRange(points);
             return points.Length;
         }
+    }
+
+    /// <summary>What a Character Controller ran into while moving (`OnControllerColliderHit`).</summary>
+    public sealed unsafe class ControllerColliderHit
+    {
+        readonly ulong other, self;
+        internal ControllerColliderHit(ulong other)
+        {
+            this.other = other;
+            float* buf = stackalloc float[10];
+            ulong* ids = stackalloc ulong[2];
+            if (Internal.Native.api.contacts(2, buf, 10, ids) < 0) return;
+            self = ids[0];
+            point = new Vector3(buf[0], buf[1], buf[2]);
+            normal = new Vector3(buf[3], buf[4], buf[5]);
+            moveDirection = new Vector3(buf[6], buf[7], buf[8]);
+            moveLength = buf[9];
+        }
+        /// <summary>The controller that hit.</summary>
+        public CharacterController controller => self == 0 ? null : new CharacterController(self);
+        public GameObject gameObject => new GameObject(other);
+        public Transform transform => new Transform(other);
+        public Collider collider => new Collider(other);
+        public Rigidbody rigidbody => gameObject.GetComponentInParent<Rigidbody>();
+        /// <summary>World position of the touch.</summary>
+        public Vector3 point { get; }
+        /// <summary>Surface normal at the touch.</summary>
+        public Vector3 normal { get; }
+        /// <summary>Direction the controller was moving.</summary>
+        public Vector3 moveDirection { get; }
+        /// <summary>How far the controller moved before the hit.</summary>
+        public float moveLength { get; }
     }
 
     /// <summary>One touching point of a 3D collision (`Collision.GetContact`).</summary>

@@ -8,7 +8,7 @@ use glam::{Quat, Vec3};
 use hecs::Entity;
 
 use super::{V4, id_of, with_object};
-use crate::physics::CollisionInfo;
+use crate::physics::{CollisionInfo, ControllerHit};
 use crate::physics2d::Contact2D;
 use crate::rigging::animator_ik::{self as ik, IkGoal, IkHint};
 
@@ -63,6 +63,55 @@ impl Drop for Contact3DScope {
     }
 }
 
+// ---- Character Controller hits ---------------------------------------------------------------
+
+thread_local! {
+    /// The Character Controller hit being reported to C#, while its callback runs.
+    static CONTROLLER_HIT: Cell<Option<ControllerHit>> = const { Cell::new(None) };
+}
+
+/// Makes `hit` the one `ControllerColliderHit` reads until dropped.
+pub(in crate::scripting) struct ControllerHitScope {
+    previous: Option<ControllerHit>,
+}
+
+impl ControllerHitScope {
+    pub(in crate::scripting) fn new(hit: ControllerHit) -> Self {
+        let previous = CONTROLLER_HIT.with(|x| x.replace(Some(hit)));
+        Self { previous }
+    }
+}
+
+impl Drop for ControllerHitScope {
+    fn drop(&mut self) {
+        CONTROLLER_HIT.with(|x| x.set(self.previous));
+    }
+}
+
+/// op 2: the controller hit being reported. Writes `point.xyz, normal.xyz,
+/// moveDirection.xyz, moveLength` (10 floats, as many as `cap` allows); `ids` gets
+/// (controller, other). Returns 1 (-1 when no hit is being reported).
+fn controller_hit(buf: *mut f32, cap: i32, ids: *mut u64) -> i32 {
+    let Some(h) = CONTROLLER_HIT.with(|x| x.get()) else {
+        return -1;
+    };
+    let (p, n, d) = (h.point, h.normal, h.move_direction);
+    let out = [p.x, p.y, p.z, n.x, n.y, n.z, d.x, d.y, d.z, h.move_length];
+    if !buf.is_null() {
+        let k = out.len().min(cap.max(0) as usize);
+        // SAFETY: C# passes a buffer of `cap` floats.
+        unsafe { std::ptr::copy_nonoverlapping(out.as_ptr(), buf, k) };
+    }
+    if !ids.is_null() {
+        // SAFETY: C# passes room for two ids.
+        unsafe {
+            ids.write(id_of(h.controller));
+            ids.add(1).write(id_of(h.other));
+        }
+    }
+    1
+}
+
 /// Floats per 3D contact point written by [`contacts`] op 1.
 const POINT_FLOATS_3D: usize = 8;
 
@@ -112,13 +161,17 @@ fn contacts_3d(buf: *mut f32, cap: i32, ids: *mut u64) -> i32 {
 /// Floats per contact point written by [`contacts`].
 const POINT_FLOATS: usize = 7;
 
-/// op 0: the 2D collision being reported (op 1: the 3D one, see `contacts_3d`). Writes the relative velocity (2 floats), then per
+/// op 0: the 2D collision being reported (op 1: the 3D one, see `contacts_3d`; op 2: a
+/// Character Controller hit, see `controller_hit`). Writes the relative velocity (2 floats), then per
 /// point `point.xy, normal.xy, separation, normalImpulse, tangentImpulse` while `cap` floats
 /// last; `ids` gets (me, other). Normals point towards `me`. Returns the point count (-1 when no
 /// collision is being reported).
 pub(super) extern "C" fn contacts(op: i32, buf: *mut f32, cap: i32, ids: *mut u64) -> i32 {
     if op == 1 {
         return contacts_3d(buf, cap, ids);
+    }
+    if op == 2 {
+        return controller_hit(buf, cap, ids);
     }
     if op != 0 {
         return -1;

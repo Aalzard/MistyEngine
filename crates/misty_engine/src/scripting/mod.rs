@@ -1187,11 +1187,21 @@ impl ScriptHost {
     fn controller_hits(&mut self) {
         let hits = self.with_world(|w| w.physics.take_controller_hits());
         for hit in hits {
+            // C#'s `ControllerColliderHit` reads the hit from here (csharp_parity.rs).
+            let _hit = csharp_native::ControllerHitScope::new(hit);
             for i in self.instances_of(hit.controller) {
                 if self.runnable(&self.instances[i]) {
-                    let arg = physics_api::controller_hit_table(&self.lua, &hit)
-                        .map(Value::Table)
-                        .ok();
+                    // C# scripts get the other object; the rest comes through the scope.
+                    let arg = if self.instances[i].cs.is_some() {
+                        self.lua
+                            .create_userdata(LGameObject(hit.other))
+                            .map(Value::UserData)
+                            .ok()
+                    } else {
+                        physics_api::controller_hit_table(&self.lua, &hit)
+                            .map(Value::Table)
+                            .ok()
+                    };
                     self.call(i, "OnControllerColliderHit", arg);
                 }
             }
