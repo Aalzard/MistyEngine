@@ -1227,6 +1227,14 @@ impl eframe::App for EditorApp {
         {
             self.state.console.warn(format!("Save thumbnail: {e}"));
         }
+        // ScreenCapture.CaptureScreenshot: the Game view's last frame.
+        if misty_engine::screen_capture::pending()
+            && let Some((w, h, rgba)) = self.gpu.as_ref().and_then(|g| g.game_view_pixels())
+        {
+            for e in misty_engine::screen_capture::write_all(w, h, &rgba) {
+                self.state.console.warn(format!("Screenshot: {e}"));
+            }
+        }
         if let Some(text) = self.state.os_clipboard_out.take() {
             ctx.copy_text(text);
         }

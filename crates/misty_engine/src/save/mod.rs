@@ -188,6 +188,19 @@ pub fn folder_for(root: &Path) -> PathBuf {
         .unwrap_or_else(|| root.join(EDITOR_FOLDER))
 }
 
+/// The game's own data folder (`Application.persistentDataPath`): the project folder in the
+/// editor, the per-user folder holding the saves in a built game.
+pub fn data_folder(root: &Path) -> PathBuf {
+    let built = FOLDER_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    match built {
+        Some(saves) => saves.parent().map_or(saves.clone(), Path::to_path_buf),
+        None => root.to_path_buf(),
+    }
+}
+
 /// The per-user saves folder of a built game (next to its PlayerPrefs).
 pub fn player_folder(company: &str, product: &str) -> Option<PathBuf> {
     crate::prefs::default_path(company, product).and_then(|p| p.parent().map(|d| d.join("saves")))

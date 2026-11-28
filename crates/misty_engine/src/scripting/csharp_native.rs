@@ -14,7 +14,7 @@ use super::{LogKind, World};
 
 #[path = "csharp_parity.rs"]
 mod parity;
-pub(super) use parity::Contact2DScope;
+pub(super) use parity::{Contact2DScope, Contact3DScope, ControllerHitScope};
 use parity::{animator_ik, contacts};
 
 // ---- the world, for callbacks from C# ------------------------------------------------------
@@ -161,6 +161,9 @@ pub(super) struct NativeApi {
     character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
     time_scale: extern "C" fn(f32),
     transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
+    app: extern "C" fn(i32, i32, *const u16, i32, *mut u16, i32) -> i32,
+    shape_query: extern "C" fn(i32, i32, *const f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    physics_extra: extern "C" fn(i32, u64, u64, *mut V3, f32, f32, f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -225,7 +228,131 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     character_scalar,
     time_scale,
     transform_group,
+    app,
+    shape_query,
+    physics_extra,
 };
+
+fn force_mode(m: i64) -> &'static str {
+    match m {
+        1 => "Impulse",
+        2 => "VelocityChange",
+        3 => "Acceleration",
+        _ => "Force",
+    }
+}
+
+/// Physics.IgnoreCollision & co. and the Rigidbody extras. `v` points at two Vector3s.
+/// ops: 0 IgnoreCollision(a, b, ignore = x != 0), 1 GetIgnoreCollision(a, b), 2
+/// IgnoreLayerCollision(layer a, layer b, ignore = x != 0), 3 GetIgnoreLayerCollision, 4
+/// AddForceAtPosition(body a, force v[0], position v[1], mode b), 5 AddExplosionForce(body a,
+/// force x, position v[0], radius y, upwards z, mode b), 6 Sleep(a), 7 WakeUp(a), 8
+/// IsSleeping(a), 9 ClosestPoint(collider a, point v[0] → v[0]; 0 without colliders), 10
+/// GetPointVelocity(body a, point v[0] → v[0]), 11 worldCenterOfMass(body a → v[0]; 0
+/// without a body).
+/// Returns 1/0 (or the answer), -1 outside a call from the engine.
+extern "C" fn physics_extra(op: i32, a: u64, b: u64, v: *mut V3, x: f32, y: f32, z: f32) -> i32 {
+    let read = |i: usize| -> Vec3 {
+        if v.is_null() {
+            return Vec3::ZERO;
+        }
+        // SAFETY: C# passes two Vector3s.
+        Vec3::from_array(unsafe { *v.add(i) })
+    };
+    let ent = |id: u64| Entity::from_bits(id);
+    with_world(|w| {
+        let alive = |e: Option<Entity>| e.filter(|e| w.scene.contains(*e));
+        match op {
+            0 | 1 => {
+                let (Some(ea), Some(eb)) = (alive(ent(a)), alive(ent(b))) else {
+                    return 0;
+                };
+                if op == 0 {
+                    w.physics.ignore_collision(ea, eb, x != 0.0);
+                    1
+                } else {
+                    i32::from(w.physics.collision_ignored(ea, eb))
+                }
+            }
+            2 => {
+                w.physics
+                    .ignore_layer_collision(a.min(31) as u8, b.min(31) as u8, x != 0.0);
+                1
+            }
+            3 => i32::from(
+                w.physics
+                    .layer_collision_ignored(a.min(31) as u8, b.min(31) as u8),
+            ),
+            4..=8 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match op {
+                    4 => {
+                        let impulse = super::api::impulse_of(w, e, read(0), force_mode(b as i64));
+                        w.physics.add_impulse_at_position(e, impulse, read(1));
+                    }
+                    5 => {
+                        if let Some(push) = w.physics.explosion_push(e, x, read(0), y, z) {
+                            let dv = super::api::delta_velocity(w, e, push, force_mode(b as i64));
+                            let vel = w.physics.velocity(e).unwrap_or_default();
+                            w.physics.set_velocity(e, vel + dv);
+                        }
+                    }
+                    6 => w.physics.set_sleeping(e, true),
+                    7 => w.physics.set_sleeping(e, false),
+                    _ => return i32::from(w.physics.is_sleeping(e)),
+                }
+                1
+            }
+            9 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match w.physics.closest_point(e, read(0)) {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            10 | 11 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                let out = if op == 10 {
+                    Some(w.physics.point_velocity(e, read(0)))
+                } else {
+                    w.physics.world_center_of_mass(e)
+                };
+                match out {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            _ => -1,
+        }
+    })
+    .unwrap_or(-1)
+}
+
+/// `Application` and `ScreenCapture`. op 0: `CaptureScreenshot(text, superSize = arg)`;
+/// 1: `persistentDataPath` (written to `out`, returns its length); 2: `HasDefine(text)` (1/0);
+/// 3: `isEditor` (1/0). -1 outside a call from the engine (ops 0 and 1) or for an unknown op.
+extern "C" fn app(op: i32, arg: i32, input: *const u16, len: i32, out: *mut u16, cap: i32) -> i32 {
+    match op {
+        0 => {
+            let name = text(input, len);
+            with_world(|w| crate::screen_capture::request(&w.root, &name, i64::from(arg)))
+                .map_or(-1, |_| 1)
+        }
+        1 => with_world(|w| crate::screen_capture::data_folder(&w.root))
+            .map_or(-1, |p| write_text(&p.to_string_lossy(), out, cap)),
+        2 => i32::from(crate::build_profile::has_define(&text(input, len))),
+        3 => i32::from(crate::build_profile::has_define("MISTY_EDITOR")),
+        _ => -1,
+    }
+}
 
 /// `TransformGroup` in C#: one call for `count` objects. `data` holds `width` floats per
 /// object: op 0 reads world positions (3), 1 writes them, 2 reads world rotations (4), 3 writes
@@ -933,8 +1060,10 @@ extern "C" fn rigidbody_move_rotation(id: u64, q: *const Q) -> i32 {
     .unwrap_or(0)
 }
 
-/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1); `set` 0 reads into `out`,
-/// 1 writes `value`. 1 done, 0 no object or no Rigidbody.
+/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1), 3 drag, 4 angularDrag,
+/// 5 constraints (`RigidbodyConstraints` bits), 6 collisionDetectionMode (0 Discrete, else
+/// continuous), 7 interpolation (0 None, else Interpolate); `set` 0 reads into `out`, 1
+/// writes `value`. 1 done, 0 no object or no Rigidbody.
 extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *mut f32) -> i32 {
     with_object(id, |w, e| {
         let Ok(mut b) = w.scene.world.get::<&mut crate::scene::Rigidbody>(e) else {
@@ -945,19 +1074,38 @@ extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *
             match which {
                 1 => b.is_kinematic = on,
                 2 => b.use_gravity = on,
+                3 => b.drag = value.max(0.0),
+                4 => b.angular_drag = value.max(0.0),
+                5 => b.set_constraints(value as u32),
+                6 => b.continuous = on,
+                7 => {
+                    b.interpolation = if on {
+                        crate::scene::Interpolation::Interpolate
+                    } else {
+                        crate::scene::Interpolation::None
+                    }
+                }
                 _ => b.mass = value.max(1e-4),
             }
-            let mass = b.mass;
+            let rb = b.clone();
             drop(b);
             match which {
                 1 => w.physics.set_kinematic(e, on),
                 2 => w.physics.set_use_gravity(e, on),
-                _ => w.physics.set_mass(e, mass),
+                3..=6 => w.physics.apply_body_settings(e, &rb),
+                7 => w.physics.set_interpolate(e, on),
+                _ => w.physics.set_mass(e, rb.mass),
             }
         } else if !out.is_null() {
+            let flag = |on: bool| f32::from(u8::from(on));
             let v = match which {
-                1 => f32::from(u8::from(b.is_kinematic)),
-                2 => f32::from(u8::from(b.use_gravity)),
+                1 => flag(b.is_kinematic),
+                2 => flag(b.use_gravity),
+                3 => b.drag,
+                4 => b.angular_drag,
+                5 => b.constraints() as f32,
+                6 => flag(b.continuous),
+                7 => flag(b.interpolation != crate::scene::Interpolation::None),
                 _ => b.mass,
             };
             // SAFETY: `out` points at a float on the C# stack.
@@ -1166,6 +1314,81 @@ extern "C" fn overlap_sphere(
         found.len() as i32
     })
     .unwrap_or(0)
+}
+
+/// Floats [`shape_query`] reads.
+const SHAPE_FLOATS: usize = 15;
+
+/// Box and capsule queries, and sphere checks / sweeps of every hit. `kind`: 0 sphere, 1 box,
+/// 2 capsule. `p` holds 15 floats: position (capsule: first point) xyz, half extents (capsule:
+/// second point) xyz, radius, rotation xyzw, direction xyz, max distance. ops: 0 check (1/0),
+/// 1 overlap (writes up to `cap` ids, returns how many), 2 the first sweep hit (`hits[0]`;
+/// 1/0), 3 every sweep hit (up to `cap`, returns how many). -1 outside a call from the engine
+/// or for a bad op / kind.
+extern "C" fn shape_query(
+    op: i32,
+    kind: i32,
+    p: *const f32,
+    mask: u32,
+    hits: *mut HitData,
+    ids: *mut u64,
+    cap: i32,
+) -> i32 {
+    use crate::physics::QueryShape;
+    if p.is_null() {
+        return -1;
+    }
+    // SAFETY: C# passes 15 floats.
+    let p = unsafe { std::slice::from_raw_parts(p, SHAPE_FLOATS) };
+    let v = |i: usize| Vec3::new(p[i], p[i + 1], p[i + 2]);
+    let (mut center, rot) = (v(0), Quat::from_xyzw(p[7], p[8], p[9], p[10]));
+    let shape = match kind {
+        0 => QueryShape::Sphere { radius: p[6] },
+        1 => QueryShape::Box { half_extents: v(3) },
+        2 => {
+            let (shape, c) = QueryShape::capsule(v(0), v(3), p[6]);
+            center = c;
+            shape
+        }
+        _ => return -1,
+    };
+    let (dir, max) = (v(11), p[14]);
+    let cap = cap.max(0) as usize;
+    with_world(|w| match op {
+        0 => i32::from(w.physics.check(shape, center, rot, mask)),
+        1 => {
+            let found = w.physics.overlap(shape, center, rot, mask);
+            if !ids.is_null() {
+                for (i, e) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `ids` holds `cap` ids on the C# side.
+                    unsafe { ids.add(i).write(id_of(*e)) };
+                }
+            }
+            found.len() as i32
+        }
+        2 => match w.physics.cast(shape, center, rot, dir, max, mask) {
+            Some(h) => {
+                if !hits.is_null() {
+                    // SAFETY: `hits` points at a HitData on the C# stack.
+                    unsafe { hits.write(hit_data(w, &h)) };
+                }
+                1
+            }
+            None => 0,
+        },
+        3 => {
+            let found = w.physics.cast_all(shape, center, rot, dir, max, mask);
+            if !hits.is_null() {
+                for (i, h) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `hits` holds `cap` HitData on the C# side.
+                    unsafe { hits.add(i).write(hit_data(w, h)) };
+                }
+            }
+            found.len() as i32
+        }
+        _ => -1,
+    })
+    .unwrap_or(-1)
 }
 
 /// `set` 0 reads `Physics.gravity` into `v`, 1 sets it from `v`.

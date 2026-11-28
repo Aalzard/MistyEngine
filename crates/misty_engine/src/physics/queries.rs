@@ -1,4 +1,5 @@
-//! Scene queries: Physics.Raycast / RaycastAll / SphereCast / OverlapSphere.
+//! Scene queries: Physics.Raycast / RaycastAll / SphereCast / OverlapSphere, and the box and
+//! capsule shapes (OverlapBox, BoxCast, CheckCapsule, …) through [`QueryShape`].
 //!
 //! Like the reference engine, rays ignore colliders they start inside, masks select layers by
 //! bit, and triggers are hit unless Project Settings ▸ Physics ▸ Queries Hit Triggers is off.
@@ -21,6 +22,64 @@ pub struct RaycastHit {
     pub point: Vec3,
     pub normal: Vec3,
     pub distance: f32,
+}
+
+/// The shape of an overlap or sweep query (sizes in metres, world space).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum QueryShape {
+    Sphere {
+        radius: f32,
+    },
+    /// A box of these half sizes, turned by the query's rotation.
+    Box {
+        half_extents: Vec3,
+    },
+    /// The capsule round the segment `a`–`b` (offsets from the query's position).
+    Capsule {
+        a: Vec3,
+        b: Vec3,
+        radius: f32,
+    },
+}
+
+/// Most hits a sweep reports (`SphereCastAll`, `BoxCastAll`, …).
+pub const MAX_CAST_HITS: usize = 64;
+
+impl QueryShape {
+    /// The capsule round world points `p1`–`p2`, placed at their midpoint.
+    pub fn capsule(p1: Vec3, p2: Vec3, radius: f32) -> (Self, Vec3) {
+        let c = (p1 + p2) * 0.5;
+        (
+            Self::Capsule {
+                a: p1 - c,
+                b: p2 - c,
+                radius,
+            },
+            c,
+        )
+    }
+
+    /// The parry shape, `None` for sizes that are negative, not finite or too large.
+    fn shape(&self) -> Option<rp::SharedShape> {
+        let ok = |v: f32| (0.0..=super::MAX_EXTENT).contains(&v);
+        match *self {
+            Self::Sphere { radius } if ok(radius) => Some(rp::SharedShape::ball(radius.max(1e-4))),
+            Self::Box { half_extents: h } if ok(h.x) && ok(h.y) && ok(h.z) => {
+                let h = h.max(Vec3::splat(1e-4));
+                Some(rp::SharedShape::cuboid(h.x, h.y, h.z))
+            }
+            Self::Capsule { a, b, radius } if ok(radius) && a.is_finite() && b.is_finite() => {
+                Some(rp::SharedShape::capsule(rv(a), rv(b), radius.max(1e-4)))
+            }
+            _ => None,
+        }
+    }
+}
+
+fn rotation_or_identity(r: Quat) -> Quat {
+    glam::Vec4::from(r)
+        .try_normalize()
+        .map_or(Quat::IDENTITY, Quat::from_vec4)
 }
 
 impl Physics {
@@ -50,8 +109,13 @@ impl Physics {
             .colliders
             .get(h)
             .and_then(|c| c.parent())
-            .and_then(|p| self.bodies.iter().find(|(_, b)| b.handle == p))
-            .map(|(e, _)| *e);
+            .and_then(|p| {
+                let e = self.world.bodies.get(p).and_then(super::body_object)?;
+                self.bodies
+                    .get(&e)
+                    .is_some_and(|b| b.handle == p)
+                    .then_some(e)
+            });
         Some(RaycastHit {
             entity,
             body,
@@ -197,6 +261,167 @@ impl Physics {
             )
             .filter_map(|(h, _)| self.colliders.get(&h).copied())
             .collect()
+    }
+}
+
+impl Physics {
+    /// Objects of the colliders touching or inside `shape` at `center` turned by `rotation`
+    /// (one entry per collider).
+    pub fn overlap(
+        &self,
+        shape: QueryShape,
+        center: Vec3,
+        rotation: Quat,
+        mask: u32,
+    ) -> Vec<Entity> {
+        let Some(s) = shape.shape().filter(|_| center.is_finite()) else {
+            return Vec::new();
+        };
+        let test = in_mask(mask);
+        self.world
+            .intersect_shape(
+                pose(center, rotation_or_identity(rotation)),
+                s.as_ref(),
+                self.query_filter(&test),
+            )
+            .filter_map(|(h, _)| self.colliders.get(&h).copied())
+            .collect()
+    }
+
+    /// Whether any collider touches `shape` (`Physics.CheckSphere` / `CheckBox` /
+    /// `CheckCapsule`); stops at the first one.
+    pub fn check(&self, shape: QueryShape, center: Vec3, rotation: Quat, mask: u32) -> bool {
+        let Some(s) = shape.shape().filter(|_| center.is_finite()) else {
+            return false;
+        };
+        let test = in_mask(mask);
+        self.world
+            .intersect_shape(
+                pose(center, rotation_or_identity(rotation)),
+                s.as_ref(),
+                self.query_filter(&test),
+            )
+            .next()
+            .is_some()
+    }
+
+    /// Sweep `shape` from `origin` along `direction`: the nearest collider hit within
+    /// `max_distance` (ones it starts inside are skipped, like `sphere_cast`).
+    pub fn cast(
+        &self,
+        shape: QueryShape,
+        origin: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        mask: u32,
+    ) -> Option<RaycastHit> {
+        self.cast_skipping(shape, origin, rotation, direction, max_distance, mask, &[])
+    }
+
+    /// Every collider the sweep hits within `max_distance`, nearest first (at most
+    /// [`MAX_CAST_HITS`]).
+    pub fn cast_all(
+        &self,
+        shape: QueryShape,
+        origin: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        mask: u32,
+    ) -> Vec<RaycastHit> {
+        let mut skip: Vec<rp::ColliderHandle> = Vec::new();
+        let mut hits = Vec::new();
+        while hits.len() < MAX_CAST_HITS {
+            let Some((h, hit)) = self.cast_one(
+                shape,
+                origin,
+                rotation,
+                direction,
+                max_distance,
+                mask,
+                &skip,
+            ) else {
+                break;
+            };
+            skip.push(h);
+            if let Some(hit) = hit {
+                hits.push(hit);
+            }
+        }
+        hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
+        hits
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cast_skipping(
+        &self,
+        shape: QueryShape,
+        origin: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        mask: u32,
+        skip: &[rp::ColliderHandle],
+    ) -> Option<RaycastHit> {
+        let mut skip = skip.to_vec();
+        // Colliders the shape starts inside are passed over (and the sweep goes on).
+        loop {
+            let (h, hit) = self.cast_one(
+                shape,
+                origin,
+                rotation,
+                direction,
+                max_distance,
+                mask,
+                &skip,
+            )?;
+            if hit.is_some() {
+                return hit;
+            }
+            skip.push(h);
+        }
+    }
+
+    /// One sweep ignoring `skip`: the collider met and its hit (`None` when the shape starts
+    /// inside it).
+    #[allow(clippy::too_many_arguments)]
+    fn cast_one(
+        &self,
+        shape: QueryShape,
+        origin: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        mask: u32,
+        skip: &[rp::ColliderHandle],
+    ) -> Option<(rp::ColliderHandle, Option<RaycastHit>)> {
+        let dir = direction.normalize_or_zero();
+        if dir == Vec3::ZERO || !origin.is_finite() || max_distance.is_nan() || max_distance < 0.0 {
+            return None;
+        }
+        let s = shape.shape()?;
+        let options = ShapeCastOptions {
+            max_time_of_impact: max_distance.min(f32::MAX),
+            target_distance: 0.0,
+            stop_at_penetration: false,
+            compute_impact_geometry_on_penetration: true,
+        };
+        let test = |h: rp::ColliderHandle, c: &rp::Collider| {
+            !skip.contains(&h) && c.collision_groups().memberships.bits() & mask != 0
+        };
+        let (h, hit) = self.world.cast_shape(
+            &pose(origin, rotation_or_identity(rotation)),
+            rv(dir),
+            s.as_ref(),
+            options,
+            self.query_filter(&test),
+        )?;
+        if hit.time_of_impact <= 0.0 {
+            return Some((h, None));
+        }
+        let t = hit.time_of_impact;
+        Some((h, self.hit_from(h, gv(hit.witness1), gv(hit.normal1), t)))
     }
 }
 

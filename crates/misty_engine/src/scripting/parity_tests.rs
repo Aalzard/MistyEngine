@@ -413,3 +413,441 @@ fn lua_on_animator_ik_runs_per_layer_with_fresh_goals() {
         hand(&scene)
     );
 }
+
+// ---- 3D contacts ---------------------------------------------------------------------------
+
+/// A 1×1×1 cube ("Player", script attached) dropping onto a wide static box whose top is at
+/// y = -2.5.
+fn drop_scene_3d(script: &str) -> Scene {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let mut scene = Scene::new("t");
+    let ground = scene.spawn("Ground", None);
+    scene.set_transform(ground, Transform::from_position(Vec3::new(0.0, -3.0, 0.0)));
+    scene.add(
+        ground,
+        BoxCollider {
+            size: Vec3::new(40.0, 1.0, 40.0),
+            ..Default::default()
+        },
+    );
+    let player = scene.spawn("Player", None);
+    scene.add(player, Rigidbody::default());
+    scene.add(player, BoxCollider::default());
+    attach(&mut scene, player, script);
+    scene
+}
+
+const CS_CONTACTS_3D: &str = r#"
+using System.Collections.Generic;
+using Misty;
+public class Lander3D : MonoBehaviour
+{
+    bool entered, stayed;
+    List<ContactPoint> list = new List<ContactPoint>();
+    void OnCollisionEnter(Collision c)
+    {
+        if (entered) return;
+        entered = true;
+        var p = c.GetContact(0);
+        Debug.Log("enter " + c.contactCount + " " + (c.contactCount == c.contacts.Length)
+            + " " + (c.GetContacts(list) == c.contactCount) + " " + (list.Count == c.contactCount)
+            + " normal " + (p.normal.y > 0.9f) + " point " + (Mathf.Abs(p.point.y + 2.5f) < 0.1f)
+            + " sep " + (p.separation < 0.05f) + " rel " + (c.relativeVelocity.y > 1f)
+            + " this " + p.thisCollider.name + " other " + p.otherCollider.name + " " + c.gameObject.name);
+        try { c.GetContact(c.contactCount); } catch (System.IndexOutOfRangeException) { Debug.Log("out of range"); }
+    }
+    void OnCollisionStay(Collision c)
+    {
+        if (stayed || Time.frameCount < 60) return;
+        stayed = true;
+        float impulse = 0;
+        for (int i = 0; i < c.contactCount; i++) impulse += c.GetContact(i).impulse.y;
+        Debug.Log("stay " + (c.contactCount >= 1) + " impulse " + (impulse > 0.005f && impulse < 1f)
+            + " total " + (Mathf.Abs(c.impulse.y - impulse) < 1e-4f));
+    }
+}
+"#;
+
+#[test]
+fn csharp_collision_has_the_contact_points_of_the_step() {
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[("Lander3D.cs", CS_CONTACTS_3D)]);
+    let mut scene = drop_scene_3d("Lander3D.cs");
+    let logs = run(&mut scene, &root, Vec3::new(0.0, -9.81, 0.0), 90);
+    let enter = logs
+        .iter()
+        .find(|l| l.starts_with("enter"))
+        .expect("entered");
+    assert!(
+        enter.ends_with(
+            "True True True normal True point True sep True rel True this Player other Ground Ground"
+        ),
+        "{enter}"
+    );
+    let count: usize = enter.split(' ').nth(1).unwrap().parse().unwrap();
+    assert!((1..=16).contains(&count), "{enter}");
+    assert!(logs.iter().any(|l| l == "out of range"), "{logs:?}");
+    assert!(
+        logs.iter()
+            .any(|l| l == "stay True impulse True total True"),
+        "{logs:?}"
+    );
+}
+
+// ---- ScreenCapture / Application.persistentDataPath -----------------------------------------
+
+/// Requests of the screenshot queue under `root` (other tests may queue their own).
+fn captures_under(root: &Path) -> Vec<crate::screen_capture::Request> {
+    let mut mine = Vec::new();
+    for r in crate::screen_capture::take() {
+        if r.path.starts_with(root) {
+            mine.push(r);
+        } else {
+            crate::screen_capture::request(Path::new("/"), &r.path.to_string_lossy(), 1);
+        }
+    }
+    mine
+}
+
+#[test]
+fn lua_screen_capture_queues_a_png_under_the_data_folder() {
+    let root = project(&[(
+        "Shot.lua",
+        r#"
+local Shot = {}
+function Shot:Start()
+    ScreenCapture.CaptureScreenshot("shots/first", 2)
+    Debug.Log("data " .. Application.persistentDataPath)
+end
+return Shot
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Camera", None);
+    attach(&mut scene, e, "Shot.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 2);
+    assert!(
+        logs.iter()
+            .any(|l| l == &format!("data {}", root.display())),
+        "{logs:?}"
+    );
+    let shots = captures_under(&root);
+    assert_eq!(shots.len(), 1, "{shots:?}");
+    assert_eq!(shots[0].path, root.join("shots/first.png"));
+    assert_eq!(shots[0].super_size, 2);
+}
+
+#[test]
+fn csharp_screen_capture_and_application_paths() {
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Shot.cs",
+        r#"
+using Misty;
+public class Shot : MonoBehaviour
+{
+    void Start()
+    {
+        ScreenCapture.CaptureScreenshot("cs_shot.png");
+        Debug.Log("data " + Application.persistentDataPath + " editor " + Application.isEditor
+            + " define " + Application.HasDefine("NOT_A_DEFINE_123"));
+        try { ScreenCapture.CaptureScreenshot(""); } catch (System.ArgumentException) { Debug.Log("empty refused"); }
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Camera", None);
+    attach(&mut scene, e, "Shot.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 2);
+    assert!(
+        logs.iter().any(
+            |l| l.starts_with(&format!("data {} editor ", root.display()))
+                && l.ends_with(" define False")
+        ),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "empty refused"), "{logs:?}");
+    let shots = captures_under(&root);
+    assert_eq!(shots.len(), 1, "{shots:?}");
+    assert_eq!(shots[0].path, root.join("cs_shot.png"));
+    assert_eq!(shots[0].super_size, 1);
+}
+
+// ---- Box / capsule queries -------------------------------------------------------------------
+
+#[test]
+fn csharp_box_and_capsule_queries() {
+    use crate::scene::BoxCollider;
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Shapes.cs",
+        r#"
+using Misty;
+public class Shapes : MonoBehaviour
+{
+    void Start()
+    {
+        RaycastHit h;
+        bool hit = Physics.BoxCast(Vector3.zero, new Vector3(0.2f, 0.2f, 0.2f), Vector3.forward, out h);
+        Debug.Log("box " + hit + " " + h.collider.name + " " + h.distance.ToString("F2"));
+        Debug.Log("check " + Physics.CheckSphere(new Vector3(0, 0, 4.6f), 0.2f)
+            + " " + Physics.CheckBox(new Vector3(0, 0, 3.6f), new Vector3(0.1f, 0.1f, 1f), Quaternion.Euler(0, 90, 0))
+            + " " + Physics.CheckCapsule(new Vector3(0, 0, 3), new Vector3(0, 0, 4.4f), 0.2f));
+        Debug.Log("overlap " + Physics.OverlapBox(new Vector3(0, 0, 7), new Vector3(1, 1, 3)).Length
+            + " " + Physics.OverlapCapsule(new Vector3(0, 0, 3), new Vector3(0, 0, 4.4f), 0.2f).Length);
+        Physics.CapsuleCast(new Vector3(0, 0, 3), new Vector3(0, 0, 4), 0.2f, Vector3.forward, out h);
+        Debug.Log("capsule " + h.distance.ToString("F2"));
+        Debug.Log("all " + Physics.SphereCastAll(Vector3.zero, 0.2f, Vector3.forward).Length
+            + " " + Physics.BoxCastAll(Vector3.zero, new Vector3(0.2f, 0.2f, 0.2f), Vector3.forward, Quaternion.identity, 6f).Length
+            + " " + Physics.CapsuleCastAll(new Vector3(0, 0, 3), new Vector3(0, 0, 4), 0.2f, Vector3.forward).Length);
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    for (name, z) in [("A", 5.0), ("B", 9.0)] {
+        let e = scene.spawn(name, None);
+        scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 0.0, z)));
+        scene.add(e, BoxCollider::default());
+    }
+    let e = scene.spawn("Prober", None);
+    attach(&mut scene, e, "Shapes.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    for want in [
+        "box True A 4.30",
+        "check True False True",
+        "overlap 2 1",
+        "capsule 0.30",
+        "all 2 1 2",
+    ] {
+        assert!(logs.iter().any(|l| l == want), "{want}: {logs:?}");
+    }
+}
+
+// ---- OnControllerColliderHit ----------------------------------------------------------------
+
+#[test]
+fn csharp_controller_collider_hit() {
+    use crate::scene::{BoxCollider, CharacterController};
+    if no_dotnet() {
+        return;
+    }
+    let root = project(&[(
+        "Walker.cs",
+        r#"
+using Misty;
+public class Walker : MonoBehaviour
+{
+    CharacterController cc;
+    bool reported;
+    void Start() { cc = GetComponent<CharacterController>(); }
+    void Update() { cc.SimpleMove(new Vector3(2, 0, 0)); }
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (reported || hit.gameObject.name != "Wall") return;
+        reported = true;
+        Debug.Log("cc hit " + hit.collider.name + " " + (hit.normal.x < -0.5f)
+            + " " + (hit.controller.gameObject.name) + " " + (hit.moveDirection.x > 0.5f)
+            + " " + (Mathf.Abs(hit.point.x - 12.5f) < 0.2f) + " " + (hit.rigidbody == null));
+    }
+}
+"#,
+    )]);
+    let mut scene = Scene::new("t");
+    for (name, pos, size) in [
+        (
+            "Ground",
+            Vec3::new(0.0, -0.5, 0.0),
+            Vec3::new(60.0, 1.0, 60.0),
+        ),
+        (
+            "Wall",
+            Vec3::new(13.0, 1.5, -10.0),
+            Vec3::new(1.0, 3.0, 2.0),
+        ),
+    ] {
+        let e = scene.spawn(name, None);
+        let mut t = Transform::from_position(pos);
+        t.scale = size;
+        scene.set_transform(e, t);
+        scene.add(e, BoxCollider::default());
+    }
+    let player = scene.spawn("Player", None);
+    scene.set_transform(
+        player,
+        Transform::from_position(Vec3::new(10.0, 1.2, -10.0)),
+    );
+    scene.add(player, CharacterController::default());
+    attach(&mut scene, player, "Walker.cs");
+    let logs = run(&mut scene, &root, Vec3::new(0.0, -9.81, 0.0), 120);
+    assert!(
+        logs.iter()
+            .any(|l| l == "cc hit Wall True Player True True True"),
+        "{logs:?}"
+    );
+}
+
+// ---- IgnoreCollision & co. -----------------------------------------------------------------------
+
+#[test]
+fn physics_extras_from_lua_and_csharp() {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let lua = r#"
+local P = {}
+function P:Start()
+    local floor = GameObject.Find("Floor")
+    Physics.IgnoreCollision(self.gameObject, floor)
+    Physics.IgnoreLayerCollision(3, 4)
+    local rb = self.gameObject:GetComponent("Rigidbody")
+    rb:AddForceAtPosition(Vector3.new(0, 0, 1), Vector3.new(0, 3.5, 0), "Impulse")
+    rb:AddExplosionForce(10, Vector3.new(0, 1, 0), 0, 0, "Impulse")
+    local p = Physics.ClosestPoint(Vector3.new(5, 3, 0), self.gameObject)
+    Debug.Log("lua " .. tostring(Physics.GetIgnoreCollision(floor, self.gameObject))
+        .. " " .. tostring(Physics.GetIgnoreLayerCollision(4, 3)) .. " " .. string.format("%.2f", p.x)
+        .. " " .. tostring(rb.velocity.z > 0.5) .. " " .. tostring(rb.velocity.y > 5))
+    rb:Sleep()
+    Debug.Log("asleep " .. tostring(rb:IsSleeping()))
+    rb:WakeUp()
+end
+return P
+"#;
+    let root = project(&[("P.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter().any(|l| l == "lua true true 0.50 true true"),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "asleep true"), "{logs:?}");
+
+    if no_dotnet() {
+        return;
+    }
+    let cs = r#"
+using Misty;
+public class P : MonoBehaviour
+{
+    void Start()
+    {
+        var floor = GameObject.Find("Floor").GetComponent<Collider>();
+        var me = GetComponent<Collider>();
+        Physics.IgnoreCollision(me, floor);
+        Physics.IgnoreLayerCollision(3, 4);
+        var rb = GetComponent<Rigidbody>();
+        rb.AddForceAtPosition(new Vector3(0, 0, 1), new Vector3(0, 3.5f, 0), ForceMode.Impulse);
+        rb.AddExplosionForce(10, new Vector3(0, 1, 0), 0, 0, ForceMode.Impulse);
+        Debug.Log("cs " + Physics.GetIgnoreCollision(floor, me) + " " + Physics.GetIgnoreLayerCollision(4, 3)
+            + " " + me.ClosestPoint(new Vector3(5, 3, 0)).x.ToString("F2")
+            + " " + (rb.velocity.z > 0.5f) + " " + (rb.velocity.y > 5));
+        rb.Sleep();
+        Debug.Log("asleep " + rb.IsSleeping());
+    }
+}
+"#;
+    let root = project(&[("P.cs", cs)]);
+    let mut scene = Scene::new("t");
+    let floor = scene.spawn("Floor", None);
+    scene.add(floor, BoxCollider::default());
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter().any(|l| l == "cs True True 0.50 True True"),
+        "{logs:?}"
+    );
+    assert!(logs.iter().any(|l| l == "asleep True"), "{logs:?}");
+}
+
+#[test]
+fn rigidbody_settings_from_lua_and_csharp() {
+    use crate::scene::{BoxCollider, Rigidbody};
+    let lua = r#"
+local P = {}
+function P:Start()
+    local rb = self.gameObject:GetComponent("Rigidbody")
+    rb.drag = 2
+    rb.angularDrag = 0.5
+    rb.constraints = RigidbodyConstraints.FreezePositionX + RigidbodyConstraints.FreezeRotationY
+    local c1 = rb.constraints
+    rb.freezeRotation = true
+    rb.angularVelocity = Vector3.new(0, 0, 1)
+    local v = rb:GetPointVelocity(Vector3.new(1, 3, 0))
+    local com = rb.worldCenterOfMass
+    Debug.Log(string.format("lua %.1f %.1f %d %s %d %.2f %.2f", rb.drag, rb.angularDrag, c1,
+        tostring(rb.freezeRotation), rb.constraints, v.y, com.y))
+end
+return P
+"#;
+    let root = project(&[("P.lua", lua)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.lua");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter()
+            .any(|l| l == "lua 2.0 0.5 34 true 114 1.00 3.00"),
+        "{logs:?}"
+    );
+    let rb = scene.world.get::<&Rigidbody>(e).unwrap().clone();
+    assert_eq!((rb.drag, rb.freeze_rotation), (2.0, [true; 3]));
+
+    if no_dotnet() {
+        return;
+    }
+    let cs = r#"
+using Misty;
+public class P : MonoBehaviour
+{
+    void Start()
+    {
+        var rb = GetComponent<Rigidbody>();
+        rb.drag = 2;
+        rb.angularDrag = 0.5f;
+        rb.constraints = RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezeRotationY;
+        int c1 = (int)rb.constraints;
+        rb.freezeRotation = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.angularVelocity = new Vector3(0, 0, 1);
+        var v = rb.GetPointVelocity(new Vector3(1, 3, 0));
+        Debug.Log("cs " + rb.drag.ToString("F1") + " " + rb.angularDrag.ToString("F1") + " " + c1
+            + " " + rb.freezeRotation + " " + (int)rb.constraints + " " + v.y.ToString("F2")
+            + " " + rb.worldCenterOfMass.y.ToString("F2") + " " + rb.collisionDetectionMode
+            + " " + rb.interpolation);
+    }
+}
+"#;
+    let root = project(&[("P.cs", cs)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Box", None);
+    scene.set_transform(e, Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+    scene.add(e, BoxCollider::default());
+    scene.add(e, Rigidbody::default());
+    attach(&mut scene, e, "P.cs");
+    let logs = run(&mut scene, &root, Vec3::ZERO, 1);
+    assert!(
+        logs.iter()
+            .any(|l| l == "cs 2.0 0.5 34 True 114 1.00 3.00 Continuous Interpolate"),
+        "{logs:?}"
+    );
+}

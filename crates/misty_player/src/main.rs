@@ -322,6 +322,14 @@ impl Player {
                     .write(LogKind::Warning, &format!("save thumbnail: {e}"));
             }
         }
+        // ScreenCapture.CaptureScreenshot asked for this frame.
+        if misty_engine::screen_capture::pending() {
+            let (w, h, pixels) = gfx.capture();
+            for e in misty_engine::screen_capture::write_all(w, h, &pixels) {
+                self.log
+                    .write(LogKind::Warning, &format!("screenshot: {e}"));
+            }
+        }
         self.frames += 1;
         if self.frames == SCREENSHOT_FRAME
             && let Some(path) = self.screenshot.take()

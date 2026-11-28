@@ -933,6 +933,18 @@ namespace Misty
 
     public enum ForceMode { Force, Impulse, VelocityChange, Acceleration }
 
+    [System.Flags]
+    public enum RigidbodyConstraints
+    {
+        None = 0,
+        FreezePositionX = 2, FreezePositionY = 4, FreezePositionZ = 8,
+        FreezeRotationX = 16, FreezeRotationY = 32, FreezeRotationZ = 64,
+        FreezePosition = 14, FreezeRotation = 112, FreezeAll = 126,
+    }
+
+    public enum CollisionDetectionMode { Discrete, Continuous, ContinuousDynamic, ContinuousSpeculative }
+    public enum RigidbodyInterpolation { None, Interpolate, Extrapolate }
+
     /// <summary>A physics body (the object's Rigidbody component).</summary>
     public sealed unsafe class Rigidbody : Component
     {
@@ -970,6 +982,45 @@ namespace Misty
         public float mass { get => Scalar(0); set => SetScalar(0, value); }
         public bool isKinematic { get => Scalar(1) != 0; set => SetScalar(1, value ? 1 : 0); }
         public bool useGravity { get => Scalar(2) != 0; set => SetScalar(2, value ? 1 : 0); }
+        public float drag { get => Scalar(3); set => SetScalar(3, value); }
+        public float angularDrag { get => Scalar(4); set => SetScalar(4, value); }
+        public float linearDamping { get => drag; set => drag = value; }
+        public float angularDamping { get => angularDrag; set => angularDrag = value; }
+        public RigidbodyConstraints constraints { get => (RigidbodyConstraints)(int)Scalar(5); set => SetScalar(5, (int)value); }
+        public bool freezeRotation
+        {
+            get => (constraints & RigidbodyConstraints.FreezeRotation) == RigidbodyConstraints.FreezeRotation;
+            set => constraints = value ? constraints | RigidbodyConstraints.FreezeRotation : constraints & ~RigidbodyConstraints.FreezeRotation;
+        }
+        /// <summary>Every mode but Discrete turns on continuous collision detection.</summary>
+        public CollisionDetectionMode collisionDetectionMode
+        {
+            get => Scalar(6) != 0 ? CollisionDetectionMode.Continuous : CollisionDetectionMode.Discrete;
+            set => SetScalar(6, value == CollisionDetectionMode.Discrete ? 0 : 1);
+        }
+        /// <summary>Extrapolate works as Interpolate.</summary>
+        public RigidbodyInterpolation interpolation
+        {
+            get => Scalar(7) != 0 ? RigidbodyInterpolation.Interpolate : RigidbodyInterpolation.None;
+            set => SetScalar(7, value == RigidbodyInterpolation.None ? 0 : 1);
+        }
+        public Vector3 GetPointVelocity(Vector3 worldPoint)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = worldPoint;
+            if (Internal.Native.api.physicsExtra(10, id, 0, v, 0, 0, 0) != 1) throw Internal.Native.Missing("Rigidbody");
+            return v[0];
+        }
+        public Vector3 worldCenterOfMass
+        {
+            get
+            {
+                Vector3* v = stackalloc Vector3[2];
+                if (Internal.Native.api.physicsExtra(11, id, 0, v, 0, 0, 0) != 1) return position;
+                return v[0];
+            }
+        }
+        public void AddRelativeTorque(Vector3 torque, ForceMode mode = ForceMode.Force) => AddTorque(transform.rotation * torque, mode);
         /// <summary>The body's position in the physics world (the Transform may be interpolated).</summary>
         public Vector3 position => Vec(7);
         public Quaternion rotation => transform.rotation;
@@ -977,6 +1028,24 @@ namespace Misty
         public void AddForce(Vector3 force, ForceMode mode = ForceMode.Force) => SetVec(4, force, mode);
         public void AddForce(float x, float y, float z, ForceMode mode = ForceMode.Force) => AddForce(new Vector3(x, y, z), mode);
         public void AddTorque(Vector3 torque, ForceMode mode = ForceMode.Force) => SetVec(5, torque, mode);
+        /// <summary>A force at a world point: also turns the body.</summary>
+        public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode mode = ForceMode.Force)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = force; v[1] = position;
+            Internal.Native.api.physicsExtra(4, id, (ulong)mode, v, 0, 0, 0);
+        }
+        /// <summary>Pushes the body away from an explosion at `explosionPosition`, weaker towards
+        /// `explosionRadius` (0: no limit); `upwardsModifier` lifts it.</summary>
+        public void AddExplosionForce(float explosionForce, Vector3 explosionPosition, float explosionRadius, float upwardsModifier = 0f, ForceMode mode = ForceMode.Force)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = explosionPosition;
+            Internal.Native.api.physicsExtra(5, id, (ulong)mode, v, explosionForce, explosionRadius, upwardsModifier);
+        }
+        public void Sleep() => Internal.Native.api.physicsExtra(6, id, 0, null, 0, 0, 0);
+        public void WakeUp() => Internal.Native.api.physicsExtra(7, id, 0, null, 0, 0, 0);
+        public bool IsSleeping() => Internal.Native.api.physicsExtra(8, id, 0, null, 0, 0, 0) == 1;
         public void AddRelativeForce(Vector3 force, ForceMode mode = ForceMode.Force) => AddForce(transform.rotation * force, mode);
         /// <summary>Kinematic bodies sweep to `position` in the next step, pushing others.</summary>
         public void MovePosition(Vector3 position) => SetVec(6, position);
@@ -994,6 +1063,13 @@ namespace Misty
         internal override ulong EntityId => id;
         /// <summary>The Rigidbody this collider moves with (its own or a parent's), or null.</summary>
         public Rigidbody attachedRigidbody => GetComponentInParent<Rigidbody>();
+        /// <summary>The point on this object's colliders nearest `position` (itself when inside).</summary>
+        public unsafe Vector3 ClosestPoint(Vector3 position)
+        {
+            Vector3* v = stackalloc Vector3[2];
+            v[0] = position;
+            return Internal.Native.api.physicsExtra(9, EntityId, 0, v, 0, 0, 0) == 1 ? v[0] : position;
+        }
     }
 
     public sealed class BoxCollider : Collider { internal BoxCollider(ulong id) : base(id) { } }
@@ -1002,10 +1078,10 @@ namespace Misty
     public sealed class MeshCollider : Collider { internal MeshCollider(ulong id) : base(id) { } }
 
     /// <summary>What an OnCollisionEnter / OnCollisionExit callback hit.</summary>
-    public sealed class Collision
+    public sealed partial class Collision
     {
         readonly ulong id;
-        internal Collision(ulong id) { this.id = id; }
+        internal Collision(ulong id) { this.id = id; Capture(); }
         public GameObject gameObject => new GameObject(id);
         public Transform transform => new Transform(id);
         public Collider collider => new Collider(id);
@@ -1110,6 +1186,102 @@ namespace Misty
 
         public static RaycastHit[] RaycastAll(Ray ray, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
             RaycastAll(ray.origin, ray.direction, maxDistance, layerMask);
+
+        // ---- box and capsule queries (shape_query in csharp_native.rs) ----
+
+        const int Sphere = 0, Box = 1, Capsule = 2;
+
+        static int Query(int op, int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, float max, int layerMask,
+            Internal.HitData* hits, ulong* ids, int cap)
+        {
+            float* p = stackalloc float[15];
+            p[0] = a.x; p[1] = a.y; p[2] = a.z; p[3] = b.x; p[4] = b.y; p[5] = b.z; p[6] = radius;
+            p[7] = rot.x; p[8] = rot.y; p[9] = rot.z; p[10] = rot.w;
+            p[11] = dir.x; p[12] = dir.y; p[13] = dir.z; p[14] = max;
+            int r = Internal.Native.api.shapeQuery(op, kind, p, (uint)layerMask, hits, ids, cap);
+            if (r < 0) throw new InvalidOperationException("Physics used outside a script callback");
+            return r;
+        }
+
+        static bool Check(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, int layerMask) =>
+            Query(0, kind, a, b, radius, rot, Vector3.zero, 0, layerMask, null, null, 0) == 1;
+
+        static Collider[] Overlap(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, int layerMask)
+        {
+            var buf = new ulong[64];
+            while (true)
+            {
+                int n;
+                fixed (ulong* ids = buf) n = Query(1, kind, a, b, radius, rot, Vector3.zero, 0, layerMask, null, ids, buf.Length);
+                if (n > buf.Length) { buf = new ulong[n]; continue; }
+                var found = new Collider[n];
+                for (int i = 0; i < n; i++) found[i] = new Collider(buf[i]);
+                return found;
+            }
+        }
+
+        static bool Sweep(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, out RaycastHit hit, float max, int layerMask)
+        {
+            Internal.HitData data;
+            int r = Query(2, kind, a, b, radius, rot, dir, max, layerMask, &data, null, 1);
+            hit = new RaycastHit { data = r == 1 ? data : default };
+            return r == 1;
+        }
+
+        static RaycastHit[] SweepAll(int kind, Vector3 a, Vector3 b, float radius, Quaternion rot, Vector3 dir, float max, int layerMask)
+        {
+            var buf = new Internal.HitData[64];
+            int n;
+            fixed (Internal.HitData* h = buf) n = Query(3, kind, a, b, radius, rot, dir, max, layerMask, h, null, buf.Length);
+            n = Math.Min(n, buf.Length);
+            var hits = new RaycastHit[n];
+            for (int i = 0; i < n; i++) hits[i] = new RaycastHit { data = buf[i] };
+            return hits;
+        }
+
+        /// <summary>The colliders of `collider1` and `collider2` pass through each other.</summary>
+        public static void IgnoreCollision(Collider collider1, Collider collider2, bool ignore = true) =>
+            Internal.Native.api.physicsExtra(0, collider1.EntityId, collider2.EntityId, null, ignore ? 1 : 0, 0, 0);
+        public static bool GetIgnoreCollision(Collider collider1, Collider collider2) =>
+            Internal.Native.api.physicsExtra(1, collider1.EntityId, collider2.EntityId, null, 0, 0, 0) == 1;
+        /// <summary>Tick or untick a box of the Layer Collision Matrix while playing.</summary>
+        public static void IgnoreLayerCollision(int layer1, int layer2, bool ignore = true) =>
+            Internal.Native.api.physicsExtra(2, (ulong)Math.Clamp(layer1, 0, 31), (ulong)Math.Clamp(layer2, 0, 31), null, ignore ? 1 : 0, 0, 0);
+        public static bool GetIgnoreLayerCollision(int layer1, int layer2) =>
+            Internal.Native.api.physicsExtra(3, (ulong)Math.Clamp(layer1, 0, 31), (ulong)Math.Clamp(layer2, 0, 31), null, 0, 0, 0) == 1;
+
+        /// <summary>Whether any collider touches the sphere.</summary>
+        public static bool CheckSphere(Vector3 position, float radius, int layerMask = DefaultRaycastLayers) =>
+            Check(Sphere, position, Vector3.zero, radius, Quaternion.identity, layerMask);
+        /// <summary>Whether any collider touches the box.</summary>
+        public static bool CheckBox(Vector3 center, Vector3 halfExtents, Quaternion orientation = default, int layerMask = DefaultRaycastLayers) =>
+            Check(Box, center, halfExtents, 0, orientation, layerMask);
+        /// <summary>Whether any collider touches the capsule round start–end.</summary>
+        public static bool CheckCapsule(Vector3 start, Vector3 end, float radius, int layerMask = DefaultRaycastLayers) =>
+            Check(Capsule, start, end, radius, Quaternion.identity, layerMask);
+        /// <summary>The colliders touching the box.</summary>
+        public static Collider[] OverlapBox(Vector3 center, Vector3 halfExtents, Quaternion orientation = default, int layerMask = AllLayers) =>
+            Overlap(Box, center, halfExtents, 0, orientation, layerMask);
+        /// <summary>The colliders touching the capsule round point0–point1.</summary>
+        public static Collider[] OverlapCapsule(Vector3 point0, Vector3 point1, float radius, int layerMask = AllLayers) =>
+            Overlap(Capsule, point0, point1, radius, Quaternion.identity, layerMask);
+        public static bool BoxCast(Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Box, center, halfExtents, 0, orientation, direction, out _, maxDistance, layerMask);
+        public static bool BoxCast(Vector3 center, Vector3 halfExtents, Vector3 direction, out RaycastHit hitInfo, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Box, center, halfExtents, 0, orientation, direction, out hitInfo, maxDistance, layerMask);
+        public static bool CapsuleCast(Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Capsule, point1, point2, radius, Quaternion.identity, direction, out _, maxDistance, layerMask);
+        public static bool CapsuleCast(Vector3 point1, Vector3 point2, float radius, Vector3 direction, out RaycastHit hitInfo, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            Sweep(Capsule, point1, point2, radius, Quaternion.identity, direction, out hitInfo, maxDistance, layerMask);
+        public static bool SphereCast(Ray ray, float radius, out RaycastHit hitInfo, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SphereCast(ray.origin, radius, ray.direction, out hitInfo, maxDistance, layerMask);
+        /// <summary>Every collider the sweep hits, nearest first (at most 64).</summary>
+        public static RaycastHit[] SphereCastAll(Vector3 origin, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Sphere, origin, Vector3.zero, radius, Quaternion.identity, direction, maxDistance, layerMask);
+        public static RaycastHit[] BoxCastAll(Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation = default, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Box, center, halfExtents, 0, orientation, direction, maxDistance, layerMask);
+        public static RaycastHit[] CapsuleCastAll(Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance = Mathf.Infinity, int layerMask = DefaultRaycastLayers) =>
+            SweepAll(Capsule, point1, point2, radius, Quaternion.identity, direction, maxDistance, layerMask);
 
         /// <summary>The colliders touching a sphere.</summary>
         public static Collider[] OverlapSphere(Vector3 position, float radius, int layerMask = AllLayers)
@@ -2047,6 +2219,48 @@ namespace Misty
         /// <summary>Quit the game (stops Play mode in the editor).</summary>
         public static void Quit() => Internal.Native.api.request(3, -1, null, 0, 0);
         public static bool isPlaying => true;
+        /// <summary>True in the editor's Play mode.</summary>
+        public static bool isEditor => Internal.Native.api.app(3, 0, null, 0, null, 0) == 1;
+        /// <summary>Whether the Build Profile defines this scripting define.</summary>
+        public static bool HasDefine(string name)
+        {
+            name ??= "";
+            fixed (char* p = name) return Internal.Native.api.app(2, 0, p, name.Length, null, 0) == 1;
+        }
+        /// <summary>A folder the game can always write to: the project folder in the editor,
+        /// the per-user folder that holds PlayerPrefs and saves in a built game.</summary>
+        public static string persistentDataPath
+        {
+            get
+            {
+                char* buf = stackalloc char[512];
+                int n = Internal.Native.api.app(1, 0, null, 0, buf, 512);
+                if (n < 0) throw new InvalidOperationException("Application.persistentDataPath used outside a script callback");
+                if (n <= 512) return new string(buf, 0, n);
+                var big = new char[n];
+                fixed (char* p = big)
+                {
+                    n = Internal.Native.api.app(1, 0, null, 0, p, big.Length);
+                    return new string(p, 0, Math.Min(Math.Max(n, 0), big.Length));
+                }
+            }
+        }
+    }
+
+    /// <summary>Saves the game's image as a PNG.</summary>
+    public static unsafe class ScreenCapture
+    {
+        /// <summary>Save the frame being drawn once it is finished. A relative name goes under
+        /// Application.persistentDataPath; superSize above 1 scales the image up (at most 8).</summary>
+        public static void CaptureScreenshot(string filename, int superSize = 1)
+        {
+            if (string.IsNullOrEmpty(filename)) throw new ArgumentException("CaptureScreenshot needs a file name");
+            fixed (char* p = filename)
+            {
+                if (Internal.Native.api.app(0, superSize, p, filename.Length, null, 0) < 0)
+                    throw new InvalidOperationException("ScreenCapture used outside a script callback");
+            }
+        }
     }
 
     // ---- coroutines ------------------------------------------------------------------------
@@ -3450,6 +3664,9 @@ namespace Misty.Internal
         public delegate* unmanaged<ulong, int, int, float, float*, int> characterScalar;
         public delegate* unmanaged<float, void> timeScale;
         public delegate* unmanaged<int, ulong*, int, float*, int> transformGroup;
+        public delegate* unmanaged<int, int, char*, int, char*, int, int> app;
+        public delegate* unmanaged<int, int, float*, uint, HitData*, ulong*, int, int> shapeQuery;
+        public delegate* unmanaged<int, ulong, ulong, Vector3*, float, float, float, int> physicsExtra;
     }
 
     /// <summary>Same layout as `HitData` in csharp_native.rs.</summary>
@@ -3826,7 +4043,7 @@ namespace Misty.Internal
             "OnCollisionStay", "OnTriggerStay",
             "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
             "OnCollisionStay2D", "OnTriggerStay2D",
-            "OnAnimatorIK",
+            "OnAnimatorIK", "OnControllerColliderHit",
         };
 
         /// <summary>The first method id that takes the other object (contact callbacks).</summary>
@@ -3988,6 +4205,11 @@ namespace Misty.Internal
                     {
                         var a = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), script, m);
                         return other => a(new GameObject(other));
+                    }
+                    if (p == typeof(ControllerColliderHit))
+                    {
+                        var a = (Action<ControllerColliderHit>)Delegate.CreateDelegate(typeof(Action<ControllerColliderHit>), script, m);
+                        return other => a(new ControllerColliderHit(other));
                     }
                     // OnAnimatorIK(int layerIndex): the layer index travels as `other`.
                     if (p == typeof(int) && name == "OnAnimatorIK")
@@ -4631,7 +4853,7 @@ namespace Misty.Internal
     }
 }
 
-// ---- 2D contact points and the Animator IK pass (csharp_parity.rs) ----------------------------
+// ---- 2D / 3D contact points and the Animator IK pass (csharp_parity.rs) ----------------------------
 
 namespace Misty
 {
@@ -4718,6 +4940,118 @@ namespace Misty
         }
         /// <summary>Replaces the list's contents with the contact points; returns the count.</summary>
         public int GetContacts(List<ContactPoint2D> contacts)
+        {
+            contacts.Clear();
+            contacts.AddRange(points);
+            return points.Length;
+        }
+    }
+
+    /// <summary>What a Character Controller ran into while moving (`OnControllerColliderHit`).</summary>
+    public sealed unsafe class ControllerColliderHit
+    {
+        readonly ulong other, self;
+        internal ControllerColliderHit(ulong other)
+        {
+            this.other = other;
+            float* buf = stackalloc float[10];
+            ulong* ids = stackalloc ulong[2];
+            if (Internal.Native.api.contacts(2, buf, 10, ids) < 0) return;
+            self = ids[0];
+            point = new Vector3(buf[0], buf[1], buf[2]);
+            normal = new Vector3(buf[3], buf[4], buf[5]);
+            moveDirection = new Vector3(buf[6], buf[7], buf[8]);
+            moveLength = buf[9];
+        }
+        /// <summary>The controller that hit.</summary>
+        public CharacterController controller => self == 0 ? null : new CharacterController(self);
+        public GameObject gameObject => new GameObject(other);
+        public Transform transform => new Transform(other);
+        public Collider collider => new Collider(other);
+        public Rigidbody rigidbody => gameObject.GetComponentInParent<Rigidbody>();
+        /// <summary>World position of the touch.</summary>
+        public Vector3 point { get; }
+        /// <summary>Surface normal at the touch.</summary>
+        public Vector3 normal { get; }
+        /// <summary>Direction the controller was moving.</summary>
+        public Vector3 moveDirection { get; }
+        /// <summary>How far the controller moved before the hit.</summary>
+        public float moveLength { get; }
+    }
+
+    /// <summary>One touching point of a 3D collision (`Collision.GetContact`).</summary>
+    public struct ContactPoint
+    {
+        internal ulong thisId, otherId;
+        /// <summary>World position of the point.</summary>
+        public Vector3 point { get; internal set; }
+        /// <summary>Surface normal, pointing away from the other collider (towards this one).</summary>
+        public Vector3 normal { get; internal set; }
+        /// <summary>Distance between the surfaces along the normal (negative: overlapping).</summary>
+        public float separation { get; internal set; }
+        /// <summary>Impulse the solver applied at this point in the step (along the normal).</summary>
+        public Vector3 impulse { get; internal set; }
+        /// <summary>The collider of the object whose callback runs.</summary>
+        public Collider thisCollider => thisId == 0 ? null : new Collider(thisId);
+        /// <summary>The other object's collider.</summary>
+        public Collider otherCollider => otherId == 0 ? null : new Collider(otherId);
+    }
+
+    public sealed unsafe partial class Collision
+    {
+        ContactPoint[] points = Array.Empty<ContactPoint>();
+
+        /// <summary>Copies the contact points of the step that fired the callback.</summary>
+        void Capture()
+        {
+            const int Floats = 8, Max = 16;
+            float* buf = stackalloc float[6 + Floats * Max];
+            ulong* ids = stackalloc ulong[2];
+            int n = Internal.Native.api.contacts(1, buf, 6 + Floats * Max, ids);
+            if (n < 0) return;
+            n = Math.Min(n, Max);
+            ulong me = ids[0];
+            relativeVelocity = new Vector3(buf[0], buf[1], buf[2]);
+            impulse = new Vector3(buf[3], buf[4], buf[5]);
+            points = new ContactPoint[n];
+            for (int i = 0; i < n; i++)
+            {
+                float* p = buf + 6 + i * Floats;
+                var normal = new Vector3(p[3], p[4], p[5]);
+                points[i] = new ContactPoint
+                {
+                    thisId = me,
+                    otherId = id,
+                    point = new Vector3(p[0], p[1], p[2]),
+                    normal = normal,
+                    separation = p[6],
+                    impulse = normal * p[7],
+                };
+            }
+        }
+
+        /// <summary>Velocity of the other object relative to this one (before the step, so an impact reports the speed it hit with).</summary>
+        public Vector3 relativeVelocity { get; private set; }
+        /// <summary>Total impulse applied to this object by the contact in the step.</summary>
+        public Vector3 impulse { get; private set; }
+        public int contactCount => points.Length;
+        /// <summary>A copy of the contact points (allocates; prefer GetContact / GetContacts).</summary>
+        public ContactPoint[] contacts => (ContactPoint[])points.Clone();
+        public ContactPoint GetContact(int index)
+        {
+            if ((uint)index >= (uint)points.Length)
+                throw new IndexOutOfRangeException($"Contact index {index} is out of range (contactCount is {points.Length}).");
+            return points[index];
+        }
+        /// <summary>Fills `contacts` (as many as fit); returns how many were written.</summary>
+        public int GetContacts(ContactPoint[] contacts)
+        {
+            int n = Math.Min(contacts.Length, points.Length);
+            Array.Copy(points, contacts, n);
+            return n;
+        }
+        /// <summary>Replaces the list's contents with the contact points; returns the count.</summary>
+        public int GetContacts(List<ContactPoint> contacts)
         {
             contacts.Clear();
             contacts.AddRange(points);

@@ -542,12 +542,15 @@ struct Instance {
 /// Callbacks called on every script every frame or physics step: one without them is skipped
 /// (a scene of a thousand scripts with only an Update spent most of FixedUpdate and
 /// LateUpdate looking), and Stay contacts aren't sent at all while no script has them.
-const FRAME_CALLBACKS: [&str; 5] = [
+/// (`OnCollisionEnter` is listed so physics keeps impact velocities only while a script has
+/// it.)
+const FRAME_CALLBACKS: [&str; 6] = [
     "Update",
     "FixedUpdate",
     "LateUpdate",
     "OnCollisionStay",
     "OnTriggerStay",
+    "OnCollisionEnter",
 ];
 
 /// Update the touching pairs (a, b, trigger) with a step's contacts; returns the pairs that
@@ -1155,6 +1158,26 @@ impl ScriptHost {
         }
     }
 
+    /// A Lua 3D collision callback with the Collision table as a second argument.
+    fn call_with_collision(
+        &self,
+        index: usize,
+        name: &str,
+        other: Option<Value>,
+        collision: mlua::Table,
+    ) {
+        let inst = &self.instances[index];
+        let t = &inst.handle;
+        let f = match t.get::<Option<Function>>(name) {
+            Ok(Some(f)) => f,
+            _ => return,
+        };
+        profile_scope!(format!("{}.{name}()", inst.name));
+        if let Err(e) = f.call::<()>((t, other, collision)) {
+            self.log(LogKind::Error, format!("{} ({name}): {e}", inst.name));
+        }
+    }
+
     fn call_all(&mut self, name: &str) {
         // Objects switched on or off outside a callback (animation, Timeline) first.
         self.sync_enabled();
@@ -1187,11 +1210,21 @@ impl ScriptHost {
     fn controller_hits(&mut self) {
         let hits = self.with_world(|w| w.physics.take_controller_hits());
         for hit in hits {
+            // C#'s `ControllerColliderHit` reads the hit from here (csharp_parity.rs).
+            let _hit = csharp_native::ControllerHitScope::new(hit);
             for i in self.instances_of(hit.controller) {
                 if self.runnable(&self.instances[i]) {
-                    let arg = physics_api::controller_hit_table(&self.lua, &hit)
-                        .map(Value::Table)
-                        .ok();
+                    // C# scripts get the other object; the rest comes through the scope.
+                    let arg = if self.instances[i].cs.is_some() {
+                        self.lua
+                            .create_userdata(LGameObject(hit.other))
+                            .map(Value::UserData)
+                            .ok()
+                    } else {
+                        physics_api::controller_hit_table(&self.lua, &hit)
+                            .map(Value::Table)
+                            .ok()
+                    };
                     self.call(i, "OnControllerColliderHit", arg);
                 }
             }
@@ -1558,8 +1591,33 @@ impl ScriptHost {
         event: &str,
         kind: &crate::visual_script::compile::EventKind,
     ) {
+        let collision = event.starts_with("OnCollision");
         for (me, other) in [(a, b), (b, a)] {
             self.graphs.contact(&self.lua, me, other, kind);
+            // C#'s `Collision` reads its contact points from here (csharp_parity.rs); worked
+            // out only when a C# script of `me` will hear it.
+            let (cs_hears, lua_hears) = if collision {
+                let ids = self.instances_of(me);
+                let hears = |cs: bool| {
+                    ids.iter().any(|&i| {
+                        self.instances[i].cs.is_some() == cs
+                            && self.hears_contacts(&self.instances[i])
+                    })
+                };
+                (hears(true), hears(false))
+            } else {
+                (false, false)
+            };
+            let info = (cs_hears || lua_hears)
+                .then(|| self.with_world(|w| w.physics.collision_info(me, other)));
+            // Lua scripts get it as a second argument (`OnCollisionEnter(other, collision)`).
+            let table = match (&info, lua_hears) {
+                (Some(info), true) => physics_api::collision_table(&self.lua, me, other, info).ok(),
+                _ => None,
+            };
+            let _contact = info
+                .filter(|_| cs_hears)
+                .map(|info| csharp_native::Contact3DScope::new(me, other, info));
             for i in self.instances_of(me) {
                 // Disabled scripts hear contacts too (not Update), as in the familiar
                 // engine; switched-off objects don't.
@@ -1569,7 +1627,10 @@ impl ScriptHost {
                         .create_userdata(LGameObject(other))
                         .map(Value::UserData)
                         .ok();
-                    self.call(i, event, arg);
+                    match (&table, self.instances[i].cs.is_none()) {
+                        (Some(t), true) => self.call_with_collision(i, event, arg, t.clone()),
+                        _ => self.call(i, event, arg),
+                    }
                 }
             }
         }
@@ -1789,7 +1850,14 @@ impl ScriptHost {
                 self.flush_spawned();
             }
             profile_scope!("Physics.Step", Category::Physics);
-            let contacts = self.with_world(|w| w.physics.step(&w.scene));
+            // `Collision.relativeVelocity` wants the speeds before the step: kept while some
+            // script has a collision callback.
+            let enter = lacks_bit("OnCollisionEnter") | lacks_bit("OnCollisionStay");
+            let impacts = self.instances.iter().any(|i| i.lacks & enter != enter);
+            let contacts = self.with_world(|w| {
+                w.physics.track_impacts = impacts;
+                w.physics.step(&w.scene)
+            });
             self.dispatch(&contacts);
             // Impulse Sources that fire on collision.
             self.with_world(|w| w.cameras.impulses.on_contacts(&w.scene, &contacts));
@@ -1798,6 +1866,7 @@ impl ScriptHost {
             let contacts_2d = self.with_world(|w| {
                 w.physics2d.sync_active(&w.scene);
                 w.physics2d.refresh_tilemaps(&w.scene);
+                w.physics2d.follow_transforms(&w.scene);
                 w.physics2d.step()
             });
             self.dispatch_2d(&contacts_2d);
@@ -2306,6 +2375,21 @@ impl ScriptHost {
         });
         *scene = back;
         r
+    }
+
+    /// Inspector edits of `entities`' Rigidbody / collider components (3D and 2D) reach the
+    /// playing physics worlds.
+    pub fn refresh_live_physics(&mut self, scene: &mut Scene, entities: &[Entity]) {
+        let taken = std::mem::take(scene);
+        let back = self.with_world(|w| {
+            let mine = std::mem::replace(&mut w.scene, taken);
+            for &e in entities {
+                w.physics.refresh_object(&w.scene, e);
+                w.physics2d.refresh_object(&w.scene, e);
+            }
+            std::mem::replace(&mut w.scene, mine)
+        });
+        *scene = back;
     }
 
     pub fn instance_count(&self) -> usize {

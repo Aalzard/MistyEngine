@@ -70,6 +70,16 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 fn dirty_scene(s: &mut EditorState, rel: &str, object: &str, unsaved: &str) {
     s.scene.spawn(object, None);
     assert!(crate::scene_files::write(s, 0, rel));
+    // The file was saved well before any backup is taken: a backup taken in the same
+    // millisecond as the write counts the file as saved after it (`write_backup` writes it
+    // again), which made the "unchanged: not written again" checks flaky on fast machines.
+    let file = s.project.root.join(rel);
+    let past = std::time::SystemTime::now() - Duration::from_secs(10);
+    std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .and_then(|f| f.set_modified(past))
+        .unwrap();
     s.scene.spawn(unsaved, None);
     s.scene_dirty = true;
     crate::scene_files::refresh_dirty(s);

@@ -38,3 +38,8 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# rav1e's rate control does i64 math that overflows on small frames (a 32×32 test recording
+# panicked in debug builds); release builds, which rav1e is made for, wrap. Same in debug.
+[profile.dev.package.rav1e]
+overflow-checks = false

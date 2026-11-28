@@ -207,3 +207,6 @@ Each entry: **Name** — what it does — what changes on screen.
   `normal`, `separation`, `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `collider` / `otherCollider`,
   `rigidbody` / `otherRigidbody`. `OnCollisionExit2D` reports no touching points in the reference engine; we report one
   point between the objects (as Lua always has).
+- **Collision** (3D, C#) carries the contact points too: `contactCount`, `GetContact(i)`, `GetContacts`, `contacts`,
+  `relativeVelocity` and `impulse`; `ContactPoint` has `point`, `normal`, `separation`, `impulse`,
+  `thisCollider` / `otherCollider`. Lua's 3D callbacks get the other object first and the Collision table second.

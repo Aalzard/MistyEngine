@@ -12,10 +12,14 @@
 mod character;
 pub mod cloth;
 mod colliders;
+mod contact_info;
 mod convert;
 pub mod debug;
+mod extras;
+mod follow;
 mod joints;
 pub mod layers;
+mod live_edit;
 pub mod material;
 mod queries;
 pub mod ragdoll;
@@ -33,9 +37,10 @@ use crate::settings::PhysicsSettings;
 use convert::{gv, parts, pose, rv};
 
 pub use character::{ControllerHit, slope_scaled, tobler_factor};
+pub use contact_info::{CollisionInfo, ContactPoint3D, MAX_CONTACT_POINTS};
 pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
-pub use queries::RaycastHit;
+pub use queries::{MAX_CAST_HITS, QueryShape, RaycastHit};
 pub use vehicles::world_pose_of as wheel_world_pose;
 
 struct Body {
@@ -141,6 +146,16 @@ pub struct Physics {
     /// their contacts as stopped, and the step turns those into exits (OnTriggerExit /
     /// OnCollisionExit) instead of dropping them.
     departed: HashMap<rp::ColliderHandle, Entity>,
+    /// Colliders without a body of their own (static ones, and ones on children of a body)
+    /// that follow their object's Transform when a script, Animator or Timeline moves it.
+    followers: HashMap<Entity, follow::Follower>,
+    /// Velocities of the moving bodies before the last step (`collision_info`).
+    before: HashMap<rp::RigidBodyHandle, Vec3>,
+    /// Keep `before` (some script reads collision details; costs a look at every moving
+    /// body per step, so it is off otherwise and relative velocities are the current ones).
+    pub track_impacts: bool,
+    /// Object pairs whose colliders ignore each other (`Physics.IgnoreCollision`).
+    ignored: HashSet<(Entity, Entity)>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -231,6 +246,10 @@ impl Physics {
             dormant_set: HashSet::new(),
             activity_seen: None,
             departed: HashMap::new(),
+            followers: HashMap::new(),
+            before: HashMap::new(),
+            track_impacts: false,
+            ignored: HashSet::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -331,6 +350,7 @@ impl Physics {
             .locked_axes(locked_axes(&rb))
             .ccd_enabled(rb.continuous)
             .additional_mass(rb.mass.max(1e-4))
+            .user_data(body_tag(e))
             .build();
         let handle = self.world.insert_body(body);
         self.owners.insert(e);
@@ -444,6 +464,7 @@ impl Physics {
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.sync_active(scene);
         self.push_kinematic(scene);
+        self.follow_transforms(scene);
         self.apply_springs();
         let dt = self.world.integration_parameters.dt;
         self.apply_wheels(scene, dt);
@@ -454,9 +475,12 @@ impl Physics {
                 b.prev = parts(body.position());
             }
         }
+        self.remember_velocities();
         let events = EventLog::default();
         let hooks = material::MaterialHooks {
             materials: &self.materials,
+            ignored: &self.ignored,
+            owners: &self.colliders,
         };
         self.world.step_with_events(&hooks, &events);
         self.check_breaks();
@@ -594,6 +618,28 @@ impl Physics {
         }
     }
 
+    /// A script moved `e`: the dynamic bodies of objects under it go along (a moved parent
+    /// left its Rigidbody children behind, and they snapped back). Kinematic ones follow their
+    /// Transform at the next step anyway.
+    pub fn teleport_children(&mut self, scene: &Scene, e: Entity) {
+        if !self.bodies.values().any(|b| !b.kinematic) {
+            return;
+        }
+        let mut stack: Vec<Entity> = match scene.world.get::<&crate::scene::Node>(e) {
+            Ok(n) if !n.children.is_empty() => n.children.clone(),
+            _ => return,
+        };
+        while let Some(x) = stack.pop() {
+            if self.bodies.get(&x).is_some_and(|b| !b.kinematic) {
+                let (p, r, _) = world_pose(scene, x);
+                self.teleport(x, p, r);
+            }
+            if let Ok(n) = scene.world.get::<&crate::scene::Node>(x) {
+                stack.extend(n.children.iter().copied());
+            }
+        }
+    }
+
     /// Rigidbody.MovePosition / MoveRotation: kinematic bodies sweep there during the next
     /// step (pushing what they meet), dynamic ones are placed there. The Transform follows.
     pub fn move_body(&mut self, scene: &mut Scene, e: Entity, position: Vec3, rotation: Quat) {
@@ -651,6 +697,10 @@ impl Physics {
         self.remove_springs(e);
         self.remove_wheels(e);
         self.ragdolls.forget(e);
+        self.followers.remove(&e);
+        if !self.ignored.is_empty() {
+            self.ignored.retain(|(a, b)| *a != e && *b != e);
+        }
         if !owned {
             return;
         }
@@ -665,7 +715,11 @@ impl Physics {
     /// Collider `h` left the world with its body.
     fn forget_collider(&mut self, h: rp::ColliderHandle) {
         self.materials.remove(&h);
-        if let Some(owner) = self.colliders.remove(&h)
+        let owner = self.colliders.remove(&h);
+        if let Some(owner) = owner {
+            self.forget_follower(owner, h);
+        }
+        if let Some(owner) = owner
             && let Some(list) = self.colliders_of.get_mut(&owner)
         {
             list.retain(|x| *x != h);
@@ -815,6 +869,19 @@ impl Physics {
 }
 
 /// Rigidbody ▸ Constraints as rapier locked axes.
+/// A body's `user_data`: its object's id (queries find a hit collider's object without a walk
+/// over every body).
+fn body_tag(e: Entity) -> u128 {
+    u128::from(e.to_bits().get())
+}
+
+/// The object a body was made for (see `body_tag`).
+fn body_object(body: &rp::RigidBody) -> Option<Entity> {
+    u64::try_from(body.user_data)
+        .ok()
+        .and_then(Entity::from_bits)
+}
+
 fn locked_axes(rb: &Rigidbody) -> rp::LockedAxes {
     let flags = [
         rp::LockedAxes::TRANSLATION_LOCKED_X,
@@ -845,9 +912,15 @@ mod busy_bench;
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]
+mod extras_tests;
+#[cfg(test)]
+mod follow_tests;
+#[cfg(test)]
 mod joint_config_tests;
 #[cfg(test)]
 mod joint_tests;
+#[cfg(test)]
+mod live_edit_tests;
 #[cfg(test)]
 mod query_tests;
 #[cfg(test)]

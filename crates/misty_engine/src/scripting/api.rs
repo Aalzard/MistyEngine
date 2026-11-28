@@ -221,12 +221,13 @@ pub fn vec_args(lua: &Lua, args: &[Value]) -> Result<Vec3> {
 #[derive(Clone, Copy)]
 pub struct LTransform(pub Entity);
 
-/// After a script moves an object with a Rigidbody, move its body too.
+/// After a script moves an object with a Rigidbody (or above one), move the bodies too.
 pub(crate) fn sync_body(w: &mut World, e: Entity) {
     if w.physics.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
+    w.physics.teleport_children(&w.scene, e);
     if w.physics2d.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics2d.teleport(e, pos, rot);
@@ -676,6 +677,18 @@ pub(crate) fn delta_velocity(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 
     }
 }
 
+/// The impulse a force applies over one physics step in `mode` (Force, Impulse,
+/// VelocityChange, Acceleration).
+pub(crate) fn impulse_of(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 {
+    let mass = w
+        .scene
+        .world
+        .get::<&Rigidbody>(e)
+        .map(|r| r.mass.max(1e-4))
+        .unwrap_or(1.0);
+    delta_velocity(w, e, v, mode) * mass
+}
+
 fn force_args(lua: &Lua, args: &Variadic<Value>) -> Result<(Vec3, String)> {
     let mode = match args.last() {
         Some(Value::String(s)) => s.to_str()?.to_owned(),
@@ -691,6 +704,23 @@ fn rigidbody_get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&Rigidbody) -> R) -> Re
             .get::<&Rigidbody>(e)
             .map(|b| f(&b))
             .map_err(|_| missing())
+    })?
+}
+
+/// Change a Rigidbody setting and copy it onto the live body (drag, constraints, …).
+fn rigidbody_edit(lua: &Lua, e: Entity, f: impl FnOnce(&mut Rigidbody)) -> Result<()> {
+    with_world(lua, |w| {
+        let rb = {
+            let mut b = w
+                .scene
+                .world
+                .get::<&mut Rigidbody>(e)
+                .map_err(|_| missing())?;
+            f(&mut b);
+            b.clone()
+        };
+        w.physics.apply_body_settings(e, &rb);
+        Ok(())
     })?
 }
 
@@ -753,6 +783,39 @@ impl UserData for LRigidbody {
         f.add_field_method_get("useGravity", |lua, r| {
             rigidbody_get(lua, r.0, |b| b.use_gravity)
         });
+        f.add_field_method_get("drag", |lua, r| rigidbody_get(lua, r.0, |b| b.drag));
+        f.add_field_method_set("drag", |lua, r, v: f32| {
+            rigidbody_edit(lua, r.0, |b| b.drag = v.max(0.0))
+        });
+        f.add_field_method_get("angularDrag", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.angular_drag)
+        });
+        f.add_field_method_set("angularDrag", |lua, r, v: f32| {
+            rigidbody_edit(lua, r.0, |b| b.angular_drag = v.max(0.0))
+        });
+        // RigidbodyConstraints bits (FreezePositionX = 2 … FreezeRotationZ = 64).
+        f.add_field_method_get("constraints", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.constraints())
+        });
+        f.add_field_method_set("constraints", |lua, r, bits: u32| {
+            rigidbody_edit(lua, r.0, |b| b.set_constraints(bits))
+        });
+        f.add_field_method_get("freezeRotation", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.freeze_rotation == [true; 3])
+        });
+        f.add_field_method_set("freezeRotation", |lua, r, on: bool| {
+            rigidbody_edit(lua, r.0, |b| b.freeze_rotation = [on; 3])
+        });
+        f.add_field_method_get("worldCenterOfMass", |lua, r| {
+            with_world(lua, |w| {
+                alive(w, r.0)?;
+                Ok(LVec3(
+                    w.physics
+                        .world_center_of_mass(r.0)
+                        .unwrap_or_else(|| w.scene.world_position(r.0)),
+                ))
+            })?
+        });
         f.add_field_method_set("useGravity", |lua, r, on: bool| {
             with_world(lua, |w| {
                 if let Ok(mut b) = w.scene.world.get::<&mut Rigidbody>(r.0) {
@@ -793,6 +856,62 @@ impl UserData for LRigidbody {
                 let vel = w.physics.velocity(r.0).unwrap_or_default();
                 w.physics.set_velocity(r.0, vel + dv);
             })
+        });
+        // AddForceAtPosition(force, position[, mode]): also turns the body.
+        m.add_method(
+            "AddForceAtPosition",
+            |lua, r, (f, p, mode): (LVec3, LVec3, Option<String>)| {
+                with_world(lua, |w| {
+                    let impulse = impulse_of(w, r.0, f.0, mode.as_deref().unwrap_or("Force"));
+                    w.physics.add_impulse_at_position(r.0, impulse, p.0);
+                })
+            },
+        );
+        // AddExplosionForce(force, position, radius[, upwardsModifier, mode])
+        m.add_method(
+            "AddExplosionForce",
+            |lua, r, (force, p, radius, up, mode): (f32, LVec3, f32, Option<f32>, Option<String>)| {
+                with_world(lua, |w| {
+                    let push = w.physics.explosion_push(r.0, force, p.0, radius, up.unwrap_or(0.0));
+                    if let Some(push) = push {
+                        let dv = delta_velocity(w, r.0, push, mode.as_deref().unwrap_or("Force"));
+                        let vel = w.physics.velocity(r.0).unwrap_or_default();
+                        w.physics.set_velocity(r.0, vel + dv);
+                    }
+                })
+            },
+        );
+        // GetPointVelocity(worldPoint): the body's velocity at that point (spin included).
+        m.add_method("GetPointVelocity", |lua, r, args: Variadic<Value>| {
+            let p = vec_args(lua, &args)?;
+            with_world(lua, |w| LVec3(w.physics.point_velocity(r.0, p)))
+        });
+        m.add_method("AddRelativeForce", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let v = w.scene.world_rotation(r.0) * v;
+                let dv = delta_velocity(w, r.0, v, &mode);
+                let vel = w.physics.velocity(r.0).unwrap_or_default();
+                w.physics.set_velocity(r.0, vel + dv);
+            })
+        });
+        m.add_method("AddRelativeTorque", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let v = w.scene.world_rotation(r.0) * v;
+                let dw = delta_velocity(w, r.0, v, &mode);
+                let ang = w.physics.angular_velocity(r.0).unwrap_or_default();
+                w.physics.set_angular_velocity(r.0, ang + dw);
+            })
+        });
+        m.add_method("Sleep", |lua, r, ()| {
+            with_world(lua, |w| w.physics.set_sleeping(r.0, true))
+        });
+        m.add_method("WakeUp", |lua, r, ()| {
+            with_world(lua, |w| w.physics.set_sleeping(r.0, false))
+        });
+        m.add_method("IsSleeping", |lua, r, ()| {
+            with_world(lua, |w| w.physics.is_sleeping(r.0))
         });
         m.add_method("AddTorque", |lua, r, args: Variadic<Value>| {
             let (v, mode) = force_args(lua, &args)?;
@@ -1041,6 +1160,22 @@ pub fn register(lua: &Lua) -> Result<()> {
         fm.set(m, m)?;
     }
     g.set("ForceMode", fm)?;
+    let rc = lua.create_table()?;
+    for (name, bits) in [
+        ("None", 0),
+        ("FreezePositionX", 2),
+        ("FreezePositionY", 4),
+        ("FreezePositionZ", 8),
+        ("FreezeRotationX", 16),
+        ("FreezeRotationY", 32),
+        ("FreezeRotationZ", 64),
+        ("FreezePosition", 14),
+        ("FreezeRotation", 112),
+        ("FreezeAll", 126),
+    ] {
+        rc.set(name, bits)?;
+    }
+    g.set("RigidbodyConstraints", rc)?;
 
     // Time (values refreshed every frame by `refresh_time`)
     g.set("Time", lua.create_table()?)?;
@@ -1179,7 +1314,36 @@ pub fn register(lua: &Lua) -> Result<()> {
         crate::build_profile::has_define("MISTY_SERVER"),
     )?;
     app.set("isEditor", crate::build_profile::has_define("MISTY_EDITOR"))?;
+    // `Application.persistentDataPath`: worked out when read (built games set their folder
+    // at startup).
+    let app_meta = lua.create_table()?;
+    app_meta.set(
+        "__index",
+        lua.create_function(|lua, (_, key): (Value, String)| {
+            if key == "persistentDataPath" {
+                let root = with_world(lua, |w| w.root.clone())?;
+                let path = crate::screen_capture::data_folder(&root);
+                return Ok(Value::String(
+                    lua.create_string(path.to_string_lossy().as_ref())?,
+                ));
+            }
+            Ok(Value::Nil)
+        })?,
+    )?;
+    app.set_metatable(Some(app_meta))?;
     g.set("Application", app)?;
+    // ScreenCapture.CaptureScreenshot(filename[, superSize]): the frame being drawn is saved
+    // as a PNG once it is finished.
+    let capture = lua.create_table()?;
+    capture.set(
+        "CaptureScreenshot",
+        lua.create_function(|lua, (name, size): (String, Option<i64>)| {
+            let root = with_world(lua, |w| w.root.clone())?;
+            crate::screen_capture::request(&root, &name, size.unwrap_or(1));
+            Ok(())
+        })?,
+    )?;
+    g.set("ScreenCapture", capture)?;
     crate::achievements::register_lua(lua)?;
     super::assets_api::register(lua)?;
     Ok(())

@@ -726,6 +726,11 @@ impl Runtime {
         self.host.with_physics_scene(scene, f)
     }
 
+    /// Inspector edits of Rigidbody / collider components while playing (3D and 2D).
+    pub fn refresh_live_physics(&mut self, scene: &mut Scene, entities: &[hecs::Entity]) {
+        self.host.refresh_live_physics(scene, entities);
+    }
+
     pub fn physics_settings(&self) -> crate::settings::PhysicsSettings {
         self.host.physics_settings()
     }
