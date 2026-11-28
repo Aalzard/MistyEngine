@@ -1,6 +1,6 @@
 //! Material Properties laid out as one aligned list: Shader and Rendering Mode, then Main Maps
 //! (a square texture slot at the left of each map's name, its colour or slider in the value
-//! column), Emission, Tiling and Offset, Secondary Maps, Advanced Surface, Rendering Options
+//! column), Emission, Tiling and Offset, Secondary Maps, Advanced Surface, Color Adjustments, Rendering Options
 //! and Advanced Options; simpler lists for the Unlit shaders; the preview at the bottom.
 
 use egui::Ui;
@@ -290,8 +290,27 @@ fn standard(ui: &mut Ui, state: &mut EditorState, id: &str, m: &mut Material) ->
     ch |= super::material_features::secondary_maps(ui, state, id, &mut m.features.detail);
     ch |= super::material_features::advanced_surface(ui, state, id, &mut m.features);
 
+    section(ui, &tr!("Color Adjustments"));
+    ch |= color_adjust_rows(ui, m);
+
     section(ui, &tr!("Rendering Options"));
     ch |= super::material_features::specular_rows(ui, &mut m.features);
+    ch |= toggle_row(
+        ui,
+        &tr!("Specular Highlights"),
+        &tr!(
+            "The shine of the sun and other lights. Off, with Environment Reflections off too, the surface reflects nothing at all"
+        ),
+        0,
+        &mut m.specular_highlights,
+    );
+    ch |= toggle_row(
+        ui,
+        &tr!("Environment Reflections"),
+        &tr!("Reflections of the sky, reflection probes and screen-space reflections"),
+        0,
+        &mut m.environment_reflections,
+    );
 
     section(ui, &tr!("Advanced Options"));
     render_queue_row(
@@ -306,6 +325,33 @@ fn standard(ui: &mut Ui, state: &mut EditorState, id: &str, m: &mut Material) ->
         0,
         &mut m.double_sided,
     );
+    ch
+}
+
+/// Color Adjustments: brightness, contrast and saturation of the albedo.
+fn color_adjust_rows(ui: &mut Ui, m: &mut Material) -> bool {
+    let mut ch = false;
+    for (label, tip, v) in [
+        (
+            tr!("Brightness"),
+            tr!("Multiplies the colour (1 = unchanged)"),
+            &mut m.brightness,
+        ),
+        (
+            tr!("Contrast"),
+            tr!("Spreads the colours away from mid grey (1 = unchanged, 0 = flat)"),
+            &mut m.contrast,
+        ),
+        (
+            tr!("Saturation"),
+            tr!("Colour strength (1 = unchanged, 0 = grey)"),
+            &mut m.saturation,
+        ),
+    ] {
+        row_label(ui, &label, 0).on_hover_text(tip);
+        ch |= slider(ui, v, 0.0..=2.0);
+        ui.end_row();
+    }
     ch
 }
 

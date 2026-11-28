@@ -749,6 +749,62 @@ fn layer_settings(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainD
                 "",
                 false,
             );
+            ch |= kit::check(
+                ui,
+                &tr!("Specular Highlights"),
+                &tr!(
+                    "The shine of the sun and other lights on this layer. Off, with Environment Reflections off too, the layer reflects nothing at all"
+                ),
+                &mut layer.specular_highlights,
+                def.specular_highlights,
+            );
+            ch |= kit::check(
+                ui,
+                &tr!("Environment Reflections"),
+                &tr!(
+                    "Reflections of the sky, reflection probes and screen-space reflections on this layer"
+                ),
+                &mut layer.environment_reflections,
+                def.environment_reflections,
+            );
+        },
+    );
+    kit::section_closed(
+        ui,
+        "layer_color_adjust",
+        Icon::TerrainSettings,
+        &tr!("Color Adjustments"),
+        |ui| {
+            ch |= kit::slider(
+                ui,
+                &tr!("Brightness"),
+                &tr!("Multiplies the layer's colour (1 = unchanged)"),
+                &mut layer.brightness,
+                0.0..=2.0,
+                def.brightness,
+                "",
+                false,
+            );
+            ch |= kit::slider(
+                ui,
+                &tr!("Contrast"),
+                &tr!("Spreads the colours away from mid grey (1 = unchanged, 0 = flat)"),
+                &mut layer.contrast,
+                0.0..=2.0,
+                def.contrast,
+                "",
+                false,
+            );
+            ch |= kit::slider(
+                ui,
+                &tr!("Saturation"),
+                &tr!("Colour strength (1 = unchanged, 0 = grey)"),
+                &mut layer.saturation,
+                0.0..=2.0,
+                def.saturation,
+                "",
+                false,
+            );
         },
     );
     if ch {

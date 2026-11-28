@@ -56,6 +56,21 @@ pub struct TerrainLayer {
     /// 0 = flat, as before; left out of the file then.
     #[serde(skip_serializing_if = "is_zero")]
     pub parallax: f32,
+    /// Surface ▸ Specular Highlights: the shine of lights on the layer. Off with Environment
+    /// Reflections off too = no reflections at all, whatever the smoothness.
+    #[serde(skip_serializing_if = "is_true")]
+    pub specular_highlights: bool,
+    /// Surface ▸ Environment Reflections: sky, reflection probe and screen-space reflections.
+    #[serde(skip_serializing_if = "is_true")]
+    pub environment_reflections: bool,
+    /// Color Adjustments on the layer's albedo: brightness (× the colour), contrast (about mid
+    /// grey) and saturation (0 = grey); 1 = unchanged.
+    #[serde(skip_serializing_if = "is_one")]
+    pub brightness: f32,
+    #[serde(skip_serializing_if = "is_one")]
+    pub contrast: f32,
+    #[serde(skip_serializing_if = "is_one")]
+    pub saturation: f32,
     /// Auto Paint rules; `rules.enabled` marks the layer rule-driven (Generate repaints it).
     pub rules: AutoPaintRules,
 }
@@ -74,6 +89,11 @@ impl Default for TerrainLayer {
             height_map: None,
             occlusion: 1.0,
             parallax: 0.0,
+            specular_highlights: true,
+            environment_reflections: true,
+            brightness: 1.0,
+            contrast: 1.0,
+            saturation: 1.0,
             rules: AutoPaintRules::default(),
         }
     }
@@ -81,6 +101,10 @@ impl Default for TerrainLayer {
 
 fn is_one(v: &f32) -> bool {
     *v == 1.0
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 fn is_zero(v: &f32) -> bool {

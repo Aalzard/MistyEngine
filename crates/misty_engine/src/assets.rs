@@ -162,6 +162,10 @@ fn is_one(v: &f32) -> bool {
     *v == 1.0
 }
 
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
 /// A material asset (`.mat`, JSON). Mirrors the Standard shader's properties; fields added after
 /// the first version are left out of the file while at their defaults, so older files re-save
 /// unchanged.
@@ -215,6 +219,23 @@ pub struct Material {
     /// Anisotropy, Specular), each left out of the file at its defaults.
     #[serde(flatten)]
     pub features: Features,
+    /// Rendering Options ▸ Specular Highlights: the shine of lights on the surface (Unity's
+    /// Standard shader toggle of the same name). Off with Environment Reflections off too =
+    /// no reflections at all, whatever the smoothness.
+    #[serde(skip_serializing_if = "is_true")]
+    pub specular_highlights: bool,
+    /// Rendering Options ▸ Environment Reflections: sky, reflection probe and screen-space
+    /// reflections.
+    #[serde(skip_serializing_if = "is_true")]
+    pub environment_reflections: bool,
+    /// Color Adjustments on the albedo: brightness (× the colour), contrast (about mid grey)
+    /// and saturation (0 = grey); 1 = unchanged.
+    #[serde(skip_serializing_if = "is_one")]
+    pub brightness: f32,
+    #[serde(skip_serializing_if = "is_one")]
+    pub contrast: f32,
+    #[serde(skip_serializing_if = "is_one")]
+    pub saturation: f32,
     /// Property values of a `.shader` asset by name (left out of the file when empty).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<String, PropertyValue>,
@@ -245,6 +266,11 @@ impl Default for Material {
             double_sided: false,
             uv_rotation: 0.0,
             features: Features::default(),
+            specular_highlights: true,
+            environment_reflections: true,
+            brightness: 1.0,
+            contrast: 1.0,
+            saturation: 1.0,
             properties: BTreeMap::new(),
         }
     }
@@ -355,6 +381,9 @@ impl Material {
             contribute_gi: true,
             light_glow: [0.0; 2],
             extras: self.features.extras().map(Arc::new),
+            specular_highlights: self.specular_highlights,
+            environment_reflections: self.environment_reflections,
+            color_adjust: [self.brightness, self.contrast, self.saturation],
         }
     }
 

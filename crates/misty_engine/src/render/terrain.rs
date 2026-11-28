@@ -58,8 +58,11 @@ struct TerrainParams {
     ground_front: [f32; 4],
     /// x = chunks per side (the chunk layer masks of terrains with more than four layers).
     chunks: [f32; 4],
-    /// Per layer: x = relief (parallax) depth in metres (0 = flat).
+    /// Per layer: x = relief (parallax) depth in metres (0 = flat), y = 1 with Specular
+    /// Highlights off, z = 1 with Environment Reflections off.
     relief: [[f32; 4]; MAX_LAYERS],
+    /// Per layer Color Adjustments: x = brightness, y = contrast, z = saturation.
+    look: [[f32; 4]; MAX_LAYERS],
 }
 
 /// Quality ▸ Grass Ground Cover (terrain_layers.wgsl `grass_ground_cover`), fitted against
@@ -1910,6 +1913,8 @@ pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
         lightmap_st: [1.0, 1.0, 0.0, 0.0],
         lightmap: [0.0; 4],
         prev_model: model.to_cols_array_2d(),
+        // (Layers carry their own Specular Highlights / Environment Reflections.)
+        look: [1.0, 1.0, 1.0, 0.0],
     }
 }
 
@@ -1958,6 +1963,7 @@ fn params(
         ground_front: ground_cover_values()[2],
         chunks: [1.0, 0.0, 0.0, 0.0],
         relief: [[0.0; 4]; MAX_LAYERS],
+        look: [[1.0; 4]; MAX_LAYERS],
     };
     let g = &d.details;
     if g.enabled && d.detail_map.len() == d.alphamap_resolution.pow(2) {
@@ -1996,7 +2002,19 @@ fn params(
         } else {
             0.0
         };
-        p.relief[i] = [relief, 0.0, 0.0, 0.0];
+        let off = |on: bool| if on { 0.0 } else { 1.0 };
+        p.relief[i] = [
+            relief,
+            off(l.specular_highlights),
+            off(l.environment_reflections),
+            0.0,
+        ];
+        p.look[i] = [
+            l.brightness.max(0.0),
+            l.contrast.max(0.0),
+            l.saturation.max(0.0),
+            1.0,
+        ];
     }
     if d.harmony.enabled {
         let count = d.layers.len().min(MAX_LAYERS);

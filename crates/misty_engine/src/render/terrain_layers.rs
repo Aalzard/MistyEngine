@@ -1,7 +1,11 @@
 //! Terrain layer textures as two 2D arrays (albedo, and normal with the height in its alpha;
 //! one slice per layer), so a terrain needs only a few texture bindings however many layers
 //! it blends, and the shader one fetch for a layer's normal and height. Slices are resized to
-//! one square size. Layers without a height map use their albedo's luminance, stretched to
+//! one square size. Each texture follows its import settings: Max Size (with the quality
+//! level's limit) before the fit, and Nearest Neighbor textures are scaled up in blocks so
+//! their texels stay crisp under the arrays' shared linear sampler; Apply rebuilds the arrays.
+//! (Generate Mip Maps and Wrap Mode are the array's: always on, repeat.) Layers without a
+//! height map use their albedo's luminance, stretched to
 //! 0..1. The mean linear albedo of each layer is kept for Color Harmony.
 //!
 //! Decoding, resizing and mip-mapping the slices takes a few hundred milliseconds for large
@@ -24,7 +28,7 @@ use std::time::{Instant, SystemTime};
 use glam::Vec3;
 use image::RgbaImage;
 
-use super::texture::{load_image, mip_chain};
+use super::texture::mip_chain;
 use crate::assets;
 use crate::sprites::compress::generated::{self, Ctx, Layers, Made, Role, Spec};
 use crate::terrain::{MAX_LAYERS, TerrainLayer, harmony};
@@ -51,6 +55,8 @@ pub(super) type Key = Vec<[Option<String>; 3]>;
 
 struct Cached {
     stamps: Vec<Option<SystemTime>>,
+    /// The textures' import settings when built ([`imports`]).
+    imports: Vec<String>,
     /// Slices being encoded in the background (the arrays are RGBA8 until then).
     waiting: Vec<String>,
     set: LayerSet,
@@ -62,6 +68,7 @@ impl Cached {
         // The background file watch's stamps first (no `stat` on the render thread while
         // nothing changed); a difference is checked on disk.
         (self.stamps != cached_stamps(key) && self.stamps != stamps(key))
+            || self.imports != imports(key)
             || (!self.waiting.is_empty() && !generated::waiting(&self.waiting))
     }
 }
@@ -69,6 +76,7 @@ impl Cached {
 /// Slices built on a worker, ready to upload.
 pub(super) struct Prepared {
     stamps: Vec<Option<SystemTime>>,
+    imports: Vec<String>,
     pub(super) albedo: Layers,
     /// Normal (rgb) and height (a).
     pub(super) normal: Layers,
@@ -120,6 +128,24 @@ fn cached_stamps(key: &Key) -> Vec<Option<SystemTime>> {
         .map(|p| {
             p.as_ref()
                 .and_then(|p| crate::file_watch::cached_modified(&assets::absolute(p)))
+        })
+        .collect()
+}
+
+/// What the textures' import settings make of them here (Max Size after the quality level's
+/// texture limit, Filter Mode, Compression...), so Apply in the import settings rebuilds the
+/// arrays as it reloads any other texture.
+fn imports(key: &Key) -> Vec<String> {
+    let platform = crate::sprites::import::current_platform();
+    let quality = crate::quality::active();
+    key.iter()
+        .flatten()
+        .map(|p| {
+            p.as_deref().map_or_else(String::new, |p| {
+                let imp = crate::sprites::importer(p);
+                let limit = quality.texture_size_limit(imp.max_size_for(platform));
+                format!("{limit} {imp:?}")
+            })
         })
         .collect()
 }
@@ -249,16 +275,48 @@ impl LayerCache {
     }
 }
 
-fn load(rel: &Option<String>) -> Option<RgbaImage> {
-    rel.as_ref()
-        .and_then(|r| load_image(&assets::absolute(r)).ok())
+/// A layer texture as its import settings make it: scaled to Max Size (and the quality
+/// level's limit), and whether it asks for Nearest Neighbor filtering.
+struct Source {
+    img: RgbaImage,
+    nearest: bool,
 }
 
-fn fit(img: RgbaImage, side: u32) -> RgbaImage {
-    if img.width() == side && img.height() == side {
-        img
-    } else {
-        image::imageops::resize(&img, side, side, image::imageops::FilterType::Triangle)
+/// How many slice texels one source texel of a Nearest Neighbor texture covers at least: the
+/// arrays share one linear sampler, so its texels are drawn as blocks of this many texels with
+/// only a thin blend at their edges (crisp pixels, as on any other object).
+const NEAREST_BLOCK: u32 = 8;
+
+fn load(rel: &Option<String>) -> Option<Source> {
+    let rel = rel.as_deref()?;
+    let img = crate::sprites::load_texture(rel).ok()?;
+    let nearest =
+        crate::sprites::importer(rel).filter_mode == crate::sprites::import::FilterMode::Nearest;
+    Some(Source { img, nearest })
+}
+
+impl Source {
+    /// The slice side this texture needs.
+    fn side(&self) -> u32 {
+        let side = self.img.width().max(self.img.height());
+        if self.nearest {
+            side.saturating_mul(NEAREST_BLOCK)
+        } else {
+            side
+        }
+    }
+
+    fn fit(self, side: u32) -> RgbaImage {
+        let img = self.img;
+        if img.width() == side && img.height() == side {
+            return img;
+        }
+        let filter = if self.nearest && img.width() <= side && img.height() <= side {
+            image::imageops::FilterType::Nearest
+        } else {
+            image::imageops::FilterType::Triangle
+        };
+        image::imageops::resize(&img, side, side, filter)
     }
 }
 
@@ -279,7 +337,8 @@ fn luminance_height(albedo: &RgbaImage) -> RgbaImage {
 /// (any thread).
 pub(super) fn prepare(key: &Key, ctx: &Ctx) -> Prepared {
     let stamps = stamps(key);
-    let images: Vec<[Option<RgbaImage>; 3]> = key
+    let imports = imports(key);
+    let images: Vec<[Option<Source>; 3]> = key
         .iter()
         .map(|[a, n, h]| [load(a), load(n), load(h)])
         .collect();
@@ -287,7 +346,7 @@ pub(super) fn prepare(key: &Key, ctx: &Ctx) -> Prepared {
         .iter()
         .flatten()
         .flatten()
-        .map(|i| i.width().max(i.height()))
+        .map(Source::side)
         .max()
         .unwrap_or(4)
         .next_power_of_two()
@@ -296,15 +355,20 @@ pub(super) fn prepare(key: &Key, ctx: &Ctx) -> Prepared {
     let mut albedo = Vec::new();
     let mut normal = Vec::new();
     for (i, [a, n, h]) in images.into_iter().enumerate() {
-        means[i] = a.as_ref().map(|a| harmony::mean_linear(a.as_raw()));
-        let h = h.or_else(|| a.as_ref().map(luminance_height));
+        means[i] = a.as_ref().map(|a| harmony::mean_linear(a.img.as_raw()));
+        let h = h.or_else(|| {
+            a.as_ref().map(|a| Source {
+                img: luminance_height(&a.img),
+                nearest: a.nearest,
+            })
+        });
         let solid = |c: [u8; 4]| RgbaImage::from_pixel(side, side, image::Rgba(c));
-        albedo.push(a.map(|a| fit(a, side)).unwrap_or_else(|| solid([255; 4])));
+        albedo.push(a.map(|a| a.fit(side)).unwrap_or_else(|| solid([255; 4])));
         let n = n
-            .map(|n| fit(n, side))
+            .map(|n| n.fit(side))
             .unwrap_or_else(|| solid([128, 128, 255, 255]));
         let h = h
-            .map(|h| fit(h, side))
+            .map(|h| h.fit(side))
             .unwrap_or_else(|| solid([128, 128, 128, 255]));
         normal.push(with_height(n, &h));
     }
@@ -323,6 +387,7 @@ pub(super) fn prepare(key: &Key, ctx: &Ctx) -> Prepared {
     };
     Prepared {
         stamps,
+        imports,
         albedo: generated::make(albedo, &albedo_spec, ctx, |s| mip_chain(s, true)),
         normal: generated::make(normal, &normal_spec, ctx, |s| mip_chain(s, false)),
         means,
@@ -353,6 +418,7 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
     let (n, b2) = array(device, queue, "misty terrain normals", &p.normal.layers);
     Cached {
         stamps: p.stamps,
+        imports: p.imports,
         waiting,
         set: LayerSet {
             albedo: a,
@@ -366,6 +432,7 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
 /// Built arrays whose textures exist and are written one (array, layer) at a time.
 struct Uploading {
     stamps: Vec<Option<SystemTime>>,
+    imports: Vec<String>,
     waiting: Vec<String>,
     means: [Option<Vec3>; MAX_LAYERS],
     /// Albedo, normal + height: the texture and its slices.
@@ -384,6 +451,7 @@ impl Uploading {
         let waiting = p.waiting();
         Self {
             stamps: p.stamps,
+            imports: p.imports,
             waiting,
             means: p.means,
             arrays: [
@@ -420,6 +488,7 @@ impl Uploading {
             .map(|(t, d)| (array_view(&t), d.iter().map(Made::bytes).sum::<u64>()));
         Cached {
             stamps: self.stamps,
+            imports: self.imports,
             waiting: self.waiting,
             set: LayerSet {
                 albedo: a.0,
@@ -473,4 +542,42 @@ fn array_view(texture: &wgpu::Texture) -> wgpu::TextureView {
         dimension: Some(wgpu::TextureViewDimension::D2Array),
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn checker(side: u32) -> RgbaImage {
+        RgbaImage::from_fn(side, side, |x, y| {
+            let v = if (x + y) % 2 == 0 { 255 } else { 0 };
+            image::Rgba([v, v, v, 255])
+        })
+    }
+
+    #[test]
+    fn nearest_layers_scale_up_in_crisp_blocks() {
+        let s = Source {
+            img: checker(4),
+            nearest: true,
+        };
+        assert_eq!(s.side(), 4 * NEAREST_BLOCK);
+        let out = s.fit(32);
+        // Every 8×8 block is one source texel, no blend between them.
+        for (x, y, p) in out.enumerate_pixels() {
+            let want = if (x / 8 + y / 8) % 2 == 0 { 255 } else { 0 };
+            assert_eq!(p[0], want, "texel {x},{y}");
+        }
+    }
+
+    #[test]
+    fn filtered_layers_keep_their_size_and_blend() {
+        let s = Source {
+            img: checker(4),
+            nearest: false,
+        };
+        assert_eq!(s.side(), 4);
+        let out = s.fit(32);
+        assert!(out.pixels().any(|p| p[0] > 0 && p[0] < 255), "linear blend");
+    }
 }

@@ -174,6 +174,17 @@ fn d_ggx(n_dot_h: f32, a: f32) -> f32 {
     return a2 / (PI * d * d);
 }
 
+// Height-correlated Smith GGX visibility, G / (4 n.l n.v) (Heitz 2014). It knows the
+// roughness: rough surfaces' microfacets shadow and mask each other at grazing angles, so a
+// smoothness 0 ground no longer glows white towards a low sun. (Replaced the roughness-blind
+// Kelemen term, which made rough surfaces 2 to 3 times too bright there.)
+fn v_smith_ggx(n_dot_l: f32, n_dot_v: f32, a: f32) -> f32 {
+    let a2 = a * a;
+    let gv = n_dot_l * sqrt(n_dot_v * n_dot_v * (1.0 - a2) + a2);
+    let gl = n_dot_v * sqrt(n_dot_l * n_dot_l * (1.0 - a2) + a2);
+    return 0.5 / max(gv + gl, 1e-5);
+}
+
 struct MeshTargets {
     @location(0) color: vec4<f32>,
     // Emission only, the bloom source.
@@ -222,7 +233,25 @@ struct Surface {
     // Bloom feed = emission × (1 - glow_cut) (0 = the emission glows as it is; `var s:
     // Surface` leaves it zero). Rectangle light emitters, see `light_glow_surface`.
     glow_cut: f32,
+    // Material ▸ Specular Highlights off (1 = no shine from lights) and Environment
+    // Reflections off (1 = no sky, probe or screen-space reflections); a terrain blends its
+    // layers' values. `var s: Surface` leaves both zero: on.
+    no_highlights: f32,
+    no_reflections: f32,
 };
+
+// Material ▸ Color Adjustments on a linear albedo: `look` x = brightness (× colour),
+// y = contrast (about mid grey, 1 = unchanged), z = saturation (0 = grey, 1 = unchanged).
+fn color_adjust(c: vec3<f32>, look: vec3<f32>) -> vec3<f32> {
+    if (all(look == vec3<f32>(1.0))) {
+        return c;
+    }
+    var o = c * look.x;
+    o = 0.18 * pow(max(o, vec3<f32>(0.0)) / 0.18, vec3<f32>(look.y));
+    let luma = dot(o, vec3<f32>(0.2126, 0.7152, 0.0722));
+    o = mix(vec3<f32>(luma), o, look.z);
+    return clamp(o, vec3<f32>(0.0), vec3<f32>(1.0));
+}
 
 // Light ▸ Glow of a Rectangle light's emitter quad (draw.wgsl `lightmap.zw`): Soft Core
 // compresses the visible emission's highlights; the bloom feed is the uncompressed emission ×
@@ -288,7 +317,10 @@ fn standard_surface_from(in: MeshOut, front: bool, t: MaterialSamples) -> Surfac
     let emission = t.emission;
     let from_albedo = d.surface.w > 0.5;
     var s: Surface;
-    s.albedo = srgb_to_linear(d.color.rgb) * base.rgb;
+    s.albedo = color_adjust(srgb_to_linear(d.color.rgb) * base.rgb, d.look.xyz);
+    let look_flags = u32(d.look.w + 0.5);
+    s.no_highlights = f32(look_flags & 1u);
+    s.no_reflections = f32((look_flags >> 1u) & 1u);
     // Smoothness in the albedo alpha: the texture alpha is not transparency.
     s.alpha = d.color.a * select(base.a, 1.0, from_albedo);
     s.metallic = d.params.x * metal_gloss.r;
@@ -463,7 +495,7 @@ fn feature_light(s: Surface, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness
     let n_dot_h = max(dot(n, h), 0.0);
     let l_dot_h = max(dot(l, h), 0.0);
     let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - l_dot_h, 5.0);
-    let vis = 0.25 / max(l_dot_h * l_dot_h, 0.1);
+    let vis = v_smith_ggx(n_dot_l, max(dot(n, v), 1e-4), roughness);
     var d = d_ggx(n_dot_h, roughness);
     if ((MAT_FEATURES & FEAT_ANISOTROPY) != 0u && s.anisotropy > 0.0) {
         let t = s.aniso_dir;
@@ -471,7 +503,7 @@ fn feature_light(s: Surface, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness
         let at = mix(roughness, 1.0, s.anisotropy * s.anisotropy);
         d = d_ggx_aniso(dot(t, h), dot(b, h), n_dot_h, max(at, 0.002), roughness);
     }
-    let spec = fresnel * (d * vis * PI) * n_dot_l;
+    let spec = fresnel * (d * vis * PI) * n_dot_l * (1.0 - clamp(s.no_highlights, 0.0, 1.0));
     var diffuse = diffuse_color * n_dot_l;
     if ((MAT_FEATURES & FEAT_TRANSLUCENCY) != 0u && s.wrap > 0.0) {
         // Wrap lighting: light reaches past the terminator, tinted (skin, leaves, wax).
@@ -487,7 +519,9 @@ fn feature_light(s: Surface, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness
         let nc_dot_l = max(dot(nc, l), 0.0);
         let nc_dot_h = max(dot(nc, h), 0.0);
         let fc = (0.04 + 0.96 * pow(1.0 - l_dot_h, 5.0)) * s.coat;
-        let coat_spec = fc * d_ggx(nc_dot_h, s.coat_roughness) * vis * PI * nc_dot_l;
+        let coat_vis = v_smith_ggx(nc_dot_l, max(dot(nc, v), 1e-4), s.coat_roughness);
+        let coat_spec = fc * d_ggx(nc_dot_h, s.coat_roughness) * coat_vis * PI * nc_dot_l
+            * (1.0 - clamp(s.no_highlights, 0.0, 1.0));
         lit = lit * (1.0 - fc) + vec3<f32>(coat_spec);
     }
     return lit;
@@ -526,6 +560,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         v = normalize(view.camera_pos.xyz - world);
     }
     let n_dot_v = max(dot(n, v), 1e-4);
+    // Specular Highlights / Environment Reflections (1 = on).
+    let highlights = 1.0 - clamp(s.no_highlights, 0.0, 1.0);
+    let reflections = 1.0 - clamp(s.no_reflections, 0.0, 1.0);
 
     var diffuse_color = albedo * (1.0 - metallic);
     var alpha = s.alpha;
@@ -592,6 +629,7 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
     } else {
         reflection = env * fresnel_env * surface_reduction * lights.info.w * smoothness * spec_occlusion;
     }
+    reflection *= reflections;
     // Screen-space GI and reflections (screen_trace.wgsl); unchanged while both are off.
     let traced = screen_trace_sample(world);
     color = screen_gi_apply(traced, color, diffuse_color, s.occlusion, lightmapped);
@@ -603,9 +641,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
             color = e.rgb * diffuse_color * s.occlusion;
         }
     }
-    let reflection_weight = fresnel_env * surface_reduction * lights.info.w * smoothness;
+    let reflection_weight = fresnel_env * surface_reduction * lights.info.w * smoothness * reflections;
     color += screen_reflection_apply(traced, reflection, reflection_weight);
-    if ((MAT_FEATURES & FEAT_CLEARCOAT) != 0u && s.coat > 0.0) {
+    if ((MAT_FEATURES & FEAT_CLEARCOAT) != 0u && s.coat > 0.0 && reflections > 0.0) {
         color = coat_ambient(s, world, v, ambient, spec_occlusion, color);
     }
 
@@ -614,7 +652,7 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         let li = lights.items[i];
         let kind = u32(li.dir_type.w);
         if (kind == 3u) {
-            color += rect_shade(i, li, world, s.receive_shadows, n, v, perceptual, f0, diffuse_color, ssao);
+            color += rect_shade(i, li, world, s.receive_shadows, n, v, perceptual, f0, diffuse_color, ssao, highlights);
             continue;
         }
         var l: vec3<f32>;
@@ -673,9 +711,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         let n_dot_h = max(dot(n, h), 0.0);
         let l_dot_h = max(dot(l, h), 0.0);
         let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - l_dot_h, 5.0);
-        // Kelemen visibility term; scaled by PI to match the un-normalised diffuse.
-        let vis = 0.25 / max(l_dot_h * l_dot_h, 0.1);
-        let spec = fresnel * (d_ggx(n_dot_h, roughness) * vis * PI);
+        // Smith visibility term; scaled by PI to match the un-normalised diffuse.
+        let vis = v_smith_ggx(n_dot_l, n_dot_v, roughness);
+        let spec = fresnel * (d_ggx(n_dot_h, roughness) * vis * PI) * highlights;
         color += (diffuse_color + spec) * li.color.rgb * n_dot_l * atten;
     }
     color = cascade_debug(world, color);

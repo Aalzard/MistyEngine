@@ -37,8 +37,11 @@ struct TerrainParams {
     // x = chunks per side (`chunk_layers`, terrain_layers.wgsl), y = grass far field (0 = off),
     // z = its brightness, w = how much darker it grows past the blades.
     chunks: vec4<f32>,
-    // Per layer: x = relief (parallax) depth in metres (0 = flat).
+    // Per layer: x = relief (parallax) depth in metres (0 = flat), y = 1 with Specular
+    // Highlights off, z = 1 with Environment Reflections off.
     relief: array<vec4<f32>, 16>,
+    // Per layer Color Adjustments: x = brightness, y = contrast, z = saturation (1 = unchanged).
+    look: array<vec4<f32>, 16>,
 };
 
 @group(3) @binding(0) var<uniform> terrain: TerrainParams;

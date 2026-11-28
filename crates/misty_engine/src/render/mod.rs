@@ -275,6 +275,12 @@ pub struct MaterialParams {
     /// anisotropy, specular tint): `None` for materials that use none of them, which then
     /// draw with the plain Standard variants (see [`material_v2`]).
     pub extras: Option<std::sync::Arc<material_v2::LitExtras>>,
+    /// Material ▸ Specular Highlights (shine of lights) and Environment Reflections (sky,
+    /// probes, screen-space); both off = no reflections at all.
+    pub specular_highlights: bool,
+    pub environment_reflections: bool,
+    /// Material ▸ Color Adjustments: brightness, contrast, saturation (1 = unchanged).
+    pub color_adjust: [f32; 3],
 }
 
 impl Default for MaterialParams {
@@ -307,6 +313,9 @@ impl Default for MaterialParams {
             contribute_gi: true,
             light_glow: [0.0; 2],
             extras: None,
+            specular_highlights: true,
+            environment_reflections: true,
+            color_adjust: [1.0; 3],
         }
     }
 }
@@ -488,6 +497,13 @@ struct DrawUniform {
     lightmap: [f32; 4],
     /// Last frame's object → world (motion vectors; the same as `model` when still).
     prev_model: [[f32; 4]; 4],
+    /// xyz = brightness, contrast, saturation; w = flags ([`look_flags`]).
+    look: [f32; 4],
+}
+
+/// `DrawUniform.look.w`: 1 = Specular Highlights off, 2 = Environment Reflections off.
+pub(crate) fn look_flags(specular_highlights: bool, environment_reflections: bool) -> f32 {
+    (u32::from(!specular_highlights) | (u32::from(!environment_reflections) << 1)) as f32
 }
 
 #[repr(C)]
@@ -4110,6 +4126,12 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32, prev_model: Mat4) -> DrawUniform {
             m.light_glow[1],
         ],
         prev_model: prev_model.to_cols_array_2d(),
+        look: [
+            m.color_adjust[0].max(0.0),
+            m.color_adjust[1].max(0.0),
+            m.color_adjust[2].max(0.0),
+            look_flags(m.specular_highlights, m.environment_reflections),
+        ],
     }
 }
 
@@ -4387,7 +4409,7 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 320);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 336);
         assert_eq!(std::mem::size_of::<LightItem>(), 112);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),
