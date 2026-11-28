@@ -127,6 +127,7 @@ fn to_lua(lua: &Lua, arg: &CsArg) -> mlua::Result<Value> {
         CsArg::Number(n) => Value::Number(*n),
         CsArg::Int(i) => Value::Integer(*i),
         CsArg::Text(t) => Value::String(lua.create_string(t)?),
+        CsArg::Engine => Value::Nil,
     })
 }
 
@@ -144,9 +145,9 @@ impl ScriptHost {
             if !alive {
                 continue;
             }
-            for i in 0..self.instances.len() {
+            for i in self.instances_of(m.target) {
                 let inst = &self.instances[i];
-                if inst.entity != m.target || inst.cs.is_some() != m.to_csharp {
+                if inst.cs.is_some() != m.to_csharp {
                     continue;
                 }
                 if let Some(cs) = inst.cs {

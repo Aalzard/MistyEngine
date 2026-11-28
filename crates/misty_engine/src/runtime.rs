@@ -240,6 +240,9 @@ impl Runtime {
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         crate::profile_scope!("PlayerLoop", Category::Others);
         let _root = crate::assets::scoped_root(&self.root);
+        // A script's Time.timeScale scales everything below (audio, particles, effects).
+        let scaled = self.host.frame_time(time);
+        let time = &scaled;
         // Shaders, waves and buoyancy follow the game clock.
         crate::clock::set_play_time(time.time);
         // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.
@@ -721,6 +724,11 @@ impl Runtime {
         f: impl FnOnce(&mut crate::physics::Physics, &mut Scene) -> R,
     ) -> R {
         self.host.with_physics_scene(scene, f)
+    }
+
+    /// Inspector edits of Rigidbody / collider components while playing (3D and 2D).
+    pub fn refresh_live_physics(&mut self, scene: &mut Scene, entities: &[hecs::Entity]) {
+        self.host.refresh_live_physics(scene, entities);
     }
 
     pub fn physics_settings(&self) -> crate::settings::PhysicsSettings {

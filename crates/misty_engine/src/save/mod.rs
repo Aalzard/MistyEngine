@@ -188,6 +188,19 @@ pub fn folder_for(root: &Path) -> PathBuf {
         .unwrap_or_else(|| root.join(EDITOR_FOLDER))
 }
 
+/// The game's own data folder (`Application.persistentDataPath`): the project folder in the
+/// editor, the per-user folder holding the saves in a built game.
+pub fn data_folder(root: &Path) -> PathBuf {
+    let built = FOLDER_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    match built {
+        Some(saves) => saves.parent().map_or(saves.clone(), Path::to_path_buf),
+        None => root.to_path_buf(),
+    }
+}
+
 /// The per-user saves folder of a built game (next to its PlayerPrefs).
 pub fn player_folder(company: &str, product: &str) -> Option<PathBuf> {
     crate::prefs::default_path(company, product).and_then(|p| p.parent().map(|d| d.join("saves")))
@@ -586,10 +599,8 @@ pub fn capture(scene: &Scene, input: &CaptureInput) -> SaveData {
 
 fn spawned_state(scene: &Scene, root: Entity, path: &str) -> SpawnedState {
     let ids = scene
-        .walk()
+        .walk_under(Some(root))
         .into_iter()
-        .map(|(e, _)| e)
-        .filter(|e| scene.is_ancestor(root, *e))
         .filter_map(|e| {
             scene
                 .world
@@ -714,10 +725,8 @@ pub fn apply(scene: &mut Scene, data: &SaveData, root: &Path) -> Applied {
         scene.game_object_mut(e).active = s.active;
         scene.set_transform(e, s.transform);
         let subtree: Vec<Entity> = scene
-            .walk()
+            .walk_under(Some(e))
             .into_iter()
-            .map(|(x, _)| x)
-            .filter(|x| scene.is_ancestor(e, *x))
             .filter(|x| scene.world.get::<&Saveable>(*x).is_ok())
             .collect();
         for (x, id) in subtree.into_iter().zip(&s.ids) {

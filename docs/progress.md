@@ -6644,3 +6644,159 @@ pass on Linux; clippy is clean on the engine and the editor (Rust 1.98).
 ### Not done
 Adding scripts during Play, `SendMessage` from C#, `Physics2D` queries and 2D contact points from C#; a Linux game build of a C# project (the runtime
 copy should now work there, not tried end to end).
+
+## C# input: Event System, touches, Input System and split screen
+
+C# scripts get the input Lua already had (PR #7 and before). All of it goes through one new
+native function (`inputSystem`, the last field of `NativeApi`; `scripting/csharp_input.rs`) with
+op codes.
+
+### Done
+- `EventSystem.current` (`currentSelectedGameObject`, `SetSelectedGameObject`,
+  `firstSelectedGameObject`, `sendNavigationEvents`, `gameObject`, and `IsPointerOverGameObject`,
+  which Lua doesn't have), `button.Select()` and friends, `OnSelect` / `OnDeselect` / `OnCancel`
+  with no parameter or a `BaseEventData`, and the `ISelectHandler` / `IDeselectHandler` /
+  `ICancelHandler` interfaces.
+- Touches: `Input.touchCount`, `GetTouch`, `touches`, `touchSupported`, `Touch`, `TouchPhase`,
+  `Touchscreen.current` (y from the bottom-left, like Lua).
+- `Keyboard.current`, `Mouse.current`, `Gamepad.current` / `all` (with rumble), controls with
+  `isPressed` / `wasPressedThisFrame` / `ReadValue()`.
+- Input Actions: `InputActionAsset` (`Load`, `Instantiate`, `FindAction`, maps, binding
+  overrides), `InputActionMap`, `InputAction` (`ReadValue<T>`, polling, `started` /
+  `performed` / `canceled` C# events), `InputAction.CallbackContext`, `InputValue`.
+- `PlayerInput` (`playerIndex`, `camera`, `devices`, `GetDevice<Gamepad>()`, maps and schemes,
+  events, `all`, `GetPlayerByIndex`) and `PlayerInputManager` (`instance`, `playerCount`,
+  `splitScreen`, `joinBehavior`, `JoinPlayer`, `onPlayerJoined` / `onPlayerLeft`), `Camera.rect`
+  / `pixelRect`, `Rect`.
+- **Player Input messages now reach C#** (`OnMove(InputValue)`, `OnJump()`, `OnDeviceLost`,
+  Invoke Events methods with a `CallbackContext`) and **`OnPlayerJoined(PlayerInput)` gets its
+  player**: before, Player Input messages went to Lua scripts only and the manager's C# scripts
+  got no argument. Rich arguments travel as `CsArg::Engine` (kind 40): the engine leaves the
+  object in `csharp_input.rs` and C# reads it back. C# input events reuse the `Host.UiEvent`
+  entry with kinds from 110 up.
+
+### Tests
+New (`csharp_input_tests.rs`): `csharp_event_system_selection_and_on_select`,
+`csharp_touches_read_like_unity_from_the_bottom_left`,
+`csharp_player_input_manager_joins_players_with_split_screen_rects`,
+`csharp_player_input_messages_events_and_polling`,
+`csharp_invoke_events_context_shared_asset_and_devices`. All 162 scripting tests pass.
+
+### Not done
+Interactive rebinding (`PerformInteractiveRebinding`) from C#; this-frame edges for triggers and
+stick directions; `Touch.tapCount`; explicit interface implementations of `ISelectHandler`
+(the method must be public `OnSelect`); `PlayerInput.Instantiate`.
+
+## Round 92 — slope-aware walking and C# Character Controller (branch r92-slopes)
+
+From GitHub issue #3 (human-scale locomotion and slope-dependent speed).
+
+- **Slope Speed** on the Character Controller (0–1, off by default; Inspector, Lua and C#
+  `slopeSpeed`): grounded moves scale their horizontal part by Tobler's hiking function
+  (`6·e^(-3.5·|grade + 0.05|)` km/h, normalised to flat ground), blended by the strength. Slower
+  uphill, ~1.19× on a gentle 3° descent, slower again on steep descents. Grade is measured along
+  the walking direction from the ground normal, so walking across a slope keeps flat speed.
+  Gravity, jumps and falls are untouched; existing scripts need no change.
+- **groundNormal** (Lua and C#): after each grounded move a ray from the capsule centre finds the
+  ground under it (up while airborne, or when the hit is a wall).
+- **C# CharacterController**: `GetComponent<CharacterController>()`, object fields of that type,
+  `Move` / `SimpleMove` (return grounded), `isGrounded`, `velocity`, `groundNormal`, `center`,
+  `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `slopeSpeed`
+  (two new native calls, `character_vec` and `character_scalar`). The Code Editor's C#
+  completion picks it up from the API source.
+- Docs: scripting guide (Slope Speed, C# API list, updated "Not yet"), Lua completion entries,
+  regenerated `docs/api`.
+- Tests: Tobler factor shape, direction-aware scaling and blending, a 15° ramp walked up and
+  down with and without Slope Speed (plus the reported normal), and a C# script walking with
+  `SimpleMove` and changing settings.
+- Not done: the sample First Person Player still has Slope Speed off (its scene files are part
+  of the open sample-generator decision); a real-world scale toggle in the Scene window is an
+  idea under discussion; C# `OnControllerColliderHit`.
+
+
+## Split screen tested on a real GPU (branch split-screen-gpu)
+
+Split screen and the Player Input Manager (v0.5.0) had only run in the cloud without a GPU. Run
+on an RTX 4060 (Vulkan), headless and in the real player.
+
+- **New GPU tests** (`split_screen_gpu_tests.rs`, skipped without an adapter): two players side
+  by side with no full-screen camera, and a full-screen camera with a minimap in a corner. Each
+  camera's rect of the image is compared with that camera rendered alone at the rect's size, at
+  Low, Medium, High and Ultra (TAA, upscaling, MSAA, sun shadows). All match exactly (mean
+  difference 0.00): no state leaks between the views. `MISTY_SPLIT_SHOTS=1` writes the images
+  to `target/split_screen/`.
+- **Player run**: `write_split_screen_project` (ignored) writes a small project whose lobby script
+  joins two players with `JoinPlayer()`; the player's screenshot shows each half with its own
+  player.
+- **Bug: screen points ignored the camera's rect.** `ScreenPointToRay`, `WorldToScreenPoint`
+  and `ScreenToWorldPoint` (Lua and C#) used the whole screen and its aspect, so for a
+  split-screen camera rays and on-screen positions were wrong. They now work in the camera's
+  own pixel rect (`camera_api::pixel_rect`); viewport points use the rect's aspect.
+- **Bug: players joining in one frame both heard `playerCount` 2** in `OnPlayerJoined` (two
+  `JoinPlayer()` calls in `Start`, or two pads at once), so a lobby placing players by count put
+  both in the same spot. The count now goes 1, 2, … during the messages.
+- Tests: the two GPU tests, a Lua camera with a right-half rect, two players joining in one frame.
+- **Per-player HUD**: a Screen Space - Camera canvas whose Render Camera has a partial Viewport
+  Rect was drawn through the highest-Depth camera (often another player's) or not at all. It is
+  now laid out for that camera's part of the image and drawn flat into it (`canvas::split_area`,
+  not depth tested: the target has no depth for that part); clicks map to it too. The test
+  project's player prefab has a HUD; the screenshot shows each half with its own HUD.
+- **World Space canvases in split screen** were drawn once over the whole image through the
+  highest-Depth camera (a minimap camera above the main one took them too). The game UI view now
+  uses the camera that draws the full-screen image (`screen_camera`), and each split-screen view
+  draws the World Space canvases its camera sees into its own image, depth tested against that
+  view (`UiView::split_view`). The test project's players have a name tag.
+- Not checked: the editor's Game view on the GPU by hand (it uses the same `SplitScreen::render`
+  and UI code as the player). Clicks on World Space canvases inside a split-screen view don't
+  reach them yet.
+
+## Hill Run — a C# sample game as a bug hunt (branch csharp-sample-game)
+
+A small two-player split-screen game in `SampleProject/Assets/HillRun`, written only in
+C# (see `docs/hill-run.md`): Player Input Manager joining (keyboard and gamepad), split-screen
+cameras, Character Controller walking on a ramp, steps and a too-steep ramp, jumping, trigger
+pickups with per-player scores, a start menu, pause menu and win screen driven through the Event
+System with an `OnSelect` highlight, an Animator (Idle / Walk / Run on Speed) with foot IK in
+`OnAnimatorIK`. Generator `crates/misty_editor/src/sample_hill_run.rs`; its play tests load the
+scene through the runtime and inject keys and a fake gamepad.
+
+### Bugs found and fixed
+- **`Time.timeScale` couldn't be set from scripts** (C# had no setter, a Lua assignment was
+  overwritten the next frame), so the usual pause menu (`Time.timeScale = 0`) didn't pause
+  anything. Now C# (`Time.timeScale = x`, a new native call appended to the table) and Lua set
+  it: it reads back at once, and from the next frame deltaTime, game time, physics, animation,
+  particles and audio timing follow it while `unscaledDeltaTime` goes on (the script host keeps
+  its own scaled clock; the caller's clock only gives real time). Tests:
+  `csharp_time_scale_set_by_a_script_pauses_the_game`,
+  `lua_time_scale_set_by_a_script_pauses_the_game`, `hill_run_pause_stops_time_…`.
+- **`CharacterController.Move` stalled on flat ground now and then** when the motion also
+  pushed down (the usual `vy = -2` while grounded): rapier's controller hit the floor it already
+  touched at distance 0 and spent its iterations without moving, so a walking character stopped
+  for a frame every second or so (velocity 0, the Animator dropping back to Walk / Idle) and
+  slowly crept upwards and sideways. A grounded move that pushes down now walks first and then
+  goes down. Test: `move_pressing_into_the_ground_walks_every_frame` (and the Hill Run animator
+  test checks every frame's step).
+
+### Notes
+- The C# host keeps its scripts in the assembly's statics: two games of one project can't run
+  at once in a process (fine for the editor and the player; the Hill Run tests take a lock).
+- Not checked here: real rendering of the split screen and the UI, a built player running the
+  game (the packaging test for C# passes, and the generator test checks the build packs
+  everything the game loads).
+
+## Split screen speed (branch split-perf, on top of split-screen-gpu)
+
+Profiled on the RTX 4060 with a new ignored benchmark (`split_screen_benchmark`: 10,000 cubes,
+shadowed sun, 1920 × 1080, High; `MISTY_SPLIT_PROFILE=1` prints the slowest scopes). Frames are
+CPU-bound and each view repeated the whole scene walk.
+
+- **Players share one draw list**: split-screen cameras with the same Culling Mask and occlusion
+  setting use one `DrawCache`, walked once per frame (`GameView::cached_for_with`). Gather per
+  extra view: 0.87 ms → 0.
+- **Static batching in split views**: their draw lists never merged static objects (only the
+  full-screen camera's did). `SplitScreen::set_static_batching`, on in the player and while
+  playing in the editor.
+- Frame time: 1 player 8.1 ms (same), 2 players 12.0 → 10.7 ms, 4 players 21.7 → 18.3 ms.
+- Still per view (needed for each camera): culling and shadow lists (~2.4 ms), draw prep (~0.9
+  ms) and the renderer's per-draw asset checks (~0.65 ms, `Render.PrepareAssets`), which could be
+  skipped when the same draw list was already prepared this frame.

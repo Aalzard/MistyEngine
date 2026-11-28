@@ -1,4 +1,7 @@
-//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `Physics.gravity`
+//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, the box and capsule
+//! queries (`CheckSphere/CheckBox/CheckCapsule`, `OverlapBox/OverlapCapsule`,
+//! `BoxCast/CapsuleCast`, `SphereCastAll/BoxCastAll/CapsuleCastAll`; box orientations are
+//! Euler angles in degrees), `Physics.gravity`
 //! (reads and writes the live world), `LayerMask`,
 //! `Ragdoll.Enable(go)` / `Ragdoll.Disable(go [, blendTime])` / `Ragdoll.IsEnabled(go)` (`go`
 //! is the ragdoll's root or any of its bones), and the CharacterController component (`Move`,
@@ -12,7 +15,7 @@ use mlua::{Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value,
 
 use super::World;
 use super::api::{LGameObject, LRigidbody, LTransform, LVec3, with_world};
-use crate::physics::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, RaycastHit, layers};
+use crate::physics::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, QueryShape, RaycastHit, layers};
 use crate::scene::{CharacterController, Rigidbody};
 
 /// Lua integers are 64-bit; masks keep their low 32 bits (so `~mask` works).
@@ -58,6 +61,178 @@ fn single(lua: &Lua, hit: Option<RaycastHit>) -> Result<Value> {
         Some(h) => with_world(lua, |w| hit_table(lua, w, &h).map(Value::Table))?,
         None => Ok(Value::Nil),
     }
+}
+
+fn objects_list(lua: &Lua, found: Vec<Entity>) -> Result<Table> {
+    let list = lua.create_table()?;
+    for (i, e) in found.into_iter().enumerate() {
+        list.set(i + 1, LGameObject(e))?;
+    }
+    Ok(list)
+}
+
+/// Box orientation: Euler angles in degrees (nil: none).
+fn orientation(v: Option<LVec3>) -> glam::Quat {
+    v.map_or(glam::Quat::IDENTITY, |e| crate::camera::euler_to_quat(e.0))
+}
+
+fn box_shape(half: LVec3) -> QueryShape {
+    QueryShape::Box {
+        half_extents: half.0,
+    }
+}
+
+/// The shape queries beside Raycast / SphereCast / OverlapSphere.
+fn register_shapes(lua: &Lua, physics: &Table) -> Result<()> {
+    physics.set(
+        "CheckSphere",
+        lua.create_function(|lua, (c, r, m): (LVec3, f32, Option<i64>)| {
+            with_world(lua, |w| {
+                let shape = QueryShape::Sphere { radius: r };
+                w.physics.check(
+                    shape,
+                    c.0,
+                    glam::Quat::IDENTITY,
+                    mask(m, DEFAULT_RAYCAST_LAYERS),
+                )
+            })
+        })?,
+    )?;
+    physics.set(
+        "CheckBox",
+        lua.create_function(
+            |lua, (c, half, rot, m): (LVec3, LVec3, Option<LVec3>, Option<i64>)| {
+                with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics.check(box_shape(half), c.0, orientation(rot), m)
+                })
+            },
+        )?,
+    )?;
+    physics.set(
+        "CheckCapsule",
+        lua.create_function(|lua, (a, b, r, m): (LVec3, LVec3, f32, Option<i64>)| {
+            with_world(lua, |w| {
+                let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                w.physics.check(
+                    shape,
+                    c,
+                    glam::Quat::IDENTITY,
+                    mask(m, DEFAULT_RAYCAST_LAYERS),
+                )
+            })
+        })?,
+    )?;
+    physics.set(
+        "OverlapBox",
+        lua.create_function(
+            |lua, (c, half, rot, m): (LVec3, LVec3, Option<LVec3>, Option<i64>)| {
+                let found = with_world(lua, |w| {
+                    let m = mask(m, ALL_LAYERS);
+                    w.physics.overlap(box_shape(half), c.0, orientation(rot), m)
+                })?;
+                objects_list(lua, found)
+            },
+        )?,
+    )?;
+    physics.set(
+        "OverlapCapsule",
+        lua.create_function(|lua, (a, b, r, m): (LVec3, LVec3, f32, Option<i64>)| {
+            let found = with_world(lua, |w| {
+                let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                w.physics
+                    .overlap(shape, c, glam::Quat::IDENTITY, mask(m, ALL_LAYERS))
+            })?;
+            objects_list(lua, found)
+        })?,
+    )?;
+    // BoxCast(center, halfExtents, direction[, orientation, maxDistance, layerMask])
+    physics.set(
+        "BoxCast",
+        lua.create_function(
+            |lua,
+             (c, half, dir, rot, max, m): (
+                LVec3,
+                LVec3,
+                LVec3,
+                Option<LVec3>,
+                Option<f32>,
+                Option<i64>,
+            )| {
+                let hit = with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    let (rot, max) = (orientation(rot), distance(max));
+                    w.physics.cast(box_shape(half), c.0, rot, dir.0, max, m)
+                })?;
+                single(lua, hit)
+            },
+        )?,
+    )?;
+    physics.set(
+        "BoxCastAll",
+        lua.create_function(
+            |lua,
+             (c, half, dir, rot, max, m): (
+                LVec3,
+                LVec3,
+                LVec3,
+                Option<LVec3>,
+                Option<f32>,
+                Option<i64>,
+            )| {
+                let hits = with_world(lua, |w| {
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    let (rot, max) = (orientation(rot), distance(max));
+                    w.physics.cast_all(box_shape(half), c.0, rot, dir.0, max, m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    // CapsuleCast(point1, point2, radius, direction[, maxDistance, layerMask])
+    physics.set(
+        "CapsuleCast",
+        lua.create_function(
+            |lua, (a, b, r, dir, max, m): (LVec3, LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hit = with_world(lua, |w| {
+                    let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast(shape, c, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                single(lua, hit)
+            },
+        )?,
+    )?;
+    physics.set(
+        "CapsuleCastAll",
+        lua.create_function(
+            |lua, (a, b, r, dir, max, m): (LVec3, LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hits = with_world(lua, |w| {
+                    let (shape, c) = QueryShape::capsule(a.0, b.0, r);
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast_all(shape, c, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    physics.set(
+        "SphereCastAll",
+        lua.create_function(
+            |lua, (o, r, dir, max, m): (LVec3, f32, LVec3, Option<f32>, Option<i64>)| {
+                let hits = with_world(lua, |w| {
+                    let shape = QueryShape::Sphere { radius: r };
+                    let m = mask(m, DEFAULT_RAYCAST_LAYERS);
+                    w.physics
+                        .cast_all(shape, o.0, glam::Quat::IDENTITY, dir.0, distance(max), m)
+                })?;
+                hits_list(lua, &hits)
+            },
+        )?,
+    )?;
+    Ok(())
 }
 
 pub fn register(lua: &Lua) -> Result<()> {
@@ -127,6 +302,52 @@ pub fn register(lua: &Lua) -> Result<()> {
                 list.set(i + 1, LGameObject(e))?;
             }
             Ok(list)
+        })?,
+    )?;
+    register_shapes(lua, &physics)?;
+    physics.set(
+        "IgnoreCollision",
+        lua.create_function(|lua, (a, b, ignore): (Value, Value, Option<bool>)| {
+            let (a, b) = (
+                object(&a, "IgnoreCollision")?,
+                object(&b, "IgnoreCollision")?,
+            );
+            with_world(lua, |w| {
+                w.physics.ignore_collision(a, b, ignore.unwrap_or(true))
+            })
+        })?,
+    )?;
+    physics.set(
+        "GetIgnoreCollision",
+        lua.create_function(|lua, (a, b): (Value, Value)| {
+            let (a, b) = (
+                object(&a, "GetIgnoreCollision")?,
+                object(&b, "GetIgnoreCollision")?,
+            );
+            with_world(lua, |w| w.physics.collision_ignored(a, b))
+        })?,
+    )?;
+    physics.set(
+        "IgnoreLayerCollision",
+        lua.create_function(|lua, (a, b, ignore): (u8, u8, Option<bool>)| {
+            with_world(lua, |w| {
+                w.physics
+                    .ignore_layer_collision(a, b, ignore.unwrap_or(true))
+            })
+        })?,
+    )?;
+    physics.set(
+        "GetIgnoreLayerCollision",
+        lua.create_function(|lua, (a, b): (u8, u8)| {
+            with_world(lua, |w| w.physics.layer_collision_ignored(a, b))
+        })?,
+    )?;
+    // ClosestPoint(point, gameObject): on the object's colliders (the point itself inside).
+    physics.set(
+        "ClosestPoint",
+        lua.create_function(|lua, (p, go): (LVec3, Value)| {
+            let e = object(&go, "ClosestPoint")?;
+            with_world(lua, |w| w.physics.closest_point(e, p.0).map(LVec3))
         })?,
     )?;
     // `Physics.gravity` reads and writes the live world.
@@ -265,6 +486,13 @@ impl UserData for LCharacterController {
         f.add_field_method_get("velocity", |lua, c| {
             with_world(lua, |w| LVec3(w.physics.character_velocity(c.0)))
         });
+        f.add_field_method_get("groundNormal", |lua, c| {
+            with_world(lua, |w| LVec3(w.physics.character_ground_normal(c.0)))
+        });
+        f.add_field_method_get("slopeSpeed", |lua, c| settings(lua, c.0, |s| s.slope_speed));
+        f.add_field_method_set("slopeSpeed", |lua, c, v: f32| {
+            resize(lua, c.0, |s| s.slope_speed = v.clamp(0.0, 1.0))
+        });
         f.add_field_method_get("height", |lua, c| settings(lua, c.0, |s| s.height));
         f.add_field_method_set("height", |lua, c, v: f32| {
             resize(lua, c.0, |s| s.height = v.max(0.01))
@@ -343,6 +571,57 @@ pub fn controller_hit_table(lua: &Lua, hit: &crate::physics::ControllerHit) -> R
     if body {
         t.set("rigidbody", LRigidbody(hit.other))?;
     }
+    Ok(t)
+}
+
+/// The Collision table 3D `OnCollisionEnter/Stay/Exit(other, collision)` get as their second
+/// argument (`me` hit `other`): `gameObject`, `collider`, `transform`, `rigidbody`,
+/// `relativeVelocity`, `impulse`, `contactCount`, `contacts` (`point`, `normal` pointing
+/// towards `me`, `separation`, `impulse`, `thisCollider`, `otherCollider`) and
+/// `GetContact(i)` (from 0). Exit has no points.
+pub fn collision_table(
+    lua: &Lua,
+    me: Entity,
+    other: Entity,
+    info: &crate::physics::CollisionInfo,
+) -> Result<Table> {
+    let t = lua.create_table()?;
+    t.set("gameObject", LGameObject(other))?;
+    t.set("collider", LGameObject(other))?;
+    t.set("transform", LTransform(other))?;
+    t.set("relativeVelocity", LVec3(info.relative_velocity))?;
+    t.set("impulse", LVec3(info.impulse))?;
+    let body = with_world(lua, |w| {
+        let mut cur = Some(other);
+        while let Some(c) = cur {
+            if w.scene.world.get::<&Rigidbody>(c).is_ok() {
+                return Some(c);
+            }
+            cur = w.scene.parent(c);
+        }
+        None
+    })?;
+    if let Some(b) = body {
+        t.set("rigidbody", LRigidbody(b))?;
+    }
+    let list = lua.create_table()?;
+    for (i, p) in info.points.iter().enumerate() {
+        let c = lua.create_table()?;
+        c.set("point", LVec3(p.point))?;
+        c.set("normal", LVec3(p.normal))?;
+        c.set("separation", p.separation)?;
+        c.set("impulse", LVec3(p.normal * p.impulse))?;
+        c.set("thisCollider", LGameObject(me))?;
+        c.set("otherCollider", LGameObject(other))?;
+        list.set(i + 1, c)?;
+    }
+    t.set("contactCount", info.points.len())?;
+    t.set("contacts", list)?;
+    let get_contact = lua.create_function(|_, (t, i): (Table, i64)| match i.checked_add(1) {
+        Some(i) => t.get::<Table>("contacts")?.get::<Value>(i),
+        None => Ok(Value::Nil),
+    })?;
+    t.set("GetContact", get_contact)?;
     Ok(t)
 }
 

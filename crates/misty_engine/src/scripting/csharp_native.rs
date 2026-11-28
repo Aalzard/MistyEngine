@@ -12,6 +12,11 @@ use hecs::Entity;
 
 use super::{LogKind, World};
 
+#[path = "csharp_parity.rs"]
+mod parity;
+pub(super) use parity::{Contact2DScope, Contact3DScope, ControllerHitScope};
+use parity::{animator_ik, contacts};
+
 // ---- the world, for callbacks from C# ------------------------------------------------------
 
 thread_local! {
@@ -38,7 +43,7 @@ impl Drop for Enter {
 }
 
 /// Run `f` on the world installed by [`Enter`] (None outside a C# call).
-fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
+pub(super) fn with_world<R>(f: impl FnOnce(&mut World) -> R) -> Option<R> {
     let p = WORLD.with(|c| c.get());
     if p.is_null() {
         return None;
@@ -56,7 +61,7 @@ fn with_object<R>(id: u64, f: impl FnOnce(&mut World, Entity) -> R) -> Option<R>
     with_world(|w| w.scene.contains(e).then(|| f(w, e))).flatten()
 }
 
-fn text(ptr: *const u16, len: i32) -> String {
+pub(super) fn text(ptr: *const u16, len: i32) -> String {
     if ptr.is_null() || len <= 0 {
         return String::new();
     }
@@ -64,7 +69,7 @@ fn text(ptr: *const u16, len: i32) -> String {
     String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len as usize) })
 }
 
-fn id_of(e: Entity) -> u64 {
+pub(super) fn id_of(e: Entity) -> u64 {
     e.to_bits().get()
 }
 
@@ -146,6 +151,19 @@ pub(super) struct NativeApi {
     message: extern "C" fn(u64, *const u16, i32, i32, f64, *const u16, i32) -> i32,
     physics2d:
         extern "C" fn(i32, *const V3, *const V3, f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    /// `csharp_input.rs`: EventSystem, touches, Camera.rect, Player Input (Manager), Input
+    /// Actions, Gamepad / Keyboard / Mouse.
+    input_system: extern "C" fn(i32, u64, i64, *mut f64, *mut u16, i32) -> i64,
+    // ---- csharp_parity.rs ----
+    contacts: extern "C" fn(i32, *mut f32, i32, *mut u64) -> i32,
+    animator_ik: extern "C" fn(u64, i32, i32, *mut V4) -> i32,
+    character_vec: extern "C" fn(u64, i32, *mut V3) -> i32,
+    character_scalar: extern "C" fn(u64, i32, i32, f32, *mut f32) -> i32,
+    time_scale: extern "C" fn(f32),
+    transform_group: extern "C" fn(i32, *const u64, i32, *mut f32) -> i32,
+    app: extern "C" fn(i32, i32, *const u16, i32, *mut u16, i32) -> i32,
+    shape_query: extern "C" fn(i32, i32, *const f32, u32, *mut HitData, *mut u64, i32) -> i32,
+    physics_extra: extern "C" fn(i32, u64, u64, *mut V3, f32, f32, f32) -> i32,
 }
 
 pub(super) static NATIVE_API: NativeApi = NativeApi {
@@ -203,7 +221,202 @@ pub(super) static NATIVE_API: NativeApi = NativeApi {
     scene_op,
     message,
     physics2d,
+    input_system: super::csharp::input::input_system,
+    contacts,
+    animator_ik,
+    character_vec,
+    character_scalar,
+    time_scale,
+    transform_group,
+    app,
+    shape_query,
+    physics_extra,
 };
+
+fn force_mode(m: i64) -> &'static str {
+    match m {
+        1 => "Impulse",
+        2 => "VelocityChange",
+        3 => "Acceleration",
+        _ => "Force",
+    }
+}
+
+/// Physics.IgnoreCollision & co. and the Rigidbody extras. `v` points at two Vector3s.
+/// ops: 0 IgnoreCollision(a, b, ignore = x != 0), 1 GetIgnoreCollision(a, b), 2
+/// IgnoreLayerCollision(layer a, layer b, ignore = x != 0), 3 GetIgnoreLayerCollision, 4
+/// AddForceAtPosition(body a, force v[0], position v[1], mode b), 5 AddExplosionForce(body a,
+/// force x, position v[0], radius y, upwards z, mode b), 6 Sleep(a), 7 WakeUp(a), 8
+/// IsSleeping(a), 9 ClosestPoint(collider a, point v[0] → v[0]; 0 without colliders), 10
+/// GetPointVelocity(body a, point v[0] → v[0]), 11 worldCenterOfMass(body a → v[0]; 0
+/// without a body).
+/// Returns 1/0 (or the answer), -1 outside a call from the engine.
+extern "C" fn physics_extra(op: i32, a: u64, b: u64, v: *mut V3, x: f32, y: f32, z: f32) -> i32 {
+    let read = |i: usize| -> Vec3 {
+        if v.is_null() {
+            return Vec3::ZERO;
+        }
+        // SAFETY: C# passes two Vector3s.
+        Vec3::from_array(unsafe { *v.add(i) })
+    };
+    let ent = |id: u64| Entity::from_bits(id);
+    with_world(|w| {
+        let alive = |e: Option<Entity>| e.filter(|e| w.scene.contains(*e));
+        match op {
+            0 | 1 => {
+                let (Some(ea), Some(eb)) = (alive(ent(a)), alive(ent(b))) else {
+                    return 0;
+                };
+                if op == 0 {
+                    w.physics.ignore_collision(ea, eb, x != 0.0);
+                    1
+                } else {
+                    i32::from(w.physics.collision_ignored(ea, eb))
+                }
+            }
+            2 => {
+                w.physics
+                    .ignore_layer_collision(a.min(31) as u8, b.min(31) as u8, x != 0.0);
+                1
+            }
+            3 => i32::from(
+                w.physics
+                    .layer_collision_ignored(a.min(31) as u8, b.min(31) as u8),
+            ),
+            4..=8 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match op {
+                    4 => {
+                        let impulse = super::api::impulse_of(w, e, read(0), force_mode(b as i64));
+                        w.physics.add_impulse_at_position(e, impulse, read(1));
+                    }
+                    5 => {
+                        if let Some(push) = w.physics.explosion_push(e, x, read(0), y, z) {
+                            let dv = super::api::delta_velocity(w, e, push, force_mode(b as i64));
+                            let vel = w.physics.velocity(e).unwrap_or_default();
+                            w.physics.set_velocity(e, vel + dv);
+                        }
+                    }
+                    6 => w.physics.set_sleeping(e, true),
+                    7 => w.physics.set_sleeping(e, false),
+                    _ => return i32::from(w.physics.is_sleeping(e)),
+                }
+                1
+            }
+            9 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                match w.physics.closest_point(e, read(0)) {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            10 | 11 => {
+                let Some(e) = alive(ent(a)) else { return 0 };
+                let out = if op == 10 {
+                    Some(w.physics.point_velocity(e, read(0)))
+                } else {
+                    w.physics.world_center_of_mass(e)
+                };
+                match out {
+                    Some(p) if !v.is_null() => {
+                        // SAFETY: as in `read`.
+                        unsafe { v.write(p.to_array()) };
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            _ => -1,
+        }
+    })
+    .unwrap_or(-1)
+}
+
+/// `Application` and `ScreenCapture`. op 0: `CaptureScreenshot(text, superSize = arg)`;
+/// 1: `persistentDataPath` (written to `out`, returns its length); 2: `HasDefine(text)` (1/0);
+/// 3: `isEditor` (1/0). -1 outside a call from the engine (ops 0 and 1) or for an unknown op.
+extern "C" fn app(op: i32, arg: i32, input: *const u16, len: i32, out: *mut u16, cap: i32) -> i32 {
+    match op {
+        0 => {
+            let name = text(input, len);
+            with_world(|w| crate::screen_capture::request(&w.root, &name, i64::from(arg)))
+                .map_or(-1, |_| 1)
+        }
+        1 => with_world(|w| crate::screen_capture::data_folder(&w.root))
+            .map_or(-1, |p| write_text(&p.to_string_lossy(), out, cap)),
+        2 => i32::from(crate::build_profile::has_define(&text(input, len))),
+        3 => i32::from(crate::build_profile::has_define("MISTY_EDITOR")),
+        _ => -1,
+    }
+}
+
+/// `TransformGroup` in C#: one call for `count` objects. `data` holds `width` floats per
+/// object: op 0 reads world positions (3), 1 writes them, 2 reads world rotations (4), 3 writes
+/// them, 4 turns the objects along directions (3), 5 writes 1 for a living object and 0 for a
+/// destroyed one (1). Reads leave the floats of destroyed objects alone; writes skip them and
+/// values that are not finite. Returns how many objects were read or written, -1 outside a
+/// call from the engine.
+extern "C" fn transform_group(op: i32, ids: *const u64, count: i32, data: *mut f32) -> i32 {
+    use super::transform_group_api as group;
+    let width = match op {
+        0 | 1 | 4 => 3,
+        2 | 3 => 4,
+        5 => 1,
+        _ => return -1,
+    };
+    if count <= 0 {
+        return 0;
+    }
+    if ids.is_null() || data.is_null() {
+        return -1;
+    }
+    // SAFETY: the C# side pins an id array of `count` entries and a value array of at least
+    // `count * width` floats for the length of this call.
+    let (ids, data) = unsafe {
+        (
+            std::slice::from_raw_parts(ids, count as usize),
+            std::slice::from_raw_parts_mut(data, count as usize * width),
+        )
+    };
+    with_world(|w| {
+        let bodies = group::any_bodies(w);
+        let mut done = 0;
+        for (&id, v) in ids.iter().zip(data.chunks_exact_mut(width)) {
+            let Some(e) = Entity::from_bits(id) else {
+                if op == 5 {
+                    v[0] = 0.0;
+                }
+                continue;
+            };
+            let ok = match op {
+                0 => group::position(w, e)
+                    .map(|p| v.copy_from_slice(&p.to_array()))
+                    .is_some(),
+                2 => group::rotation(w, e)
+                    .map(|q| v.copy_from_slice(&q.to_array()))
+                    .is_some(),
+                5 => {
+                    v[0] = f32::from(u8::from(w.scene.contains(e)));
+                    true
+                }
+                _ if !v.iter().all(|x| x.is_finite()) => false,
+                1 => group::set_position(w, e, Vec3::new(v[0], v[1], v[2])),
+                3 => group::set_rotation(w, e, Quat::from_xyzw(v[0], v[1], v[2], v[3])),
+                _ => group::look_along(w, e, Vec3::new(v[0], v[1], v[2])),
+            };
+            if ok && bodies && matches!(op, 1 | 3 | 4) {
+                super::api::sync_body(w, e);
+            }
+            done += i32::from(ok);
+        }
+        done
+    })
+    .unwrap_or(-1)
+}
 
 /// Same layout as `Misty.Internal.HitData`.
 #[repr(C)]
@@ -766,6 +979,7 @@ extern "C" fn has_component(id: u64, kind: i32) -> i32 {
             33 => world.get::<&MeshCollider>(e).is_ok(),
             34 => world.get::<&crate::scene::BoxCollider2D>(e).is_ok(),
             35 => world.get::<&crate::scene::CircleCollider2D>(e).is_ok(),
+            7 => world.get::<&crate::scene::CharacterController>(e).is_ok(),
             _ => false,
         };
         i32::from(has)
@@ -846,8 +1060,10 @@ extern "C" fn rigidbody_move_rotation(id: u64, q: *const Q) -> i32 {
     .unwrap_or(0)
 }
 
-/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1); `set` 0 reads into `out`,
-/// 1 writes `value`. 1 done, 0 no object or no Rigidbody.
+/// `which`: 0 mass, 1 isKinematic, 2 useGravity (booleans as 0 / 1), 3 drag, 4 angularDrag,
+/// 5 constraints (`RigidbodyConstraints` bits), 6 collisionDetectionMode (0 Discrete, else
+/// continuous), 7 interpolation (0 None, else Interpolate); `set` 0 reads into `out`, 1
+/// writes `value`. 1 done, 0 no object or no Rigidbody.
 extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *mut f32) -> i32 {
     with_object(id, |w, e| {
         let Ok(mut b) = w.scene.world.get::<&mut crate::scene::Rigidbody>(e) else {
@@ -858,20 +1074,158 @@ extern "C" fn rigidbody_scalar(id: u64, which: i32, set: i32, value: f32, out: *
             match which {
                 1 => b.is_kinematic = on,
                 2 => b.use_gravity = on,
+                3 => b.drag = value.max(0.0),
+                4 => b.angular_drag = value.max(0.0),
+                5 => b.set_constraints(value as u32),
+                6 => b.continuous = on,
+                7 => {
+                    b.interpolation = if on {
+                        crate::scene::Interpolation::Interpolate
+                    } else {
+                        crate::scene::Interpolation::None
+                    }
+                }
                 _ => b.mass = value.max(1e-4),
             }
-            let mass = b.mass;
+            let rb = b.clone();
             drop(b);
             match which {
                 1 => w.physics.set_kinematic(e, on),
                 2 => w.physics.set_use_gravity(e, on),
-                _ => w.physics.set_mass(e, mass),
+                3..=6 => w.physics.apply_body_settings(e, &rb),
+                7 => w.physics.set_interpolate(e, on),
+                _ => w.physics.set_mass(e, rb.mass),
             }
         } else if !out.is_null() {
+            let flag = |on: bool| f32::from(u8::from(on));
             let v = match which {
-                1 => f32::from(u8::from(b.is_kinematic)),
-                2 => f32::from(u8::from(b.use_gravity)),
+                1 => flag(b.is_kinematic),
+                2 => flag(b.use_gravity),
+                3 => b.drag,
+                4 => b.angular_drag,
+                5 => b.constraints() as f32,
+                6 => flag(b.continuous),
+                7 => flag(b.interpolation != crate::scene::Interpolation::None),
                 _ => b.mass,
+            };
+            // SAFETY: `out` points at a float on the C# stack.
+            unsafe { out.write(v) };
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+// ---- character controller ------------------------------------------------------------------
+
+/// Seconds a controller move made from the current callback covers.
+fn move_dt(w: &World) -> f32 {
+    if w.time.delta > 0.0 {
+        w.time.delta
+    } else {
+        w.physics.fixed_dt
+    }
+}
+
+/// `op`: 0 Move(v), 1 SimpleMove(v) (both write isGrounded into `v.x` as 0 / 1), 2 get
+/// velocity, 3 get groundNormal, 4 get center, 5 set center. 1 done, 0 no object or no
+/// Character Controller.
+extern "C" fn character_vec(id: u64, op: i32, v: *mut V3) -> i32 {
+    if v.is_null() {
+        return 0;
+    }
+    // SAFETY: `v` points at a Vector3 on the C# stack.
+    let value = Vec3::from_array(unsafe { *v });
+    // SAFETY: as above.
+    let write = |out: Vec3| unsafe { v.write(out.to_array()) };
+    with_object(id, |w, e| {
+        if w.scene
+            .world
+            .get::<&crate::scene::CharacterController>(e)
+            .is_err()
+        {
+            return 0;
+        }
+        let dt = move_dt(w);
+        match op {
+            0 | 1 => {
+                let World { physics, scene, .. } = w;
+                let grounded = if op == 0 {
+                    physics.move_character(scene, e, value, dt)
+                } else {
+                    physics.simple_move(scene, e, value, dt)
+                };
+                write(Vec3::new(f32::from(u8::from(grounded)), 0.0, 0.0));
+            }
+            2 => write(w.physics.character_velocity(e)),
+            3 => write(w.physics.character_ground_normal(e)),
+            4 => {
+                let c = w
+                    .scene
+                    .world
+                    .get::<&crate::scene::CharacterController>(e)
+                    .map(|c| c.center);
+                write(c.unwrap_or_default());
+            }
+            _ => {
+                if let Ok(mut c) = w
+                    .scene
+                    .world
+                    .get::<&mut crate::scene::CharacterController>(e)
+                {
+                    c.center = value;
+                }
+                let World { physics, scene, .. } = w;
+                physics.set_controller_size(scene, e);
+            }
+        }
+        1
+    })
+    .unwrap_or(0)
+}
+
+/// `Time.timeScale = value`.
+extern "C" fn time_scale(value: f32) {
+    let _ = with_world(|w| w.set_time_scale(value));
+}
+
+/// `which`: 0 isGrounded (read only), 1 height, 2 radius, 3 slopeLimit, 4 stepOffset,
+/// 5 skinWidth, 6 minMoveDistance, 7 slopeSpeed; `set` 0 reads into `out`, 1 writes `value`.
+/// 1 done, 0 no object or no Character Controller.
+extern "C" fn character_scalar(id: u64, which: i32, set: i32, value: f32, out: *mut f32) -> i32 {
+    with_object(id, |w, e| {
+        let grounded = f32::from(u8::from(w.physics.character_grounded(e)));
+        let Ok(mut c) = w
+            .scene
+            .world
+            .get::<&mut crate::scene::CharacterController>(e)
+        else {
+            return 0;
+        };
+        if set != 0 {
+            match which {
+                1 => c.height = value.max(0.01),
+                2 => c.radius = value.max(0.01),
+                3 => c.slope_limit = value.clamp(0.0, 180.0),
+                4 => c.step_offset = value.max(0.0),
+                5 => c.skin_width = value.max(1e-4),
+                6 => c.min_move_distance = value.max(0.0),
+                7 => c.slope_speed = value.clamp(0.0, 1.0),
+                _ => return 1,
+            }
+            drop(c);
+            let World { physics, scene, .. } = w;
+            physics.set_controller_size(scene, e);
+        } else if !out.is_null() {
+            let v = match which {
+                1 => c.height,
+                2 => c.radius,
+                3 => c.slope_limit,
+                4 => c.step_offset,
+                5 => c.skin_width,
+                6 => c.min_move_distance,
+                7 => c.slope_speed,
+                _ => grounded,
             };
             // SAFETY: `out` points at a float on the C# stack.
             unsafe { out.write(v) };
@@ -960,6 +1314,81 @@ extern "C" fn overlap_sphere(
         found.len() as i32
     })
     .unwrap_or(0)
+}
+
+/// Floats [`shape_query`] reads.
+const SHAPE_FLOATS: usize = 15;
+
+/// Box and capsule queries, and sphere checks / sweeps of every hit. `kind`: 0 sphere, 1 box,
+/// 2 capsule. `p` holds 15 floats: position (capsule: first point) xyz, half extents (capsule:
+/// second point) xyz, radius, rotation xyzw, direction xyz, max distance. ops: 0 check (1/0),
+/// 1 overlap (writes up to `cap` ids, returns how many), 2 the first sweep hit (`hits[0]`;
+/// 1/0), 3 every sweep hit (up to `cap`, returns how many). -1 outside a call from the engine
+/// or for a bad op / kind.
+extern "C" fn shape_query(
+    op: i32,
+    kind: i32,
+    p: *const f32,
+    mask: u32,
+    hits: *mut HitData,
+    ids: *mut u64,
+    cap: i32,
+) -> i32 {
+    use crate::physics::QueryShape;
+    if p.is_null() {
+        return -1;
+    }
+    // SAFETY: C# passes 15 floats.
+    let p = unsafe { std::slice::from_raw_parts(p, SHAPE_FLOATS) };
+    let v = |i: usize| Vec3::new(p[i], p[i + 1], p[i + 2]);
+    let (mut center, rot) = (v(0), Quat::from_xyzw(p[7], p[8], p[9], p[10]));
+    let shape = match kind {
+        0 => QueryShape::Sphere { radius: p[6] },
+        1 => QueryShape::Box { half_extents: v(3) },
+        2 => {
+            let (shape, c) = QueryShape::capsule(v(0), v(3), p[6]);
+            center = c;
+            shape
+        }
+        _ => return -1,
+    };
+    let (dir, max) = (v(11), p[14]);
+    let cap = cap.max(0) as usize;
+    with_world(|w| match op {
+        0 => i32::from(w.physics.check(shape, center, rot, mask)),
+        1 => {
+            let found = w.physics.overlap(shape, center, rot, mask);
+            if !ids.is_null() {
+                for (i, e) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `ids` holds `cap` ids on the C# side.
+                    unsafe { ids.add(i).write(id_of(*e)) };
+                }
+            }
+            found.len() as i32
+        }
+        2 => match w.physics.cast(shape, center, rot, dir, max, mask) {
+            Some(h) => {
+                if !hits.is_null() {
+                    // SAFETY: `hits` points at a HitData on the C# stack.
+                    unsafe { hits.write(hit_data(w, &h)) };
+                }
+                1
+            }
+            None => 0,
+        },
+        3 => {
+            let found = w.physics.cast_all(shape, center, rot, dir, max, mask);
+            if !hits.is_null() {
+                for (i, h) in found.iter().take(cap).enumerate() {
+                    // SAFETY: `hits` holds `cap` HitData on the C# side.
+                    unsafe { hits.add(i).write(hit_data(w, h)) };
+                }
+            }
+            found.len() as i32
+        }
+        _ => -1,
+    })
+    .unwrap_or(-1)
 }
 
 /// `set` 0 reads `Physics.gravity` into `v`, 1 sets it from `v`.
@@ -1347,12 +1776,13 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
         let Some(cam) = super::camera_api::camera_of(w, e) else {
             return 0;
         };
-        let s = super::camera_api::screen(w);
-        let aspect = s.x / s.y;
-        // Normalised screen coordinates, y down (what `Camera` works in).
+        // Screen points are measured in the camera's own part of the screen (split screen).
+        let rect = super::camera_api::pixel_rect(w, e);
+        let aspect = rect.1.x / rect.1.y;
+        // Normalised camera coordinates, y down (what `Camera` works in).
         let uv = |p: Vec3, pixels: bool| {
             if pixels {
-                glam::Vec2::new(p.x / s.x, 1.0 - p.y / s.y)
+                super::camera_api::screen_to_uv(rect, p.truncate())
             } else {
                 glam::Vec2::new(p.x, 1.0 - p.y)
             }
@@ -1369,7 +1799,7 @@ extern "C" fn camera_point(id: u64, op: i32, a: *const V3, out: *mut V3, out2: *
                 };
                 let (x, y) = (ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5);
                 let p = if op == 2 {
-                    Vec3::new(x * s.x, y * s.y, depth)
+                    (rect.0 + glam::Vec2::new(x, y) * rect.1).extend(depth)
                 } else {
                     Vec3::new(x, y, depth)
                 };

@@ -21,6 +21,8 @@ pub(super) struct Controller {
     center: Vec3,
     layer: u8,
     grounded: bool,
+    /// Normal of the ground under the capsule after the last move (up while airborne).
+    ground_normal: Vec3,
     velocity: Vec3,
     /// SimpleMove's vertical speed (gravity accumulates while airborne).
     fall: f32,
@@ -62,6 +64,28 @@ impl Controller {
     }
 }
 
+/// Walking speed on a slope relative to flat ground, from Tobler's hiking function
+/// (`6·e^(-3.5·|grade + 0.05|)` km/h): fastest on a gentle 3° descent (~1.19×), slower uphill
+/// and on steep descents. `grade` is rise over run along the walking direction.
+pub fn tobler_factor(grade: f32) -> f32 {
+    ((-3.5 * (grade + 0.05).abs()).exp() / (-3.5f32 * 0.05).exp()).max(0.05)
+}
+
+/// `motion` with its horizontal part scaled for walking over ground with `normal`, blended by
+/// `strength` (0 = unchanged, 1 = Tobler's function).
+pub fn slope_scaled(motion: Vec3, normal: Vec3, strength: f32) -> Vec3 {
+    let strength = strength.clamp(0.0, 1.0);
+    let flat = Vec3::new(motion.x, 0.0, motion.z);
+    let len = flat.length();
+    if strength <= 0.0 || len < 1e-6 || normal.y < 0.1 {
+        return motion;
+    }
+    let dir = flat / len;
+    let grade = -(normal.x * dir.x + normal.z * dir.z) / normal.y;
+    let k = 1.0 + strength * (tobler_factor(grade) - 1.0);
+    Vec3::new(motion.x * k, motion.y, motion.z * k)
+}
+
 impl Physics {
     /// Kinematic body + capsule collider for a Character Controller.
     pub(super) fn add_controller(&mut self, scene: &Scene, e: Entity, cc: CharacterController) {
@@ -71,6 +95,7 @@ impl Physics {
         let handle = self.world.insert_body(
             rp::RigidBodyBuilder::kinematic_position_based()
                 .pose(pose(pos, rot))
+                .user_data(super::body_tag(e))
                 .build(),
         );
         self.owners.insert(e);
@@ -104,6 +129,7 @@ impl Physics {
                 shape,
                 layer,
                 grounded: false,
+                ground_normal: Vec3::Y,
                 velocity: Vec3::ZERO,
                 fall: 0.0,
             },
@@ -153,6 +179,14 @@ impl Physics {
         self.controllers.get(&e).is_some_and(|c| c.grounded)
     }
 
+    /// CharacterController.groundNormal: the ground's normal under the controller after the
+    /// last move (up while airborne).
+    pub fn character_ground_normal(&self, e: Entity) -> Vec3 {
+        self.controllers
+            .get(&e)
+            .map_or(Vec3::Y, |c| c.ground_normal)
+    }
+
     /// CharacterController.velocity: the last move's displacement per second.
     pub fn character_velocity(&self, e: Entity) -> Vec3 {
         self.controllers.get(&e).map_or(Vec3::ZERO, |c| c.velocity)
@@ -170,6 +204,11 @@ impl Physics {
         if motion.length() < c.settings.min_move_distance {
             return c.grounded;
         }
+        let motion = if c.grounded {
+            slope_scaled(motion, c.ground_normal, c.settings.slope_speed)
+        } else {
+            motion
+        };
         let (pos, rot, _) = world_pose(scene, e);
         let mask = self.settings.collision_mask(c.layer);
         let test = move |_: rp::ColliderHandle, col: &rp::Collider| {
@@ -180,17 +219,68 @@ impl Physics {
             .exclude_sensors()
             .predicate(&test);
         let mut hits = Vec::new();
-        let moved = c.kcc().move_shape(
-            dt.max(1e-4),
-            &self.world.query_pipeline_with_filter(filter),
-            &*c.shape,
-            &pose(pos + rot * c.center, rot),
-            rv(motion),
-            |hit| hits.push(hit),
-        );
-        let t = gv(moved.translation);
-        let grounded = moved.grounded;
+        let kcc = c.kcc();
+        let queries = self.world.query_pipeline_with_filter(filter);
+        let start = pos + rot * c.center;
+        let cast = |from: Vec3, m: Vec3, hits: &mut Vec<_>| {
+            kcc.move_shape(
+                dt.max(1e-4),
+                &queries,
+                &*c.shape,
+                &pose(from, rot),
+                rv(m),
+                |hit| hits.push(hit),
+            )
+        };
+        // A grounded move that also pushes down (`vy = -2` style gravity) can stall: in one cast
+        // rapier's controller hits the floor it already touches at distance 0 and may use up its
+        // iterations without moving (a dropped frame), and on ramps it often walks only about
+        // half the asked distance. When the single cast lost more than half of the walk, also
+        // try walking first and then going down, and keep that only if it got further along
+        // the asked direction (a horizontal walk at a wall or ramp foot can do worse).
+        let walk = Vec3::new(motion.x, 0.0, motion.z);
+        let moved = cast(start, motion, &mut hits);
+        let mut t = gv(moved.translation);
+        let mut grounded = moved.grounded;
+        let want = walk.length();
+        // Progress along the asked direction (a slide sideways along a wall doesn't count).
+        let dir = walk.normalize_or_zero();
+        let walked = |t: Vec3| Vec3::new(t.x, 0.0, t.z).dot(dir);
+        if c.grounded && motion.y < 0.0 && want > 1e-5 && walked(t) < want * 0.5 {
+            let mut split_hits = Vec::new();
+            let step = cast(start, walk, &mut split_hits);
+            let walk_t = gv(step.translation);
+            let down = cast(
+                start + walk_t,
+                Vec3::new(0.0, motion.y, 0.0),
+                &mut split_hits,
+            );
+            let split_t = walk_t + gv(down.translation);
+            if walked(split_t) > walked(t) {
+                t = split_t;
+                grounded = down.grounded;
+                hits = split_hits;
+            }
+        }
         let handle = c.handle;
+        let ground_normal = if grounded {
+            // Straight down from the capsule's centre, a little past its feet and step reach.
+            let reach = c
+                .shape
+                .as_capsule()
+                .map_or(1.0, |cap| cap.half_height() + cap.radius)
+                + c.settings.step_offset.max(0.0)
+                + c.settings.skin_width.max(1e-4)
+                + 0.05;
+            let ray = rp::Ray::new(rv(pos + rot * c.center + t), rv(Vec3::NEG_Y));
+            self.world
+                .cast_ray_and_get_normal(&ray, reach, true, filter)
+                .map(|(_, hit)| gv(hit.normal))
+                .filter(|n| n.y > 0.1)
+                .unwrap_or(Vec3::Y)
+        } else {
+            Vec3::Y
+        };
 
         let new_pos = pos + t;
         scene.set_world_position(e, new_pos);
@@ -217,6 +307,7 @@ impl Physics {
         }
         if let Some(c) = self.controllers.get_mut(&e) {
             c.grounded = grounded;
+            c.ground_normal = ground_normal;
             c.velocity = if dt > 0.0 { t / dt } else { Vec3::ZERO };
         }
         grounded

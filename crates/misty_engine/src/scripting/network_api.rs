@@ -1529,10 +1529,8 @@ impl ScriptHost {
             };
             let scene = &w.scene;
             scene
-                .walk()
+                .walk_under(Some(root))
                 .into_iter()
-                .map(|(e, _)| e)
-                .filter(|e| scene.is_ancestor(root, *e))
                 // Scripts under a nested Network Object belong to that one.
                 .filter(|e| network_object_entity(scene, *e) == Some(root))
                 .flat_map(|e| {

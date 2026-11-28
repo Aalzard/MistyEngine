@@ -345,13 +345,26 @@ impl Audio {
     /// Play every enabled, active source with Play On Awake that isn't playing yet
     /// (only under `root`, for objects created while playing).
     pub fn play_on_awake(&mut self, scene: &Scene, root: Option<Entity>) {
-        let awake: Vec<Entity> = scene
-            .world
-            .query::<(Entity, &AudioSource)>()
-            .iter()
-            .filter(|(e, s)| s.play_on_awake && root.is_none_or(|r| scene.is_ancestor(r, *e)))
-            .map(|(e, _)| e)
-            .collect();
+        let awake: Vec<Entity> = match root {
+            // Spawned objects: only theirs (not every source in the scene per spawn).
+            Some(_) => scene
+                .walk_under(root)
+                .into_iter()
+                .filter(|e| {
+                    scene
+                        .world
+                        .get::<&AudioSource>(*e)
+                        .is_ok_and(|s| s.play_on_awake)
+                })
+                .collect(),
+            None => scene
+                .world
+                .query::<(Entity, &AudioSource)>()
+                .iter()
+                .filter(|(_, s)| s.play_on_awake)
+                .map(|(e, _)| e)
+                .collect(),
+        };
         for e in awake {
             if !self.sources.contains_key(&e) {
                 self.play(scene, e);

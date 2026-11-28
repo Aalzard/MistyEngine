@@ -76,13 +76,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#ragdoll">Ragdoll</a></li>
 <li><a href="#recorder">Recorder</a></li>
 <li><a href="#rendersettings">RenderSettings</a></li>
+<li><a href="#rigidbodyconstraints">RigidbodyConstraints</a></li>
 <li><a href="#rpctarget">RpcTarget</a></li>
 <li><a href="#savesystem">SaveSystem</a></li>
 <li><a href="#scenemanager">SceneManager</a></li>
 <li><a href="#screen">Screen</a></li>
+<li><a href="#screencapture">ScreenCapture</a></li>
 <li><a href="#sendmessageoptions">SendMessageOptions</a></li>
 <li><a href="#terrain">Terrain</a></li>
 <li><a href="#time">Time</a></li>
+<li><a href="#transformgroup">TransformGroup</a></li>
 <li><a href="#vector2">Vector2</a></li>
 <li><a href="#vector3">Vector3</a></li>
 <li><a href="#water">Water</a></li>
@@ -152,6 +155,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <li><a href="#type-togglegroup">ToggleGroup (object)</a></li>
 <li><a href="#type-touchscreen">Touchscreen (object)</a></li>
 <li><a href="#type-transform">Transform (object)</a></li>
+<li><a href="#type-transformgroup">TransformGroup (object)</a></li>
 <li><a href="#type-uievent">UiEvent (object)</a></li>
 <li><a href="#type-vector3">Vector3 (object)</a></li>
 <li><a href="#type-videoplayer">VideoPlayer (object)</a></li>
@@ -300,6 +304,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Application.isEditor</div>
 <div class="meta">property · source: <code>api.rs</code></div>
 <p>True in the editor's Play mode</p>
+</div>
+<div class="entry" data-key="application.persistentdatapath a folder the game can always write to (project folder in the editor)">
+<div class="sig">Application.persistentDataPath</div>
+<div class="meta">property</div>
+<p>A folder the game can always write to (project folder in the editor)</p>
 </div>
 </section>
 <section id="assets">
@@ -935,6 +944,77 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <section id="physics">
 <h2>Physics</h2>
 <p>Raycasts and overlap queries</p>
+<div class="entry" data-key="physics.boxcast(center, halfextents, direction [, orientation [, maxdistance [, layermask]]]) first hit of a box swept along a direction, or nil">
+<div class="sig">Physics.BoxCast(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])</div>
+<div class="meta">function</div>
+<p>First hit of a box swept along a direction, or nil</p>
+</div>
+<div class="entry" data-key="physics.boxcastall(center, halfextents, direction [, orientation [, maxdistance [, layermask]]]) every hit of a box sweep, nearest first">
+<div class="sig">Physics.BoxCastAll(center, halfExtents, direction [, orientation [, maxDistance [, layerMask]]])</div>
+<div class="meta">function</div>
+<p>Every hit of a box sweep, nearest first</p>
+</div>
+<div class="entry" data-key="physics.capsulecast(point1, point2, radius, direction [, maxdistance [, layermask]]) first hit of a capsule swept along a direction, or nil">
+<div class="sig">Physics.CapsuleCast(point1, point2, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>First hit of a capsule swept along a direction, or nil</p>
+</div>
+<div class="entry" data-key="physics.capsulecastall(point1, point2, radius, direction [, maxdistance [, layermask]]) every hit of a capsule sweep, nearest first">
+<div class="sig">Physics.CapsuleCastAll(point1, point2, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>Every hit of a capsule sweep, nearest first</p>
+</div>
+<div class="entry" data-key="physics.checkbox(center, halfextents [, orientation [, layermask]]) true when any collider touches the box (orientation: euler degrees)">
+<div class="sig">Physics.CheckBox(center, halfExtents [, orientation [, layerMask]])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the box (orientation: Euler degrees)</p>
+</div>
+<div class="entry" data-key="physics.checkcapsule(start, end, radius [, layermask]) true when any collider touches the capsule">
+<div class="sig">Physics.CheckCapsule(start, end, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the capsule</p>
+</div>
+<div class="entry" data-key="physics.checksphere(position, radius [, layermask]) true when any collider touches the sphere">
+<div class="sig">Physics.CheckSphere(position, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>True when any collider touches the sphere</p>
+</div>
+<div class="entry" data-key="physics.closestpoint(point, gameobject) nearest point on the object's colliders (the point itself when inside)">
+<div class="sig">Physics.ClosestPoint(point, gameObject)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Nearest point on the object's colliders (the point itself when inside)</p>
+<p class="notes">ClosestPoint(point, gameObject): on the object's colliders (the point itself inside).</p>
+</div>
+<div class="entry" data-key="physics.getignorecollision(goa, gob) true when the two objects ignore each other">
+<div class="sig">Physics.GetIgnoreCollision(goA, goB)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>True when the two objects ignore each other</p>
+</div>
+<div class="entry" data-key="physics.getignorelayercollision(layera, layerb) true when the two layers ignore each other">
+<div class="sig">Physics.GetIgnoreLayerCollision(layerA, layerB)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>True when the two layers ignore each other</p>
+</div>
+<div class="entry" data-key="physics.ignorecollision(goa, gob [, ignore]) stop (or with false, restart) contacts between two objects">
+<div class="sig">Physics.IgnoreCollision(goA, goB [, ignore])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Stop (or with false, restart) contacts between two objects</p>
+</div>
+<div class="entry" data-key="physics.ignorelayercollision(layera, layerb [, ignore]) stop (or restart) contacts between two layers">
+<div class="sig">Physics.IgnoreLayerCollision(layerA, layerB [, ignore])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Stop (or restart) contacts between two layers</p>
+</div>
+<div class="entry" data-key="physics.overlapbox(center, halfextents [, orientation [, layermask]]) gameobjects touching a box">
+<div class="sig">Physics.OverlapBox(center, halfExtents [, orientation [, layerMask]])</div>
+<div class="meta">function</div>
+<p>GameObjects touching a box</p>
+</div>
+<div class="entry" data-key="physics.overlapcapsule(point0, point1, radius [, layermask]) gameobjects touching a capsule">
+<div class="sig">Physics.OverlapCapsule(point0, point1, radius [, layerMask])</div>
+<div class="meta">function</div>
+<p>GameObjects touching a capsule</p>
+</div>
 <div class="entry" data-key="physics.overlapsphere(center, radius [, layermask]) gameobjects touching a sphere">
 <div class="sig">Physics.OverlapSphere(center, radius [, layerMask])</div>
 <div class="meta">function · source: <code>physics_api.rs</code></div>
@@ -954,6 +1034,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Physics.SphereCast(origin, radius, direction [, maxDistance [, layerMask]])</div>
 <div class="meta">function · source: <code>physics_api.rs</code></div>
 <p>Like Raycast with a sphere</p>
+</div>
+<div class="entry" data-key="physics.spherecastall(origin, radius, direction [, maxdistance [, layermask]]) every hit of a sphere sweep, nearest first">
+<div class="sig">Physics.SphereCastAll(origin, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function</div>
+<p>Every hit of a sphere sweep, nearest first</p>
 </div>
 <div class="entry" data-key="physics.alllayers every layer">
 <div class="sig">Physics.AllLayers</div>
@@ -1417,6 +1502,59 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p>Star field brightness at night (0 = none)</p>
 </div>
 </section>
+<section id="rigidbodyconstraints">
+<h2>RigidbodyConstraints</h2>
+<div class="entry" data-key="rigidbodyconstraints.freezeall freeze everything">
+<div class="sig">RigidbodyConstraints.FreezeAll</div>
+<div class="meta">property</div>
+<p>Freeze everything</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezeposition freeze all movement">
+<div class="sig">RigidbodyConstraints.FreezePosition</div>
+<div class="meta">property</div>
+<p>Freeze all movement</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositionx freeze x movement (2)">
+<div class="sig">RigidbodyConstraints.FreezePositionX</div>
+<div class="meta">property</div>
+<p>Freeze X movement (2)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositiony freeze y movement (4)">
+<div class="sig">RigidbodyConstraints.FreezePositionY</div>
+<div class="meta">property</div>
+<p>Freeze Y movement (4)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezepositionz freeze z movement (8)">
+<div class="sig">RigidbodyConstraints.FreezePositionZ</div>
+<div class="meta">property</div>
+<p>Freeze Z movement (8)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotation freeze all turning">
+<div class="sig">RigidbodyConstraints.FreezeRotation</div>
+<div class="meta">property</div>
+<p>Freeze all turning</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationx freeze turning around x (16)">
+<div class="sig">RigidbodyConstraints.FreezeRotationX</div>
+<div class="meta">property</div>
+<p>Freeze turning around X (16)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationy freeze turning around y (32)">
+<div class="sig">RigidbodyConstraints.FreezeRotationY</div>
+<div class="meta">property</div>
+<p>Freeze turning around Y (32)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.freezerotationz freeze turning around z (64)">
+<div class="sig">RigidbodyConstraints.FreezeRotationZ</div>
+<div class="meta">property</div>
+<p>Freeze turning around Z (64)</p>
+</div>
+<div class="entry" data-key="rigidbodyconstraints.none nothing frozen (0)">
+<div class="sig">RigidbodyConstraints.None</div>
+<div class="meta">property</div>
+<p>Nothing frozen (0)</p>
+</div>
+</section>
 <section id="rpctarget">
 <h2>RpcTarget</h2>
 <div class="entry" data-key="rpctarget.client(id) ">
@@ -1553,6 +1691,13 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property · source: <code>app_api.rs</code></div>
 </div>
 </section>
+<section id="screencapture">
+<h2>ScreenCapture</h2>
+<div class="entry" data-key="screencapture.capturescreenshot(name, [size]) ">
+<div class="sig">ScreenCapture.CaptureScreenshot(name, [size])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+</div>
+</section>
 <section id="sendmessageoptions">
 <h2>SendMessageOptions</h2>
 <div class="entry" data-key="sendmessageoptions.dontrequirereceiver ">
@@ -1610,6 +1755,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Time.unscaledDeltaTime</div>
 <div class="meta">property · source: <code>api.rs</code></div>
 <p>Frame time ignoring timeScale</p>
+</div>
+</section>
+<section id="transformgroup">
+<h2>TransformGroup</h2>
+<p>Move many objects from one script: positions and rotations as flat lists of numbers</p>
+<div class="entry" data-key="transformgroup.new([objects]) a new group, with the gameobjects or transforms of a list already in it">
+<div class="sig">TransformGroup.new([objects])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>A new group, with the GameObjects or Transforms of a list already in it</p>
+<p class="notes"><code>TransformGroup.new([objects])</code>: a group, with the objects of a list already in it.</p>
 </div>
 </section>
 <section id="vector2">
@@ -2081,6 +2236,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">function · source: <code>animator_api.rs</code></div>
 <p class="notes">CrossFadeInFixedTime(state, seconds [, layer [, normalizedOffset]]).</p>
 </div>
+<div class="entry" data-key="animator:getbonetransform(bone) ">
+<div class="sig">animator:GetBoneTransform(bone)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">The Transform of a human bone (nil when the rig has none).</p>
+</div>
 <div class="entry" data-key="animator:getbool(name) read a bool parameter">
 <div class="sig">animator:GetBool(name)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
@@ -2095,6 +2255,31 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">animator:GetFloat(name)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
 <p>Read a float parameter</p>
+</div>
+<div class="entry" data-key="animator:getikhintposition(hint) ">
+<div class="sig">animator:GetIKHintPosition(hint)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikhintpositionweight(hint) ">
+<div class="sig">animator:GetIKHintPositionWeight(hint)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikposition(goal) ">
+<div class="sig">animator:GetIKPosition(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">The goal set this frame, or where the animation put the hand / foot.</p>
+</div>
+<div class="entry" data-key="animator:getikpositionweight(goal) ">
+<div class="sig">animator:GetIKPositionWeight(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikrotation(goal) ">
+<div class="sig">animator:GetIKRotation(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getikrotationweight(goal) ">
+<div class="sig">animator:GetIKRotationWeight(goal)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
 </div>
 <div class="entry" data-key="animator:getinteger(name) read an int parameter">
 <div class="sig">animator:GetInteger(name)</div>
@@ -2154,6 +2339,36 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p>Set a float parameter</p>
 <p class="notes">SetFloat(name, value [, dampTime, deltaTime]).</p>
 </div>
+<div class="entry" data-key="animator:setikhintposition(hint, position) ">
+<div class="sig">animator:SetIKHintPosition(hint, position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">Where the elbow / knee should point (with SetIKHintPositionWeight &gt; 0).</p>
+</div>
+<div class="entry" data-key="animator:setikhintpositionweight(hint, weight) ">
+<div class="sig">animator:SetIKHintPositionWeight(hint, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how much the hint turns the limb's bend.</p>
+</div>
+<div class="entry" data-key="animator:setikposition(goal, position) ">
+<div class="sig">animator:SetIKPosition(goal, position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">World position the hand / foot reaches for (with SetIKPositionWeight &gt; 0; call in OnAnimatorIK).</p>
+</div>
+<div class="entry" data-key="animator:setikpositionweight(goal, weight) ">
+<div class="sig">animator:SetIKPositionWeight(goal, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how far from the animated pose towards the goal position (reset to 0 every frame).</p>
+</div>
+<div class="entry" data-key="animator:setikrotation(goal, euler) ">
+<div class="sig">animator:SetIKRotation(goal, euler)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">Effector rotation (Euler degrees) the hand / foot turns to; identity = the Avatar's rest pose.</p>
+</div>
+<div class="entry" data-key="animator:setikrotationweight(goal, weight) ">
+<div class="sig">animator:SetIKRotationWeight(goal, weight)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">0 … 1: how far from the animated rotation towards the goal rotation (reset every frame).</p>
+</div>
 <div class="entry" data-key="animator:setinteger(name, value) set an int parameter">
 <div class="sig">animator:SetInteger(name, value)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
@@ -2162,6 +2377,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="entry" data-key="animator:setlayerweight(layer, weight) ">
 <div class="sig">animator:SetLayerWeight(layer, weight)</div>
 <div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:setlookatposition(position) ">
+<div class="sig">animator:SetLookAtPosition(position)</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">World point the head (and with body weight the spine) turns towards.</p>
+</div>
+<div class="entry" data-key="animator:setlookatweight(weight, [body], [head], [eyes], [clamp]) ">
+<div class="sig">animator:SetLookAtWeight(weight, [body], [head], [eyes], [clamp])</div>
+<div class="meta">function · source: <code>animator_ik_api.rs</code></div>
+<p class="notes">SetLookAtWeight(weight [, bodyWeight = 0, headWeight = 1, eyesWeight = 0, clampWeight = 0.5]).</p>
 </div>
 <div class="entry" data-key="animator:settrigger(name) set a trigger">
 <div class="sig">animator:SetTrigger(name)</div>
@@ -2566,6 +2791,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">characterController.gameObject</div>
 <div class="meta">property · source: <code>physics_api.rs</code></div>
 </div>
+<div class="entry" data-key="charactercontroller.groundnormal normal of the ground under the capsule (up while airborne)">
+<div class="sig">characterController.groundNormal</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Normal of the ground under the capsule (up while airborne)</p>
+</div>
 <div class="entry" data-key="charactercontroller.height capsule height">
 <div class="sig">characterController.height</div>
 <div class="meta">property (read / write) · source: <code>physics_api.rs</code></div>
@@ -2589,6 +2819,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">characterController.slopeLimit</div>
 <div class="meta">property · source: <code>physics_api.rs</code></div>
 <p>Steepest climbable slope</p>
+</div>
+<div class="entry" data-key="charactercontroller.slopespeed how much walking speed follows the incline (0–1, like people hiking)">
+<div class="sig">characterController.slopeSpeed</div>
+<div class="meta">property (read / write) · source: <code>physics_api.rs</code></div>
+<p>How much walking speed follows the incline (0–1, like people hiking)</p>
 </div>
 <div class="entry" data-key="charactercontroller.stepoffset highest climbable step">
 <div class="sig">characterController.stepOffset</div>
@@ -3662,6 +3897,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">rebind:Start(r)</div>
 <div class="meta">function · source: <code>input_actions_api.rs</code></div>
 </div>
+<div class="entry" data-key="rebind:withbindinggroup(r, group) ">
+<div class="sig">rebind:WithBindingGroup(r, group)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
 <div class="entry" data-key="rebind:withcancelingthrough(r, path) ">
 <div class="sig">rebind:WithCancelingThrough(r, path)</div>
 <div class="meta">function · source: <code>input_actions_api.rs</code></div>
@@ -3720,15 +3959,48 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 </section>
 <section id="type-rigidbody">
 <h2>Rigidbody (object)</h2>
+<div class="entry" data-key="rigidbody:addexplosionforce(force, position, radius [, upwardsmodifier [, mode]]) push away from a point, weaker with distance">
+<div class="sig">rigidbody:AddExplosionForce(force, position, radius [, upwardsModifier [, mode]])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Push away from a point, weaker with distance</p>
+<p class="notes">AddExplosionForce(force, position, radius[, upwardsModifier, mode])</p>
+</div>
 <div class="entry" data-key="rigidbody:addforce(v [, mode]) apply a force (forcemode.force by default)">
 <div class="sig">rigidbody:AddForce(v [, mode])</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Apply a force (ForceMode.Force by default)</p>
 </div>
+<div class="entry" data-key="rigidbody:addforceatposition(force, position [, mode]) push at a world point (also turns the body)">
+<div class="sig">rigidbody:AddForceAtPosition(force, position [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Push at a world point (also turns the body)</p>
+<p class="notes">AddForceAtPosition(force, position[, mode]): also turns the body.</p>
+</div>
+<div class="entry" data-key="rigidbody:addrelativeforce(v [, mode]) apply a force in the body's local axes">
+<div class="sig">rigidbody:AddRelativeForce(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a force in the body's local axes</p>
+</div>
+<div class="entry" data-key="rigidbody:addrelativetorque(v [, mode]) apply a torque in the body's local axes">
+<div class="sig">rigidbody:AddRelativeTorque(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a torque in the body's local axes</p>
+</div>
 <div class="entry" data-key="rigidbody:addtorque(v [, mode]) apply a torque">
 <div class="sig">rigidbody:AddTorque(v [, mode])</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Apply a torque</p>
+</div>
+<div class="entry" data-key="rigidbody:getpointvelocity(worldpoint) velocity of the body at a world point (spin included)">
+<div class="sig">rigidbody:GetPointVelocity(worldPoint)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Velocity of the body at a world point (spin included)</p>
+<p class="notes">GetPointVelocity(worldPoint): the body's velocity at that point (spin included).</p>
+</div>
+<div class="entry" data-key="rigidbody:issleeping() true while the body sleeps">
+<div class="sig">rigidbody:IsSleeping()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True while the body sleeps</p>
 </div>
 <div class="entry" data-key="rigidbody:moveposition(v) move a kinematic body">
 <div class="sig">rigidbody:MovePosition(v)</div>
@@ -3742,10 +4014,41 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p>Rotate a kinematic body</p>
 <p class="notes">MoveRotation(euler): Euler angles in degrees (there is no Quaternion type).</p>
 </div>
+<div class="entry" data-key="rigidbody:sleep() put the body to sleep until something touches it">
+<div class="sig">rigidbody:Sleep()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Put the body to sleep until something touches it</p>
+</div>
+<div class="entry" data-key="rigidbody:wakeup() wake a sleeping body">
+<div class="sig">rigidbody:WakeUp()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Wake a sleeping body</p>
+</div>
+<div class="entry" data-key="rigidbody.angulardrag angular damping (settable)">
+<div class="sig">rigidbody.angularDrag</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Angular damping (settable)</p>
+</div>
 <div class="entry" data-key="rigidbody.angularvelocity angular velocity">
 <div class="sig">rigidbody.angularVelocity</div>
 <div class="meta">property (read / write) · source: <code>api.rs</code></div>
 <p>Angular velocity</p>
+</div>
+<div class="entry" data-key="rigidbody.constraints rigidbodyconstraints bits: frozen position/rotation axes (settable)">
+<div class="sig">rigidbody.constraints</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>RigidbodyConstraints bits: frozen position/rotation axes (settable)</p>
+<p class="notes">RigidbodyConstraints bits (FreezePositionX = 2 … FreezeRotationZ = 64).</p>
+</div>
+<div class="entry" data-key="rigidbody.drag linear damping (settable)">
+<div class="sig">rigidbody.drag</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Linear damping (settable)</p>
+</div>
+<div class="entry" data-key="rigidbody.freezerotation stop all turning (settable)">
+<div class="sig">rigidbody.freezeRotation</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Stop all turning (settable)</p>
 </div>
 <div class="entry" data-key="rigidbody.gameobject ">
 <div class="sig">rigidbody.gameObject</div>
@@ -3775,6 +4078,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">rigidbody.velocity</div>
 <div class="meta">property (read / write) · source: <code>api.rs</code></div>
 <p>Linear velocity</p>
+</div>
+<div class="entry" data-key="rigidbody.worldcenterofmass centre of mass in world space">
+<div class="sig">rigidbody.worldCenterOfMass</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Centre of mass in world space</p>
 </div>
 </section>
 <section id="type-rigidbody2d">
@@ -4428,6 +4736,71 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">transform.up</div>
 <div class="meta">property</div>
 <p>Green axis in world space</p>
+</div>
+</section>
+<section id="type-transformgroup">
+<h2>TransformGroup (object)</h2>
+<div class="entry" data-key="transformgroup:add(object) add a gameobject or transform; returns its place (from 1)">
+<div class="sig">transformGroup:Add(object)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Add a GameObject or Transform; returns its place (from 1)</p>
+<p class="notes"><code>Add(object)</code>: its place in the group (from 1).</p>
+</div>
+<div class="entry" data-key="transformgroup:clear() empty the group">
+<div class="sig">transformGroup:Clear()</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Empty the group</p>
+</div>
+<div class="entry" data-key="transformgroup:get(i) the gameobject at place i (nil when destroyed)">
+<div class="sig">transformGroup:Get(i)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>The GameObject at place i (nil when destroyed)</p>
+<p class="notes"><code>Get(i)</code>: the object at place <code>i</code> (nil outside the group or when destroyed).</p>
+</div>
+<div class="entry" data-key="transformgroup:getpositions([list]) world positions as x, y, z per object, into the list (reuse it every frame)">
+<div class="sig">transformGroup:GetPositions([list])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>World positions as x, y, z per object, into the list (reuse it every frame)</p>
+<p class="notes">World positions as <code>x, y, z</code> per object.</p>
+</div>
+<div class="entry" data-key="transformgroup:getrotations([list]) world rotations as a quaternion x, y, z, w per object">
+<div class="sig">transformGroup:GetRotations([list])</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>World rotations as a quaternion x, y, z, w per object</p>
+<p class="notes">World rotations as a quaternion <code>x, y, z, w</code> per object.</p>
+</div>
+<div class="entry" data-key="transformgroup:lookalong(directions) turn every object to face its direction x, y, z (zero: unchanged)">
+<div class="sig">transformGroup:LookAlong(directions)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Turn every object to face its direction x, y, z (zero: unchanged)</p>
+<p class="notes"><code>LookAlong(directions)</code>: turn every object to face its direction <code>x, y, z</code> (like <code>transform:LookAt(position + direction)</code>); a zero direction leaves it as it is.</p>
+</div>
+<div class="entry" data-key="transformgroup:prune() drop destroyed objects; returns the freed places, each filled by the then-last object">
+<div class="sig">transformGroup:Prune()</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Drop destroyed objects; returns the freed places, each filled by the then-last object</p>
+<p class="notes"><code>Prune()</code>: drop destroyed objects. Returns the freed places in the order they were filled, each by the object that was last at that moment: <code>for _, i in ipairs(group:Prune()) do mine[i] = mine[#mine]; mine[#mine] = nil end</code>.</p>
+</div>
+<div class="entry" data-key="transformgroup:removeat(i) remove place i; the last object moves into it">
+<div class="sig">transformGroup:RemoveAt(i)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Remove place i; the last object moves into it</p>
+<p class="notes"><code>RemoveAt(i)</code>: the last object takes place <code>i</code> (do the same with your own lists).</p>
+</div>
+<div class="entry" data-key="transformgroup:setpositions(list) set world positions from x, y, z per object">
+<div class="sig">transformGroup:SetPositions(list)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Set world positions from x, y, z per object</p>
+</div>
+<div class="entry" data-key="transformgroup:setrotations(list) set world rotations from a quaternion x, y, z, w per object">
+<div class="sig">transformGroup:SetRotations(list)</div>
+<div class="meta">function · source: <code>transform_group_api.rs</code></div>
+<p>Set world rotations from a quaternion x, y, z, w per object</p>
+</div>
+<div class="entry" data-key="transformgroup.count how many objects are in the group (also #group)">
+<div class="sig">transformGroup.count</div>
+<div class="meta">property · source: <code>transform_group_api.rs</code></div>
+<p>How many objects are in the group (also #group)</p>
 </div>
 </section>
 <section id="type-uievent">

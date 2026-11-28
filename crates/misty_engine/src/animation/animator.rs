@@ -27,6 +27,9 @@ use crate::scene::{Animator, Scene};
 
 pub use super::fsm::exit_time_reached;
 
+#[path = "animator_ik_pass.rs"]
+mod ik_pass;
+
 type Key = (Entity, Property);
 /// Sampled property values.
 type Pose = HashMap<Key, f32>;
@@ -476,6 +479,10 @@ pub struct AnimatorPlayer {
     moves: Vec<RootMove>,
     /// Instances moved onto a new controller version so far.
     rebinds: u64,
+    /// Goals of the IK pass (`OnAnimatorIK`), see `animator_ik_pass.rs`.
+    pub ik: crate::rigging::animator_ik::AnimatorIkState,
+    /// This frame's per-layer poses of Animators with IK Pass layers (`animator_ik_pass.rs`).
+    ik_frames: HashMap<Entity, ik_pass::IkFrame>,
 }
 
 impl AnimatorPlayer {
@@ -497,6 +504,8 @@ impl AnimatorPlayer {
             script_moves: HashSet::new(),
             moves: Vec::new(),
             rebinds: 0,
+            ik: Default::default(),
+            ik_frames: HashMap::new(),
         }
     }
 
@@ -1017,6 +1026,7 @@ impl AnimatorPlayer {
         self.instances.retain(|e, _| scene.contains(*e));
         self.defaults.retain(|(e, _), _| scene.contains(*e));
         self.moves.clear();
+        self.ik_frames.clear();
         let animators: Vec<(Entity, Animator)> = scene
             .world
             .query::<(Entity, &Animator)>()
@@ -1200,6 +1210,9 @@ impl AnimatorPlayer {
         let runs: Vec<LayerRun> = inst.layers.clone();
         // Taken for the frame and put back below.
         let mut frozen_poses = std::mem::take(&mut inst.frozen_poses);
+        // Controllers with IK Pass layers keep each layer's pose for the per-layer IK pass.
+        let stacking = ctrl.base_ik_pass || ctrl.layers.iter().any(|l| l.ik_pass);
+        let mut stack: Vec<ik_pass::IkLayerPose> = Vec::new();
         let Self {
             assets, defaults, ..
         } = self;
@@ -1259,6 +1272,9 @@ impl AnimatorPlayer {
             let refs: Vec<(&Pose, f32)> = poses.iter().map(|(p, w)| (p, *w)).collect();
             let pose = blend(&refs, &mut rest);
             let Some(below) = result.as_mut() else {
+                if stacking {
+                    stack.push(ik_pass::IkLayerPose::new(l, &pose, weight, None));
+                }
                 result = Some(pose);
                 continue;
             };
@@ -1274,6 +1290,14 @@ impl AnimatorPlayer {
                     .collect();
                 let rrefs: Vec<(&Pose, f32)> = reference.iter().map(|(p, w)| (p, *w)).collect();
                 let reference = blend(&rrefs, &mut rest);
+                if stacking {
+                    stack.push(ik_pass::IkLayerPose::new(
+                        l,
+                        &pose,
+                        weight,
+                        Some(&reference),
+                    ));
+                }
                 for (k, v) in pose {
                     let base = match below.get(&k) {
                         Some(b) => *b,
@@ -1283,6 +1307,9 @@ impl AnimatorPlayer {
                     below.insert(k, base + weight * (v - r));
                 }
             } else {
+                if stacking {
+                    stack.push(ik_pass::IkLayerPose::new(l, &pose, weight, None));
+                }
                 for (k, v) in pose {
                     let base = match below.get(&k) {
                         Some(b) => *b,
@@ -1295,6 +1322,9 @@ impl AnimatorPlayer {
         let result = result.unwrap_or_default();
         if let Some(inst) = self.instances.get_mut(&e) {
             inst.frozen_poses = frozen_poses;
+        }
+        if stacking {
+            self.ik_frames.insert(e, ik_pass::IkFrame::new(stack));
         }
         let mut keys: Vec<Key> = result.keys().copied().collect();
         keys.sort_by_key(|(e, p)| (e.to_bits(), *p));

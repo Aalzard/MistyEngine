@@ -726,6 +726,27 @@ pub enum Interpolation {
     Interpolate,
 }
 
+impl Rigidbody {
+    /// The freeze flags as Unity's `RigidbodyConstraints` bits (FreezePositionX = 2, Y = 4,
+    /// Z = 8, FreezeRotationX = 16, Y = 32, Z = 64).
+    pub fn constraints(&self) -> u32 {
+        self.freeze_position
+            .iter()
+            .chain(&self.freeze_rotation)
+            .enumerate()
+            .filter(|(_, on)| **on)
+            .fold(0, |bits, (i, _)| bits | (2 << i))
+    }
+
+    /// Set the freeze flags from `RigidbodyConstraints` bits (see `constraints`).
+    pub fn set_constraints(&mut self, bits: u32) {
+        for i in 0..3 {
+            self.freeze_position[i] = bits & (2 << i) != 0;
+            self.freeze_rotation[i] = bits & (16 << i) != 0;
+        }
+    }
+}
+
 impl Default for Rigidbody {
     fn default() -> Self {
         Self {

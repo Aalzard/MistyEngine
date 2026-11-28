@@ -241,6 +241,8 @@ impl UserData for LAnimator {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // The IK pass (OnAnimatorIK): animator_ik_api.rs.
+        super::animator_ik_api::add_methods(m);
         // SetFloat(name, value [, dampTime, deltaTime]).
         m.add_method(
             "SetFloat",

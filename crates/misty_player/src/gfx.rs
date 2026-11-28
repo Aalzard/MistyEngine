@@ -142,7 +142,12 @@ impl Gfx {
             ui,
             color_filter: Default::default(),
             target,
-            split: Default::default(),
+            split: {
+                // Like the game's own draw list: static objects in merged batches.
+                let mut s = misty_engine::split_screen::SplitScreen::new();
+                s.set_static_batching(true);
+                s
+            },
             layout,
             sampler,
             group,
@@ -412,6 +417,7 @@ impl Gfx {
                     scene,
                     materials,
                     frame.is_some(),
+                    Some(&mut self.ui),
                 );
             }
             misty_engine::profiler::set_render_stats(self.renderer.stats());
@@ -470,9 +476,11 @@ impl Gfx {
         self.queue.submit([encoder.finish()]);
     }
 
-    /// Read the last rendered image back as tightly packed RGBA rows.
+    /// Read the last rendered image back as tightly packed RGBA rows, at the window's size
+    /// (what the player sees: a Render Scale other than 1 renders at another size and is
+    /// stretched to the window, and the shot was saved at the render size).
     pub fn capture(&mut self) -> (u32, u32, Vec<u8>) {
-        let (width, height) = self.target.output_size();
+        let (width, height) = capture_size(&self.config);
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("misty capture"),
             size: wgpu::Extent3d {
@@ -525,6 +533,11 @@ impl Gfx {
         }
         (width, height, pixels)
     }
+}
+
+/// Size of a capture: the window's (the surface's) size.
+fn capture_size(config: &wgpu::SurfaceConfiguration) -> (u32, u32) {
+    (config.width.max(1), config.height.max(1))
 }
 
 fn present_mode(vsync: bool) -> wgpu::PresentMode {

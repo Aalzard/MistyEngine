@@ -154,15 +154,30 @@ impl PhysicsMaterial {
 /// Picks static or dynamic friction per contact for colliders with a Physics Material.
 pub(super) struct MaterialHooks<'a> {
     pub materials: &'a HashMap<rp::ColliderHandle, PhysicsMaterial>,
+    /// `Physics.IgnoreCollision` pairs (objects), and each collider's object.
+    pub ignored: &'a std::collections::HashSet<(hecs::Entity, hecs::Entity)>,
+    pub owners: &'a HashMap<rp::ColliderHandle, hecs::Entity>,
+}
+
+impl MaterialHooks<'_> {
+    fn ignores(&self, cx: &rp::PairFilterContext) -> bool {
+        match (
+            self.owners.get(&cx.collider1),
+            self.owners.get(&cx.collider2),
+        ) {
+            (Some(a), Some(b)) => self.ignored.contains(&super::extras::pair(*a, *b)),
+            _ => false,
+        }
+    }
 }
 
 impl rp::PhysicsHooks for MaterialHooks<'_> {
-    fn filter_contact_pair(&self, _context: &rp::PairFilterContext) -> Option<rp::SolverFlags> {
-        Some(rp::SolverFlags::default())
+    fn filter_contact_pair(&self, context: &rp::PairFilterContext) -> Option<rp::SolverFlags> {
+        (!self.ignores(context)).then(rp::SolverFlags::default)
     }
 
-    fn filter_intersection_pair(&self, _context: &rp::PairFilterContext) -> bool {
-        true
+    fn filter_intersection_pair(&self, context: &rp::PairFilterContext) -> bool {
+        !self.ignores(context)
     }
 
     fn modify_solver_contacts(&self, cx: &mut rp::ContactModificationContext) {

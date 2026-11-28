@@ -10,8 +10,8 @@
 use glam::Vec3;
 use hecs::Entity;
 use mlua::{
-    FromLua, Lua, MetaMethod, Result, Table, UserData, UserDataFields, UserDataMethods, Value,
-    Variadic,
+    FromLua, IntoLua, Lua, MetaMethod, Result, Table, UserData, UserDataFields, UserDataMethods,
+    Value, Variadic, ffi,
 };
 
 use super::particles_api::LParticleSystem;
@@ -80,8 +80,55 @@ local function make(x, y, z) return new((x or 0) + 0.0, (y or 0) + 0.0, (z or 0)
 return V, make
 "#;
 
-/// The Vector3 metatable of a Lua state (set by [`register`]).
-struct Vec3Meta(Table);
+/// The Vector3 metatable of a Lua state (set by [`register`]), and whether Rust makes its
+/// vectors with direct stack calls ([`raw_vec3`]).
+struct Vec3Meta(Table, std::cell::Cell<bool>);
+
+/// Let Rust make this state's Vector3 values with direct Lua stack calls: every vector the
+/// API returns (`transform.position`, `rigidbody.velocity`, ...) is a new table, and through
+/// the safe table calls making one cost about as much again as the table itself. Only for
+/// states without a memory limit (the game's): the direct calls are not protected against
+/// Lua's out-of-memory error.
+pub(super) fn make_vectors_raw(lua: &Lua) {
+    if let Some(m) = lua.app_data_ref::<Vec3Meta>() {
+        m.1.set(true);
+    }
+}
+
+/// Whether direct Lua stack calls that can allocate are fine on this state (the game's: no
+/// memory limit, see [`make_vectors_raw`]).
+pub(super) fn raw_stack_ok(lua: &Lua) -> bool {
+    lua.app_data_ref::<Vec3Meta>().is_some_and(|m| m.1.get())
+}
+
+/// A Vector3 table `{ x, y, z }` with metatable `meta`, built on the Lua stack.
+fn raw_vec3(lua: &Lua, meta: &Table, v: Vec3) -> Result<Value> {
+    lua.exec_raw_lua(|raw| {
+        let s = raw.state();
+        // SAFETY: four free stack slots are asked for and at most three are used; the stack
+        // is left as it was found. `lua_setfield` on a new table without a metatable runs no
+        // Lua code. Only an allocation failure can raise an error here, and the states this
+        // runs on have no memory limit (see `make_vectors_raw`).
+        unsafe {
+            if ffi::lua_checkstack(s, 4) == 0 {
+                return Err(mlua::Error::runtime("stack overflow"));
+            }
+            ffi::lua_createtable(s, 0, 3);
+            for (key, n) in [(c"x", v.x), (c"y", v.y), (c"z", v.z)] {
+                ffi::lua_pushnumber(s, f64::from(n));
+                ffi::lua_setfield(s, -2, key.as_ptr());
+            }
+            if let Err(e) = meta.push_into_stack(raw) {
+                ffi::lua_pop(s, 1);
+                return Err(e);
+            }
+            ffi::lua_setmetatable(s, -2);
+            let t = Table::from_stack(-1, raw);
+            ffi::lua_pop(s, 1);
+            t.map(Value::Table)
+        }
+    })
+}
 
 /// `t` is a Vector3 (has the Vector3 metatable).
 fn is_vec3_table(lua: &Lua, t: &Table) -> bool {
@@ -113,11 +160,17 @@ pub fn vec3_in(v: &Value) -> Option<Vec3> {
 
 impl mlua::IntoLua for LVec3 {
     fn into_lua(self, lua: &Lua) -> Result<Value> {
+        let meta = lua.app_data_ref::<Vec3Meta>();
+        if let Some(m) = &meta
+            && m.1.get()
+        {
+            return raw_vec3(lua, &m.0, self.0);
+        }
         let t = lua.create_table_with_capacity(0, 3)?;
         t.raw_set("x", self.0.x)?;
         t.raw_set("y", self.0.y)?;
         t.raw_set("z", self.0.z)?;
-        if let Some(m) = lua.app_data_ref::<Vec3Meta>() {
+        if let Some(m) = meta {
             t.set_metatable(Some(m.0.clone()))?;
         }
         Ok(Value::Table(t))
@@ -168,12 +221,13 @@ pub fn vec_args(lua: &Lua, args: &[Value]) -> Result<Vec3> {
 #[derive(Clone, Copy)]
 pub struct LTransform(pub Entity);
 
-/// After a script moves an object with a Rigidbody, move its body too.
+/// After a script moves an object with a Rigidbody (or above one), move the bodies too.
 pub(crate) fn sync_body(w: &mut World, e: Entity) {
     if w.physics.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics.teleport(e, pos, rot);
     }
+    w.physics.teleport_children(&w.scene, e);
     if w.physics2d.has_body(e) {
         let (_, rot, pos) = w.scene.world_parts(e);
         w.physics2d.teleport(e, pos, rot);
@@ -623,6 +677,18 @@ pub(crate) fn delta_velocity(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 
     }
 }
 
+/// The impulse a force applies over one physics step in `mode` (Force, Impulse,
+/// VelocityChange, Acceleration).
+pub(crate) fn impulse_of(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 {
+    let mass = w
+        .scene
+        .world
+        .get::<&Rigidbody>(e)
+        .map(|r| r.mass.max(1e-4))
+        .unwrap_or(1.0);
+    delta_velocity(w, e, v, mode) * mass
+}
+
 fn force_args(lua: &Lua, args: &Variadic<Value>) -> Result<(Vec3, String)> {
     let mode = match args.last() {
         Some(Value::String(s)) => s.to_str()?.to_owned(),
@@ -638,6 +704,23 @@ fn rigidbody_get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&Rigidbody) -> R) -> Re
             .get::<&Rigidbody>(e)
             .map(|b| f(&b))
             .map_err(|_| missing())
+    })?
+}
+
+/// Change a Rigidbody setting and copy it onto the live body (drag, constraints, …).
+fn rigidbody_edit(lua: &Lua, e: Entity, f: impl FnOnce(&mut Rigidbody)) -> Result<()> {
+    with_world(lua, |w| {
+        let rb = {
+            let mut b = w
+                .scene
+                .world
+                .get::<&mut Rigidbody>(e)
+                .map_err(|_| missing())?;
+            f(&mut b);
+            b.clone()
+        };
+        w.physics.apply_body_settings(e, &rb);
+        Ok(())
     })?
 }
 
@@ -700,6 +783,39 @@ impl UserData for LRigidbody {
         f.add_field_method_get("useGravity", |lua, r| {
             rigidbody_get(lua, r.0, |b| b.use_gravity)
         });
+        f.add_field_method_get("drag", |lua, r| rigidbody_get(lua, r.0, |b| b.drag));
+        f.add_field_method_set("drag", |lua, r, v: f32| {
+            rigidbody_edit(lua, r.0, |b| b.drag = v.max(0.0))
+        });
+        f.add_field_method_get("angularDrag", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.angular_drag)
+        });
+        f.add_field_method_set("angularDrag", |lua, r, v: f32| {
+            rigidbody_edit(lua, r.0, |b| b.angular_drag = v.max(0.0))
+        });
+        // RigidbodyConstraints bits (FreezePositionX = 2 … FreezeRotationZ = 64).
+        f.add_field_method_get("constraints", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.constraints())
+        });
+        f.add_field_method_set("constraints", |lua, r, bits: u32| {
+            rigidbody_edit(lua, r.0, |b| b.set_constraints(bits))
+        });
+        f.add_field_method_get("freezeRotation", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.freeze_rotation == [true; 3])
+        });
+        f.add_field_method_set("freezeRotation", |lua, r, on: bool| {
+            rigidbody_edit(lua, r.0, |b| b.freeze_rotation = [on; 3])
+        });
+        f.add_field_method_get("worldCenterOfMass", |lua, r| {
+            with_world(lua, |w| {
+                alive(w, r.0)?;
+                Ok(LVec3(
+                    w.physics
+                        .world_center_of_mass(r.0)
+                        .unwrap_or_else(|| w.scene.world_position(r.0)),
+                ))
+            })?
+        });
         f.add_field_method_set("useGravity", |lua, r, on: bool| {
             with_world(lua, |w| {
                 if let Ok(mut b) = w.scene.world.get::<&mut Rigidbody>(r.0) {
@@ -740,6 +856,62 @@ impl UserData for LRigidbody {
                 let vel = w.physics.velocity(r.0).unwrap_or_default();
                 w.physics.set_velocity(r.0, vel + dv);
             })
+        });
+        // AddForceAtPosition(force, position[, mode]): also turns the body.
+        m.add_method(
+            "AddForceAtPosition",
+            |lua, r, (f, p, mode): (LVec3, LVec3, Option<String>)| {
+                with_world(lua, |w| {
+                    let impulse = impulse_of(w, r.0, f.0, mode.as_deref().unwrap_or("Force"));
+                    w.physics.add_impulse_at_position(r.0, impulse, p.0);
+                })
+            },
+        );
+        // AddExplosionForce(force, position, radius[, upwardsModifier, mode])
+        m.add_method(
+            "AddExplosionForce",
+            |lua, r, (force, p, radius, up, mode): (f32, LVec3, f32, Option<f32>, Option<String>)| {
+                with_world(lua, |w| {
+                    let push = w.physics.explosion_push(r.0, force, p.0, radius, up.unwrap_or(0.0));
+                    if let Some(push) = push {
+                        let dv = delta_velocity(w, r.0, push, mode.as_deref().unwrap_or("Force"));
+                        let vel = w.physics.velocity(r.0).unwrap_or_default();
+                        w.physics.set_velocity(r.0, vel + dv);
+                    }
+                })
+            },
+        );
+        // GetPointVelocity(worldPoint): the body's velocity at that point (spin included).
+        m.add_method("GetPointVelocity", |lua, r, args: Variadic<Value>| {
+            let p = vec_args(lua, &args)?;
+            with_world(lua, |w| LVec3(w.physics.point_velocity(r.0, p)))
+        });
+        m.add_method("AddRelativeForce", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let v = w.scene.world_rotation(r.0) * v;
+                let dv = delta_velocity(w, r.0, v, &mode);
+                let vel = w.physics.velocity(r.0).unwrap_or_default();
+                w.physics.set_velocity(r.0, vel + dv);
+            })
+        });
+        m.add_method("AddRelativeTorque", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let v = w.scene.world_rotation(r.0) * v;
+                let dw = delta_velocity(w, r.0, v, &mode);
+                let ang = w.physics.angular_velocity(r.0).unwrap_or_default();
+                w.physics.set_angular_velocity(r.0, ang + dw);
+            })
+        });
+        m.add_method("Sleep", |lua, r, ()| {
+            with_world(lua, |w| w.physics.set_sleeping(r.0, true))
+        });
+        m.add_method("WakeUp", |lua, r, ()| {
+            with_world(lua, |w| w.physics.set_sleeping(r.0, false))
+        });
+        m.add_method("IsSleeping", |lua, r, ()| {
+            with_world(lua, |w| w.physics.is_sleeping(r.0))
         });
         m.add_method("AddTorque", |lua, r, args: Variadic<Value>| {
             let (v, mode) = force_args(lua, &args)?;
@@ -838,6 +1010,22 @@ fn log(lua: &Lua, kind: LogKind, args: Variadic<Value>) -> Result<()> {
 /// Key of the marker table `ObjectField(kind)` makes (its value is the kind).
 pub const OBJECT_FIELD_KEY: &str = "__misty_object_field";
 
+/// The marker tables `ObjectField(...)` made in this state, as the keys of a weak table: a
+/// script instance asks it on every read of a class default (a table lookup; it was a call
+/// of `type` and one of `rawget`).
+pub(super) fn object_fields(lua: &Lua) -> Result<Table> {
+    const KEY: &str = "misty.object_fields";
+    if let Some(t) = lua.named_registry_value::<Option<Table>>(KEY)? {
+        return Ok(t);
+    }
+    let t = lua.create_table()?;
+    let meta = lua.create_table()?;
+    meta.set("__mode", "k")?;
+    t.set_metatable(Some(meta))?;
+    lua.set_named_registry_value(KEY, &t)?;
+    Ok(t)
+}
+
 /// Register the global API tables in `lua`.
 pub fn register(lua: &Lua) -> Result<()> {
     let g = lua.globals();
@@ -853,6 +1041,7 @@ pub fn register(lua: &Lua) -> Result<()> {
                 OBJECT_FIELD_KEY,
                 kind.unwrap_or_else(|| "GameObject".into()),
             )?;
+            object_fields(lua)?.raw_set(&t, true)?;
             Ok(t)
         })?,
     )?;
@@ -860,7 +1049,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     // Vector3 (tables with a shared metatable, see VECTOR3_LUA)
     let (meta, make): (Table, mlua::Function) =
         lua.load(VECTOR3_LUA).set_name("=Vector3").call(())?;
-    lua.set_app_data(Vec3Meta(meta));
+    lua.set_app_data(Vec3Meta(meta, std::cell::Cell::new(false)));
     let v3 = lua.create_table()?;
     v3.set("new", make)?;
     for (name, v) in [
@@ -906,8 +1095,10 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::world_partition_api::register(lua)?;
     super::physics_api::register(lua)?;
     super::physics2d_api::register(lua)?;
+    super::animator_ik_api::register(lua)?;
     super::audio_api::register(lua)?;
     super::water_api::register(lua)?;
+    super::transform_group_api::register(lua)?;
     super::weather_api::register(lua)?;
     super::behaviour_tree_api::register(lua)?;
 
@@ -969,6 +1160,22 @@ pub fn register(lua: &Lua) -> Result<()> {
         fm.set(m, m)?;
     }
     g.set("ForceMode", fm)?;
+    let rc = lua.create_table()?;
+    for (name, bits) in [
+        ("None", 0),
+        ("FreezePositionX", 2),
+        ("FreezePositionY", 4),
+        ("FreezePositionZ", 8),
+        ("FreezeRotationX", 16),
+        ("FreezeRotationY", 32),
+        ("FreezeRotationZ", 64),
+        ("FreezePosition", 14),
+        ("FreezeRotation", 112),
+        ("FreezeAll", 126),
+    ] {
+        rc.set(name, bits)?;
+    }
+    g.set("RigidbodyConstraints", rc)?;
 
     // Time (values refreshed every frame by `refresh_time`)
     g.set("Time", lua.create_table()?)?;
@@ -1107,7 +1314,36 @@ pub fn register(lua: &Lua) -> Result<()> {
         crate::build_profile::has_define("MISTY_SERVER"),
     )?;
     app.set("isEditor", crate::build_profile::has_define("MISTY_EDITOR"))?;
+    // `Application.persistentDataPath`: worked out when read (built games set their folder
+    // at startup).
+    let app_meta = lua.create_table()?;
+    app_meta.set(
+        "__index",
+        lua.create_function(|lua, (_, key): (Value, String)| {
+            if key == "persistentDataPath" {
+                let root = with_world(lua, |w| w.root.clone())?;
+                let path = crate::screen_capture::data_folder(&root);
+                return Ok(Value::String(
+                    lua.create_string(path.to_string_lossy().as_ref())?,
+                ));
+            }
+            Ok(Value::Nil)
+        })?,
+    )?;
+    app.set_metatable(Some(app_meta))?;
     g.set("Application", app)?;
+    // ScreenCapture.CaptureScreenshot(filename[, superSize]): the frame being drawn is saved
+    // as a PNG once it is finished.
+    let capture = lua.create_table()?;
+    capture.set(
+        "CaptureScreenshot",
+        lua.create_function(|lua, (name, size): (String, Option<i64>)| {
+            let root = with_world(lua, |w| w.root.clone())?;
+            crate::screen_capture::request(&root, &name, size.unwrap_or(1));
+            Ok(())
+        })?,
+    )?;
+    g.set("ScreenCapture", capture)?;
     crate::achievements::register_lua(lua)?;
     super::assets_api::register(lua)?;
     Ok(())
@@ -1122,6 +1358,35 @@ pub(super) fn instantiate_prefab_path(
     instantiate(w, Source::Prefab(path.to_owned()), position)
 }
 
+/// The prefabs a game instantiates by path: each file is read and parsed once, and again when
+/// it changes (a prefab edited while the game plays). A gun that fires a bullet prefab does not
+/// read its file for every shot.
+#[derive(Default)]
+pub struct PrefabCache {
+    loaded: std::collections::HashMap<String, (Option<std::time::SystemTime>, std::rc::Rc<Prefab>)>,
+}
+
+impl PrefabCache {
+    fn get(
+        &mut self,
+        root: &std::path::Path,
+        path: &str,
+    ) -> std::result::Result<std::rc::Rc<Prefab>, String> {
+        if let Some((stamp, prefab)) = self.loaded.get(path) {
+            let file = root.join(path);
+            if crate::vfs::modified(&file) == *stamp {
+                return Ok(prefab.clone());
+            }
+        }
+        let file = crate::vfs::project_file(root, path)?;
+        // The time first: a file written while it is read is read again next time.
+        let stamp = crate::vfs::modified(&file);
+        let prefab = std::rc::Rc::new(Prefab::load(&file)?);
+        self.loaded.insert(path.to_owned(), (stamp, prefab.clone()));
+        Ok(prefab)
+    }
+}
+
 pub(super) enum Source {
     /// Project-relative `.prefab` path.
     Prefab(String),
@@ -1133,10 +1398,12 @@ pub(super) enum Source {
 pub(super) fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
     let e = match source {
         Source::Prefab(path) => {
-            let file = crate::vfs::project_file(&w.root, &path).map_err(mlua::Error::runtime)?;
-            let prefab = Prefab::load(&file).map_err(mlua::Error::runtime)?;
+            let prefab = w
+                .prefabs
+                .get(&w.root, &path)
+                .map_err(mlua::Error::runtime)?;
             // Runtime copies are plain objects, not linked instances.
-            let e = w.scene.instantiate_prefab(&prefab, None, None);
+            let e = w.scene.instantiate_prefab_as(&prefab, prefab.name(), None);
             // Save games recreate it from its prefab.
             w.save.spawned.push((e, path));
             e

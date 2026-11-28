@@ -21,8 +21,8 @@
 //! and copies the runtime next to the executable ([`bundle_runtime`]); the player loads both
 //! instead of compiling or looking for an installed .NET.
 //!
-//! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource and
-//! Animator, contact points, hot reload, and unloading old assemblies (each changed build stays
+//! Not yet: most engine components beyond Transform, Rigidbody, Collider, AudioSource,
+//! Animator and CharacterController, 3D contact points, hot reload, and unloading old assemblies (each changed build stays
 //! loaded until the editor exits).
 
 use std::ffi::c_void;
@@ -38,6 +38,9 @@ use crate::scene::ScriptValue;
 
 /// The engine's C# API, compiled into every script assembly.
 pub const API_SOURCE: &str = include_str!("../../dotnet/MistyEngine.cs");
+
+#[path = "csharp_input.rs"]
+pub(crate) mod input;
 
 /// Method ids, in the order of `Host.Methods` in MistyEngine.cs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,9 +66,13 @@ pub(crate) enum Method {
     OnTriggerExit2D = 17,
     OnCollisionStay2D = 18,
     OnTriggerStay2D = 19,
+    /// Takes the layer index (`OnAnimatorIK(int layerIndex)`).
+    OnAnimatorIK = 20,
+    /// Takes the hit (`OnControllerColliderHit(ControllerColliderHit hit)`).
+    OnControllerColliderHit = 21,
 }
 
-const METHOD_COUNT: usize = 20;
+const METHOD_COUNT: usize = 22;
 
 /// Whether `path` is a C# script.
 pub fn is_csharp_path(path: &str) -> bool {
@@ -1019,6 +1026,8 @@ pub(crate) fn method_of(name: &str) -> Option<Method> {
         "OnTriggerExit2D" => Method::OnTriggerExit2D,
         "OnCollisionStay2D" => Method::OnCollisionStay2D,
         "OnTriggerStay2D" => Method::OnTriggerStay2D,
+        "OnAnimatorIK" => Method::OnAnimatorIK,
+        "OnControllerColliderHit" => Method::OnControllerColliderHit,
         _ => return None,
     })
 }
@@ -1175,6 +1184,17 @@ impl CsHost {
         unsafe { (entry.call)(r.handle, m as i32, other) };
     }
 
+    /// Call `m` on instance `r` with a number argument (`OnAnimatorIK(layerIndex)`).
+    pub fn call_arg(&self, w: &mut World, r: CsRef, m: Method, arg: u64) {
+        let Some(entry) = self.entry else { return };
+        if !r.defines(m) {
+            return;
+        }
+        let _enter = Enter::new(w);
+        // SAFETY: entry point of the loaded assembly, valid handle.
+        unsafe { (entry.call)(r.handle, m as i32, arg) };
+    }
+
     /// Call the method `name` of instance `r` by name (SendMessage, Inspector event calls):
     /// with no argument, or one bool, number, whole number or text. Whether the class has a
     /// method of that name that takes it.
@@ -1261,6 +1281,9 @@ pub enum CsArg {
     Number(f64),
     Int(i64),
     Text(String),
+    /// An object C# reads back from the engine (`csharp_input.rs`: a `PlayerInput`, an
+    /// `InputValue`, a `CallbackContext`, a `BaseEventData`).
+    Engine,
 }
 
 impl CsArg {
@@ -1294,6 +1317,7 @@ fn arg_parts(arg: Option<&CsArg>) -> (i32, f64, Vec<u16>) {
         Some(CsArg::Number(n)) => (1, *n, Vec::new()),
         Some(CsArg::Int(i)) => (2, *i as f64, Vec::new()),
         Some(CsArg::Text(t)) => (3, 0.0, t.encode_utf16().collect()),
+        Some(CsArg::Engine) => (40, 0.0, Vec::new()),
     }
 }
 

@@ -32,6 +32,12 @@ impl Physics {
                     collider = collider.active_hooks(rp::ActiveHooks::MODIFY_SOLVER_CONTACTS);
                 }
                 let h = self.insert_collider(scene, e, owner, collider);
+                if owner != Some(e) {
+                    self.follow(scene, e, owner, h);
+                }
+                if self.has_ignored_pair(e) {
+                    self.refresh_filter_hooks(e);
+                }
                 if let Some(m) = material {
                     self.materials.insert(h, m);
                 }
@@ -42,8 +48,7 @@ impl Physics {
                     .collision_groups(groups)
                     .active_events(rp::ActiveEvents::COLLISION_EVENTS);
                 let h = self.world.insert_collider(c.build(), None);
-                self.colliders.insert(h, e);
-                self.owners.insert(e);
+                self.own(h, e);
             }
             // Its trees' trunks (static capsules).
             let trunks = {
@@ -53,8 +58,7 @@ impl Physics {
             for c in trunks {
                 let c = c.collision_groups(groups);
                 let h = self.world.insert_collider(c.build(), None);
-                self.colliders.insert(h, e);
-                self.owners.insert(e);
+                self.own(h, e);
             }
         }
     }
@@ -80,9 +84,15 @@ impl Physics {
                 self.world.insert_collider(c, None)
             }
         };
-        self.colliders.insert(h, e);
-        self.owners.insert(e);
+        self.own(h, e);
         h
+    }
+
+    /// Collider `h` belongs to object `e`.
+    fn own(&mut self, h: rp::ColliderHandle, e: Entity) {
+        self.colliders.insert(h, e);
+        self.colliders_of.entry(e).or_default().push(h);
+        self.owners.insert(e);
     }
 
     /// The object whose body `e`'s colliders attach to: itself or the closest parent with one.
@@ -101,10 +111,8 @@ impl Physics {
     pub fn set_layer(&mut self, e: Entity, layer: u8) {
         self.set_controller_layer(e, layer);
         let groups = layers::groups(&self.settings, layer);
-        for (h, owner) in &self.colliders {
-            if *owner == e
-                && let Some(c) = self.world.colliders.get_mut(*h)
-            {
+        for h in self.colliders_of.get(&e).into_iter().flatten() {
+            if let Some(c) = self.world.colliders.get_mut(*h) {
                 c.set_collision_groups(groups);
             }
         }
@@ -136,7 +144,7 @@ impl Physics {
 
     /// Collider builders for `e`'s collider components (in the object's local frame, scaled),
     /// with the Physics Material each one uses.
-    fn colliders_for(
+    pub(super) fn colliders_for(
         &mut self,
         scene: &Scene,
         e: Entity,

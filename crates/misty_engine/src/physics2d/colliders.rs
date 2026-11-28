@@ -80,11 +80,15 @@ impl Physics2D {
             None => self.world.insert_collider(b.position(world).build(), None),
         };
         self.colliders.insert(h, e);
+        self.colliders_of.entry(e).or_default().push(h);
         self.owners.insert(e);
+        if owner != Some(e) {
+            self.follow(scene, e, owner, h, offset);
+        }
     }
 
     /// The object whose body `e`'s colliders attach to: itself or the closest parent with one.
-    fn owner(&self, scene: &Scene, e: Entity) -> Option<Entity> {
+    pub(super) fn owner(&self, scene: &Scene, e: Entity) -> Option<Entity> {
         let mut cur = Some(e);
         while let Some(c) = cur {
             if self.bodies.contains_key(&c) {
@@ -108,7 +112,11 @@ impl Physics2D {
     }
 
     /// Shapes of `e`'s enabled 2D colliders, scaled by its world scale.
-    fn shapes(&mut self, scene: &Scene, e: Entity) -> Vec<(rp::ColliderBuilder, Collider2DCommon)> {
+    pub(super) fn shapes(
+        &mut self,
+        scene: &Scene,
+        e: Entity,
+    ) -> Vec<(rp::ColliderBuilder, Collider2DCommon)> {
         let w = &scene.world;
         let (_, _, s, _) = world_pose(scene, e);
         let mut out = Vec::new();

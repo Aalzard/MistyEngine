@@ -12,10 +12,14 @@
 mod character;
 pub mod cloth;
 mod colliders;
+mod contact_info;
 mod convert;
 pub mod debug;
+mod extras;
+mod follow;
 mod joints;
 pub mod layers;
+mod live_edit;
 pub mod material;
 mod queries;
 pub mod ragdoll;
@@ -32,10 +36,11 @@ use crate::scene::{CharacterController, Interpolation, Rigidbody, Scene};
 use crate::settings::PhysicsSettings;
 use convert::{gv, parts, pose, rv};
 
-pub use character::ControllerHit;
+pub use character::{ControllerHit, slope_scaled, tobler_factor};
+pub use contact_info::{CollisionInfo, ContactPoint3D, MAX_CONTACT_POINTS};
 pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
-pub use queries::RaycastHit;
+pub use queries::{MAX_CAST_HITS, QueryShape, RaycastHit};
 pub use vehicles::world_pose_of as wheel_world_pose;
 
 struct Body {
@@ -97,6 +102,9 @@ pub struct Physics {
     bodies: HashMap<Entity, Body>,
     /// Which object each collider belongs to.
     colliders: HashMap<rp::ColliderHandle, Entity>,
+    /// The colliders of each object (`colliders` the other way round): an object that goes
+    /// takes its own with it without a walk over every collider of the world.
+    colliders_of: HashMap<Entity, Vec<rp::ColliderHandle>>,
     accumulator: f32,
     pub fixed_dt: f32,
     /// Upper bound of fixed steps per frame, so a slow frame can't spiral.
@@ -138,6 +146,16 @@ pub struct Physics {
     /// their contacts as stopped, and the step turns those into exits (OnTriggerExit /
     /// OnCollisionExit) instead of dropping them.
     departed: HashMap<rp::ColliderHandle, Entity>,
+    /// Colliders without a body of their own (static ones, and ones on children of a body)
+    /// that follow their object's Transform when a script, Animator or Timeline moves it.
+    followers: HashMap<Entity, follow::Follower>,
+    /// Velocities of the moving bodies before the last step (`collision_info`).
+    before: HashMap<rp::RigidBodyHandle, Vec3>,
+    /// Keep `before` (some script reads collision details; costs a look at every moving
+    /// body per step, so it is off otherwise and relative velocities are the current ones).
+    pub track_impacts: bool,
+    /// Object pairs whose colliders ignore each other (`Physics.IgnoreCollision`).
+    ignored: HashSet<(Entity, Entity)>,
 }
 
 /// Frames between full recounts of the Profiler's trigger counter (see `Physics::trigger_count`).
@@ -204,6 +222,7 @@ impl Physics {
             world,
             bodies: HashMap::new(),
             colliders: HashMap::new(),
+            colliders_of: HashMap::new(),
             accumulator: 0.0,
             fixed_dt: settings.fixed_timestep,
             max_steps: settings.max_steps_per_frame,
@@ -227,6 +246,10 @@ impl Physics {
             dormant_set: HashSet::new(),
             activity_seen: None,
             departed: HashMap::new(),
+            followers: HashMap::new(),
+            before: HashMap::new(),
+            track_impacts: false,
+            ignored: HashSet::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -327,6 +350,7 @@ impl Physics {
             .locked_axes(locked_axes(&rb))
             .ccd_enabled(rb.continuous)
             .additional_mass(rb.mass.max(1e-4))
+            .user_data(body_tag(e))
             .build();
         let handle = self.world.insert_body(body);
         self.owners.insert(e);
@@ -440,6 +464,7 @@ impl Physics {
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.sync_active(scene);
         self.push_kinematic(scene);
+        self.follow_transforms(scene);
         self.apply_springs();
         let dt = self.world.integration_parameters.dt;
         self.apply_wheels(scene, dt);
@@ -450,9 +475,12 @@ impl Physics {
                 b.prev = parts(body.position());
             }
         }
+        self.remember_velocities();
         let events = EventLog::default();
         let hooks = material::MaterialHooks {
             materials: &self.materials,
+            ignored: &self.ignored,
+            owners: &self.colliders,
         };
         self.world.step_with_events(&hooks, &events);
         self.check_breaks();
@@ -493,6 +521,17 @@ impl Physics {
             if b.interpolate {
                 p = b.prev.0.lerp(p, alpha);
                 r = b.prev.1.slerp(r, alpha);
+            }
+            // A root that is already there (a body at rest): nothing to write, and no
+            // Euler angles to work out for the Inspector.
+            if let Ok((t, node)) = scene
+                .world
+                .query_one_mut::<(&crate::scene::Transform, &crate::scene::Node)>(*e)
+                && node.parent.is_none()
+                && t.position == p
+                && t.rotation == r.normalize()
+            {
+                continue;
             }
             scene.set_world_position(*e, p);
             scene.set_world_rotation(*e, r);
@@ -579,6 +618,28 @@ impl Physics {
         }
     }
 
+    /// A script moved `e`: the dynamic bodies of objects under it go along (a moved parent
+    /// left its Rigidbody children behind, and they snapped back). Kinematic ones follow their
+    /// Transform at the next step anyway.
+    pub fn teleport_children(&mut self, scene: &Scene, e: Entity) {
+        if !self.bodies.values().any(|b| !b.kinematic) {
+            return;
+        }
+        let mut stack: Vec<Entity> = match scene.world.get::<&crate::scene::Node>(e) {
+            Ok(n) if !n.children.is_empty() => n.children.clone(),
+            _ => return,
+        };
+        while let Some(x) = stack.pop() {
+            if self.bodies.get(&x).is_some_and(|b| !b.kinematic) {
+                let (p, r, _) = world_pose(scene, x);
+                self.teleport(x, p, r);
+            }
+            if let Ok(n) = scene.world.get::<&crate::scene::Node>(x) {
+                stack.extend(n.children.iter().copied());
+            }
+        }
+    }
+
     /// Rigidbody.MovePosition / MoveRotation: kinematic bodies sweep there during the next
     /// step (pushing what they meet), dynamic ones are placed there. The Transform follows.
     pub fn move_body(&mut self, scene: &mut Scene, e: Entity, position: Vec3, rotation: Quat) {
@@ -619,31 +680,53 @@ impl Physics {
     pub fn remove(&mut self, e: Entity) {
         let owned = self.owners.remove(&e);
         if let Some(b) = self.bodies.remove(&e) {
+            // The body takes its colliders with it: its own and those of objects under it.
+            let attached: Vec<rp::ColliderHandle> = self
+                .world
+                .bodies
+                .get(b.handle)
+                .map(|body| body.colliders().to_vec())
+                .unwrap_or_default();
             self.world.remove_body_with_colliders(b.handle, true);
+            for h in attached {
+                self.forget_collider(h);
+            }
         }
         self.controllers.remove(&e);
         self.cloth.remove(e);
         self.remove_springs(e);
         self.remove_wheels(e);
         self.ragdolls.forget(e);
-        // Only bodies and colliders are in the walks below (they visit every collider).
+        self.followers.remove(&e);
+        if !self.ignored.is_empty() {
+            self.ignored.retain(|(a, b)| *a != e && *b != e);
+        }
         if !owned {
             return;
         }
-        let colliders = &self.world.colliders;
-        self.materials.retain(|h, _| colliders.get(*h).is_some());
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        // Its colliders on a body further up, or on none.
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
             self.colliders.remove(&h);
+            self.materials.remove(&h);
         }
-        self.colliders
-            .retain(|h, _| self.world.colliders.get(*h).is_some());
+    }
+
+    /// Collider `h` left the world with its body.
+    fn forget_collider(&mut self, h: rp::ColliderHandle) {
+        self.materials.remove(&h);
+        let owner = self.colliders.remove(&h);
+        if let Some(owner) = owner {
+            self.forget_follower(owner, h);
+        }
+        if let Some(owner) = owner
+            && let Some(list) = self.colliders_of.get_mut(&owner)
+        {
+            list.retain(|x| *x != h);
+            if list.is_empty() {
+                self.colliders_of.remove(&owner);
+            }
+        }
     }
 
     /// Objects switched off since the last step leave the world (with everything under the
@@ -786,6 +869,19 @@ impl Physics {
 }
 
 /// Rigidbody ▸ Constraints as rapier locked axes.
+/// A body's `user_data`: its object's id (queries find a hit collider's object without a walk
+/// over every body).
+fn body_tag(e: Entity) -> u128 {
+    u128::from(e.to_bits().get())
+}
+
+/// The object a body was made for (see `body_tag`).
+fn body_object(body: &rp::RigidBody) -> Option<Entity> {
+    u64::try_from(body.user_data)
+        .ok()
+        .and_then(Entity::from_bits)
+}
+
 fn locked_axes(rb: &Rigidbody) -> rp::LockedAxes {
     let flags = [
         rp::LockedAxes::TRANSLATION_LOCKED_X,
@@ -812,11 +908,19 @@ pub fn collider_matrix(scene: &Scene, e: Entity, center: Vec3) -> Mat4 {
 #[cfg(test)]
 mod active_tests;
 #[cfg(test)]
+mod busy_bench;
+#[cfg(test)]
 mod character_tests;
+#[cfg(test)]
+mod extras_tests;
+#[cfg(test)]
+mod follow_tests;
 #[cfg(test)]
 mod joint_config_tests;
 #[cfg(test)]
 mod joint_tests;
+#[cfg(test)]
+mod live_edit_tests;
 #[cfg(test)]
 mod query_tests;
 #[cfg(test)]

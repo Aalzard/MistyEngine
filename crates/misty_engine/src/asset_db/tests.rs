@@ -281,7 +281,9 @@ fn unity_meta_guids_are_kept() {
     );
     write(&root, "Assets/Pack/Broken.tif", "tif");
     write(&root, "Assets/Pack/Broken.tif.meta", &unity("not-a-guid"));
-    // A second copy of the pack: the same Unity GUID.
+    // A second copy of the pack, made later: the same Unity GUID. (Without the pause, both
+    // metas can get the same creation time on Linux and the path order decides.)
+    std::thread::sleep(std::time::Duration::from_millis(30));
     write(&root, "Assets/Copy/Bark.tif", "tif");
     write(&root, "Assets/Copy/Bark.tif.meta", &unity(a));
     let (db, report) = GuidDatabase::scan(&root);

@@ -235,3 +235,74 @@ fn mirrored_objects_mirror_their_collider_centres() {
     assert!(down(-2.0).is_some(), "the box is drawn at x = -2");
     assert!(down(2.0).is_none());
 }
+
+#[test]
+fn box_and_capsule_checks_overlaps_and_sweeps() {
+    let mut scene = Scene::new("t");
+    let a = box_at(&mut scene, "A", Vec3::new(0.0, 0.0, 5.0), 0);
+    let b = box_at(&mut scene, "B", Vec3::new(0.0, 0.0, 9.0), 0);
+    let physics = build(&scene);
+    let id = Quat::IDENTITY;
+    let small = QueryShape::Box {
+        half_extents: Vec3::splat(0.2),
+    };
+    // A 0.4 box in front of A misses; moved up to it, it touches.
+    assert!(!physics.check(small, Vec3::new(0.0, 0.0, 3.0), id, ALL_LAYERS));
+    assert!(physics.check(small, Vec3::new(0.0, 0.0, 4.6), id, ALL_LAYERS));
+    let long = QueryShape::Box {
+        half_extents: Vec3::new(0.1, 0.1, 1.0),
+    };
+    let turned = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+    // Long along z reaches A from z = 3.6; turned to lie along x it doesn't.
+    assert!(physics.check(long, Vec3::new(0.0, 0.0, 3.6), id, ALL_LAYERS));
+    assert!(!physics.check(long, Vec3::new(0.0, 0.0, 3.6), turned, ALL_LAYERS));
+    let big = QueryShape::Box {
+        half_extents: Vec3::new(1.0, 1.0, 3.0),
+    };
+    let mut both = physics.overlap(big, Vec3::new(0.0, 0.0, 7.0), id, ALL_LAYERS);
+    both.sort_by_key(|e| e.to_bits());
+    let mut want = vec![a, b];
+    want.sort_by_key(|e| e.to_bits());
+    assert_eq!(both, want);
+
+    // Capsule round (0,0,3)–(0,0,4) radius 0.2: its end at 4.2 doesn't reach A's face at 4.5.
+    let (cap, c) = QueryShape::capsule(Vec3::new(0.0, 0.0, 3.0), Vec3::new(0.0, 0.0, 4.0), 0.2);
+    assert!(!physics.check(cap, c, id, ALL_LAYERS));
+    let (cap2, c2) = QueryShape::capsule(Vec3::new(0.0, 0.0, 3.0), Vec3::new(0.0, 0.0, 4.4), 0.2);
+    assert_eq!(physics.overlap(cap2, c2, id, ALL_LAYERS), vec![a]);
+
+    // Sweeps: the box's front face (z + 0.2) meets A's face at 4.5 after 4.3.
+    let hit = physics
+        .cast(small, Vec3::ZERO, id, Vec3::Z, 100.0, ALL_LAYERS)
+        .expect("box hits A");
+    assert_eq!(hit.entity, a);
+    assert!((hit.distance - 4.3).abs() < 1e-3, "{}", hit.distance);
+    // The capsule's tip (z = 4.2) meets A's face (z = 4.5) after 0.3.
+    let hit = physics
+        .cast(cap, c, id, Vec3::Z, 100.0, ALL_LAYERS)
+        .expect("capsule hits A");
+    assert!((hit.distance - 0.3).abs() < 1e-3, "{}", hit.distance);
+    let all = physics.cast_all(small, Vec3::ZERO, id, Vec3::Z, 100.0, ALL_LAYERS);
+    assert_eq!(all.iter().map(|h| h.entity).collect::<Vec<_>>(), vec![a, b]);
+    assert!((all[1].distance - 8.3).abs() < 1e-3, "{}", all[1].distance);
+    // Starting inside A: A is passed over, B is the first hit.
+    let from_inside = physics
+        .cast(
+            small,
+            Vec3::new(0.0, 0.0, 5.0),
+            id,
+            Vec3::Z,
+            100.0,
+            ALL_LAYERS,
+        )
+        .expect("hits B");
+    assert_eq!(from_inside.entity, b);
+    // Bad sizes find nothing.
+    let bad = QueryShape::Sphere { radius: f32::NAN };
+    assert!(!physics.check(bad, Vec3::ZERO, id, ALL_LAYERS));
+    assert!(
+        physics
+            .cast(bad, Vec3::ZERO, id, Vec3::Z, 10.0, ALL_LAYERS)
+            .is_none()
+    );
+}

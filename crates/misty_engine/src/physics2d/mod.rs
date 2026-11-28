@@ -8,6 +8,8 @@
 
 mod colliders;
 mod contacts;
+mod follow;
+mod live_edit;
 mod queries;
 
 use std::collections::{HashMap, HashSet};
@@ -20,7 +22,7 @@ use crate::scene::{BodyType2D, CollisionDetection2D, Rigidbody2D, Scene};
 use crate::settings::{Physics2DSettings, PhysicsSettings};
 
 pub use colliders::polygon_points;
-pub use contacts::{Contact2D, Phase};
+pub use contacts::{Contact2D, ContactPoint2DData, MAX_CONTACT_POINTS_2D, Phase};
 pub use queries::RaycastHit2D;
 
 /// glam (ours) → rapier's vector type.
@@ -56,6 +58,8 @@ struct Body {
     kind: BodyType2D,
     /// MovePosition / MoveRotation target for the next step (kinematic bodies sweep there).
     target: Option<(Vec2, f32)>,
+    /// The Transform pose (X/Y, Z angle) `follow_transforms` last saw (see `follow.rs`).
+    seen: (Vec2, f32),
 }
 
 pub struct Physics2D {
@@ -63,6 +67,9 @@ pub struct Physics2D {
     bodies: HashMap<Entity, Body>,
     /// Which object each collider belongs to.
     colliders: HashMap<rp::ColliderHandle, Entity>,
+    /// The colliders of each object (`colliders` the other way round): an object that goes
+    /// takes its own with it without a walk over every collider of the world.
+    colliders_of: HashMap<Entity, Vec<rp::ColliderHandle>>,
     settings: Physics2DSettings,
     /// Layer Collision Matrix (shared with 3D).
     layers: PhysicsSettings,
@@ -82,6 +89,8 @@ pub struct Physics2D {
     /// Colliders of objects switched off since the last step, with their objects: rapier
     /// reports their contacts as stopped and the step turns them into Exit contacts.
     departed: HashMap<rp::ColliderHandle, Entity>,
+    /// Colliders without a body of their own, kept on their Transform (see `follow.rs`).
+    followers: HashMap<Entity, follow::Follower>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -116,6 +125,7 @@ impl Physics2D {
             world,
             bodies: HashMap::new(),
             colliders: HashMap::new(),
+            colliders_of: HashMap::new(),
             settings: settings.clone(),
             layers: layers.clone(),
             fixed_dt: layers.fixed_timestep,
@@ -127,6 +137,7 @@ impl Physics2D {
             dormant_set: HashSet::new(),
             activity_seen: None,
             departed: HashMap::new(),
+            followers: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
@@ -208,6 +219,7 @@ impl Physics2D {
                 handle,
                 kind: rb.body_type,
                 target: None,
+                seen: (p, a),
             },
         );
     }
@@ -424,20 +436,31 @@ impl Physics2D {
             return;
         }
         if let Some(b) = self.bodies.remove(&e) {
+            // The body takes its colliders with it: its own and those of objects under it.
+            let attached: Vec<rp::ColliderHandle> = self
+                .world
+                .bodies
+                .get(b.handle)
+                .map(|body| body.colliders().to_vec())
+                .unwrap_or_default();
             self.world.remove_body_with_colliders(b.handle, true);
+            for h in attached {
+                if let Some(owner) = self.colliders.remove(&h)
+                    && let Some(list) = self.colliders_of.get_mut(&owner)
+                {
+                    list.retain(|x| *x != h);
+                    if list.is_empty() {
+                        self.colliders_of.remove(&owner);
+                    }
+                }
+            }
         }
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        self.followers.remove(&e);
+        // Its colliders on a body further up, or on none.
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
+            self.colliders.remove(&h);
         }
-        let world = &self.world;
-        self.colliders
-            .retain(|h, _| world.colliders.get(*h).is_some());
         self.contacts.forget(&self.colliders);
     }
 
@@ -578,13 +601,8 @@ impl Physics2D {
 
     /// Remove an object's colliders (its body stays).
     fn remove_colliders(&mut self, e: Entity) {
-        let handles: Vec<_> = self
-            .colliders
-            .iter()
-            .filter(|(_, o)| **o == e)
-            .map(|(h, _)| *h)
-            .collect();
-        for h in handles {
+        self.followers.remove(&e);
+        for h in self.colliders_of.remove(&e).unwrap_or_default() {
             self.world.remove_collider(h);
             self.colliders.remove(&h);
         }

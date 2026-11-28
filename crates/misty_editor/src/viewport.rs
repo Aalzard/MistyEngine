@@ -199,6 +199,7 @@ impl Gpu {
                 scene,
                 materials,
                 main_rendered,
+                Some(&mut self.ui),
             );
             self.renderer.set_background_loads(false);
         }

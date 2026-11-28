@@ -254,3 +254,37 @@ impl Rig {
         self.host.root.clone()
     }
 }
+
+/// Two players joining in the same frame (two pads at once, or two `JoinPlayer` calls) are
+/// reported one by one: `playerCount` is 1 in the first `OnPlayerJoined` and 2 in the second,
+/// so a lobby script can place each player by its count.
+#[test]
+fn players_joining_in_one_frame_hear_their_own_count() {
+    let mut r = rig(4);
+    r.frame(false, false, &[]);
+    assert_eq!(
+        r.frame(true, true, &[]),
+        [
+            "joined Player(Clone) count 1",
+            "joined Player(Clone) count 2"
+        ]
+    );
+    // After the messages, the count is the real one again.
+    std::fs::write(
+        r.host_root().join("Assets/Scripts/Count.lua"),
+        "local C = {}\nfunction C:Start() Debug.Log(\"now \" .. PlayerInputManager.instance.playerCount) end\nreturn C\n",
+    )
+    .unwrap();
+    let c = r.scene.spawn("Counter", None);
+    r.scene.add(
+        c,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/Count.lua".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    r.host.add_objects(&mut r.scene, &[c]);
+    assert_eq!(r.frame(false, false, &[]), ["now 2"]);
+}

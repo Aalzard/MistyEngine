@@ -213,3 +213,41 @@ fn zero_scale_bodies_keep_finite_poses() {
     assert!(scene.world_position(c).y < 3.0, "still falls");
     assert!((scene.world_rotation(c).to_euler(glam::EulerRot::YXZ).0 - 0.5).abs() < 1e-3);
 }
+
+/// Removing an object takes exactly its own colliders, and a body takes those of the objects
+/// under it; the tables that say whose collider is whose stay in line with the world.
+#[test]
+fn removed_objects_take_their_colliders_and_only_theirs() {
+    let mut scene = Scene::new("t");
+    let wall = cube(&mut scene, "Wall", Vec3::new(10.0, 0.0, 0.0), false);
+    let other = cube(&mut scene, "Other", Vec3::new(20.0, 0.0, 0.0), false);
+    let car = cube(&mut scene, "Car", Vec3::new(0.0, 5.0, 0.0), true);
+    let bumper = scene.spawn("Bumper", Some(car));
+    scene.add(bumper, BoxCollider::default());
+    let mut physics = Physics::build(&scene, Vec3::ZERO);
+    assert_eq!(physics.collider_count(), 4);
+    let tables = |p: &Physics| (p.colliders.len(), p.colliders_of.values().flatten().count());
+    assert_eq!(tables(&physics), (4, 4));
+
+    physics.remove(wall);
+    assert_eq!(physics.collider_count(), 3);
+    assert_eq!(tables(&physics), (3, 3));
+    let down = Vec3::new(0.0, -1.0, 0.0);
+    let above = |x: f32| Vec3::new(x, 3.0, 0.0);
+    assert!(physics.raycast(above(10.0), down, 10.0, u32::MAX).is_none());
+    assert_eq!(
+        physics
+            .raycast(above(20.0), down, 10.0, u32::MAX)
+            .map(|h| h.entity),
+        Some(other)
+    );
+
+    // The bumper's collider sits on the car's body: it goes with the car.
+    physics.remove(car);
+    assert_eq!((physics.body_count(), physics.collider_count()), (0, 1));
+    assert_eq!(tables(&physics), (1, 1));
+    physics.remove(bumper);
+    physics.remove(other);
+    assert_eq!(physics.collider_count(), 0);
+    assert_eq!(tables(&physics), (0, 0));
+}

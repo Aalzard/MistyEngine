@@ -1,0 +1,150 @@
+{
+  "name": "HillRun",
+  "maps": [
+    {
+      "name": "Player",
+      "id": "6a1aeea8fce39028",
+      "actions": [
+        {
+          "name": "Move",
+          "id": "09a63d04c833fc5c",
+          "type": "Value",
+          "control_type": "Vector2",
+          "initial_state_check": true,
+          "bindings": [
+            {
+              "name": "WASD",
+              "composite": "2DVector",
+              "parts": [
+                {
+                  "name": "up",
+                  "path": "<Keyboard>/w",
+                  "id": "99c5d0c8c396d985",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "down",
+                  "path": "<Keyboard>/s",
+                  "id": "4ca57f9a9f3e1047",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "left",
+                  "path": "<Keyboard>/a",
+                  "id": "20ab9b8422ce3893",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "right",
+                  "path": "<Keyboard>/d",
+                  "id": "394cdb2ceaf6cbd3",
+                  "groups": "Keyboard&Mouse"
+                }
+              ],
+              "id": "8292092155df3d3f"
+            },
+            {
+              "name": "Arrows",
+              "composite": "2DVector",
+              "parts": [
+                {
+                  "name": "up",
+                  "path": "<Keyboard>/upArrow",
+                  "id": "2bcbca4bd622ed7c",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "down",
+                  "path": "<Keyboard>/downArrow",
+                  "id": "b013e473eedfa512",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "left",
+                  "path": "<Keyboard>/leftArrow",
+                  "id": "7284eac22f62334a",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "right",
+                  "path": "<Keyboard>/rightArrow",
+                  "id": "5f663a2861d01228",
+                  "groups": "Keyboard&Mouse"
+                }
+              ],
+              "id": "8d22395d1812250e"
+            },
+            {
+              "path": "<Gamepad>/leftStick",
+              "id": "c1215727aaaf2399",
+              "groups": "Gamepad",
+              "processors": "stickDeadzone"
+            },
+            {
+              "path": "<Gamepad>/dpad",
+              "id": "c48eba0a30b38318",
+              "groups": "Gamepad"
+            }
+          ]
+        },
+        {
+          "name": "Jump",
+          "id": "1b4885842cfb5d26",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/space",
+              "id": "2650e1abce39ee97",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/buttonSouth",
+              "id": "c6d308bcb00e42fb",
+              "groups": "Gamepad"
+            }
+          ]
+        },
+        {
+          "name": "Pause",
+          "id": "bd2e7c125a2afcf1",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/escape",
+              "id": "bd82d4d908f0dd30",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/start",
+              "id": "1207d3f7f05568d0",
+              "groups": "Gamepad"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "control_schemes": [
+    {
+      "name": "Keyboard&Mouse",
+      "devices": [
+        {
+          "path": "<Keyboard>"
+        },
+        {
+          "path": "<Mouse>"
+        }
+      ]
+    },
+    {
+      "name": "Gamepad",
+      "devices": [
+        {
+          "path": "<Gamepad>"
+        }
+      ]
+    }
+  ]
+}
