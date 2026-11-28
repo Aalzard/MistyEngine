@@ -1,6 +1,60 @@
 Misty Engine changelog
 ======================
 
+0.5.1 - Physics fixes, slopes, rebinding and better rough surfaces (November 2026)
+--------------------------------------------------------------------------------
+
+Rendering and materials
+- Fix: rough surfaces (Smoothness 0) shone white toward a low sun. The light highlight
+  now follows the roughness (Smith GGX), so rough ground no longer glows.
+- New on materials and terrain layers: Specular Highlights and Environment Reflections
+  checkboxes. Turn both off and the surface reflects nothing.
+- New on materials and terrain layers: Color Adjustments (Brightness, Contrast, Saturation).
+- Fix: terrain layers ignored texture import settings. Max Size and Nearest Neighbor now
+  apply, and Apply rebuilds the terrain's textures.
+
+Physics
+- Fix: colliders without a Rigidbody (and colliders on a body's children) did not follow
+  their Transform when a script, Animator or Timeline moved them. Same fix in 2D.
+- Fix: moving a parent left its Rigidbody children behind.
+- Fix: Rigidbody and collider edits in Properties during Play did nothing until the next Play.
+- New for Lua and C#: CheckSphere/Box/Capsule, OverlapBox/Capsule, BoxCast/CapsuleCast,
+  Sphere/Box/CapsuleCastAll, IgnoreCollision, IgnoreLayerCollision, ClosestPoint.
+- Rigidbody: AddForceAtPosition, AddExplosionForce, Sleep, WakeUp, IsSleeping,
+  GetPointVelocity, worldCenterOfMass, AddRelativeTorque; drag, angularDrag, constraints
+  and freezeRotation can be set from scripts.
+- Collision contacts: C# Collision.contacts / GetContact / impulse / relativeVelocity, and
+  a second collision argument for Lua OnCollision callbacks. C# OnControllerColliderHit.
+
+Character Controller
+- Slope Speed: slower uphill, a bit faster on gentle descents (off by default).
+- groundNormal, and the Character Controller from C#.
+- Fix: CharacterController.Move dropped frames when grounded and walked half speed up ramps.
+
+Input and C#
+- Interactive rebinding from C# (PerformInteractiveRebinding), with JSON save and load.
+- Touch.tapCount, OnAnimatorIK per IK Pass layer, C# 2D contacts.
+- Fix: setting Time.timeScale from a script did nothing (pause menus could not pause).
+- ScreenCapture.CaptureScreenshot, Application.persistentDataPath, Application.isEditor.
+
+Split screen
+- Per-player HUD canvases and World Space canvases work in split views.
+- Fix: ScreenPointToRay and friends ignored the camera's Viewport Rect.
+- Faster: players share one draw list; static batching in split views (4 players
+  21.7 ms -> 18.3 ms).
+
+Faster scripts
+- Lua scripts cost about 3 times less per object; spawning and destroying in big scenes
+  is up to 20 times faster.
+- New TransformGroup (Lua and C#): one script moves thousands of objects cheaply.
+- Note: a prefab spawned by path is now always named "Name(Clone)".
+
+Samples
+- Hill Run: a 2-player split-screen C# game.
+
+Other fixes
+- Player screenshots are saved at window size when Render Scale is not 1.
+
 0.5.0 - C# catches up, split screen, touch controls and a faster engine (November 2026)
 -------------------------------------------------------------------------------------
 
